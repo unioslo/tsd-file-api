@@ -1,14 +1,23 @@
 
 """ API to support file uploads into TSD projects via the proxy. """
 
+import sys
 import jwt
 import os
+import yaml
 from flask import Flask, request, redirect, url_for, jsonify
 from werkzeug.utils import secure_filename
 from flask import send_from_directory
 
-# TODO: need to read this from config
-UPLOAD_FOLDER = '/Users/leondutoit/uploaded-files'
+
+def read_config(file):
+    with open(file) as f:
+        conf = yaml.load(f)
+    return conf
+
+
+CONF = read_config(sys.argv[1])
+UPLOAD_FOLDER = CONF['file_uploads']
 ALLOWED_EXTENSIONS = set(['txt', 'pdf', 'png', 'jpg', 'jpeg', 'gif', 'csv', 'tsv'])
 
 
