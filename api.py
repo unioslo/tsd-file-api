@@ -2,15 +2,18 @@
 """ API to support file uploads into TSD projects via the proxy. """
 
 import sys
-import jwt
+import jwt # https://github.com/davedoesdev/python-jwt
 import os
 import yaml
 import psycopg2
 import psycopg2.pool
-from flask import Flask, request, redirect, url_for, jsonify
+from flask import Flask, request, redirect, url_for, jsonify, g
 from werkzeug.utils import secure_filename
 from flask import send_from_directory
+from werkzeug.formparser import FormDataParser
 
+# add method for handling MIME-type: formdata/encrypted
+FormDataParser.parse_functions['multipart/encrypted'] = FormDataParser._parse_multipart
 
 def read_config(file):
     with open(file) as f:
@@ -20,7 +23,7 @@ def read_config(file):
 
 CONF = read_config(sys.argv[1])
 UPLOAD_FOLDER = CONF['file_uploads']
-ALLOWED_EXTENSIONS = set(['txt', 'pdf', 'png', 'jpg', 'jpeg', 'gif', 'csv', 'tsv'])
+ALLOWED_EXTENSIONS = set(['txt', 'pdf', 'png', 'jpg', 'jpeg', 'gif', 'csv', 'tsv', 'asc'])
 MINCONN = 4
 MAXCONN = 10
 pool = psycopg2.pool.SimpleConnectionPool(MINCONN, MAXCONN, \
@@ -45,6 +48,9 @@ def close_connection(exception):
         dbconn.close()
 
 
+# support signup through file API too? would make it a standalone component...
+
+
 def get_upload_token():
     pass
 
@@ -67,6 +73,12 @@ def allowed_file(filename):
 @app.route('/upload', methods=['POST'])
 def upload_file():
     # check credentials
+    # request.mimetype - this is e.g. multipart/encrypted
+    # request.mimetype_params - includes protocol, boundary
+    # after saving file, if mimetype multipart/encrypted
+        # do something with it, like decrypt it
+        # perhaps only if we also get another custom header like X-Decrypt
+
     if request.method == 'POST':
         if 'file' not in request.files:
             return jsonify({'message': 'file not found'}), 400
