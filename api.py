@@ -12,7 +12,7 @@ from werkzeug.utils import secure_filename
 from flask import send_from_directory
 from werkzeug.formparser import FormDataParser
 
-# add method for handling MIME-type: formdata/encrypted
+# add method for handling PGP encrypted files
 FormDataParser.parse_functions['multipart/encrypted'] = FormDataParser._parse_multipart
 
 def read_config(file):
