@@ -61,6 +61,8 @@ def upload_signup():
     get_dbconn()
     cur = g.dbconn.cursor()
     cur.execute("select public.signup(%s, %s)", (data['email'], data['pass']))
+    g.dbconn.commit()
+    return jsonify({'messgae': 'signed up for file uploads'})
 
 
 @app.route('/download_signup', methods=['GET', 'POST'])
@@ -74,6 +76,8 @@ def download_signup():
     get_dbconn()
     cur = g.dbconn.cursor()
     cur.execute("select reports.signup(%s, %s)", (data['external_user_id'], data['user_group']))
+    g.dbconn.commit()
+    return jsonify({'messgae': 'signed up for file downloads'})
 
 
 @app.route('/upload_token', methods=['GET', 'POST'])
