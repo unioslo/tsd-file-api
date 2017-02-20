@@ -32,7 +32,7 @@ pool = psycopg2.pool.SimpleConnectionPool(MINCONN, MAXCONN, \
     host=CONF['host'], database=CONF['db'], user=CONF['user'], password=CONF['pw'])
 app = Flask(__name__)
 app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
-app.config['MAX_CONTENT_LENGTH'] = 40 * 1024 * 1024
+app.config['MAX_CONTENT_LENGTH'] = 100 * 1024 * 1024
 
 
 def get_dbconn():
@@ -115,7 +115,7 @@ def get_download_token(saml_data):
     return jsonify([{ 'token': token }])
 
 
-def verify_json_web_token(request_headers, required_role=None):
+def verify_json_web_token(request_headers, required_role=None, timeout=None):
     """Verifies the authenticity of API credentials, as stored in a JSON Web Token
     (see jwt.io for more).
 
@@ -136,7 +136,7 @@ def verify_json_web_token(request_headers, required_role=None):
         return jsonify({'message': 'Access forbidden - Unable to verify signature.'}), 403
     if claims['role'] != required_role:
         return jsonify({'message': 'Access forbidden - Your role does not allow this operation.'}), 403
-    cutoff_time = int(time.time()) + (60*60*24)
+    cutoff_time = int(time.time()) + timeout
     if int(claims['exp']) > cutoff_time:
         return jsonify({'message': 'Access forbidden - JWT expired.'}), 403
     else:
@@ -163,7 +163,7 @@ def upload_file():
         - do something with it, like decrypt it
         - perhaps only if we also get another custom header, like e.g. X-Decrypt
     """
-    status = verify_json_web_token(request.headers, required_role='app_user')
+    status = verify_json_web_token(request.headers, required_role='app_user', timeout=(60*60*24))
     if status is not True:
         return status
     if request.method == 'POST':
@@ -188,7 +188,7 @@ def list_files():
 def download_file(filename):
     """Allows authenticated and authorized users to download a file.
     """
-    status = verify_json_web_token(request.headers, required_role='full_access_reports_user')
+    status = verify_json_web_token(request.headers, required_role='full_access_reports_user', timeout=(60*60))
     if status is not True:
         return status
     return send_from_directory(app.config['UPLOAD_FOLDER'], filename)
