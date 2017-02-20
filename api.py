@@ -7,6 +7,7 @@ import os
 import yaml
 import psycopg2
 import psycopg2.pool
+import time
 from flask import Flask, request, redirect, url_for, jsonify, g
 from werkzeug.utils import secure_filename
 from flask import send_from_directory
@@ -23,6 +24,8 @@ def read_config(file):
 
 CONF = read_config(sys.argv[1])
 UPLOAD_FOLDER = CONF['file_uploads']
+JWT_SECRET = CONF['jwt_secret']
+JWT_MAX_AGE = 60*60
 ALLOWED_EXTENSIONS = set(['txt', 'pdf', 'png', 'jpg', 'jpeg', 'csv', 'tsv', 'asc'])
 MINCONN = 4
 MAXCONN = 10
@@ -30,7 +33,7 @@ pool = psycopg2.pool.SimpleConnectionPool(MINCONN, MAXCONN, \
     host=CONF['host'], database=CONF['db'], user=CONF['user'], password=CONF['pw'])
 app = Flask(__name__)
 app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
-app.config['MAX_CONTENT_LENGTH'] = 40 * 1024 * 1024 # 40 MB limit
+app.config['MAX_CONTENT_LENGTH'] = 40 * 1024 * 1024
 
 
 def get_dbconn():
@@ -49,7 +52,7 @@ def close_connection(exception):
 
 
 @app.route('/upload_signup', methods=['GET', 'POST'])
-def signup():
+def upload_signup():
     """Create a user, password entry that could allow a user to _upload_ files.
     This user must first be verified by a TSD admin before being allowed to request
     access tokens.
@@ -61,7 +64,7 @@ def signup():
 
 
 @app.route('/download_signup', methods=['GET', 'POST'])
-def signup():
+def download_signup():
     """Create a user, password entry that could allow a user to _download_ files.
     This user must first be verified by a TSD admin before being allowed to request
     access tokens. This is a much more stringent authentication process involving SAML
@@ -109,11 +112,32 @@ def get_download_token(saml_data):
     return jsonify([{ 'token': token }])
 
 
-def verify_json_web_token(token, key):
-    # need to get the key from config
-    header, claims = jwt.verify_jwt(token, key, ['HS256'], checks_optional=True)
-    # check that their role allows either storing or downloading a file
-    return header, claims
+def verify_json_web_token(request_headers, required_role=None):
+    """Verifies the authenticity of API credentials, as stored in a JSON Web Token
+    (see jwt.io for more).
+
+    Details:
+    0) Checks for the existence of a token
+    1) Checks the cryptographic integrity of the token - that it was obtained from an
+    authoritative source with access to the secret key
+    2) Extracts the JWT header and the claims
+    3) Checks that the role assigned to the user in the db is allowed to perform the action
+    4) Checks that the token has not expired - 1 hour is the current lifetime
+    """
+    try:
+        token = request.headers['Authorization'].replace('Bearer ', '')
+        header, claims = jwt.verify_jwt(token, JWT_SECRET, ['HS256'], checks_optional=True)
+    except KeyError:
+        return jsonify({'message': 'No JWT provided.'}), 400
+    except jwt.jws.SignatureError:
+        return jsonify({'message': 'Access forbidden - Unable to verify signature.'}), 403
+    if claims['role'] != required_role:
+        return jsonify({'message': 'Access forbidden - Your role does not allow this operation.'}), 403
+    cutoff_time = int(time.time()) + JWT_MAX_AGE
+    if int(claims['exp']) > cutoff_time:
+        return jsonify({'message': 'Access forbidden - JWT expired.'}), 403
+    else:
+        return True
 
 
 def allowed_file(filename):
@@ -122,13 +146,23 @@ def allowed_file(filename):
 
 @app.route('/upload', methods=['POST'])
 def upload_file():
-    # check credentials
-    # request.mimetype - this is e.g. multipart/encrypted
-    # request.mimetype_params - includes protocol, boundary
-    # after saving file, if mimetype multipart/encrypted
-        # do something with it, like decrypt it
-        # perhaps only if we also get another custom header like X-Decrypt
+    """Allows authenticated and authorized users to upload a file. Current max size is 40MB.
+    All files are saved to the same directory.
 
+    Content-Types:
+    - For plain text ->             'Content-Type: multipart/form-data'
+    - For PGP encrypted text use -> 'Content-Type: multipart/encrypted; protocol="pgp-encrypted"'
+
+    Initiating actions after file uploads (not implemented yet):
+    - request.mimetype - this is e.g. multipart/encrypted
+    - request.mimetype_params - includes protocol, boundary
+    - after saving file, if mimetype multipart/encrypted
+        - do something with it, like decrypt it
+        - perhaps only if we also get another custom header, like e.g. X-Decrypt
+    """
+    status = verify_json_web_token(request.headers, required_role='app_user')
+    if status is not True:
+        return status
     if request.method == 'POST':
         if 'file' not in request.files:
             return jsonify({'message': 'file not found'}), 400
@@ -147,10 +181,13 @@ def list_files():
     pass
 
 
-# this should not be exposed via the API
 @app.route('/download/<filename>', methods=['GET'])
 def download_file(filename):
-    # check credentials
+    """Allows authenticated and authorized users to download a file.
+    """
+    status = verify_json_web_token(request.headers, required_role='full_access_reports_user')
+    if status is not True:
+        return status
     return send_from_directory(app.config['UPLOAD_FOLDER'], filename)
 
 
