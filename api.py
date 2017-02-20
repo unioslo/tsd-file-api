@@ -25,7 +25,6 @@ def read_config(file):
 CONF = read_config(sys.argv[1])
 UPLOAD_FOLDER = CONF['file_uploads']
 JWT_SECRET = CONF['jwt_secret']
-JWT_MAX_AGE = 60*60
 ALLOWED_EXTENSIONS = set(['txt', 'pdf', 'png', 'jpg', 'jpeg', 'csv', 'tsv', 'asc'])
 MINCONN = 4
 MAXCONN = 10
@@ -137,7 +136,7 @@ def verify_json_web_token(request_headers, required_role=None):
         return jsonify({'message': 'Access forbidden - Unable to verify signature.'}), 403
     if claims['role'] != required_role:
         return jsonify({'message': 'Access forbidden - Your role does not allow this operation.'}), 403
-    cutoff_time = int(time.time()) + JWT_MAX_AGE
+    cutoff_time = int(time.time()) + (60*60*24)
     if int(claims['exp']) > cutoff_time:
         return jsonify({'message': 'Access forbidden - JWT expired.'}), 403
     else:
