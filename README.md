@@ -13,6 +13,8 @@ Authentication and authorization is the same as for the storage and retrieval AP
 
 ### Example: uploading files
 
+Current allowed file types are: `'txt', 'pdf', 'png', 'jpg', 'jpeg', 'csv', 'tsv', 'asc'`.
+
 Suppose we are working with a file named `file.ext` and that the API is available at URL `url`.
 
 ```bash

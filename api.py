@@ -64,7 +64,7 @@ def upload_signup():
     cur = g.dbconn.cursor()
     cur.execute("select public.signup(%s, %s)", (data['email'], data['pass']))
     g.dbconn.commit()
-    return jsonify({'messgae': 'signed up for file uploads'})
+    return jsonify({'message': 'signed up for file uploads'}), 200
 
 
 @app.route('/download_signup', methods=['GET', 'POST'])
@@ -79,7 +79,7 @@ def download_signup():
     cur = g.dbconn.cursor()
     cur.execute("select reports.signup(%s, %s)", (data['external_user_id'], data['user_group']))
     g.dbconn.commit()
-    return jsonify({'messgae': 'signed up for file downloads'})
+    return jsonify({'message': 'signed up for file downloads'}), 200
 
 
 @app.route('/upload_token', methods=['GET', 'POST'])
@@ -97,7 +97,7 @@ def get_upload_token():
     cur.execute("select public.token(%s, %s)", (data['email'], data['pass']))
     res = cur.fetchall()
     token = res[0][0]
-    return jsonify([{ 'token': token }])
+    return jsonify([{ 'token': token }]), 200
 
 
 @app.route('/download_token', methods=['GET', 'POST'])
@@ -115,7 +115,7 @@ def get_download_token(saml_data):
     cur.execute("select reports.token(%s)", (data['saml_data']))
     res = cur.fetchall()
     token = res[0][0]
-    return jsonify([{ 'token': token }])
+    return jsonify([{ 'token': token }]), 200
 
 
 def verify_json_web_token(request_headers, required_role=None, timeout=None):
@@ -198,7 +198,7 @@ def list_files():
     file_info = OrderedDict()
     for i in zip(files, times):
         file_info[i[0]] = i[1]
-    return jsonify(file_info)
+    return jsonify(file_info), 200
 
 
 @app.route('/download/<filename>', methods=['GET'])
