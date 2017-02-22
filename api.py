@@ -8,10 +8,13 @@ import yaml
 import psycopg2
 import psycopg2.pool
 import time
+import datetime
 from flask import Flask, request, redirect, url_for, jsonify, g
 from werkzeug.utils import secure_filename
 from flask import send_from_directory
 from werkzeug.formparser import FormDataParser
+from collections import OrderedDict
+
 
 # add method for handling PGP encrypted files
 FormDataParser.parse_functions['multipart/encrypted'] = FormDataParser._parse_multipart
@@ -180,8 +183,22 @@ def upload_file():
             return jsonify({'message': 'file type not allowed'}), 400
 
 
+@app.route('/list', methods=['GET'])
 def list_files():
-    pass
+    """This is not sensitive data per se, so storage API tokens can be used; so can the retrieval API token.
+    Returns a list of files in the uploaded folder, and the time of last modification.
+    """
+    storage_token_status = verify_json_web_token(request.headers, required_role='app_user', timeout=(60*60*24))
+    retrieval_token_status = verify_json_web_token(request.headers, required_role='full_access_reports_user', timeout=(60*60))
+    if (storage_token_status or retrieval_token_status) is not True:
+        return status
+    dir = app.config['UPLOAD_FOLDER']
+    files = os.listdir(dir)
+    times = map(lambda x: datetime.datetime.fromtimestamp(os.stat(os.path.normpath(dir+'/'+x)).st_mtime).isoformat(), files)
+    file_info = OrderedDict()
+    for i in zip(files, times):
+        file_info[i[0]] = i[1]
+    return jsonify(file_info)
 
 
 @app.route('/download/<filename>', methods=['GET'])

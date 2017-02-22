@@ -34,6 +34,16 @@ PGP encrypted files are also supported. Clients are recommended to use the `mult
 curl -i --form 'file=@file.ext.asc;filename=file.ext.asc' -H 'Content-Type: multipart/encrypted; protocol="application/pgp-encrypted"' http://url/upload
 ```
 
+### Getting file metadata
+
+Clients typically want to know which files have been stored and when. This information is available to users who authenticate with upload and/or download tokens.
+
+```bash
+curl -i http://url/list -H "Authorization: Bearer $token"
+```
+
+The result will show an alphabetical order of files along with the latest time of content modification.
+
 ### Example: downloading files
 
 ```bash
