@@ -33,7 +33,7 @@ This curl-based example emulates uploading a file from a web form.
 PGP encrypted files are also supported. Clients are recommended to use the `multipart/encrypted` Content-Type header described in [rfc1847](https://tools.ietf.org/html/rfc1847) and elaborated for PGP in [rfc3156](https://tools.ietf.org/html/rfc3156). Doing so will allow the API to initiate processing, such as decryption, on behalf of the client.
 
 ```bash
-curl -i --form 'file=@file.ext.asc;filename=file.ext.asc' -H 'Content-Type: multipart/encrypted; protocol="application/pgp-encrypted"' http://url/upload
+curl -i --form 'file=@file.ext.asc;filename=file.ext.asc' -H "Authorization: Bearer $token" -H 'Content-Type: multipart/encrypted; protocol="application/pgp-encrypted"' http://url/upload
 ```
 
 ### Example: large files and streaming
@@ -45,17 +45,17 @@ Cliets should provide a file name in a custom header: `X-Filename: <filename>`. 
 Nginx sets the maximum Content-Length allowed for the stream on a per request basis. If the data stream is smaller than the maximum Content-Length then a file can be streamed using POST:
 
 ``` bash
-curl -X POST --data-binary @file -H 'Content-Type: application/octet-stream' \
+curl -X POST --data-binary @file -H "Authorization: Bearer $token" -H 'Content-Type: application/octet-stream' \
     -H 'X-Filename: filename' http://url/stream
 ```
 
 If the data stream exceeds maximum Content-Length then data can be sent in consecutive streams, in separate requests. Incoming streams are appended to each other, byte-for-byte. Suppose a large file is split into two files (file1 and file2), clients can send streams to the same file using PATCH:
 
 ```bash
-curl -X PATCH --data-binary @file1 -H 'Content-Type: application/octet-stream' \
+curl -X PATCH --data-binary @file1 -H "Authorization: Bearer $token" -H 'Content-Type: application/octet-stream' \
     -H 'X-Filename: filename' http://url/stream
 
-curl -X PATCH --data-binary @file2 -H 'Content-Type: application/octet-stream' \
+curl -X PATCH --data-binary @file2 -H "Authorization: Bearer $token" -H 'Content-Type: application/octet-stream' \
     -H 'X-Filename: filename' http://url/stream
 ```
 
