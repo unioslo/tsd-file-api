@@ -9,6 +9,7 @@ import psycopg2
 import psycopg2.pool
 import time
 import datetime
+import flask
 from flask import Flask, request, redirect, url_for, jsonify, g
 from werkzeug.utils import secure_filename
 from flask import send_from_directory
@@ -64,7 +65,7 @@ def upload_signup():
     cur = g.dbconn.cursor()
     cur.execute("select public.signup(%s, %s)", (data['email'], data['pass']))
     g.dbconn.commit()
-    return jsonify({'message': 'signed up for file uploads'}), 200
+    return jsonify({'message': 'signed up for file uploads'}), 201
 
 
 @app.route('/download_signup', methods=['GET', 'POST'])
@@ -79,7 +80,7 @@ def download_signup():
     cur = g.dbconn.cursor()
     cur.execute("select reports.signup(%s, %s)", (data['external_user_id'], data['user_group']))
     g.dbconn.commit()
-    return jsonify({'message': 'signed up for file downloads'}), 200
+    return jsonify({'message': 'signed up for file downloads'}), 201
 
 
 @app.route('/upload_token', methods=['GET', 'POST'])
@@ -150,7 +151,7 @@ def allowed_file(filename):
     return '.' in filename and filename.rsplit('.', 1)[1] in ALLOWED_EXTENSIONS
 
 
-@app.route('/upload', methods=['POST'])
+@app.route('/upload', methods=['POST', 'PUT'])
 def upload_file():
     """Allows authenticated and authorized users to upload a file. Current max size is 40MB.
     All files are saved to the same directory.
@@ -166,6 +167,7 @@ def upload_file():
         - do something with it, like decrypt it
         - perhaps only if we also get another custom header, like e.g. X-Decrypt
     """
+    print request.headers
     status = verify_json_web_token(request.headers, required_role='app_user', timeout=(60*60*24))
     if status is not True:
         return status
@@ -181,6 +183,60 @@ def upload_file():
             return jsonify({'message': 'uploaded file'}), 201
         else:
             return jsonify({'message': 'file type not allowed'}), 400
+
+
+@app.route('/stream', methods=['POST', 'PATCH'])
+def upload_file_stream():
+    """This endpoint support uploading files as a binary stream,
+    using 'Content-Type: application/octet-stream'.
+
+    Incoming request data are written to a file byte-for-byte, in order.
+    No data processing is done. All incoming bytes are preserved and written to a file as is.
+    If a file is being streamed, for example, it is the client's responsibilty to construct
+    the binary stream correctly, so that when the bytes are written to the file, data integrity
+    will be preserved.
+
+    Cliets should provide a file name in a custom header: 'X-Filename: <filename>'. If no filename
+    is provided the current ISO 8601 timestamp will be chosen.
+
+    Nginx sets the maximum Content-Length allowed for the stream on a per request basis. If the
+    data stream is smaller than the maximum Content-Length then a file can be streamed using POST:
+
+    curl -X POST --data-binary @file -H 'Content-Type: application/octet-stream' \
+        -H 'X-Filename: filename' http://url/stream
+
+    If the data stream exceeds maximum Content-Length then data can be sent in consecutive
+    streams, in separate requests. Incoming streams are appended to each other, byte-for-byte.
+    Suppose a large file is split into two files (file1 and file2), clients can send streams
+    to the same file using PATCH:
+
+    curl -X PATCH --data-binary @file1 -H 'Content-Type: application/octet-stream' \
+        -H 'X-Filename: filename' http://url/stream
+
+    curl -X PATCH --data-binary @file2 -H 'Content-Type: application/octet-stream' \
+        -H 'X-Filename: filename' http://url/stream
+
+    In this case the filename _must_ be provided, otherwise the streams will end up in separate
+    files.
+    """
+    storage_token_status = verify_json_web_token(request.headers, required_role='app_user', timeout=(60*60*24))
+    try:
+        supplied_file_name = request.headers['X-Filename']
+    except KeyError:
+        supplied_file_name = datetime.datetime.now().isoformat() + '.txt'
+    filename = os.path.normpath(app.config['UPLOAD_FOLDER'] + '/' + supplied_file_name)
+    if request.method == 'POST':
+        file_mode = 'wb+'
+    elif request.method == 'PATCH':
+        file_mode = 'ab+'
+    with open(filename, file_mode) as f:
+        chunk_size = 4096
+        while True:
+            chunk = flask.request.stream.read(chunk_size)
+            if len(chunk) == 0:
+                return jsonify({'message': 'file uploaded'}), 201
+            f.write(chunk)
+    return jsonify({'message': 'file uploaded'}), 201
 
 
 @app.route('/list', methods=['GET'])

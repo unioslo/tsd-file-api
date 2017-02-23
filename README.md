@@ -36,6 +36,31 @@ PGP encrypted files are also supported. Clients are recommended to use the `mult
 curl -i --form 'file=@file.ext.asc;filename=file.ext.asc' -H 'Content-Type: multipart/encrypted; protocol="application/pgp-encrypted"' http://url/upload
 ```
 
+### Example: large files and streaming
+
+Large files can be uploaded as binary data. Incoming request data are written to a file byte-for-byte, in order. No data processing is done. All incoming bytes are preserved and written to a file as is. If a file is being streamed, for example, it is the client's responsibilty to construct the binary stream correctly, so that when the bytes are written to the file, data integrity will be preserved.
+
+Cliets should provide a file name in a custom header: `X-Filename: <filename>`. If no filename is provided the current ISO 8601 timestamp will be chosen.
+
+Nginx sets the maximum Content-Length allowed for the stream on a per request basis. If the data stream is smaller than the maximum Content-Length then a file can be streamed using POST:
+
+``` bash
+curl -X POST --data-binary @file -H 'Content-Type: application/octet-stream' \
+    -H 'X-Filename: filename' http://url/stream
+```
+
+If the data stream exceeds maximum Content-Length then data can be sent in consecutive streams, in separate requests. Incoming streams are appended to each other, byte-for-byte. Suppose a large file is split into two files (file1 and file2), clients can send streams to the same file using PATCH:
+
+```bash
+curl -X PATCH --data-binary @file1 -H 'Content-Type: application/octet-stream' \
+    -H 'X-Filename: filename' http://url/stream
+
+curl -X PATCH --data-binary @file2 -H 'Content-Type: application/octet-stream' \
+    -H 'X-Filename: filename' http://url/stream
+```
+
+In this case the filename _must_ be provided, otherwise the streams will end up in separate files.
+
 ### Getting file metadata
 
 Clients typically want to know which files have been stored and when. This information is available to users who authenticate with upload and/or download tokens.
