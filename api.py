@@ -255,6 +255,8 @@ def upload_file_stream():
     and the hexdigest will be return upon completing the request. This is a bit slower.
     """
     storage_token_status = verify_json_web_token(request.headers, required_role='app_user', timeout=(60*60*24))
+    if storage_token_status is not True:
+        return storage_token_status
     try:
         supplied_file_name = request.headers['X-Filename']
     except KeyError:
@@ -296,6 +298,8 @@ def checksum(filename):
     """
     storage_token_status = verify_json_web_token(request.headers, required_role='app_user', timeout=(60*60*24))
     retrieval_token_status = verify_json_web_token(request.headers, required_role='full_access_reports_user', timeout=(60*60))
+    if (storage_token_status or retrieval_token_status) is not True:
+        return status
     dir = app.config['UPLOAD_FOLDER']
     target = os.path.normpath(dir + '/' + filename)
     checksum = md5sum(target)
