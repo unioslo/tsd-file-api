@@ -176,7 +176,6 @@ def upload_file():
         - do something with it, like decrypt it
         - perhaps only if we also get another custom header, like e.g. X-Decrypt
     """
-    print request.headers
     status = verify_json_web_token(request.headers, required_role='app_user', timeout=(60*60*24))
     if status is not True:
         return status
@@ -255,7 +254,7 @@ def upload_file_stream():
     If the client sends the 'X-Checksum: md5sum' custom header a rolling checksum will be calculated
     and the hexdigest will be return upon completing the request. This is a bit slower.
     """
-    #storage_token_status = verify_json_web_token(request.headers, required_role='app_user', timeout=(60*60*24))
+    storage_token_status = verify_json_web_token(request.headers, required_role='app_user', timeout=(60*60*24))
     try:
         supplied_file_name = request.headers['X-Filename']
     except KeyError:
@@ -312,7 +311,3 @@ def download_file(filename):
         return status
     return send_from_directory(app.config['UPLOAD_FOLDER'], filename)
 
-
-# should not have debug in prod
-if __name__ == '__main__':
-    app.run(host='0.0.0.0', debug=True)
