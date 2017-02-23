@@ -10,6 +10,7 @@ import psycopg2.pool
 import time
 import datetime
 import flask
+import hashlib
 from flask import Flask, request, redirect, url_for, jsonify, g
 from werkzeug.utils import secure_filename
 from flask import send_from_directory
@@ -45,6 +46,14 @@ def get_dbconn():
         conn = pool.getconn()
         dbconn = g.dbconn = conn
     return dbconn
+
+
+def md5sum(filename, blocksize=65536):
+    hash = hashlib.md5()
+    with open(filename, "rb") as f:
+        for block in iter(lambda: f.read(blocksize), b""):
+            hash.update(block)
+    return hash.hexdigest()
 
 
 @app.teardown_appcontext
@@ -185,6 +194,30 @@ def upload_file():
             return jsonify({'message': 'file type not allowed'}), 400
 
 
+def handle_stream(filename, file_mode, checksum=False):
+    """Optional computation of checksum while processing stream. A little bit slower.
+    """
+    if not checksum:
+        with open(filename, file_mode) as f:
+            chunk_size = 4096
+            while True:
+                chunk = flask.request.stream.read(chunk_size)
+                if len(chunk) == 0:
+                    return jsonify({'message': 'file uploaded'}), 201
+                f.write(chunk)
+    elif checksum:
+        hash = hashlib.md5()
+        with open(filename, file_mode) as f:
+            chunk_size = 4096
+            while True:
+                chunk = flask.request.stream.read(chunk_size)
+                hash.update(chunk)
+                if len(chunk) == 0:
+                    return jsonify({'message': 'file uploaded', 'md5sum': hash.hexdigest() }), 201
+                f.write(chunk)
+    return jsonify({'message': 'file uploaded'}), 201
+
+
 @app.route('/stream', methods=['POST', 'PATCH'])
 def upload_file_stream():
     """This endpoint support uploading files as a binary stream,
@@ -218,25 +251,26 @@ def upload_file_stream():
 
     In this case the filename _must_ be provided, otherwise the streams will end up in separate
     files.
+
+    If the client sends the 'X-Checksum: md5sum' custom header a rolling checksum will be calculated
+    and the hexdigest will be return upon completing the request. This is a bit slower.
     """
-    storage_token_status = verify_json_web_token(request.headers, required_role='app_user', timeout=(60*60*24))
+    #storage_token_status = verify_json_web_token(request.headers, required_role='app_user', timeout=(60*60*24))
     try:
         supplied_file_name = request.headers['X-Filename']
     except KeyError:
         supplied_file_name = datetime.datetime.now().isoformat() + '.txt'
+    try:
+        checksum = request.headers['X-Checksum']
+    except KeyError:
+        checksum = False
     filename = os.path.normpath(app.config['UPLOAD_FOLDER'] + '/' + supplied_file_name)
     if request.method == 'POST':
         file_mode = 'wb+'
     elif request.method == 'PATCH':
         file_mode = 'ab+'
-    with open(filename, file_mode) as f:
-        chunk_size = 4096
-        while True:
-            chunk = flask.request.stream.read(chunk_size)
-            if len(chunk) == 0:
-                return jsonify({'message': 'file uploaded'}), 201
-            f.write(chunk)
-    return jsonify({'message': 'file uploaded'}), 201
+    resp = handle_stream(filename, file_mode, checksum)
+    return resp
 
 
 @app.route('/list', methods=['GET'])
@@ -255,6 +289,18 @@ def list_files():
     for i in zip(files, times):
         file_info[i[0]] = i[1]
     return jsonify(file_info), 200
+
+
+@app.route('/integrity/<filename>', methods=['GET'])
+def checksum(filename):
+    """Returns the md5sum of the given filename. Available with tokens from storage and retrieval APIs.
+    """
+    storage_token_status = verify_json_web_token(request.headers, required_role='app_user', timeout=(60*60*24))
+    retrieval_token_status = verify_json_web_token(request.headers, required_role='full_access_reports_user', timeout=(60*60))
+    dir = app.config['UPLOAD_FOLDER']
+    target = os.path.normpath(dir + '/' + filename)
+    checksum = md5sum(target)
+    return jsonify({'md5sum': checksum }), 200
 
 
 @app.route('/download/<filename>', methods=['GET'])

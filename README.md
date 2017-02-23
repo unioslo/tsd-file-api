@@ -61,12 +61,31 @@ curl -X PATCH --data-binary @file2 -H "Authorization: Bearer $token" -H 'Content
 
 In this case the filename _must_ be provided, otherwise the streams will end up in separate files.
 
+### Checking data integrity
+
+There are two ways to get checksum information about data stored in files: 1) The client can request it for a file that has already been uploaded:
+
+```bash
+curl http://url/integrity/<filename> -H "Authorization: Bearer $token"
+```
+
+2) When streaming binary data, if the client sends the `X-Checksum: md5sum` custom header in the request, a rolling checksum will be calculated and the hexdigest will be return upon completing the request. This is a bit slower but could be useful when pipelining many requests to the same file destination.
+
+```bash
+curl -X POST --data-binary "@1gb.txt" -H "Authorization: Bearer $token"  -H "Content-Type: application/octet-stream" -H "X-Filename: 1gb.txt" -H "X-Checksum: md5sum" http://url/stream
+# response
+{
+  "md5sum": "acd2770ddba692c3b1590c7a2c97f487",
+  "message": "file uploaded"
+}
+```
+
 ### Getting file metadata
 
 Clients typically want to know which files have been stored and when. This information is available to users who authenticate with upload and/or download tokens.
 
 ```bash
-curl -i http://url/list -H "Authorization: Bearer $token"
+curl http://url/list -H "Authorization: Bearer $token"
 ```
 
 The result will show an alphabetical order of files along with the latest time of content modification.
