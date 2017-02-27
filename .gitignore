@@ -1,1 +1,3 @@
 tsd-file-api-venv/
+*~
+*.pyc
