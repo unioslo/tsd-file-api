@@ -11,6 +11,29 @@ Run the API locally as such: `./uwsgi --ini app-conf.ini --pyargv <config-file.y
 
 Authentication and authorization is the same as for the storage and retrieval APIs. Different user credentials are required for writing and reading files. After signing up, a TSD admin must verify the user before they can get an access  token. When that is done, a token can be requested. The upload token lasts 24 hours while the download token lasts only for one hour. Files are limited to 100MB (unless requested otherwise).
 
+## Choosing the appropriate HTTP verb
+
+Concerning file uploads, there are two general types of operations a client can perform via the API:
+
+1. Create a new file (or replace an existing file)
+2. Append to an existing file
+
+Creating and replacing files are the same operation for the API: to initiate this the client performs a HTTP `PUT` operation on the appropriate endpoint, naming the resource (filename) in question. This operation is idempotent - that is, if you PUT the same data multiple times to the same filename, the contents will not change.
+
+Appending to a file is accomplished by performing either HTTP `POST` (which is _not_ idempotent) or `PATCH`. This would be used the case when uploading different parts of the same file in different HTTP requests. By doing a `POST` or a `PUT`, the client is deliberately _modifying_ a resource. It just so happens that if it was not there before that the modification would be the same a creation, so one could say that creating a file with `POST` or `PATCH` is  a special case (and therefore fine), but it is not guaranteed to be safe by the API.
+
+### Two endpoints for uploading files
+
+#### /upload
+
+TBD
+
+#### /stream
+
+TBD
+
+## Examples
+
 ### Example: uploading files
 
 Current allowed file types are: `'txt', 'pdf', 'png', 'jpg', 'jpeg', 'csv', 'tsv', 'asc'`.
@@ -60,6 +83,10 @@ curl -X PATCH --data-binary @file2 -H "Authorization: Bearer $token" -H 'Content
 ```
 
 In this case the filename _must_ be provided, otherwise the streams will end up in separate files.
+
+### To upload arbitrarily large files
+
+In nginx.conf, set `client_max_body_size 0;` - this will make nginx ignore `Content-Length`. The input will be buffered and sent to the file-api which will handle the incoming stream in chunks and write it to a file.
 
 ### Checking data integrity
 
