@@ -31,7 +31,7 @@ Each tsd project will have a limitation on the size of the data that can be incl
 Web apps running in the browser will typically use this endpoint. This endpoint accepts:
 
 * files uploaded in a single request using `Content-Type: multipart/form-data` and
-* chunked files uploads `Content-Type: multipart/form-data, Content-Range: bytes start-end/total`.
+* chunked files uploaded in multiple requests `Content-Type: multipart/form-data, Content-Range: bytes start-end/total`.
 
 Many javascript libraries, such as [jQuery-File-Upload](https://github.com/blueimp/jQuery-File-Upload/wiki/Options) will create file chunks and set the `Content-Range` on your behalf. Note that this generates a separate HTTP request for each chunk.
 
@@ -39,7 +39,11 @@ Files that are not chunked can be uploaded using `PUT` since no modification is 
 
 ### /stream
 
-TBD
+This endpoint is designed for programmatic use, but can also be use from the browser. It accepts:
+
+* File data with `Content-Type: application/octet-stream`
+
+Clients that upload file data to this endpoint should do no pre-processing whatsoever, since the server will write incoming data to a file, as is, byte-for-byte. Since no parsing is done it is more efficient than `/upload`. The maximum amount of data that is allowed in a single request to this endpoint will typically be higher. Files in excess of 10GB, for example, can be uploaded via this endpoint by chunking the file and doing a series of `PATCH` requests to the same resource.
 
 ## Examples
 
