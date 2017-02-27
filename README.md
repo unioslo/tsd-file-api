@@ -18,9 +18,9 @@ Concerning file uploads, there are two general types of operations a client can 
 1. Create a new file (or replace an existing file)
 2. Append to an existing file
 
-Creating and replacing files are the same operation for the API: to initiate this the client performs a HTTP `PUT` operation on the appropriate endpoint, naming the resource (filename) in question. This operation is idempotent - that is, if you PUT the same data multiple times to the same filename, the contents will not change.
+Creating and replacing files are the same operation for the API: to initiate this the client performs a HTTP `PUT` operation on the appropriate endpoint, naming the resource (filename) in question. This operation is idempotent - that is, if you `PUT` the same data multiple times to the same filename, the contents will not change.
 
-Appending to a file is accomplished by performing either HTTP `POST` (which is _not_ idempotent) or `PATCH`. This would be used the case when uploading different parts of the same file in different HTTP requests. By doing a `POST` or a `PUT`, the client is deliberately _modifying_ a resource. It just so happens that if it was not there before that the modification would be the same a creation, so one could say that creating a file with `POST` or `PATCH` is  a special case (and therefore fine), but it is not guaranteed to be safe by the API.
+Appending to a file is accomplished by performing either HTTP `POST` (which is _not_ idempotent) or `PATCH`. This is useful when uploading different parts of the same file in different HTTP requests. By doing a `POST` or a `PATCH`, the client is deliberately _modifying_ a resource. The API provides no idempotency guarantees when clients perform `POST` or `PATCH`.
 
 ### Two endpoints for uploading files
 
