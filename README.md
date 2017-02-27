@@ -9,7 +9,7 @@ Run the API locally as such: `./uwsgi --ini app-conf.ini --pyargv <config-file.y
 
 ## Usage as a standalone service
 
-Authentication and authorization is the same as for the storage and retrieval APIs. Different user credentials are required for writing and reading files. After signing up, a TSD admin must verify the user before they can get an access  token. When that is done, a token can be requested. The upload token lasts 24 hours while the download token lasts only for one hour. Files are limited to 100MB (unless requested otherwise).
+Authentication and authorization is the same as for the storage and retrieval APIs. Different user credentials are required for writing and reading files. After signing up, a TSD admin must verify the user before they can get an access  token. When that is done, a token can be requested. The upload token lasts 24 hours while the download token lasts only for one hour.
 
 ## Choosing the appropriate HTTP verb
 
@@ -22,13 +22,22 @@ Creating and replacing files are the same operation for the API: to initiate thi
 
 Appending to a file is accomplished by performing either HTTP `POST` (which is _not_ idempotent) or `PATCH`. This is useful when uploading different parts of the same file in different HTTP requests. By doing a `POST` or a `PATCH`, the client is deliberately _modifying_ a resource. The API provides no idempotency guarantees when clients perform `POST` or `PATCH`.
 
-### Two endpoints for uploading files
+## Two endpoints for uploading files
 
-#### /upload
+Each tsd project will have a limitation on the size of the data that can be included in a single HTTP request. These limits will be influenced by how the API is used, how many requests are made and so on. They will also be different depending on whether the API is used to upload files as form data (typically from browsers) or simply as binary data (typically from programs). Two endpoints are aviablable, each designed to handle a different primary `Content-Type`.
 
-TBD
+### /upload
 
-#### /stream
+Web apps running in the browser will typically use this endpoint. This endpoint accepts:
+
+* files uploaded in a single request using `Content-Type: multipart/form-data` and
+* chunked files uploads `Content-Type: multipart/form-data, Content-Range: bytes start-end/total`.
+
+Many javascript libraries, such as [jQuery-File-Upload](https://github.com/blueimp/jQuery-File-Upload/wiki/Options) will create file chunks and set the `Content-Range` on your behalf. Note that this generates a separate HTTP request for each chunk.
+
+Files that are not chunked can be uploaded using `PUT` since no modification is necessary (at least initially). Files that are uploaded in chunks must be uploaded using either `POST` or `PATCH` since the incoming chunks will be appended to already uploaded ones. A natural choice for chunking would be to stay below the allowed maximum data size allowed in a single request.
+
+### /stream
 
 TBD
 
