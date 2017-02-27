@@ -37,7 +37,7 @@ pool = psycopg2.pool.SimpleConnectionPool(MINCONN, MAXCONN, \
     host=CONF['host'], database=CONF['db'], user=CONF['user'], password=CONF['pw'])
 app = Flask(__name__)
 app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
-app.config['MAX_CONTENT_LENGTH'] = 100 * 1024 * 1024
+app.config['MAX_CONTENT_LENGTH'] = 1024 * 1024 * 1024 * 1.5 #1.5GB max
 
 
 def get_dbconn():
@@ -160,7 +160,7 @@ def allowed_file(filename):
     return '.' in filename and filename.rsplit('.', 1)[1] in ALLOWED_EXTENSIONS
 
 
-@app.route('/upload', methods=['POST', 'PUT'])
+@app.route('/upload', methods=['POST', 'PUT', 'PATCH'])
 def upload_file():
     """Allows authenticated and authorized users to upload a file. Current max size is 40MB.
     All files are saved to the same directory.
@@ -179,18 +179,32 @@ def upload_file():
     status = verify_json_web_token(request.headers, required_role='app_user', timeout=(60*60*24))
     if status is not True:
         return status
-    if request.method == 'POST':
-        if 'file' not in request.files:
-            return jsonify({'message': 'file not found'}), 400
-        file = request.files['file']
-        if file.filename == '':
-            return jsonify({'message': 'no filename specified'}), 400
-        if file and allowed_file(file.filename):
-            filename = secure_filename(file.filename)
-            file.save(os.path.join(app.config['UPLOAD_FOLDER'], filename))
+    if request.method == 'PUT':
+        file_mode = 'wb+'
+    elif request.method == 'POST' or request.method == 'PATCH':
+        file_mode = 'ab+'
+    if 'file' not in request.files:
+        return jsonify({'message': 'file not found'}), 400
+    file = request.files['file']
+    if file.filename == '':
+        return jsonify({'message': 'no filename specified'}), 400
+    if file and allowed_file(file.filename):
+        filename = secure_filename(file.filename)
+        target = os.path.join(app.config['UPLOAD_FOLDER'], filename)
+        try:
+            # Handle chunked file uploads here
+            if request.headers['Content-Range']:
+                with open(target, file_mode) as f:
+                    data = file.read()
+                    f.write(data)
+                    return jsonify({'message': 'uploaded file'}), 201
+        except KeyError:
+            with open(target, file_mode) as f:
+                data = file.read()
+                f.write(data)
             return jsonify({'message': 'uploaded file'}), 201
-        else:
-            return jsonify({'message': 'file type not allowed'}), 400
+    else:
+        return jsonify({'message': 'file type not allowed'}), 400
 
 
 def handle_stream(filename, file_mode, checksum=False):
@@ -217,7 +231,7 @@ def handle_stream(filename, file_mode, checksum=False):
     return jsonify({'message': 'file uploaded'}), 201
 
 
-@app.route('/stream', methods=['POST', 'PATCH'])
+@app.route('/stream', methods=['POST', 'PATCH', 'PUT'])
 def upload_file_stream():
     """This endpoint support uploading files as a binary stream,
     using 'Content-Type: application/octet-stream'.
@@ -266,9 +280,9 @@ def upload_file_stream():
     except KeyError:
         checksum = False
     filename = os.path.normpath(app.config['UPLOAD_FOLDER'] + '/' + supplied_file_name)
-    if request.method == 'POST':
+    if request.method == 'PUT':
         file_mode = 'wb+'
-    elif request.method == 'PATCH':
+    elif request.method == 'PATCH' or request.method == 'POST':
         file_mode = 'ab+'
     resp = handle_stream(filename, file_mode, checksum)
     return resp
