@@ -1,10 +1,33 @@
 
-"""Tools to do authentication and authorization with JWT."""
+"""Tools to do authentication and authorization with JWT. Based on
+https://github.com/davedoesdev/python-jwt. Offers a python-sqlite
+implementation as an alternative to postgresql (which is used by the storage
+and retrieval APIs). User info and role is stored in sqlite for persistence,
+JWT is generated and validated in this module.
+"""
 
-import jwt # https://github.com/davedoesdev/python-jwt
+import jwt
 import time
+from datetime import datetime
 
-def verify_json_web_token(auth_header, jwt_secret, required_role=None, timeout=None):
+def register_user(email, pw):
+    pass
+
+
+def check_user_registered_and_verified(email, pw):
+    pass
+
+def generate_token(email=None, pw=None, secret='testsecret'):
+    """ATM there is only one role - the app_user role. This allows the client to
+    write files into TSD. Default expiry is set to 24 hours from generation."""
+    # status = check_user_registered_and_verified(email, pw)
+    # if status: else abort
+    claims = {'email': 'health@check.local', 'role': 'app_user'}
+    expires = datetime.fromtimestamp(int(time.time()) + (60*60*24))
+    token = jwt.generate_jwt(claims, priv_key=secret, algorithm='HS256', expires=expires, jti_size=None)
+    return token
+
+def verify_json_web_token(auth_header, jwt_secret, required_role=None):
     """Verifies the authenticity of API credentials, as stored in a JSON Web Token
     (see jwt.io for more).
 
@@ -20,14 +43,14 @@ def verify_json_web_token(auth_header, jwt_secret, required_role=None, timeout=N
         token = auth_header.split(' ')[1]
         header, claims = jwt.verify_jwt(token, jwt_secret, ['HS256'], checks_optional=True)
     except KeyError:
-        return jsonify({'message': 'No JWT provided.'}), 400
+        return {'message': 'No JWT provided.'}
     except jwt.jws.SignatureError:
-        return jsonify({'message': 'Access forbidden - Unable to verify signature.'}), 403
+        return {'message': 'Access forbidden - Unable to verify signature.'}
     if claims['role'] != required_role:
-        return jsonify({'message': 'Access forbidden - Your role does not allow this operation.'}), 403
-    cutoff_time = int(time.time()) + timeout
-    if int(claims['exp']) > cutoff_time:
-        return jsonify({'message': 'Access forbidden - JWT expired.'}), 403
+        return {'message': 'Access forbidden - Your role does not allow this operation.'}
+    if int(time.time()) > int(claims['exp']):
+        return {'message': 'Access forbidden - JWT expired.'}
     else:
         return True
+
 
