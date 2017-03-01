@@ -10,19 +10,12 @@ import jwt
 import time
 from datetime import datetime
 
-def register_user(email, pw):
-    pass
 
-
-def check_user_registered_and_verified(email, pw):
-    pass
-
-def generate_token(email=None, pw=None, secret='testsecret'):
+def generate_token(email, secret):
     """ATM there is only one role - the app_user role. This allows the client to
-    write files into TSD. Default expiry is set to 24 hours from generation."""
-    # status = check_user_registered_and_verified(email, pw)
-    # if status: else abort
-    claims = {'email': 'health@check.local', 'role': 'app_user'}
+    write files into TSD. Default expiry is set to 24 hours from generation.
+    Called in main API only _after_ checking a user's role and verification status."""
+    claims = {'email': email, 'role': 'app_user'}
     expires = datetime.fromtimestamp(int(time.time()) + (60*60*24))
     token = jwt.generate_jwt(claims, priv_key=secret, algorithm='HS256', expires=expires, jti_size=None)
     return token

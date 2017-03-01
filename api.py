@@ -2,8 +2,9 @@
 
 import os
 import logging
+import yaml
+import sqlalchemy # https://stackoverflow.com/questions/14511337/efficiency-of-reopening-sqlite-database-after-each-query
 import tornado.queues
-
 from tornado.concurrent import Future
 from tornado.escape import utf8
 from tornado import gen
@@ -13,6 +14,13 @@ from tornado.options import parse_command_line, define, options
 from tornado.web import Application, RequestHandler, stream_request_body
 
 from auth import generate_token, verify_json_web_token
+
+
+def read_config(file):
+    with open(file) as f:
+        conf = yaml.load(f)
+    return conf
+
 
 define('port', default=8888)
 define('debug', default=True)
@@ -24,10 +32,23 @@ UPLOADS_FOLDER = '/Users/leondutoit/uploaded-files' # read from config
 JWT_SECRET = 'testsecret' # read from config
 
 
+class UserRegistrationHandler(RequestHandler):
+
+    def register_user(conn, email, pw):
+        pass
+
+    def post(self):
+        pass
+
+
 class JWTIssuerHandler(RequestHandler):
 
+    def check_user_registered_and_verified(email, pw):
+        pass
+
     def get(self):
-        token = generate_token()
+        email = getit()
+        token = generate_token(email, JWT_SECRET)
         self.write({ 'token': token })
 
 
@@ -57,6 +78,7 @@ class FormDataHandler(RequestHandler):
         # could notify an external worker here
         pass
 
+
 @stream_request_body
 class UploadHandler(RequestHandler):
 
@@ -74,6 +96,7 @@ class UploadHandler(RequestHandler):
     def post(self):
         logging.info('UploadHandler.post')
         self.write('ok')
+
 
 @stream_request_body
 class ProxyHandler(RequestHandler):
@@ -110,9 +133,11 @@ class ProxyHandler(RequestHandler):
         self.set_status(response.code)
         self.write(response.body)
 
+
 def main():
     parse_command_line()
     app = Application([
+        ('/upload_signup', UserRegistrationHandler),
         ('/upload_token', JWTIssuerHandler),
         ('/upload_stream', UploadHandler),
         ('/stream', ProxyHandler),
@@ -120,6 +145,7 @@ def main():
     ], debug=options.debug)
     app.listen(options.port, max_body_size=options.max_body_size)
     IOLoop.instance().start()
+
 
 if __name__ == '__main__':
     main()
