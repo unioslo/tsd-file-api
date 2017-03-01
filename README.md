@@ -9,7 +9,7 @@ The API conventions are established with reference to the [HTTP 1.1](https://too
 
 ## Authentication and authorization
 
-Authentication and authorization is based on [JSON Web Tokens](https://jwt.io/). An API client must sign up with a username and password. This will be approved by a TSD administrator. After approval, a token can be requested. The token, which is cryptographically signed and enctyped, contains information about the role and privileges assigned to the client. These are evaluated by the API on each request to determine if the authenticated client is allowed to perform the action. Upload tokens lasts 24 hours.
+Authentication and authorization is based on [JSON Web Tokens](https://jwt.io/). An API client must sign up with a username and password. This will be approved by a TSD administrator. After approval, a token can be requested. The token, which is cryptographically signed and encrypted, contains information about the role and privileges assigned to the client. These are evaluated by the API on each request to determine if the authenticated client is allowed to perform the action. Upload tokens lasts 24 hours.
 
 ```bash
 curl http://url/upload_signup --request POST -H "Content-Type: application/json" --data '{ "email": "your.email@whatever.com", "pass": "your-password"  }'
