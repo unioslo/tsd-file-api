@@ -1,15 +1,20 @@
 
 # tsd-file-api
 
-A REST API for upload and download of files, authenticated by JWT.
+A REST API for upload and streaming of files to TSD, authenticated by JWT.
 
-## Development information
+## Background
 
-Run the API locally as such: `./uwsgi --ini app-conf.ini --pyargv <config-file.yaml>`.
+The API conventions are established with reference to the [HTTP 1.1](https://tools.ietf.org/html/rfc7230) and [MIME Conformance Critera](https://tools.ietf.org/html/rfc2045) RFCs. A good starting point for developers who want background on HTTP and who are integrating with the API is [Mozilla's Developer Network guide](https://developer.mozilla.org/en-US/docs/Web/HTTP).
 
-## Usage as a standalone service
+## Authentication and authorization
 
-Authentication and authorization is the same as for the storage and retrieval APIs. Different user credentials are required for writing and reading files. After signing up, a TSD admin must verify the user before they can get an access  token. When that is done, a token can be requested. The upload token lasts 24 hours while the download token lasts only for one hour.
+Authentication and authorization is based on [JSON Web Tokens](https://jwt.io/). An API client must sign up with a username and password. This will be approved by a TSD administrator. After approval, a token can be requested. The token, which is cryptographically signed and enctyped, contains information about the role and privileges assigned to the client. These are evaluated by the API on each request to determine if the authenticated client is allowed to perform the action. Upload tokens lasts 24 hours.
+
+```bash
+curl http://url/upload_signup --request POST -H "Content-Type: application/json" --data '{ "email": "your.email@whatever.com", "pass": "your-password"  }'
+curl http://url/upload_token --request POST -H "Content-Type: application/json" --data '{ "email": "your.email@whatever.com", "pass": "your-password"  }'
+```
 
 ## Choosing the appropriate HTTP verb
 
@@ -17,10 +22,13 @@ Concerning file uploads, there are two general types of operations a client can 
 
 1. Create a new file (or replace an existing file)
 2. Append to an existing file
+3. Stream content
 
 Creating and replacing files are the same operation for the API: to initiate this the client performs a HTTP `PUT` operation on the appropriate endpoint, naming the resource (filename) in question. This operation is idempotent - that is, if you `PUT` the same data multiple times to the same filename, the contents will not change.
 
 Appending to a file is accomplished by performing either HTTP `POST` (which is _not_ idempotent) or `PATCH`. This is useful when uploading different parts of the same file in different HTTP requests. By doing a `POST` or a `PATCH`, the client is deliberately _modifying_ a resource. The API provides no idempotency guarantees when clients perform `POST` or `PATCH`.
+
+Streaming content is accomplished by initiation a `POST` or `PATCH` with `Transfer-Encoding: chunked`. Incoming data is written to a filename specified by the client.
 
 ## Two endpoints for uploading files
 
@@ -53,10 +61,7 @@ Current allowed file types are: `'txt', 'pdf', 'png', 'jpg', 'jpeg', 'csv', 'tsv
 
 Suppose we are working with a file named `file.ext` and that the API is available at URL `url`.
 
-```bash
-curl http://url/upload_signup --request POST -H "Content-Type: application/json" --data '{ "email": "your.email@whatever.com", "pass": "your-password"  }'
-curl http://url/upload_token --request POST -H "Content-Type: application/json" --data '{ "email": "your.email@whatever.com", "pass": "your-password"  }'
-```
+
 
 The API caters for both plain-text and PGP encrypted files. Clients can upload plain-text file as follows, using the `multipart/form-data` [MIME type](https://tools.ietf.org/html/rfc1341):
 
@@ -131,15 +136,3 @@ curl http://url/list -H "Authorization: Bearer $token"
 
 The result will show an alphabetical order of files along with the latest time of content modification.
 
-### Example: downloading files
-
-```bash
-curl http://url/download_signup --request POST -H "Content-Type: application/json" --data '{ "email": "your.email@whatever.com", "pass": "your-password"  }'
-curl http://url/download_token --request POST -H "Content-Type: application/json" --data '{ "saml_data": <saml_data> }'
-# downloading a file
-curl http://url/download/file.ext --request GET -H "Authorization: Bearer <token>"
-```
-
-## Usage in combination with tsd-data API (storage and retrieval APIs).
-
-See [link to docs](LINK!).
