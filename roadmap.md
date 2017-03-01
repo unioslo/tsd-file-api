@@ -57,6 +57,9 @@ Additionally you could patch theses resources
     * [multipart/byteranges](https://www.w3.org/Protocols/rfc2616/rfc2616-sec19.html#sec19.2) - a self-delimiting media type
 * [transfer codings](https://www.w3.org/Protocols/rfc2616/rfc2616-sec3.html#sec3.6)
     * chunks have their own size indicators
+* from the client side with python
+    * http://docs.python-requests.org/en/master/user/advanced/#chunk-encoded-requests
+    * https://stackoverflow.com/questions/17661962/how-to-post-chunked-encoded-data-in-python
 
 ## Performance tuning
 
