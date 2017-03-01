@@ -12,19 +12,32 @@ from tornado.ioloop import IOLoop
 from tornado.options import parse_command_line, define, options
 from tornado.web import Application, RequestHandler, stream_request_body
 
+from auth import verify_json_web_token
+
 define('port', default=8888)
 define('debug', default=True)
 define('server_delay', default=0)
 define('num_chunks', default=50)
 define('max_body_size', 1024*1024*1024*5)
 
-UPLOADS_FOLDER = '/Users/leondutoit/uploaded-files'
+UPLOADS_FOLDER = '/Users/leondutoit/uploaded-files' # read from config
+JWT_SECRET = 'testsecret' # read from config
+
+
+class JWTIssuerHandler(RequestHandler):
+
+    def get(self):
+        self.write([{'token': 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJyb2xlIjogImFwcF91c2VyIiwgImVtYWlsIjogImhlYWx0aEBjaGVjay5sb2NhbCIsICJleHAiOiAxNDg4NDY0Nzc5fQ.mfzInWsSGPuiH4XVXOmzyZPLrwe-X6n5TaqLV-tDPak'}])
+
 
 class FormDataHandler(RequestHandler):
 
     def prepare(self):
-        # called before verb on each request
-        self.filename = ''
+        auth_header = self.request.headers['Authorization']
+        resp = verify_json_web_token(auth_header, JWT_SECRET, 'app_user', timeout=(60*60*24))
+        if resp is not True:
+            return resp
+
 
     def post(self):
         if len(self.request.files['file']) > 1:
@@ -99,6 +112,7 @@ class ProxyHandler(RequestHandler):
 def main():
     parse_command_line()
     app = Application([
+        ('/upload_token', JWTIssuerHandler),
         ('/upload_stream', UploadHandler),
         ('/stream', ProxyHandler),
         ('/upload', FormDataHandler),
