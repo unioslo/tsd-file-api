@@ -6,6 +6,8 @@ import logging
 import json
 import yaml
 import tornado.queues
+from sqlalchemy import create_engine
+from sqlalchemy.pool import QueuePool
 from tornado.concurrent import Future
 from tornado.escape import utf8, json_decode
 from tornado import gen
@@ -30,9 +32,29 @@ define('server_delay', default=0)
 define('num_chunks', default=50)
 define('max_body_size', 1024*1024*1024*5)
 
-UPLOADS_FOLDER = '/Users/leondutoit/uploaded-files' # read from config
-JWT_SECRET = 'testsecret' # read from config
+# get all this from config
+# consider making a class
+# investigate define functionality for storage
+UPLOADS_FOLDER = '/Users/leondutoit/uploaded-files'
+JWT_SECRET = 'testsecret'
+DBURL = 'sqlite:////Users/leondutoit/tsd-file-api/api-users.db'
 
+def db_init(engine_type):
+    # Ref: http://docs.sqlalchemy.org/en/rel_1_1/core/pooling.html
+    if engine_type == 'sqlite':
+        engine = create_engine(DBURL, poolclass=QueuePool)
+        conn = engine.connect()
+        conn.execute('create table if not exists users(email TEXT, pw TEXT, verified INT);')
+        conn.close()
+        return engine
+    elif engine_type == 'postgresql':
+        raise Exception("postgresql engine not implemented yet")
+    else:
+        raise Exception("Did you perhaps make a typo in your engine spec?\
+             Legal values are: 'sqlite' and 'postgresql'.")
+
+
+ENGINE = db_init('sqlite')
 
 class UserRegistrationHandler(RequestHandler):
 
@@ -40,7 +62,8 @@ class UserRegistrationHandler(RequestHandler):
         data = json_decode(self.request.body)
         email = str(data['email'])
         pw = str(data['pw'])
-        store_email_and_password(email, pw)
+        conn = ENGINE.connect()
+        store_email_and_password(conn, email, pw)
 
     def post(self):
         self.write({ 'message': 'user registered' })

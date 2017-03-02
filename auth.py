@@ -17,17 +17,18 @@ def _get_client_credentials():
 
 
 def _encrypt_password(pw):
-    # consider: https://github.com/tornadoweb/tornado/blob/master/demos/blog/blog.py#L43
     encrypted = bcrypt.hashpw(pw, bcrypt.gensalt())
     return encrypted
 
 
-def store_email_and_password(email, pw):
-    # into sqlite eventually
+def store_email_and_password(conn, email, pw):
     encrypted = _encrypt_password(pw)
-    with open('pwfile', 'w+') as f:
-        vals = "%s, %s, f" % (email, encrypted)
-        f.write(vals)
+    try:
+        conn.execute('insert into users values (:email, :pw, :verified)', {'email': email, 'pw': encrypted, 'verified': 0})
+    except Exception:
+        raise Exception("Could not insert client credentials into db.")
+    finally:
+        conn.close()
 
 
 def _check_password_valid(pw, encrypted):
@@ -38,7 +39,7 @@ def _check_password_valid(pw, encrypted):
 
 
 def check_client_credentials_in_order(email, pw):
-    #email, encrypted_pw, verification_status = _get_client_credentials()
+    email, encrypted_pw, verification_status = _get_client_credentials()
     # check email correct
     #pw_is_valid = _check_password_valid(pw, encrypted)
     # check verification status
