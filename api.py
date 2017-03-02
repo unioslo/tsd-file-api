@@ -83,7 +83,6 @@ class JWTIssuerHandler(RequestHandler):
         if not self.answer['credentials_in_order']:
             self.set_status(403)
             self.finish({ 'message': self.answer['message'] })
-
     def post(self):
         token = generate_token(self.email, JWT_SECRET)
         self.write({ 'token': token })
@@ -94,25 +93,28 @@ class AuthRequestHandler(RequestHandler):
     def validate_token(self):
         try:
             auth_header = self.request.headers['Authorization']
+            self.jwt = auth_header.split(' ')[1]
+            logging.info(auth_header)
             token_verified_status = verify_json_web_token(auth_header, JWT_SECRET, 'app_user')
-            if token_verified_status:
-                self.authnz = token_verified_status
-            else:
-                self.send_error(403)
-                self.finish(token_verified_status)
-        except KeyError:
-            self.set_status(400)
-            self.finish({ 'message': 'Missing Authorization header.' })
-        except UnboundLocalError:
-            raise Exception
+            self.authnz = token_verified_status
+            logging.info(token_verified_status)
+        except (KeyError, UnboundLocalError) as e:
+            self.st = 400
+            self.message = 'Missing Authorization header.'
+        if token_verified_status is True:
+            return
+        else:
+            self.st = 403
+            self.message = token_verified_status
+            self.set_status(self.st)
+            self.finish({ 'message': self.message })
 
 
 class FormDataHandler(AuthRequestHandler):
 
     def prepare(self):
         self.validate_token()
-        # disallow tranfer-encoding: chunked here
-        # this is designed for one-shot uploads
+        # TODO: disallow streaming here
 
     def post(self):
         if len(self.request.files['file']) > 1:
@@ -131,7 +133,7 @@ class FormDataHandler(AuthRequestHandler):
 class StreamHandler(AuthRequestHandler):
 
     def prepare(self):
-        #self.validate_token()
+        self.validate_token()
         logging.info('StreamHandler.prepare')
 
     @gen.coroutine
@@ -139,6 +141,7 @@ class StreamHandler(AuthRequestHandler):
         logging.info('StreamHandler.data_received(%d bytes: %r)', len(chunk), chunk[:9])
         # could use this to rate limit the client if needed
         # yield gen.Task(IOLoop.current().call_later, options.server_delay)
+        # TODO: get filename from request header
         with open('out', 'ab+') as f:
             f.write(chunk)
 
@@ -152,13 +155,15 @@ class ProxyHandler(AuthRequestHandler):
 
     def prepare(self):
         logging.info('ProxyHandler.prepare')
-        #self.validate_token()
+        self.validate_token()
         self.chunks = tornado.queues.Queue(1)
         self.fetch_future = AsyncHTTPClient().fetch(
             'http://localhost:%d/upload_stream' % options.port,
             method='POST',
             body_producer=self.body_producer,
-            request_timeout=12000.0)
+            request_timeout=12000.0,
+            headers={
+                'Authorization': 'Bearer ' + self.jwt })
 
     @gen.coroutine
     def body_producer(self, write):
