@@ -43,14 +43,17 @@ def db_init(engine_type):
     # Ref: http://docs.sqlalchemy.org/en/rel_1_1/core/pooling.html
     if engine_type == 'sqlite':
         engine = create_engine(DBURL, poolclass=QueuePool)
-        conn = engine.connect()
-        conn.execute('create table if not exists users(email TEXT, pw TEXT, verified INT);')
-        conn.close()
+        try:
+            conn = engine.connect()
+            conn.execute('create table if not exists users(email TEXT, pw TEXT, verified INT);')
+            conn.close()
+        except Exception:
+            raise Exception("Could not initialise sqlite - user table not created.")
         return engine
     elif engine_type == 'postgresql':
         raise Exception("postgresql engine not implemented yet")
     else:
-        raise Exception("Did you perhaps make a typo in your engine spec?\
+        raise Exception("Did you perhaps make a typo in your engine spec? \
              Legal values are: 'sqlite' and 'postgresql'.")
 
 
@@ -75,13 +78,18 @@ class JWTIssuerHandler(RequestHandler):
         data = json_decode(self.request.body)
         self.email = str(data['email'])
         self.pw = str(data['pw'])
-        answer = check_client_credentials_in_order(self.email, self.pw)
-        if not answer['credentials_in_order']:
-            self.send_error(status_code=403, message=answer['message'])
+        conn = ENGINE.connect()
+        self.answer = check_client_credentials_in_order(conn, self.email, self.pw)
+        if not self.answer['credentials_in_order']:
+            self.auth_status =403
 
     def post(self):
-        token = generate_token(self.email, JWT_SECRET)
-        self.write({ 'token': token })
+        if self.auth_status == 403:
+            self.set_status(403)
+            self.write({ 'message': self.answer['message'] })
+        else:
+            token = generate_token(self.email, JWT_SECRET)
+            self.write({ 'token': token })
 
 
 class FormDataHandler(RequestHandler):

@@ -12,8 +12,15 @@ import bcrypt
 from datetime import datetime
 
 
-def _get_client_credentials():
-    return one, two, three
+def _get_client_credentials(conn, email):
+    try:
+        res = conn.execute("select * from users where email=:email;", {'email': email})
+        data = res.fetchall()
+    except Exception as e:
+        raise Exception
+    finally:
+        conn.close()
+    return data[0]
 
 
 def _encrypt_password(pw):
@@ -38,15 +45,24 @@ def _check_password_valid(pw, encrypted):
         return False
 
 
-def check_client_credentials_in_order(email, pw):
-    email, encrypted_pw, verification_status = _get_client_credentials()
-    # check email correct
-    #pw_is_valid = _check_password_valid(pw, encrypted)
-    # check verification status
-    # everything is in order
-    # if not then {}
-    # be specific about errors here
-    return { 'credentials_in_order': True, 'message': 'Token granted'}
+def check_client_credentials_in_order(conn, email, pw):
+    try:
+        # since we match by email we already check the presence of the email
+        email, encrypted_pw, verification_status = _get_client_credentials(conn, email)
+    except Exception as e:
+        # if something goes wrong with the db lookup
+        raise e
+    pw_is_valid = _check_password_valid(pw, str(encrypted_pw))
+    if not pw_is_valid:
+        return {
+            'credentials_in_order': False,
+            'message': 'Supplied email, password combination not match the email, password combination in the auth db.'  }
+    elif verification_status == 0:
+        return {
+            'credentials_in_order': False,
+            'message': 'You have not yet been verified. Please contact a TSD API admin.' }
+    else:
+        return { 'credentials_in_order': True, 'message': 'Token granted' }
 
 
 def generate_token(email, secret):
