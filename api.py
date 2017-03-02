@@ -1,19 +1,21 @@
-# https://gist.github.com/bdarnell/5bb1bd04a443c4e06ccd
+
+"""API for uploading files and data streams to TSD."""
 
 import os
 import logging
+import json
 import yaml
-import sqlalchemy # https://stackoverflow.com/questions/14511337/efficiency-of-reopening-sqlite-database-after-each-query
 import tornado.queues
 from tornado.concurrent import Future
-from tornado.escape import utf8
+from tornado.escape import utf8, json_decode
 from tornado import gen
 from tornado.httpclient import AsyncHTTPClient
 from tornado.ioloop import IOLoop
 from tornado.options import parse_command_line, define, options
 from tornado.web import Application, RequestHandler, stream_request_body
 
-from auth import generate_token, verify_json_web_token
+from auth import store_email_and_password, generate_token, verify_json_web_token, \
+    check_client_credentials_in_order
 
 
 def read_config(file):
@@ -34,21 +36,28 @@ JWT_SECRET = 'testsecret' # read from config
 
 class UserRegistrationHandler(RequestHandler):
 
-    def register_user(conn, email, pw):
-        pass
+    def prepare(self):
+        data = json_decode(self.request.body)
+        email = str(data['email'])
+        pw = str(data['pw'])
+        store_email_and_password(email, pw)
 
     def post(self):
-        pass
+        self.write({ 'message': 'user registered' })
 
 
 class JWTIssuerHandler(RequestHandler):
 
-    def check_user_registered_and_verified(email, pw):
-        pass
+    def prepare(self):
+        data = json_decode(self.request.body)
+        self.email = str(data['email'])
+        self.pw = str(data['pw'])
+        answer = check_client_credentials_in_order(self.email, self.pw)
+        if not answer['credentials_in_order']:
+            self.send_error(status_code=403, message=answer['message'])
 
-    def get(self):
-        email = getit()
-        token = generate_token(email, JWT_SECRET)
+    def post(self):
+        token = generate_token(self.email, JWT_SECRET)
         self.write({ 'token': token })
 
 

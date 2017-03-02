@@ -8,7 +8,44 @@ JWT is generated and validated in this module.
 
 import jwt
 import time
+import bcrypt
 from datetime import datetime
+
+
+def _get_client_credentials():
+    return one, two, three
+
+
+def _encrypt_password(pw):
+    # consider: https://github.com/tornadoweb/tornado/blob/master/demos/blog/blog.py#L43
+    encrypted = bcrypt.hashpw(pw, bcrypt.gensalt())
+    return encrypted
+
+
+def store_email_and_password(email, pw):
+    # into sqlite eventually
+    encrypted = _encrypt_password(pw)
+    with open('pwfile', 'w+') as f:
+        vals = "%s, %s, f" % (email, encrypted)
+        f.write(vals)
+
+
+def _check_password_valid(pw, encrypted):
+    if bcrypt.checkpw(pw, encrypted):
+        return True
+    else:
+        return False
+
+
+def check_client_credentials_in_order(email, pw):
+    #email, encrypted_pw, verification_status = _get_client_credentials()
+    # check email correct
+    #pw_is_valid = _check_password_valid(pw, encrypted)
+    # check verification status
+    # everything is in order
+    # if not then {}
+    # be specific about errors here
+    return { 'credentials_in_order': True, 'message': 'Token granted'}
 
 
 def generate_token(email, secret):
@@ -19,6 +56,7 @@ def generate_token(email, secret):
     expires = datetime.fromtimestamp(int(time.time()) + (60*60*24))
     token = jwt.generate_jwt(claims, priv_key=secret, algorithm='HS256', expires=expires, jti_size=None)
     return token
+
 
 def verify_json_web_token(auth_header, jwt_secret, required_role=None):
     """Verifies the authenticity of API credentials, as stored in a JSON Web Token
