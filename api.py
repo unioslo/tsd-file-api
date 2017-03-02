@@ -81,25 +81,35 @@ class JWTIssuerHandler(RequestHandler):
         conn = ENGINE.connect()
         self.answer = check_client_credentials_in_order(conn, self.email, self.pw)
         if not self.answer['credentials_in_order']:
-            self.auth_status =403
+            self.set_status(403)
+            self.finish({ 'message': self.answer['message'] })
 
     def post(self):
-        if self.auth_status == 403:
-            self.set_status(403)
-            self.write({ 'message': self.answer['message'] })
-        else:
-            token = generate_token(self.email, JWT_SECRET)
-            self.write({ 'token': token })
+        token = generate_token(self.email, JWT_SECRET)
+        self.write({ 'token': token })
 
 
-class FormDataHandler(RequestHandler):
+class AuthRequestHandler(RequestHandler):
+
+    def validate_token(self):
+        try:
+            auth_header = self.request.headers['Authorization']
+            token_verified_status = verify_json_web_token(auth_header, JWT_SECRET, 'app_user')
+            if token_verified_status:
+                self.authnz = token_verified_status
+            else:
+                self.finish(token_verified_status)
+        except KeyError:
+            self.set_status(400)
+            self.finish({ 'message': 'Missing Authorization header.' })
+        except UnboundLocalError:
+            raise Exception
+
+
+class FormDataHandler(AuthRequestHandler):
 
     def prepare(self):
-        auth_header = self.request.headers['Authorization']
-        resp = verify_json_web_token(auth_header, JWT_SECRET, 'app_user')
-        if resp is not True:
-            return resp
-
+        self.validate_token()
 
     def post(self):
         if len(self.request.files['file']) > 1:
@@ -120,7 +130,7 @@ class FormDataHandler(RequestHandler):
 
 
 @stream_request_body
-class UploadHandler(RequestHandler):
+class UploadHandler(AuthRequestHandler):
 
     def prepare(self):
         logging.info('UploadHandler.prepare')
@@ -139,7 +149,7 @@ class UploadHandler(RequestHandler):
 
 
 @stream_request_body
-class ProxyHandler(RequestHandler):
+class ProxyHandler(AuthRequestHandler):
 
     def prepare(self):
         logging.info('ProxyHandler.prepare')
