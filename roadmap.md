@@ -88,6 +88,9 @@ Additionally you could patch theses resources
 * HTTP2
     * SPDY as point of departure
     * https://bagder.gitbooks.io/http2-explained/content/en/
+    * https://hyper.readthedocs.io/en/latest/
+    * https://nghttp2.org/
+    * https://github.com/http2/http2-spec/wiki/Implementations
 * Websockets (doesnt seem appropriate)
     * https://www.fullstackpython.com/websockets.html
         * full duplex, server push
@@ -111,6 +114,7 @@ Additionally you could patch theses resources
     * process request data onto queues, keep TCP connections alive
 * [rfc for form-based file uploads](https://tools.ietf.org/html/rfc1867)
     * metions deferred file transmission - hints that content-length may not be required
+* [stream processing with tornado](https://gist.github.com/bdarnell/5bb1bd04a443c4e06ccd)
 
 ## Use cases
 
