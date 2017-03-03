@@ -5,6 +5,7 @@ import os
 import logging
 import json
 import yaml
+import datetime
 import tornado.queues
 from sqlalchemy import create_engine
 from sqlalchemy.pool import QueuePool
@@ -59,6 +60,7 @@ def db_init(engine_type):
 
 ENGINE = db_init('sqlite')
 
+
 class UserRegistrationHandler(RequestHandler):
 
     def prepare(self):
@@ -91,13 +93,12 @@ class JWTIssuerHandler(RequestHandler):
 class AuthRequestHandler(RequestHandler):
 
     def validate_token(self):
+        logging.info("checking JWT")
         try:
             auth_header = self.request.headers['Authorization']
             self.jwt = auth_header.split(' ')[1]
-            logging.info(auth_header)
             token_verified_status = verify_json_web_token(auth_header, JWT_SECRET, 'app_user')
             self.authnz = token_verified_status
-            logging.info(token_verified_status)
         except (KeyError, UnboundLocalError) as e:
             self.st = 400
             self.message = 'Missing Authorization header.'
@@ -133,21 +134,37 @@ class FormDataHandler(AuthRequestHandler):
 class StreamHandler(AuthRequestHandler):
 
     def prepare(self):
+        logging.info('StreamHandler')
         self.validate_token()
-        logging.info('StreamHandler.prepare')
+        try:
+            filename = self.request.headers['X-Filename']
+        except KeyError:
+            logging.error("filename not found")
+            self.send_error("ERROR")
+        logging.info('opening file')
+        self.target_file = open(filename, 'ab+')
 
     @gen.coroutine
     def data_received(self, chunk):
-        logging.info('StreamHandler.data_received(%d bytes: %r)', len(chunk), chunk[:9])
         # could use this to rate limit the client if needed
         # yield gen.Task(IOLoop.current().call_later, options.server_delay)
-        # TODO: get filename from request header
-        with open('out', 'ab+') as f:
-            f.write(chunk)
+        logging.info('StreamHandler.data_received(%d bytes: %r)', len(chunk), chunk[:9])
+        try:
+            self.target_file.write(chunk)
+        except Exception:
+            logging.error("something went wrong with stream processing have to close file")
+            self.target_file.close()
+            self.send_error("something went wrong")
 
     def post(self):
         logging.info('StreamHandler.post')
-        self.write('ok')
+        logging.info('closing file')
+        self.target_file.close()
+        self.write({ 'message': 'data streamed to file' })
+
+    def on_finish(self):
+        logging.info("FINISHED")
+
 
 
 @stream_request_body
@@ -156,14 +173,22 @@ class ProxyHandler(AuthRequestHandler):
     def prepare(self):
         logging.info('ProxyHandler.prepare')
         self.validate_token()
-        self.chunks = tornado.queues.Queue(1)
+        try:
+            filename = self.request.headers['X-Filename']
+            logging.info('supplied filename: %s', filename)
+        except KeyError:
+            filename = datetime.datetime.now().isoformat() + '.txt'
+            logging.error("filename not found - creating own")
+        self.chunks = tornado.queues.Queue(1) # TODO: performace tuning here
         self.fetch_future = AsyncHTTPClient().fetch(
             'http://localhost:%d/upload_stream' % options.port,
             method='POST',
             body_producer=self.body_producer,
             request_timeout=12000.0,
             headers={
-                'Authorization': 'Bearer ' + self.jwt })
+                'Authorization': 'Bearer ' + self.jwt,
+                'X-Filename': self.request.headers['X-Filename']
+                })
 
     @gen.coroutine
     def body_producer(self, write):
