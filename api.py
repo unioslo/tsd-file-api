@@ -61,6 +61,10 @@ def db_init(engine_type):
 ENGINE = db_init('sqlite')
 
 
+def check_filename(filename):
+    pass
+
+
 class UserRegistrationHandler(RequestHandler):
 
     def prepare(self):
@@ -174,10 +178,10 @@ class ProxyHandler(AuthRequestHandler):
         logging.info('ProxyHandler.prepare')
         self.validate_token()
         try:
-            filename = self.request.headers['X-Filename']
-            logging.info('supplied filename: %s', filename)
+            self.filename = self.request.headers['X-Filename']
+            logging.info('supplied filename: %s', self.filename)
         except KeyError:
-            filename = datetime.datetime.now().isoformat() + '.txt'
+            self.filename = datetime.datetime.now().isoformat() + '.txt'
             logging.error("filename not found - creating own")
         self.chunks = tornado.queues.Queue(1) # TODO: performace tuning here
         self.fetch_future = AsyncHTTPClient().fetch(
@@ -187,7 +191,7 @@ class ProxyHandler(AuthRequestHandler):
             request_timeout=12000.0,
             headers={
                 'Authorization': 'Bearer ' + self.jwt,
-                'X-Filename': self.request.headers['X-Filename']
+                'X-Filename': self.filename
                 })
 
     @gen.coroutine
