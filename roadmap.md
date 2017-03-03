@@ -84,7 +84,6 @@ Additionally you could patch theses resources
     * https://github.com/cralston0/gzip-encoding
     * https://github.com/cralston0/gzip-encoding/blob/master/flask/middleware.py
     * looks like gzip.io provides streaming tools
-* explore Tornado
 * HTTP2
     * SPDY as point of departure
     * https://bagder.gitbooks.io/http2-explained/content/en/
@@ -114,6 +113,16 @@ Additionally you could patch theses resources
     * process request data onto queues, keep TCP connections alive
 * [rfc for form-based file uploads](https://tools.ietf.org/html/rfc1867)
     * metions deferred file transmission - hints that content-length may not be required
+
+
+## Auth
+
+* separate auth server? impl?
+    * https://www.nginx.com/resources/admin-guide/restricting-access-auth-request/
+
+## Tornado
+
+* http://www.tornadoweb.org/en/stable/guide/running.html?highlight=nginx
 * [stream processing with tornado](https://gist.github.com/bdarnell/5bb1bd04a443c4e06ccd)
 
 ## Use cases
