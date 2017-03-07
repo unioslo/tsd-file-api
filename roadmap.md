@@ -132,19 +132,3 @@ Additionally you could patch theses resources
 3. Streaming video
 4. Video file posing
 5. CEES (Marcin)
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
