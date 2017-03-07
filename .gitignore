@@ -1,3 +1,4 @@
 tsd-file-api-venv/
 *~
 *.pyc
+api-users.db
