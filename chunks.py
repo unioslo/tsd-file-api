@@ -43,6 +43,8 @@ import requests
 import string
 import time
 import sys
+import json
+import os
 
 httplib.HTTPConnection.debuglevel = 1
 logging.basicConfig()
@@ -51,9 +53,18 @@ requests_log = logging.getLogger("requests.packages.urllib3")
 requests_log.setLevel(logging.DEBUG)
 requests_log.propagate = True
 
-def lazy_file_reader():
-    # TODO: create a test file in repo
-    # create a test upload location
+# TODO get from config
+BASE_URL = 'http://localhost'
+PORT = '8888'
+URL = BASE_URL + ':' + PORT
+
+def create_test_file(filename):
+    with open(filename, 'w+') as f:
+        f.write('x,y')
+        f.write('5,6')
+        f.write('7,8')
+
+def lazy_file_reader(filename):
     with open('blamo.csv', 'r+') as f:
         while True:
             line = f.readline()
@@ -62,18 +73,26 @@ def lazy_file_reader():
             else:
                 yield line
 
-# TODO choose either directly against tornado or via nginx
-# depending on what you want to test
-url1 = 'http://localhost:8888/stream'
-url2 = 'http://localhost:8888/upload'
-url3 = 'http://localhost:8080/stream'
+def get_token():
+    resp = requests.post(URL + '/upload_token',
+        data=json.dumps({'email':'health@check.local', 'pw': 'something_healthy'}),
+        headers={'Content-Type': 'application/json'})
+    return json.loads(resp.text)['token']
 
-# get a token
-filename = '' # TODO
-token = 'Bearer TOKEN' # TODO
-headers = {}
+def test_streaming(token_should_be_invalid=False):
+    src_filename = 'test-file'
+    dest_filename = 'created-file'
+    try:
+        create_test_file(src_filename)
+        token = get_token()
+        if token_should_be_invalid:
+            token = token[:-1]
+        headers = { 'X-Filename': dest_filename, 'Authorization': 'Bearer ' + token }
+        resp = requests.post(URL + '/stream', data=lazy_file_reader(src_filename), headers=headers)
+        print resp.text
+    except Exception:
+        raise Exception
+    finally:
+        os.remove(src_filename)
 
-headers = { 'X-Filename': filename, 'Authorization': token }
-
-resp = requests.post(url1, data=lazy_file_reader(), headers=headers)
-print resp.text
+test_streaming()
