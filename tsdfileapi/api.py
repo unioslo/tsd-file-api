@@ -38,7 +38,7 @@ define('max_body_size', 1024*1024*1024*5)
 # investigate define functionality for storage
 UPLOADS_FOLDER = '/Users/leondutoit/uploaded-files'
 JWT_SECRET = 'testsecret'
-DBURL = 'sqlite:////Users/leondutoit/tsd-file-api/api-users.db'
+DBURL = 'sqlite:////Users/leondutoit/tsd-file-api/tsdfileapi/api-users.db'
 
 def db_init(engine_type):
     # Ref: http://docs.sqlalchemy.org/en/rel_1_1/core/pooling.html

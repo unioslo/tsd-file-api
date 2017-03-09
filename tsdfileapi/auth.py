@@ -31,6 +31,7 @@ def _encrypt_password(pw):
 def store_email_and_password(conn, email, pw):
     encrypted = _encrypt_password(pw)
     try:
+        # TODO: change pw in table to pass for consistency with s/r APIs
         conn.execute('insert into users values (:email, :pw, :verified)', {'email': email, 'pw': encrypted, 'verified': 0})
     except Exception:
         raise Exception("Could not insert client credentials into db.")
