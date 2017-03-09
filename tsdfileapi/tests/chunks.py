@@ -76,7 +76,7 @@ def create_test_file(filename):
         f.write('7,8')
 
 def lazy_file_reader(filename):
-    with open('blamo.csv', 'r+') as f:
+    with open(filename, 'r+') as f:
         while True:
             line = f.readline()
             if line == '':
@@ -86,7 +86,7 @@ def lazy_file_reader(filename):
 
 def get_token():
     resp = requests.post(URL + '/upload_token',
-        data=json.dumps({'email':'health@check.local', 'pw': 'something_healthy'}),
+        data=json.dumps({'email':'health@check.local', 'pass': 'something_healthy'}),
         headers={'Content-Type': 'application/json'})
     return json.loads(resp.text)['token']
 
@@ -101,6 +101,7 @@ def test_streaming(token_should_be_invalid=False):
         headers = { 'X-Filename': dest_filename, 'Authorization': 'Bearer ' + token }
         resp = requests.post(URL + '/stream', data=lazy_file_reader(src_filename), headers=headers)
         print resp.text
+        return
     except Exception:
         raise Exception
     finally:

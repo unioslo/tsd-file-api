@@ -46,7 +46,7 @@ def db_init(engine_type):
         engine = create_engine(DBURL, poolclass=QueuePool)
         try:
             conn = engine.connect()
-            conn.execute('create table if not exists users(email TEXT, pw TEXT, verified INT);')
+            conn.execute('create table if not exists users(email TEXT, pass TEXT, verified INT);')
             conn.close()
         except Exception:
             raise Exception("Could not initialise sqlite - user table not created.")
@@ -70,7 +70,7 @@ class UserRegistrationHandler(RequestHandler):
     def prepare(self):
         data = json_decode(self.request.body)
         email = str(data['email'])
-        pw = str(data['pw'])
+        pw = str(data['pass'])
         conn = ENGINE.connect()
         store_email_and_password(conn, email, pw)
 
@@ -83,7 +83,7 @@ class JWTIssuerHandler(RequestHandler):
     def prepare(self):
         data = json_decode(self.request.body)
         self.email = str(data['email'])
-        self.pw = str(data['pw'])
+        self.pw = str(data['pass'])
         conn = ENGINE.connect()
         self.answer = check_client_credentials_in_order(conn, self.email, self.pw)
         if not self.answer['credentials_in_order']:
