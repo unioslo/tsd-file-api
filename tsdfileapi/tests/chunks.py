@@ -36,6 +36,17 @@ behind nginx you need to set the following:
 proxy_http_version 1.1;
 proxy_request_buffering off;
 
+From bdarnell:
+sending an error requires a little-used feature of HTTP called "100-continue".
+If the client supports 100-continue (curl-based clients do by default for large POSTS;
+most others don't. I don't know if curl uses 100-continue with chunked requests)
+and the tornado service uses @stream_request_body, then sending an error response
+from prepare() will be received by the client before the body is uploaded
+
+So the HTTP Client should implement this...
+Some background on python2.7 and requests
+https://github.com/kennethreitz/requests/issues/713
+
 """
 import logging
 import httplib
