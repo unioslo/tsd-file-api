@@ -1,0 +1,14 @@
+
+# API
+port: 3004
+debug: False
+server_delay: 0
+num_chunks: 50
+max_body_size: 5368709120 # 5 GB
+
+
+# JWT
+jwt_secret: ''
+
+# folders
+uploads_folder: '/opt/file-api-uploads'
