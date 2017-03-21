@@ -10,7 +10,8 @@ setup(
     packages=['tsdfileapi'],
     package_data={
         'tsdfileapi': [
-            'tests/*.py'
+            'tests/*.py',
+            'data/*'
         ]
     }
 )
