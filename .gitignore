@@ -4,3 +4,4 @@ tsd-file-api-venv/
 api-users.db
 test-config.yaml
 .vagrant/
+*.rpm
