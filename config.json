@@ -16,7 +16,7 @@
         "requires": [ ]
     },
     "python_venv": {
-        "name": "tsd-auth-api-env",
+        "name": "tsd-file-api-env",
         "path": "opt"
     },
     "blocks": {
