@@ -17,8 +17,7 @@ from tornado.ioloop import IOLoop
 from tornado.options import parse_command_line, define, options
 from tornado.web import Application, RequestHandler, stream_request_body
 
-from auth import store_email_and_password, generate_token, verify_json_web_token, \
-    check_client_credentials_in_order
+from auth import verify_json_web_token
 
 
 def read_config(file):
@@ -38,60 +37,9 @@ define('max_body_size', 1024*1024*1024*5)
 # investigate define functionality for storage
 UPLOADS_FOLDER = '/Users/leondutoit/uploaded-files'
 JWT_SECRET = 'testsecret'
-DBURL = 'sqlite:////Users/leondutoit/tsd-file-api/tsdfileapi/api-users.db'
-
-def db_init(engine_type):
-    # Ref: http://docs.sqlalchemy.org/en/rel_1_1/core/pooling.html
-    if engine_type == 'sqlite':
-        engine = create_engine(DBURL, poolclass=QueuePool)
-        try:
-            conn = engine.connect()
-            conn.execute('create table if not exists users(email TEXT, pass TEXT, verified INT);')
-            conn.close()
-        except Exception:
-            raise Exception("Could not initialise sqlite - user table not created.")
-        return engine
-    elif engine_type == 'postgresql':
-        raise Exception("postgresql engine not implemented yet")
-    else:
-        raise Exception("Did you perhaps make a typo in your engine spec? \
-             Legal values are: 'sqlite' and 'postgresql'.")
-
-
-ENGINE = db_init('sqlite')
-
 
 def check_filename(filename):
     pass
-
-
-class UserRegistrationHandler(RequestHandler):
-
-    def prepare(self):
-        data = json_decode(self.request.body)
-        email = str(data['email'])
-        pw = str(data['pass'])
-        conn = ENGINE.connect()
-        store_email_and_password(conn, email, pw)
-
-    def post(self):
-        self.write({ 'message': 'user registered' })
-
-
-class JWTIssuerHandler(RequestHandler):
-
-    def prepare(self):
-        data = json_decode(self.request.body)
-        self.email = str(data['email'])
-        self.pw = str(data['pass'])
-        conn = ENGINE.connect()
-        self.answer = check_client_credentials_in_order(conn, self.email, self.pw)
-        if not self.answer['credentials_in_order']:
-            self.set_status(403)
-            self.finish({ 'message': self.answer['message'] })
-    def post(self):
-        token = generate_token(self.email, JWT_SECRET)
-        self.write({ 'token': token })
 
 
 class AuthRequestHandler(RequestHandler):
@@ -220,8 +168,6 @@ class ProxyHandler(AuthRequestHandler):
 def main():
     parse_command_line()
     app = Application([
-        ('/upload_signup', UserRegistrationHandler),
-        ('/upload_token', JWTIssuerHandler),
         ('/upload_stream', StreamHandler),
         ('/stream', ProxyHandler),
         ('/upload', FormDataHandler),
