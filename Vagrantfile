@@ -48,14 +48,15 @@ Vagrant.configure(2) do |config|
   # rpm -Uvh <name>.rpm to install
   # rom -e <name> to remove
   config.vm.provision "shell", inline: <<-SHELL
-    sudo yum -y install python-devel postgresql-devel rpm-build git
+    sudo yum -y install python-devel rpm-build git
     sudo easy_install pip
     git clone https://github.com/leondutoit/virtualenv
     sudo pip install ./virtualenv
     git clone https://github.com/leondutoit/rpmvenv
     sudo pip install ./rpmvenv
-    sudo rm ./tsd-db-manager-0.1.0-1.x86_64.rpm
-    sudo rpm -e tsd-db-manager-0.1.0-1.x86_64
+    sudo rm ./tsd-file-api-0.1.0-1.x86_64.rpm
+    sudo rpm -e tsd-file-api-0.1.0-1.x86_64
     sudo rpmvenv /vagrant/config.json
   SHELL
+
 end
