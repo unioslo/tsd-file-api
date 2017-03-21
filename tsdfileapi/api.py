@@ -25,18 +25,22 @@ def read_config(file):
         conf = yaml.load(f)
     return conf
 
+try:
+    file = argv[1]
+    config = read_config(file)
+except Exception as e:
+    logging.error(e)
+    raise e
+
 
 define('port', default=8888)
 define('debug', default=True)
 define('server_delay', default=0)
 define('num_chunks', default=50)
 define('max_body_size', 1024*1024*1024*5)
+define('uploads_folder', config['uploads_folder'])
+define('jwt_secret', config['jwt_secret'])
 
-# get all this from config
-# consider making a class
-# investigate define functionality for storage
-UPLOADS_FOLDER = '/Users/leondutoit/uploaded-files'
-JWT_SECRET = 'testsecret'
 
 def check_filename(filename):
     pass
@@ -49,7 +53,7 @@ class AuthRequestHandler(RequestHandler):
         try:
             auth_header = self.request.headers['Authorization']
             self.jwt = auth_header.split(' ')[1]
-            token_verified_status = verify_json_web_token(auth_header, JWT_SECRET, 'app_user')
+            token_verified_status = verify_json_web_token(auth_header, options.jwt_secret, 'app_user')
             self.authnz = token_verified_status
         except (KeyError, UnboundLocalError) as e:
             self.st = 400
@@ -75,7 +79,7 @@ class FormDataHandler(AuthRequestHandler):
             self.finsh({ 'message': 'Only one file per request is allowed.' })
         # TODO: check filename
         filename = self.request.files['file'][0]['filename']
-        target = os.path.normpath(UPLOADS_FOLDER + '/' + filename)
+        target = os.path.normpath(options.uploads_folder + '/' + filename)
         filebody = self.request.files['file'][0]['body']
         with open(target, 'ab+') as f:
             f.write(filebody)
@@ -90,6 +94,7 @@ class StreamHandler(AuthRequestHandler):
         self.validate_token()
         try:
             filename = self.request.headers['X-Filename']
+            path = os.path.normpath(options.uploads_folder + '/' + filename)
         except KeyError:
             logging.error("filename not found")
             self.send_error("ERROR")
