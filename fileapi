@@ -1,0 +1,42 @@
+#!/bin/bash
+
+if [ $# -lt 1 ]; then
+    echo "Missing arguments, exiting"
+    echo "For help do: ./fileapi -h or ./fileapi --help"
+    exit 1
+fi
+
+_help="\
+
+    Help guide for setting up the auth API after installation.
+
+
+    Setup instructions:
+    ~~~~~~~~~~~~~~~~~~
+
+    1. Create a config file
+
+        cp /etc/opt/file-api-config.yaml.example /etc/opt/file-api-config.yaml
+        chown fileapi:fileapi /etc/opt/file-api-config.yaml
+
+    2. Fill in the correct values
+
+        emacs /etc/opt/file-api-config.yaml
+
+    3. Start the service, check its status
+
+        systemctl start file-api
+        systemctl status file-api
+
+    4. Run tests to verify it works
+
+        TBD
+
+"
+
+while (( "$#" )); do
+    case $1 in
+        -h | --help)            printf "%s\n" "$_help"; exit 0 ;;
+        *) break ;;
+    esac
+done
