@@ -14,6 +14,7 @@ from tornado.httpclient import AsyncHTTPClient
 from tornado.ioloop import IOLoop
 from tornado.options import parse_command_line, define, options
 from tornado.web import Application, RequestHandler, stream_request_body
+from sys import argv
 
 from auth import verify_json_web_token
 
