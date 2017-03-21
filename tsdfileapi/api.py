@@ -33,11 +33,11 @@ except Exception as e:
     raise e
 
 
-define('port', default=8888)
-define('debug', default=True)
-define('server_delay', default=0)
-define('num_chunks', default=50)
-define('max_body_size', 1024*1024*1024*5)
+define('port', default=config['port'])
+define('debug', default=config['debug'])
+define('server_delay', default=config['server_delay'])
+define('num_chunks', default=config['num_chunks'])
+define('max_body_size', config['max_body_size'])
 define('uploads_folder', config['uploads_folder'])
 define('jwt_secret', config['jwt_secret'])
 
@@ -49,6 +49,7 @@ def check_filename(filename):
 class AuthRequestHandler(RequestHandler):
 
     def validate_token(self):
+        # this only supports uploads, not downloads (yet)
         logging.info("checking JWT")
         try:
             auth_header = self.request.headers['Authorization']
