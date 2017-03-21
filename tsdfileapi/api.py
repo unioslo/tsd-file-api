@@ -7,8 +7,6 @@ import json
 import yaml
 import datetime
 import tornado.queues
-from sqlalchemy import create_engine
-from sqlalchemy.pool import QueuePool
 from tornado.concurrent import Future
 from tornado.escape import utf8, json_decode
 from tornado import gen
