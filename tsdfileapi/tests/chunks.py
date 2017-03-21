@@ -48,6 +48,8 @@ Some background on python2.7 and requests
 https://github.com/kennethreitz/requests/issues/713
 
 """
+
+import click
 import logging
 import httplib
 import requests
@@ -56,6 +58,9 @@ import time
 import sys
 import json
 import os
+import unittest
+import yaml
+
 
 httplib.HTTPConnection.debuglevel = 1
 logging.basicConfig()
@@ -64,16 +69,6 @@ requests_log = logging.getLogger("requests.packages.urllib3")
 requests_log.setLevel(logging.DEBUG)
 requests_log.propagate = True
 
-# TODO get from config
-BASE_URL = 'http://localhost'
-PORT = '8888'
-URL = BASE_URL + ':' + PORT
-
-def create_test_file(filename):
-    with open(filename, 'w+') as f:
-        f.write('x,y')
-        f.write('5,6')
-        f.write('7,8')
 
 def lazy_file_reader(filename):
     with open(filename, 'r+') as f:
@@ -84,27 +79,60 @@ def lazy_file_reader(filename):
             else:
                 yield line
 
-def get_token():
-    resp = requests.post(URL + '/upload_token',
+
+def get_token(url):
+    resp = requests.post(url + '/import_token',
         data=json.dumps({'email':'health@check.local', 'pass': 'something_healthy'}),
         headers={'Content-Type': 'application/json'})
     return json.loads(resp.text)['token']
 
-def test_streaming(token_should_be_invalid=False):
-    src_filename = 'test-file'
-    dest_filename = 'created-file'
-    try:
-        create_test_file(src_filename)
-        token = get_token()
-        if token_should_be_invalid:
-            token = token[:-1]
-        headers = { 'X-Filename': dest_filename, 'Authorization': 'Bearer ' + token }
-        resp = requests.post(URL + '/stream', data=lazy_file_reader(src_filename), headers=headers)
-        print resp.text
-        return
-    except Exception:
-        raise Exception
-    finally:
-        os.remove(src_filename)
+TOKEN = get_token('http://localhost:3002')
 
-test_streaming()
+class TestFileApi(unittest.TestCase):
+
+
+    @classmethod
+    def setUpClass(cls):
+        try:
+            with open(sys.argv[1]) as f:
+                cls.config = yaml.load(f)
+                print cls.config
+        except Exception as e:
+            print e
+            print "Missing config file?"
+            sys.exit(1)
+        cls.base_url = 'http://localhost' + ':' + str(cls.config['port'])
+        cls.data_folder = cls.config['data_folder']
+        cls.file_to_stream = os.path.normpath(cls.data_folder + '/example.csv')
+        cls.uploads_folder = cls.config['uploads_folder']
+
+
+    @classmethod
+    def tearDownClass(cls):
+        uploaded_files = os.listdir(cls.config['uploads_folder'])
+        test_files = os.listdir(cls.config['data_folder'])
+        for file in uploaded_files:
+            if file in test_files:
+                try:
+                    os.remove(os.path.abspath(file))
+                except OSError:
+                    return
+
+    def test_reject_invalid_token(self):
+        pass
+
+
+    def test_streaming(self):
+        headers = { 'X-Filename': 'streamed-example.csv', 'Authorization': 'Bearer ' + TOKEN }
+        resp = requests.post(self.base_url + '/stream', data=lazy_file_reader(self.file_to_stream), headers=headers)
+        # assert all the things!
+
+def main():
+    runner = unittest.TextTestRunner()
+    suite = []
+    suite.append(unittest.TestSuite(map(TestFileApi, ['test_reject_invalid_token', 'test_streaming'])))
+    map(runner.run, suite)
+
+if __name__ == '__main__':
+    main()
+

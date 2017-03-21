@@ -99,7 +99,8 @@ class StreamHandler(AuthRequestHandler):
             logging.error("filename not found")
             self.send_error("ERROR")
         logging.info('opening file')
-        self.target_file = open(filename, 'ab+')
+        logging.info('path: %s', path)
+        self.target_file = open(path, 'ab+')
 
     @gen.coroutine
     def data_received(self, chunk):

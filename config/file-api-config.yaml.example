@@ -1,6 +1,6 @@
 
 # API
-port: 3004
+port: 3003
 debug: False
 server_delay: 0
 num_chunks: 50
