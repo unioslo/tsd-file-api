@@ -23,12 +23,16 @@ _help="\
 
         emacs /etc/opt/file-api-config.yaml
 
-    3. Start the service, check its status
+    3. Create the default file upload directory
+
+        mkdir /opt/file-api-uploads && chown fileapi:fileapi /opt/file-api-uploads
+
+    4. Start the service, check its status
 
         systemctl start file-api
         systemctl status file-api
 
-    4. Run tests to verify it works
+    5. Run tests to verify it works
 
         TBD
 
