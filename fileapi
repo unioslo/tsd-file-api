@@ -8,7 +8,7 @@ fi
 
 _help="\
 
-    Help guide for setting up the auth API after installation.
+    Help guide for setting up the file API after installation.
 
 
     Setup instructions:

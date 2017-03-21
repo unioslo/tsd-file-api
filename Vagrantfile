@@ -54,9 +54,10 @@ Vagrant.configure(2) do |config|
     sudo pip install ./virtualenv
     git clone https://github.com/leondutoit/rpmvenv
     sudo pip install ./rpmvenv
-    sudo rm ./tsd-file-api-0.1.0-1.x86_64.rpm
+    sudo rm /vagrant/tsd-file-api-0.1.0-1.x86_64.rpm
+    sudo rpmvenv --verbose /vagrant/config.json --destination /vagrant
     sudo rpm -e tsd-file-api-0.1.0-1.x86_64
-    sudo rpmvenv /vagrant/config.json
+    rpm -Uvh /vagrant/tsd-file-api-0.1.0-1.x86_64.rpm
   SHELL
 
 end
