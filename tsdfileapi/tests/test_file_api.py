@@ -96,7 +96,6 @@ class TestFileApi(unittest.TestCase):
         try:
             with open(sys.argv[1]) as f:
                 cls.config = yaml.load(f)
-                print cls.config
         except Exception as e:
             print e
             print "Missing config file?"
@@ -119,7 +118,15 @@ class TestFileApi(unittest.TestCase):
                     return
 
     def test_reject_invalid_token(self):
+        # at every possible endpoint
         pass
+
+    # test
+    # non streaming multi-part/form-data
+    # streaming endpoint without chunked TE - although not advised should work
+    # add metadata functionality, test it
+    # add basic checksumming, test it
+    # add filename checking, test it
 
 
     def test_streaming(self):
@@ -130,7 +137,8 @@ class TestFileApi(unittest.TestCase):
 def main():
     runner = unittest.TextTestRunner()
     suite = []
-    suite.append(unittest.TestSuite(map(TestFileApi, ['test_reject_invalid_token', 'test_streaming'])))
+    suite.append(unittest.TestSuite(map(TestFileApi,
+        ['test_reject_invalid_token', 'test_streaming'])))
     map(runner.run, suite)
 
 if __name__ == '__main__':
