@@ -61,6 +61,7 @@ import os
 import unittest
 import yaml
 
+from tokens import IMPORT_TOKENS, EXPORT_TOKENS
 
 httplib.HTTPConnection.debuglevel = 1
 logging.basicConfig()
@@ -86,7 +87,6 @@ def get_token(url):
         headers={'Content-Type': 'application/json'})
     return json.loads(resp.text)['token']
 
-TOKEN = get_token('http://localhost:3002')
 
 class TestFileApi(unittest.TestCase):
 
@@ -117,28 +117,62 @@ class TestFileApi(unittest.TestCase):
                 except OSError:
                     return
 
-    def test_reject_invalid_token(self):
-        # at every possible endpoint
+    # Auth
+    #-----
+
+    def test_A_mangled_valid_token_rejected(self):
         pass
 
-    # test
-    # non streaming multi-part/form-data
-    # streaming endpoint without chunked TE - although not advised should work
-    # add metadata functionality, test it
-    # add basic checksumming, test it
-    # add filename checking, test it
+    def test_B_invalid_signature_rejected(self):
+        pass
 
+    def test_C_token_with_wrong_role_rejected(self):
+        pass
 
-    def test_streaming(self):
+    def test_D_timed_out_token_rejected(self):
+        pass
+
+    def test_E_unauthenticated_request_rejected(self):
+        pass
+
+    # POSTing files and streams
+    #--------------------------
+
+    def test_F_post_file_multi_part_form_data(self):
+        pass
+
+    def test_G_post_file_data_binary(self):
+        pass
+
+    def test_H_post_file_to_streaming_endpoint_no_chunked_encoding_data_binary(self):
+        pass
+
+    def test_I_stream_file_chunked_transfer_encoding(self):
         headers = { 'X-Filename': 'streamed-example.csv', 'Authorization': 'Bearer ' + TOKEN }
         resp = requests.post(self.base_url + '/stream', data=lazy_file_reader(self.file_to_stream), headers=headers)
-        # assert all the things!
+
+    # PUTting files
+    #--------------
+
+    def test_J_put_file_is_idempotent(self):
+        pass
+
+    # Metadata
+    #---------
+
+    def test_K_get_file_list(self):
+        pass
+
+
+    def test_L_get_file_checksum(self):
+        pass
 
 def main():
     runner = unittest.TextTestRunner()
     suite = []
-    suite.append(unittest.TestSuite(map(TestFileApi,
-        ['test_reject_invalid_token', 'test_streaming'])))
+    suite.append(unittest.TestSuite(map(TestFileApi, [
+        ''
+        ])))
     map(runner.run, suite)
 
 if __name__ == '__main__':

@@ -85,6 +85,12 @@ class FormDataHandler(AuthRequestHandler):
             f.write(filebody)
         self.write({'message': 'file uploaded'})
 
+    def patch(self):
+        pass
+
+    def put(self):
+        pass
+
 
 @stream_request_body
 class StreamHandler(AuthRequestHandler):
