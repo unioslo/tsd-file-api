@@ -43,6 +43,9 @@ most others don't. I don't know if curl uses 100-continue with chunked requests)
 and the tornado service uses @stream_request_body, then sending an error response
 from prepare() will be received by the client before the body is uploaded
 
+On 100-continue:
+https://tools.ietf.org/html/rfc7231#page-50
+
 So the HTTP Client should implement this...
 Some background on python2.7 and requests
 https://github.com/kennethreitz/requests/issues/713
@@ -74,6 +77,7 @@ requests_log.propagate = True
 def lazy_file_reader(filename):
     with open(filename, 'r+') as f:
         while True:
+            time.sleep(1)
             line = f.readline()
             if line == '':
                 break
@@ -148,7 +152,7 @@ class TestFileApi(unittest.TestCase):
         pass
 
     def test_I_stream_file_chunked_transfer_encoding(self):
-        headers = { 'X-Filename': 'streamed-example.csv', 'Authorization': 'Bearer ' + TOKEN }
+        headers = { 'X-Filename': 'streamed-example.csv', 'Authorization': 'Bearer ' + IMPORT_TOKENS['VALID'], 'Expect': '100-Continue' }
         resp = requests.post(self.base_url + '/stream', data=lazy_file_reader(self.file_to_stream), headers=headers)
 
     # PUTting files
@@ -171,7 +175,7 @@ def main():
     runner = unittest.TextTestRunner()
     suite = []
     suite.append(unittest.TestSuite(map(TestFileApi, [
-        ''
+        'test_I_stream_file_chunked_transfer_encoding'
         ])))
     map(runner.run, suite)
 
