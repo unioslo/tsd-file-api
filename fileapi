@@ -8,6 +8,24 @@ fi
 
 _help="\
 
+    A tools to help set up the file-api.
+
+    Options:
+    ~~~~~~~
+
+        -t, --tests     Run integration tests.
+        -g, --guide     Setup instructions.
+        -h, --help      Print this help.
+
+    Usage:
+    ~~~~~
+
+        fileapi [option]
+
+"
+
+_guide="\
+
     Help guide for setting up the file API after installation.
 
 
@@ -34,12 +52,22 @@ _help="\
 
     5. Run tests to verify it works
 
-        TBD
+        fileapi -t
 
 "
 
+VENV_PYTHON=/opt/tsd-file-api-env/bin/python
+MODULE_DIR=/opt/tsd-file-api-env/lib/python2.7/site-packages/tsdfileapi
+CONFIG_FILE=/etc/opt/file-api-config.yaml
+
+tests() {
+    $VENV_PYTHON $MODULE_DIR/tests/test_file_api.py $CONFIG_FILE
+}
+
 while (( "$#" )); do
     case $1 in
+        -t | --tests)           shift; tests; exit 0 ;;
+        -g | --guide)           printf "%s\n" "$_guide"; exit 0 ;;
         -h | --help)            printf "%s\n" "$_help"; exit 0 ;;
         *) break ;;
     esac

@@ -4,7 +4,7 @@ Description=auth api REST Service
 [Service]
 User=fileapi
 Group=fileapi
-ExecStart=/opt/tsd-file-api-env/bin/python /opt/tsd-auth-api-env/lib/python2.7/site-packages/tsdfileapi/api.py /etc/opt/file-api-config.yaml
+ExecStart=/opt/tsd-file-api-env/bin/python /opt/tsd-file-api-env/lib/python2.7/site-packages/tsdfileapi/api.py /etc/opt/file-api-config.yaml
 
 [Install]
 WantedBy=multi-user.target

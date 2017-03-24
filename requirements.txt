@@ -1,3 +1,5 @@
 python_jwt==1.2.1
 pyyaml==3.11
 tornado==4.4.2
+click==5.1
+requests==2.12.5

@@ -12,3 +12,6 @@ jwt_secret: ''
 
 # folders
 uploads_folder: '/opt/file-api-uploads'
+
+# Testing
+data_folder: '/opt/tsd-file-api-env/lib/python2.7/site-packages/tsdfileapi/data'

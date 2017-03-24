@@ -110,7 +110,6 @@ class TestFileApi(unittest.TestCase):
         cls.base_url = 'http://localhost' + ':' + str(cls.config['port'])
         cls.data_folder = cls.config['data_folder']
         cls.example_csv = os.path.normpath(cls.data_folder + '/example.csv')
-        cls.example_100mb = os.path.normpath(cls.data_folder + '/100mb.txt')
         cls.uploads_folder = cls.config['uploads_folder']
         # all endpoints
         cls.upload = cls.base_url + '/upload'
