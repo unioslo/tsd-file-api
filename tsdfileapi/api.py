@@ -145,6 +145,7 @@ class StreamHandler(AuthRequestHandler):
         logging.info('StreamHandler.post')
         logging.info('closing file')
         self.target_file.close()
+        self.set_status(201)
         self.write({ 'message': 'data streamed to file' })
 
     def on_finish(self):

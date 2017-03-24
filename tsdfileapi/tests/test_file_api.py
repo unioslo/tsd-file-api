@@ -63,16 +63,19 @@ import json
 import os
 import unittest
 import yaml
+from datetime import datetime
 
 from tokens import IMPORT_TOKENS, EXPORT_TOKENS
-"""
+
+# seems like the steaming ono=ly works with this in place
+# don't really understand that
 httplib.HTTPConnection.debuglevel = 1
 logging.basicConfig()
 logging.getLogger().setLevel(logging.DEBUG)
 requests_log = logging.getLogger("requests.packages.urllib3")
 requests_log.setLevel(logging.DEBUG)
 requests_log.propagate = True
-"""
+
 
 def lazy_file_reader(filename):
     with open(filename, 'r+') as f:
@@ -119,13 +122,17 @@ class TestFileApi(unittest.TestCase):
 
     @classmethod
     def tearDownClass(cls):
-        uploaded_files = os.listdir(cls.config['uploads_folder'])
+        uploaded_files = os.listdir(cls.uploads_folder)
         test_files = os.listdir(cls.config['data_folder'])
+        today = datetime.fromtimestamp(time.time()).isoformat()[:10]
         for file in uploaded_files:
-            if (file in test_files) or (file in [ 'uploaded-example.csv' ]):
+            if (file in test_files) or (today in file) or (file in [ 'streamed-example.csv',
+                'uploaded-example.csv', 'uploaded-example-2.csv', 'uploaded-example-3.csv',
+                'streamed-not-chunked' ]):
                 try:
-                    os.remove(os.path.abspath(file))
-                except OSError:
+                    os.remove(os.path.normpath(cls.uploads_folder + '/' + file))
+                except OSError as e:
+                    logging.error(e)
                     continue
 
     # Import Auth
@@ -258,33 +265,59 @@ class TestFileApi(unittest.TestCase):
         self.assertEqual(md5sum(self.example_csv), md5sum(uploaded_file))
 
 
-    def test_H_put(self):
-        pass
+    def test_H_put_file_multi_part_form_data(self):
+        newfilename = 'uploaded-example-3.csv'
+        try:
+            os.remove(os.path.normpath(self.uploads_folder + '/' + newfilename))
+        except OSError:
+            pass
+        headers = { 'Authorization': 'Bearer ' + IMPORT_TOKENS['VALID'] }
+        files = {'file': (newfilename, open(self.example_csv))}
+        resp = requests.patch(self.upload, files=files, headers=headers)
+        uploaded_file = os.path.normpath(self.uploads_folder + '/' + newfilename)
+        self.assertEqual(resp.status_code, 201)
+        self.assertEqual(md5sum(self.example_csv), md5sum(uploaded_file))
+        resp = requests.patch(self.upload, files=files, headers=headers)
+        self.assertEqual(md5sum(self.example_csv), md5sum(uploaded_file))
 
 
-    def test_I_post_file_data_binary(self):
-        pass
+    def test_I_post_file_to_streaming_endpoint_no_chunked_encoding_data_binary(self):
+        newfilename = 'streamed-not-chunked'
+        try:
+            os.remove(os.path.normpath(self.uploads_folder + '/' + newfilename))
+        except OSError:
+            pass
+        headers = { 'Authorization': 'Bearer ' + IMPORT_TOKENS['VALID'], 'X-Filename': newfilename }
+        resp = requests.post(self.stream, data=open(self.example_csv), headers=headers)
+        self.assertEqual(resp.status_code, 201)
+        uploaded_file = os.path.normpath(self.uploads_folder + '/' + newfilename)
+        self.assertEqual(md5sum(self.example_csv), md5sum(uploaded_file))
 
 
-    def test_J_post_file_to_streaming_endpoint_no_chunked_encoding_data_binary(self):
-        pass
-
-
-    def test_K_stream_file_chunked_transfer_encoding(self):
+    def test_J_stream_file_chunked_transfer_encoding(self):
         headers = { 'X-Filename': 'streamed-example.csv', 'Authorization': 'Bearer ' + IMPORT_TOKENS['VALID'], 'Expect': '100-Continue' }
-        resp = requests.post(self.base_url + '/stream', data=lazy_file_reader(self.example_csv), headers=headers)
+        resp = requests.post(self.stream, data=lazy_file_reader(self.example_csv), headers=headers)
 
 
     # Metadata
     #---------
 
 
-    def test_M_get_file_list(self):
-        pass
+    def test_K_get_file_list(self):
+        headers = { 'Authorization': 'Bearer ' + IMPORT_TOKENS['VALID'] }
+        resp = requests.get(self.list, headers=headers)
+        data = json.loads(resp.text)
+        self.assertTrue('uploaded-example.csv' in data.keys())
 
 
-    def test_N_get_file_checksum(self):
-        pass
+    def test_L_get_file_checksum(self):
+        src = os.path.normpath(self.uploads_folder + '/' + 'uploaded-example.csv')
+        headers = { 'Authorization': 'Bearer ' + IMPORT_TOKENS['VALID'] }
+        resp = requests.get(self.base_url + '/checksum?filename=uploaded-example.csv&algorithm=md5', headers=headers)
+        data = json.loads(resp.text)
+        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(data['checksum'], md5sum(src))
+        self.assertEqual(data['algorithm'], 'md5')
 
 
 def main():
@@ -297,8 +330,12 @@ def main():
         'test_D_timed_out_token_rejected',
         'test_E_unauthenticated_request_rejected',
         'test_F_post_file_multi_part_form_data',
-        'test_G_patch_file_multi_part_form_data'
-        #'test_I_stream_file_chunked_transfer_encoding',
+        'test_G_patch_file_multi_part_form_data',
+        'test_H_put_file_multi_part_form_data',
+        'test_I_post_file_to_streaming_endpoint_no_chunked_encoding_data_binary',
+        'test_J_stream_file_chunked_transfer_encoding',
+        'test_K_get_file_list',
+        'test_L_get_file_checksum'
         ])))
     map(runner.run, suite)
 
