@@ -244,8 +244,18 @@ class TestFileApi(unittest.TestCase):
         self.assertEqual(md5sum(self.example_csv), md5sum(uploaded_file))
 
 
-    def test_G_patch(self):
-        pass
+    def test_G_patch_file_multi_part_form_data(self):
+        newfilename = 'uploaded-example-2.csv'
+        try:
+            os.remove(os.path.normpath(self.uploads_folder + '/' + newfilename))
+        except OSError:
+            pass
+        headers = { 'Authorization': 'Bearer ' + IMPORT_TOKENS['VALID'] }
+        files = {'file': (newfilename, open(self.example_csv))}
+        resp = requests.patch(self.upload, files=files, headers=headers)
+        self.assertEqual(resp.status_code, 201)
+        uploaded_file = os.path.normpath(self.uploads_folder + '/' + newfilename)
+        self.assertEqual(md5sum(self.example_csv), md5sum(uploaded_file))
 
 
     def test_H_put(self):
@@ -286,7 +296,8 @@ def main():
         'test_C_token_with_wrong_role_rejected',
         'test_D_timed_out_token_rejected',
         'test_E_unauthenticated_request_rejected',
-        'test_F_post_file_multi_part_form_data'
+        'test_F_post_file_multi_part_form_data',
+        'test_G_patch_file_multi_part_form_data'
         #'test_I_stream_file_chunked_transfer_encoding',
         ])))
     map(runner.run, suite)
