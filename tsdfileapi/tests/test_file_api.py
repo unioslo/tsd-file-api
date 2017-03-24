@@ -51,7 +51,7 @@ Some background on python2.7 and requests
 https://github.com/kennethreitz/requests/issues/713
 
 """
-
+import hashlib
 import click
 import logging
 import httplib
@@ -65,14 +65,14 @@ import unittest
 import yaml
 
 from tokens import IMPORT_TOKENS, EXPORT_TOKENS
-
+"""
 httplib.HTTPConnection.debuglevel = 1
 logging.basicConfig()
 logging.getLogger().setLevel(logging.DEBUG)
 requests_log = logging.getLogger("requests.packages.urllib3")
 requests_log.setLevel(logging.DEBUG)
 requests_log.propagate = True
-
+"""
 
 def lazy_file_reader(filename):
     with open(filename, 'r+') as f:
@@ -84,11 +84,12 @@ def lazy_file_reader(filename):
                 yield line
 
 
-def get_token(url):
-    resp = requests.post(url + '/import_token',
-        data=json.dumps({'email':'health@check.local', 'pass': 'something_healthy'}),
-        headers={'Content-Type': 'application/json'})
-    return json.loads(resp.text)['token']
+def md5sum(filename, blocksize=65536):
+    hash = hashlib.md5()
+    with open(filename, "rb") as f:
+        for block in iter(lambda: f.read(blocksize), b""):
+            hash.update(block)
+    return hash.hexdigest()
 
 
 class TestFileApi(unittest.TestCase):
@@ -115,16 +116,17 @@ class TestFileApi(unittest.TestCase):
         cls.stream = cls.base_url + '/stream'
         cls.upload_stream = cls.base_url + '/upload_stream'
 
+
     @classmethod
     def tearDownClass(cls):
         uploaded_files = os.listdir(cls.config['uploads_folder'])
         test_files = os.listdir(cls.config['data_folder'])
         for file in uploaded_files:
-            if file in test_files:
+            if (file in test_files) or (file in [ 'uploaded-example.csv' ]):
                 try:
                     os.remove(os.path.abspath(file))
                 except OSError:
-                    return
+                    continue
 
     # Import Auth
     #------------
@@ -224,37 +226,56 @@ class TestFileApi(unittest.TestCase):
         self.assertEqual(resp7.status_code, 400)
 
 
-    # POSTing files and streams
+    # uploading files and streams
     #--------------------------
 
+
     def test_F_post_file_multi_part_form_data(self):
+        newfilename = 'uploaded-example.csv'
+        try:
+            os.remove(os.path.normpath(self.uploads_folder + '/' + newfilename))
+        except OSError:
+            pass
+        headers = { 'Authorization': 'Bearer ' + IMPORT_TOKENS['VALID'] }
+        files = {'file': (newfilename, open(self.example_csv))}
+        resp = requests.post(self.upload, files=files, headers=headers)
+        self.assertEqual(resp.status_code, 201)
+        uploaded_file = os.path.normpath(self.uploads_folder + '/' + newfilename)
+        self.assertEqual(md5sum(self.example_csv), md5sum(uploaded_file))
+
+
+    def test_G_patch(self):
         pass
 
-    def test_G_post_file_data_binary(self):
+
+    def test_H_put(self):
         pass
 
-    def test_H_post_file_to_streaming_endpoint_no_chunked_encoding_data_binary(self):
+
+    def test_I_post_file_data_binary(self):
         pass
 
-    def test_I_stream_file_chunked_transfer_encoding(self):
+
+    def test_J_post_file_to_streaming_endpoint_no_chunked_encoding_data_binary(self):
+        pass
+
+
+    def test_K_stream_file_chunked_transfer_encoding(self):
         headers = { 'X-Filename': 'streamed-example.csv', 'Authorization': 'Bearer ' + IMPORT_TOKENS['VALID'], 'Expect': '100-Continue' }
         resp = requests.post(self.base_url + '/stream', data=lazy_file_reader(self.example_csv), headers=headers)
 
-    # PUTting files
-    #--------------
-
-    def test_J_put_file_is_idempotent(self):
-        pass
 
     # Metadata
     #---------
 
-    def test_K_get_file_list(self):
+
+    def test_M_get_file_list(self):
         pass
 
 
-    def test_L_get_file_checksum(self):
+    def test_N_get_file_checksum(self):
         pass
+
 
 def main():
     runner = unittest.TextTestRunner()
@@ -264,10 +285,12 @@ def main():
         'test_B_invalid_signature_rejected',
         'test_C_token_with_wrong_role_rejected',
         'test_D_timed_out_token_rejected',
-        'test_E_unauthenticated_request_rejected'
+        'test_E_unauthenticated_request_rejected',
+        'test_F_post_file_multi_part_form_data'
         #'test_I_stream_file_chunked_transfer_encoding',
         ])))
     map(runner.run, suite)
+
 
 if __name__ == '__main__':
     main()

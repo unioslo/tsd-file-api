@@ -93,6 +93,7 @@ class FormDataHandler(AuthRequestHandler):
 
     def post(self):
         self.write_file('ab+')
+        self.set_status(201)
         self.write({'message': 'file uploaded'})
 
     def patch(self):
