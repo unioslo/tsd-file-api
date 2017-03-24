@@ -106,7 +106,8 @@ class TestFileApi(unittest.TestCase):
             sys.exit(1)
         cls.base_url = 'http://localhost' + ':' + str(cls.config['port'])
         cls.data_folder = cls.config['data_folder']
-        cls.file_to_stream = os.path.normpath(cls.data_folder + '/example.csv')
+        cls.example_csv = os.path.normpath(cls.data_folder + '/example.csv')
+        cls.example_100mb = os.path.normpath(cls.data_folder + '/100mb.txt')
         cls.uploads_folder = cls.config['uploads_folder']
 
 
@@ -153,7 +154,7 @@ class TestFileApi(unittest.TestCase):
 
     def test_I_stream_file_chunked_transfer_encoding(self):
         headers = { 'X-Filename': 'streamed-example.csv', 'Authorization': 'Bearer ' + IMPORT_TOKENS['VALID'], 'Expect': '100-Continue' }
-        resp = requests.post(self.base_url + '/stream', data=lazy_file_reader(self.file_to_stream), headers=headers)
+        resp = requests.post(self.base_url + '/stream', data=lazy_file_reader(self.example_csv), headers=headers)
 
     # PUTting files
     #--------------
