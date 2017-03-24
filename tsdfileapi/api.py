@@ -60,43 +60,48 @@ class AuthRequestHandler(RequestHandler):
             self.jwt = auth_header.split(' ')[1]
             token_verified_status = verify_json_web_token(auth_header, options.jwt_secret, 'app_user')
         except (KeyError, UnboundLocalError) as e:
+            logging.error(e)
             token_verified_status = {}
             token_verified_status['message'] = 'Missing Authorization header.'
             token_verified_status['status'] = False
             self.status = 400
-        if token_verified_status is True:
+        if token_verified_status['status'] is True:
             return
         else:
             if self.status == 400:
                 self.set_status(400)
             else:
-                self.set_status(403)
-        self.finish({ 'message': token_verified_status['message'] })
+                self.set_status(401)
+            self.finish({ 'message': token_verified_status['message'] })
 
 
 class FormDataHandler(AuthRequestHandler):
 
-    def prepare(self):
-        self.validate_token()
-        # TODO: disallow streaming here
-
-    def post(self):
-        if len(self.request.files['file']) > 1:
-            self.set_status(405)
-            self.finsh({ 'message': 'Only one file per request is allowed.' })
+    def write_file(self, filemode):
         # TODO: check filename
         filename = self.request.files['file'][0]['filename']
         target = os.path.normpath(options.uploads_folder + '/' + filename)
         filebody = self.request.files['file'][0]['body']
-        with open(target, 'ab+') as f:
+        with open(target, filemode) as f:
             f.write(filebody)
+
+    def prepare(self):
+        self.validate_token()
+        if len(self.request.files['file']) > 1:
+            self.set_status(405)
+            self.finsh({ 'message': 'Only one file per request is allowed.' })
+
+    def post(self):
+        self.write_file('ab+')
         self.write({'message': 'file uploaded'})
 
     def patch(self):
-        pass
+        self.write_file('ab+')
+        self.write({'message': 'file uploaded'})
 
     def put(self):
-        pass
+        self.write_file('wb+')
+        self.write({'message': 'file uploaded'})
 
 
 @stream_request_body
@@ -111,10 +116,14 @@ class StreamHandler(AuthRequestHandler):
             logging.info('opening file')
             logging.info('path: %s', path)
             self.target_file = open(path, 'ab+')
-        except (KeyError, ConnectionError):
-            self.target_file.close()
+        except Exception as e:
+            logging.error(e)
             logging.error("filename not found")
-            self.send_error("ERROR")
+            try:
+                self.target_file.close()
+            except AttributeError as e:
+                logging.error(e)
+                logging.error('No file to close after all - so nothing to worry about')
 
 
     @gen.coroutine
@@ -150,17 +159,18 @@ class ProxyHandler(AuthRequestHandler):
             logging.info('supplied filename: %s', self.filename)
         except KeyError:
             self.filename = datetime.datetime.now().isoformat() + '.txt'
-            logging.error("filename not found - creating own")
+            logging.error("filename not found - creating own: %s" % self.filename)
         self.chunks = tornado.queues.Queue(1) # TODO: performace tuning here
-        self.fetch_future = AsyncHTTPClient().fetch(
-            'http://localhost:%d/upload_stream' % options.port,
-            method='POST',
-            body_producer=self.body_producer,
-            request_timeout=12000.0,
-            headers={
-                'Authorization': 'Bearer ' + self.jwt,
-                'X-Filename': self.filename
-                })
+        try:
+            self.fetch_future = AsyncHTTPClient().fetch(
+                'http://localhost:%d/upload_stream' % options.port,
+                method='POST',
+                body_producer=self.body_producer,
+                request_timeout=12000.0,
+                headers={ 'Authorization': 'Bearer ' + self.jwt, 'X-Filename': self.filename })
+        except AttributeError as e:
+            logging.error(e)
+            logging.error('No JWT found.')
 
     @gen.coroutine
     def body_producer(self, write):

@@ -4,6 +4,7 @@ https://github.com/davedoesdev/python-jwt."""
 
 import jwt
 import time
+from jwt import _JWTError
 from datetime import datetime
 
 def verify_json_web_token(auth_header, jwt_secret, required_role=None):
@@ -29,6 +30,11 @@ def verify_json_web_token(auth_header, jwt_secret, required_role=None):
     except jwt.jws.SignatureError:
         return {
             'message': 'Access forbidden - Unable to verify signature.',
+            'status': False
+            }
+    except _JWTError:
+        return {
+            'message': 'Access forbidden - JWT expired.',
             'status': False
             }
     if claims['role'] != required_role:
