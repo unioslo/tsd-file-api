@@ -8,6 +8,7 @@ import yaml
 import datetime
 import hashlib
 from sys import argv
+from collections import OrderedDict
 
 import tornado.queues
 from tornado.concurrent import Future
@@ -187,10 +188,17 @@ class ProxyHandler(AuthRequestHandler):
 class MetaDataHandler(AuthRequestHandler):
 
     def prepare(self):
-        pass
+        self.validate_token()
 
     def get(self):
-        pass
+        _dir = options.uploads_folder
+        files = os.listdir(_dir)
+        times = map(lambda x:
+            datetime.datetime.fromtimestamp(os.stat(os.path.normpath(_dir + '/' + x)).st_mtime).isoformat(), files)
+        file_info = OrderedDict()
+        for i in zip(files, times):
+            file_info[i[0]] = i[1]
+        self.write(file_info)
 
 
 class ChecksumHandler(AuthRequestHandler):
@@ -222,7 +230,8 @@ def main():
         ('/upload_stream', StreamHandler),
         ('/stream', ProxyHandler),
         ('/upload', FormDataHandler),
-        ('/checksum', ChecksumHandler)
+        ('/checksum', ChecksumHandler),
+        ('/list', MetaDataHandler)
     ], debug=options.debug)
     app.listen(options.port, max_body_size=options.max_body_size)
     IOLoop.instance().start()
