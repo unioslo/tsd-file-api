@@ -6,6 +6,9 @@ import logging
 import json
 import yaml
 import datetime
+import hashlib
+from sys import argv
+
 import tornado.queues
 from tornado.concurrent import Future
 from tornado.escape import utf8, json_decode
@@ -14,7 +17,7 @@ from tornado.httpclient import AsyncHTTPClient
 from tornado.ioloop import IOLoop
 from tornado.options import parse_command_line, define, options
 from tornado.web import Application, RequestHandler, stream_request_body
-from sys import argv
+
 
 from auth import verify_json_web_token
 
@@ -50,21 +53,24 @@ class AuthRequestHandler(RequestHandler):
     def validate_token(self):
         # this only supports uploads, not downloads (yet)
         logging.info("checking JWT")
+        self.status = None
         try:
             auth_header = self.request.headers['Authorization']
             self.jwt = auth_header.split(' ')[1]
             token_verified_status = verify_json_web_token(auth_header, options.jwt_secret, 'app_user')
-            self.authnz = token_verified_status
         except (KeyError, UnboundLocalError) as e:
-            self.st = 400
-            self.message = 'Missing Authorization header.'
+            token_verified_status = {}
+            token_verified_status['message'] = 'Missing Authorization header.'
+            token_verified_status['status'] = False
+            self.status = 400
         if token_verified_status is True:
             return
         else:
-            self.st = 403
-            self.message = token_verified_status
-            self.set_status(self.st)
-            self.finish({ 'message': self.message })
+            if self.status == 400:
+                self.set_status(400)
+            else:
+                self.set_status(403)
+        self.finish({ 'message': token_verified_status['message'] })
 
 
 class FormDataHandler(AuthRequestHandler):
@@ -101,18 +107,20 @@ class StreamHandler(AuthRequestHandler):
         try:
             filename = self.request.headers['X-Filename']
             path = os.path.normpath(options.uploads_folder + '/' + filename)
-        except KeyError:
+            logging.info('opening file')
+            logging.info('path: %s', path)
+            self.target_file = open(path, 'ab+')
+        except (KeyError, ConnectionError):
+            self.target_file.close()
             logging.error("filename not found")
             self.send_error("ERROR")
-        logging.info('opening file')
-        logging.info('path: %s', path)
-        self.target_file = open(path, 'ab+')
+
 
     @gen.coroutine
     def data_received(self, chunk):
         # could use this to rate limit the client if needed
         # yield gen.Task(IOLoop.current().call_later, options.server_delay)
-        logging.info('StreamHandler.data_received(%d bytes: %r)', len(chunk), chunk[:9])
+        #logging.info('StreamHandler.data_received(%d bytes: %r)', len(chunk), chunk[:9])
         try:
             self.target_file.write(chunk)
         except Exception:
@@ -128,7 +136,6 @@ class StreamHandler(AuthRequestHandler):
 
     def on_finish(self):
         logging.info("FINISHED")
-
 
 
 @stream_request_body
@@ -164,7 +171,7 @@ class ProxyHandler(AuthRequestHandler):
 
     @gen.coroutine
     def data_received(self, chunk):
-        logging.info('ProxyHandler.data_received(%d bytes: %r)', len(chunk), chunk[:9])
+        #logging.info('ProxyHandler.data_received(%d bytes: %r)', len(chunk), chunk[:9])
         yield self.chunks.put(chunk)
 
     @gen.coroutine
@@ -177,12 +184,45 @@ class ProxyHandler(AuthRequestHandler):
         self.write(response.body)
 
 
+class MetaDataHandler(AuthRequestHandler):
+
+    def prepare(self):
+        pass
+
+    def get(self):
+        pass
+
+
+class ChecksumHandler(AuthRequestHandler):
+
+    def md5sum(self, filename, blocksize=65536):
+        hash = hashlib.md5()
+        with open(filename, "rb") as f:
+            for block in iter(lambda: f.read(blocksize), b""):
+                hash.update(block)
+        return hash.hexdigest()
+
+    def prepare(self):
+        self.validate_token()
+
+    def get(self):
+        filename = self.get_query_argument('filename')
+        algorithm = self.get_query_argument('algorithm')
+        if algorithm != 'md5':
+            self.finish({ 'message': 'algorithm not supported' })
+        else:
+            path = os.path.normpath(options.uploads_folder + '/' + filename)
+            checksum = self.md5sum(path)
+            self.write({ 'checksum': checksum, 'algorithm': 'md5' })
+
+
 def main():
     parse_command_line()
     app = Application([
         ('/upload_stream', StreamHandler),
         ('/stream', ProxyHandler),
         ('/upload', FormDataHandler),
+        ('/checksum', ChecksumHandler)
     ], debug=options.debug)
     app.listen(options.port, max_body_size=options.max_body_size)
     IOLoop.instance().start()

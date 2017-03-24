@@ -22,14 +22,26 @@ def verify_json_web_token(auth_header, jwt_secret, required_role=None):
         token = auth_header.split(' ')[1]
         header, claims = jwt.verify_jwt(token, jwt_secret, ['HS256'], checks_optional=True)
     except KeyError:
-        return {'message': 'No JWT provided.'}
+        return {
+            'message': 'No JWT provided.',
+            'status': False
+            }
     except jwt.jws.SignatureError:
-        return {'message': 'Access forbidden - Unable to verify signature.'}
+        return {
+            'message': 'Access forbidden - Unable to verify signature.',
+            'status': False
+            }
     if claims['role'] != required_role:
-        return {'message': 'Access forbidden - Your role does not allow this operation.'}
+        return {
+        'message': 'Access forbidden - Your role does not allow this operation.',
+        'status': False
+        }
     if int(time.time()) > int(claims['exp']):
-        return {'message': 'Access forbidden - JWT expired.'}
+        return {
+            'message': 'Access forbidden - JWT expired.',
+            'status': False
+            }
     else:
-        return True
+        return { 'message': 'Token OK', 'status': True }
 
 
