@@ -17,10 +17,10 @@ from tornado import gen
 from tornado.httpclient import AsyncHTTPClient
 from tornado.ioloop import IOLoop
 from tornado.options import parse_command_line, define, options
-from tornado.web import Application, RequestHandler, stream_request_body
-
+from tornado.web import Application, RequestHandler, stream_request_body, HTTPError
 
 from auth import verify_json_web_token
+from utils import secure_filename
 
 
 def read_config(file):
@@ -43,10 +43,6 @@ define('num_chunks', default=config['num_chunks'])
 define('max_body_size', config['max_body_size'])
 define('uploads_folder', config['uploads_folder'])
 define('jwt_secret', config['jwt_secret'])
-
-
-def check_filename(filename):
-    pass
 
 
 class AuthRequestHandler(RequestHandler):
@@ -78,8 +74,7 @@ class AuthRequestHandler(RequestHandler):
 class FormDataHandler(AuthRequestHandler):
 
     def write_file(self, filemode):
-        # TODO: check filename
-        filename = self.request.files['file'][0]['filename']
+        filename = secure_filename(self.request.files['file'][0]['filename'])
         target = os.path.normpath(options.uploads_folder + '/' + filename)
         filebody = self.request.files['file'][0]['body']
         with open(target, filemode) as f:
@@ -114,7 +109,7 @@ class StreamHandler(AuthRequestHandler):
         logging.info('StreamHandler')
         self.validate_token()
         try:
-            filename = self.request.headers['X-Filename']
+            filename = secure_filename(self.request.headers['X-Filename'])
             path = os.path.normpath(options.uploads_folder + '/' + filename)
             logging.info('opening file')
             logging.info('path: %s', path)
@@ -159,7 +154,7 @@ class ProxyHandler(AuthRequestHandler):
         logging.info('ProxyHandler.prepare')
         self.validate_token()
         try:
-            self.filename = self.request.headers['X-Filename']
+            self.filename = secure_filename(self.request.headers['X-Filename'])
             logging.info('supplied filename: %s', self.filename)
         except KeyError:
             self.filename = datetime.datetime.now().isoformat() + '.txt'
@@ -170,11 +165,16 @@ class ProxyHandler(AuthRequestHandler):
                 'http://localhost:%d/upload_stream' % options.port,
                 method='POST',
                 body_producer=self.body_producer,
+                # for the _entire_ request
+                # will have to adjust this
+                # there is also connect_timeout
+                # for the initial connection
+                # in seconds, both
                 request_timeout=12000.0,
                 headers={ 'Authorization': 'Bearer ' + self.jwt, 'X-Filename': self.filename })
-        except AttributeError as e:
+        except (AttributeError, HTTPError) as e:
+            logging.error('Problem in async client')
             logging.error(e)
-            logging.error('No JWT found.')
 
     @gen.coroutine
     def body_producer(self, write):
@@ -228,7 +228,9 @@ class ChecksumHandler(AuthRequestHandler):
         self.validate_token()
 
     def get(self):
-        filename = self.get_query_argument('filename')
+        # TODO
+        # Consider: http://www.tornadoweb.org/en/stable/escape.html#tornado.escape.url_unescape
+        filename = secure_filename(self.get_query_argument('filename'))
         algorithm = self.get_query_argument('algorithm')
         if algorithm != 'md5':
             self.finish({ 'message': 'algorithm not supported' })

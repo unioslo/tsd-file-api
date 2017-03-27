@@ -4,6 +4,7 @@ https://github.com/davedoesdev/python-jwt."""
 
 import jwt
 import time
+import logging
 from jwt import _JWTError
 from datetime import datetime
 
@@ -33,16 +34,18 @@ def verify_json_web_token(auth_header, jwt_secret, required_role=None):
             'status': False
             }
     except _JWTError:
+        logging.error('JWT expired')
         return {
             'message': 'Access forbidden - JWT expired.',
             'status': False
-            }
+           }
     if claims['role'] != required_role:
         return {
         'message': 'Access forbidden - Your role does not allow this operation.',
         'status': False
         }
     if int(time.time()) > int(claims['exp']):
+        logging.error('JWT expired')
         return {
             'message': 'Access forbidden - JWT expired.',
             'status': False

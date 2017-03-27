@@ -33,7 +33,7 @@ IMPORT_TOKENS = {
     'WRONG_ROLE': generate_token(TEST_IMPORT_USER, TEST_SECRET, token_type='import', \
         import_role='WRONG_ROLE'),
     'TIMED_OUT': generate_token(TEST_IMPORT_USER, TEST_SECRET, token_type='import', \
-        import_role='app_user', import_timeout=(-(60*60)))
+        import_role='app_user', import_timeout=(-(60*60*25)))
 }
 
 EXPORT_TOKENS = {
