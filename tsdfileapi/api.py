@@ -82,9 +82,17 @@ class FormDataHandler(AuthRequestHandler):
 
     def prepare(self):
         self.validate_token()
-        if len(self.request.files['file']) > 1:
-            self.set_status(405)
-            self.finsh({ 'message': 'Only one file per request is allowed.' })
+        try:
+            if len(self.request.files['file']) > 1:
+                self.set_status(405)
+                self.message = 'Only one file per request is allowed.'
+                raise KeyError
+        except KeyError:
+            issue = 'No file supplied with upload request'
+            logging.error(issue)
+            self.message = issue
+            self.set_status(400)
+            self.finish({ 'message': self.message })
 
     def post(self):
         self.write_file('ab+')
@@ -100,6 +108,9 @@ class FormDataHandler(AuthRequestHandler):
         self.write_file('wb+')
         self.set_status(201)
         self.write({'message': 'file uploaded'})
+
+    def head(self):
+        self.write({ 'message': 'All good to start uploading' })
 
 
 @stream_request_body
@@ -143,6 +154,9 @@ class StreamHandler(AuthRequestHandler):
         self.set_status(201)
         self.write({ 'message': 'data streamed to file' })
 
+    def head(self):
+        self.write({ 'message': 'All good to start streaming' })
+
     def on_finish(self):
         logging.info("FINISHED")
 
@@ -158,13 +172,17 @@ class ProxyHandler(AuthRequestHandler):
             logging.info('supplied filename: %s', self.filename)
         except KeyError:
             self.filename = datetime.datetime.now().isoformat() + '.txt'
-            logging.error("filename not found - creating own: %s" % self.filename)
+            logging.info("filename not found - going to use this filename: %s" % self.filename)
         self.chunks = tornado.queues.Queue(1) # TODO: performace tuning here
         try:
+            if self.request.method == 'HEAD':
+                body = None
+            else:
+                body = self.body_producer
             self.fetch_future = AsyncHTTPClient().fetch(
                 'http://localhost:%d/upload_stream' % options.port,
-                method='POST',
-                body_producer=self.body_producer,
+                method=self.request.method,
+                body_producer=body,
                 # for the _entire_ request
                 # will have to adjust this
                 # there is also connect_timeout
@@ -197,6 +215,9 @@ class ProxyHandler(AuthRequestHandler):
         response = yield self.fetch_future
         self.set_status(response.code)
         self.write(response.body)
+
+    def head(self):
+        self.write({ 'message': 'All good to start streaming' })
 
 
 class MetaDataHandler(AuthRequestHandler):
