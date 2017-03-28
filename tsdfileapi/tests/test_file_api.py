@@ -318,6 +318,20 @@ class TestFileApi(unittest.TestCase):
         self.assertEqual(data['checksum'], md5sum(src))
         self.assertEqual(data['algorithm'], 'md5')
 
+    # Informational
+    #--------------
+
+    def test_M_head_on_uploads_fails_when_it_should(self):
+            pass
+
+    def test_O_head_on_uploads_succeeds_when_conditions_are_met(self):
+            pass
+
+    def test_P_head_on_stream_fails_when_it_should(self):
+            pass
+
+    def test_Q_head_on_stream_succeeds_when_conditions_are_met(self):
+            pass
 
 def main():
     runner = unittest.TextTestRunner()
