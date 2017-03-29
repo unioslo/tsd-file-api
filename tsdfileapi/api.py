@@ -17,7 +17,7 @@ from tornado import gen
 from tornado.httpclient import AsyncHTTPClient
 from tornado.ioloop import IOLoop
 from tornado.options import parse_command_line, define, options
-from tornado.web import Application, RequestHandler, stream_request_body, HTTPError
+from tornado.web import Application, RequestHandler, stream_request_body, HTTPError, MissingArgumentError
 
 from auth import verify_json_web_token
 from utils import secure_filename
@@ -92,7 +92,7 @@ class FormDataHandler(AuthRequestHandler):
             logging.error(issue)
             self.message = issue
             self.set_status(400)
-            self.finish({ 'message': self.message })
+            raise MissingArgumentError('file')
 
     def post(self):
         self.write_file('ab+')
@@ -116,6 +116,7 @@ class FormDataHandler(AuthRequestHandler):
 @stream_request_body
 class StreamHandler(AuthRequestHandler):
 
+    @gen.coroutine
     def prepare(self):
         logging.info('StreamHandler')
         self.validate_token()
@@ -149,8 +150,8 @@ class StreamHandler(AuthRequestHandler):
 
     def post(self):
         logging.info('StreamHandler.post')
-        logging.info('closing file')
         self.target_file.close()
+        logging.info('StreamHandler: closed file')
         self.set_status(201)
         self.write({ 'message': 'data streamed to file' })
 
@@ -158,13 +159,33 @@ class StreamHandler(AuthRequestHandler):
         self.write({ 'message': 'All good to start streaming' })
 
     def on_finish(self):
-        logging.info("FINISHED")
+        """Called after each request. Clean up any open files if an error occurred."""
+        try:
+            if not self.target_file.closed:
+                self.target_file.close()
+                logging.info('StreamHandler: Closed file')
+        except AttributeError as e:
+            logging.info(e)
+            logging.info('There was no open file to close')
+        logging.info("Stream processing finished")
+
+    def on_connection_close(self):
+        """Called when clients close the connection. Clean up any open files."""
+        try:
+            if not self.target_file.closed:
+                self.target_file.close()
+                logging.info('StreamHandler: Closed file after client closed connection')
+        except AttributeError as e:
+            logging.info(e)
+            logging.info('There was no open file to close')
 
 
 @stream_request_body
 class ProxyHandler(AuthRequestHandler):
 
+    @gen.coroutine
     def prepare(self):
+        """Called after headers have been read."""
         logging.info('ProxyHandler.prepare')
         self.validate_token()
         try:
@@ -209,10 +230,10 @@ class ProxyHandler(AuthRequestHandler):
 
     @gen.coroutine
     def post(self):
+        """Called after entire body has been read."""
         logging.info('ProxyHandler.post')
         yield self.chunks.put(None)
-        # wait for request to finish.
-        response = yield self.fetch_future
+        response = yield self.fetch_future # wait for request to finish.
         self.set_status(response.code)
         self.write(response.body)
 
