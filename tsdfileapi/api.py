@@ -110,6 +110,7 @@ class FormDataHandler(AuthRequestHandler):
         self.write({'message': 'file uploaded'})
 
     def head(self):
+        self.set_status(201)
         self.write({ 'message': 'All good to start uploading' })
 
 

@@ -327,12 +327,17 @@ class TestFileApi(unittest.TestCase):
         resp2 = requests.head(self.upload, headers={ 'Authorization': 'Bearer ' + IMPORT_TOKENS['VALID'] })
         self.assertEqual(resp2.status_code, 400)
 
+
     def test_O_head_on_uploads_succeeds_when_conditions_are_met(self):
         files = {'file': ('example.csv', open(self.example_csv))}
-        pass
+        headers={ 'Authorization': 'Bearer ' + IMPORT_TOKENS['VALID'] }
+        resp = requests.head(self.upload, headers=headers, files=files)
+        self.assertEqual(resp.status_code, 201)
+
 
     def test_P_head_on_stream_fails_when_it_should(self):
         pass
+
 
     def test_Q_head_on_stream_succeeds_when_conditions_are_met(self):
         pass
@@ -353,7 +358,8 @@ def main():
         'test_J_stream_file_chunked_transfer_encoding',
         'test_K_get_file_list',
         'test_L_get_file_checksum',
-        'test_M_head_on_uploads_fails_when_it_should'
+        'test_M_head_on_uploads_fails_when_it_should',
+        'test_O_head_on_uploads_succeeds_when_conditions_are_met'
         ])))
     map(runner.run, suite)
 
