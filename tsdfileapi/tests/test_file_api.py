@@ -322,16 +322,20 @@ class TestFileApi(unittest.TestCase):
     #--------------
 
     def test_M_head_on_uploads_fails_when_it_should(self):
-            pass
+        resp1 = requests.head(self.upload)
+        self.assertEqual(resp1.status_code, 400)
+        resp2 = requests.head(self.upload, headers={ 'Authorization': 'Bearer ' + IMPORT_TOKENS['VALID'] })
+        self.assertEqual(resp2.status_code, 400)
 
     def test_O_head_on_uploads_succeeds_when_conditions_are_met(self):
-            pass
+        files = {'file': ('example.csv', open(self.example_csv))}
+        pass
 
     def test_P_head_on_stream_fails_when_it_should(self):
-            pass
+        pass
 
     def test_Q_head_on_stream_succeeds_when_conditions_are_met(self):
-            pass
+        pass
 
 def main():
     runner = unittest.TextTestRunner()
@@ -348,7 +352,8 @@ def main():
         'test_I_post_file_to_streaming_endpoint_no_chunked_encoding_data_binary',
         'test_J_stream_file_chunked_transfer_encoding',
         'test_K_get_file_list',
-        'test_L_get_file_checksum'
+        'test_L_get_file_checksum',
+        'test_M_head_on_uploads_fails_when_it_should'
         ])))
     map(runner.run, suite)
 
