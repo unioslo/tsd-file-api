@@ -10,7 +10,7 @@ def generate_token(email, secret, token_type=None, import_role=None, export_role
     if token_type == 'import':
         claims =  {'email': email, 'role': import_role, 'exp': import_timeout}
     elif token_type == 'export':
-        claims = {'email': email, 'role': export_role, 'exp': export_timeout}
+        claims = {'role': export_role, 'exp': export_timeout}
     else:
         raise Exception('token_type not specified by caller')
     token = jwt.encode(claims, secret, algorithm='HS256')
