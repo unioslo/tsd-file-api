@@ -42,7 +42,8 @@ define('server_delay', default=config['server_delay'])
 define('num_chunks', default=config['num_chunks'])
 define('max_body_size', config['max_body_size'])
 define('uploads_folder', config['uploads_folder'])
-define('jwt_secret', config['jwt_secret'])
+define('import_secret', config['import_secret'])
+define('export_secret', config['export_secret'])
 
 
 class AuthRequestHandler(RequestHandler):
@@ -54,7 +55,7 @@ class AuthRequestHandler(RequestHandler):
         try:
             auth_header = self.request.headers['Authorization']
             self.jwt = auth_header.split(' ')[1]
-            token_verified_status = verify_json_web_token(auth_header, options.jwt_secret, 'app_user')
+            token_verified_status = verify_json_web_token(auth_header, options.import_secret, 'app_user')
         except (KeyError, UnboundLocalError) as e:
             logging.error(e)
             token_verified_status = {}
@@ -111,11 +112,12 @@ class FormDataHandler(AuthRequestHandler):
 
     def head(self):
         self.set_status(201)
-        self.write({ 'message': 'All good to start uploading' })
 
 
 @stream_request_body
 class StreamHandler(AuthRequestHandler):
+
+    # Future: http://www.tornadoweb.org/en/stable/util.html?highlight=gzip#tornado.util.GzipDecompressor
 
     @gen.coroutine
     def prepare(self):
@@ -157,7 +159,7 @@ class StreamHandler(AuthRequestHandler):
         self.write({ 'message': 'data streamed to file' })
 
     def head(self):
-        self.write({ 'message': 'All good to start streaming' })
+        self.set_status(201)
 
     def on_finish(self):
         """Called after each request. Clean up any open files if an error occurred."""
@@ -239,7 +241,7 @@ class ProxyHandler(AuthRequestHandler):
         self.write(response.body)
 
     def head(self):
-        self.write({ 'message': 'All good to start streaming' })
+        self.set_status(201)
 
 
 class MetaDataHandler(AuthRequestHandler):

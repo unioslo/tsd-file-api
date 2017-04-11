@@ -5,7 +5,6 @@ https://github.com/davedoesdev/python-jwt."""
 import jwt
 import time
 import logging
-from jwt import _JWTError
 from datetime import datetime
 
 def verify_json_web_token(auth_header, jwt_secret, required_role=None):
@@ -22,18 +21,19 @@ def verify_json_web_token(auth_header, jwt_secret, required_role=None):
     """
     try:
         token = auth_header.split(' ')[1]
-        header, claims = jwt.verify_jwt(token, jwt_secret, ['HS256'], checks_optional=True)
+        # make sure to specify the algorithm
+        claims = jwt.decode(token, jwt_secret, algorithms=['HS256'])
     except KeyError:
         return {
             'message': 'No JWT provided.',
             'status': False
             }
-    except jwt.jws.SignatureError:
+    except jwt.exceptions.DecodeError as e:
         return {
             'message': 'Access forbidden - Unable to verify signature.',
             'status': False
             }
-    except _JWTError:
+    except jwt.exceptions.ExpiredSignatureError:
         logging.error('JWT expired')
         return {
             'message': 'Access forbidden - JWT expired.',

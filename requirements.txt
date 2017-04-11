@@ -1,4 +1,4 @@
-python_jwt==1.2.1
+jwt==1.4.2
 pyyaml==3.11
 tornado==4.4.2
 click==5.1

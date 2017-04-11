@@ -342,6 +342,18 @@ class TestFileApi(unittest.TestCase):
     def test_Q_head_on_stream_succeeds_when_conditions_are_met(self):
         pass
 
+    # Support OPTIONS
+
+    # Space issues
+
+    def test_report_informative_error_when_running_out_space(self):
+        pass
+        # [Errno 28] No space left on device
+
+    # https://auth0.com/blog/critical-vulnerabilities-in-json-web-token-libraries/
+    # make sure alg : none JWT rejected
+    # make sure cannot select any other alg
+
 def main():
     runner = unittest.TextTestRunner()
     suite = []
