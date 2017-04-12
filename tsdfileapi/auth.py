@@ -2,12 +2,13 @@
 """Tools to do authentication and authorization with JWT. Based on
 https://github.com/davedoesdev/python-jwt."""
 
-import jwt
+import json
 import time
 import logging
+from jwcrypto import jwt, jwk, jws
 from datetime import datetime
 
-def verify_json_web_token(auth_header, jwt_secret, required_role=None):
+def verify_json_web_token(auth_header, secret, required_role=None):
     """Verifies the authenticity of API credentials, as stored in a JSON Web Token
     (see jwt.io for more).
 
@@ -20,20 +21,25 @@ def verify_json_web_token(auth_header, jwt_secret, required_role=None):
     4) Checks that the token has not expired - 1 hour is the current lifetime
     """
     try:
-        token = auth_header.split(' ')[1]
+        raw_token = auth_header.split(' ')[1]
+        k = {'k': secret, 'kty': 'oct'}
+        key = jwk.JWK(**k)
+        token = jwt.JWT(algs=['HS256'])
+        token.deserialize(raw_token, key=key)
         # make sure to specify the algorithm
-        claims = jwt.decode(token, jwt_secret, algorithms=['HS256'])
+        claims = json.loads(token.claims)
     except KeyError:
         return {
             'message': 'No JWT provided.',
             'status': False
             }
-    except jwt.exceptions.DecodeError as e:
+    except jws.InvalidJWSSignature as e:
         return {
             'message': 'Access forbidden - Unable to verify signature.',
             'status': False
             }
-    except jwt.exceptions.ExpiredSignatureError:
+    except Exception as e:
+        logging.error(e)
         logging.error('JWT expired')
         return {
             'message': 'Access forbidden - JWT expired.',
