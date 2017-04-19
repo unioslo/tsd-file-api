@@ -124,7 +124,7 @@ class StreamHandler(AuthRequestHandler):
         logging.info('StreamHandler')
         self.validate_token()
         try:
-            filename = secure_filename(self.request.headers['X-Filename'])
+            filename = secure_filename(self.request.headers['Filename'])
             path = os.path.normpath(options.uploads_folder + '/' + filename)
             logging.info('opening file')
             logging.info('path: %s', path)
@@ -192,7 +192,7 @@ class ProxyHandler(AuthRequestHandler):
         logging.info('ProxyHandler.prepare')
         self.validate_token()
         try:
-            self.filename = secure_filename(self.request.headers['X-Filename'])
+            self.filename = secure_filename(self.request.headers['Filename'])
             logging.info('supplied filename: %s', self.filename)
         except KeyError:
             self.filename = datetime.datetime.now().isoformat() + '.txt'
@@ -213,7 +213,7 @@ class ProxyHandler(AuthRequestHandler):
                 # for the initial connection
                 # in seconds, both
                 request_timeout=12000.0,
-                headers={ 'Authorization': 'Bearer ' + self.jwt, 'X-Filename': self.filename })
+                headers={ 'Authorization': 'Bearer ' + self.jwt, 'Filename': self.filename })
         except (AttributeError, HTTPError) as e:
             logging.error('Problem in async client')
             logging.error(e)
