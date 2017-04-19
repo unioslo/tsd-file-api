@@ -1,4 +1,4 @@
-pyjwt==1.4.2
+jwcrypto==0.4.0
 pyyaml==3.11
 tornado==4.4.2
 click==5.1
