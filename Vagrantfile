@@ -48,11 +48,14 @@ Vagrant.configure(2) do |config|
   # rpm -Uvh <name>.rpm to install
   # rom -e <name> to remove
   config.vm.provision "shell", inline: <<-SHELL
-    sudo yum -y install python-devel rpm-build git
+    sudo yum -y install python-devel rpm-build git openssl openssl-devel
     sudo easy_install pip
     git clone https://github.com/leondutoit/virtualenv
     sudo pip install ./virtualenv
     git clone https://github.com/leondutoit/rpmvenv
+    cd ./rpmvenv
+    git checkout pg-env-rpm
+    cd -
     sudo pip install ./rpmvenv
     sudo rm /vagrant/tsd-file-api-0.1.0-1.x86_64.rpm
     sudo rpmvenv --verbose /vagrant/config.json --destination /vagrant
