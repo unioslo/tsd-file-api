@@ -286,7 +286,7 @@ class TestFileApi(unittest.TestCase):
             os.remove(os.path.normpath(self.uploads_folder + '/' + newfilename))
         except OSError:
             pass
-        headers = { 'Authorization': 'Bearer ' + IMPORT_TOKENS['VALID'], 'X-Filename': newfilename }
+        headers = { 'Authorization': 'Bearer ' + IMPORT_TOKENS['VALID'], 'Filename': newfilename }
         resp = requests.post(self.stream, data=open(self.example_csv), headers=headers)
         self.assertEqual(resp.status_code, 201)
         uploaded_file = os.path.normpath(self.uploads_folder + '/' + newfilename)
@@ -294,7 +294,7 @@ class TestFileApi(unittest.TestCase):
 
 
     def test_J_stream_file_chunked_transfer_encoding(self):
-        headers = { 'X-Filename': 'streamed-example.csv', 'Authorization': 'Bearer ' + IMPORT_TOKENS['VALID'], 'Expect': '100-Continue' }
+        headers = { 'Filename': 'streamed-example.csv', 'Authorization': 'Bearer ' + IMPORT_TOKENS['VALID'], 'Expect': '100-Continue' }
         resp = requests.post(self.stream, data=lazy_file_reader(self.example_csv), headers=headers)
 
 
