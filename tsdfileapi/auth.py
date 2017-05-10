@@ -1,6 +1,5 @@
 
-"""Tools to do authentication and authorization with JWT. Based on
-https://github.com/davedoesdev/python-jwt."""
+"""Tools to do authentication and authorization with JWT."""
 
 import json
 import time
@@ -19,6 +18,11 @@ def verify_json_web_token(auth_header, secret, required_role=None):
     2) Extracts the JWT header and the claims
     3) Checks that the role assigned to the user in the db is allowed to perform the action
     4) Checks that the token has not expired - 1 hour is the current lifetime
+
+    If the JWT authn+z fails in any way we log the reason but do not communicate
+    it to the client. The only information they get is that the requested operation
+    is forbidden. This sacrifices usability in favour of providing less information
+    about the authentication and authorization scheme to potential attackers.
     """
     try:
         raw_token = auth_header.split(' ')[1]
@@ -29,34 +33,37 @@ def verify_json_web_token(auth_header, secret, required_role=None):
         # make sure to specify the algorithm
         claims = json.loads(token.claims)
     except KeyError:
+        logging.error('No JWT provided')
         return {
-            'message': 'No JWT provided.',
+            'message': 'Access forbidden',
             'status': False
             }
     except jws.InvalidJWSSignature as e:
+        logging.error('Invalid JWT signature')
         return {
-            'message': 'Access forbidden - Unable to verify signature.',
+            'message': 'Access forbidden',
             'status': False
             }
     except Exception as e:
         logging.error(e)
         logging.error('JWT expired')
         return {
-            'message': 'Access forbidden - JWT expired.',
+            'message': 'Access forbidden',
             'status': False
            }
     if claims['role'] != required_role:
+        logging.error('role not allowed to perform requested operation')
         return {
-        'message': 'Access forbidden - Your role does not allow this operation.',
-        'status': False
+            'message': 'Access forbidden',
+            'status': False
         }
     if int(time.time()) > int(claims['exp']):
         logging.error('JWT expired')
         return {
-            'message': 'Access forbidden - JWT expired.',
+            'message': 'Access forbidden',
             'status': False
             }
     else:
-        return { 'message': 'Token OK', 'status': True }
+        return { 'message': 'OK', 'status': True }
 
 
