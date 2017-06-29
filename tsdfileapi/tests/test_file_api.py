@@ -293,23 +293,37 @@ class TestFileApi(unittest.TestCase):
         self.assertEqual(md5sum(self.example_csv), md5sum(uploaded_file))
 
 
-    def test_J_stream_file_chunked_transfer_encoding(self):
+    def test_J_post_stream_file_chunked_transfer_encoding(self):
         headers = { 'Filename': 'streamed-example.csv', 'Authorization': 'Bearer ' + IMPORT_TOKENS['VALID'], 'Expect': '100-Continue' }
         resp = requests.post(self.stream, data=lazy_file_reader(self.example_csv), headers=headers)
+
+
+    def test_K_put_stream_file_chunked_transfer_encoding(self):
+        newfilename = 'streamed-put-example.csv'
+        try:
+            os.remove(os.path.normpath(self.uploads_folder + '/' + newfilename))
+        except OSError:
+            pass
+        headers = { 'Filename': 'streamed-put-example.csv', 'Authorization': 'Bearer ' + IMPORT_TOKENS['VALID'], 'Expect': '100-Continue' }
+        resp = requests.put(self.stream, data=lazy_file_reader(self.example_csv), headers=headers)
+        uploaded_file = os.path.normpath(self.uploads_folder + '/' + newfilename)
+        self.assertEqual(md5sum(self.example_csv), md5sum(uploaded_file))
+        resp = requests.put(self.stream, data=lazy_file_reader(self.example_csv), headers=headers)
+        self.assertEqual(md5sum(self.example_csv), md5sum(uploaded_file))
 
 
     # Metadata
     #---------
 
 
-    def test_K_get_file_list(self):
+    def test_L_get_file_list(self):
         headers = { 'Authorization': 'Bearer ' + IMPORT_TOKENS['VALID'] }
         resp = requests.get(self.list, headers=headers)
         data = json.loads(resp.text)
         self.assertTrue('uploaded-example.csv' in data.keys())
 
 
-    def test_L_get_file_checksum(self):
+    def test_M_get_file_checksum(self):
         src = os.path.normpath(self.uploads_folder + '/' + 'uploaded-example.csv')
         headers = { 'Authorization': 'Bearer ' + IMPORT_TOKENS['VALID'] }
         resp = requests.get(self.base_url + '/checksum?filename=uploaded-example.csv&algorithm=md5', headers=headers)
@@ -321,7 +335,7 @@ class TestFileApi(unittest.TestCase):
     # Informational
     #--------------
 
-    def test_M_head_on_uploads_fails_when_it_should(self):
+    def test_N_head_on_uploads_fails_when_it_should(self):
         resp1 = requests.head(self.upload)
         self.assertEqual(resp1.status_code, 400)
         resp2 = requests.head(self.upload, headers={ 'Authorization': 'Bearer ' + IMPORT_TOKENS['VALID'] })
@@ -367,11 +381,12 @@ def main():
         'test_G_patch_file_multi_part_form_data',
         'test_H_put_file_multi_part_form_data',
         'test_I_post_file_to_streaming_endpoint_no_chunked_encoding_data_binary',
-        'test_J_stream_file_chunked_transfer_encoding',
-        'test_K_get_file_list',
-        'test_L_get_file_checksum',
-        'test_M_head_on_uploads_fails_when_it_should',
-        'test_O_head_on_uploads_succeeds_when_conditions_are_met'
+        'test_J_post_stream_file_chunked_transfer_encoding',
+        'test_K_put_stream_file_chunked_transfer_encoding',
+        'test_L_get_file_list',
+        'test_M_get_file_checksum',
+        'test_N_head_on_uploads_fails_when_it_should',
+        'test_O_head_on_uploads_succeeds_when_conditions_are_met',
         ])))
     map(runner.run, suite)
 

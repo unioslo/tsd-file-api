@@ -128,7 +128,10 @@ class StreamHandler(AuthRequestHandler):
             path = os.path.normpath(options.uploads_folder + '/' + filename)
             logging.info('opening file')
             logging.info('path: %s', path)
-            self.target_file = open(path, 'ab+')
+            if self.request.method == 'POST':
+                self.target_file = open(path, 'ab+')
+            elif self.request.method == 'PUT':
+                self.target_file = open(path, 'wb+')
         except Exception as e:
             logging.error(e)
             logging.error("filename not found")
@@ -153,6 +156,13 @@ class StreamHandler(AuthRequestHandler):
 
     def post(self):
         logging.info('StreamHandler.post')
+        self.target_file.close()
+        logging.info('StreamHandler: closed file')
+        self.set_status(201)
+        self.write({ 'message': 'data streamed to file' })
+
+    def put(self):
+        logging.info('StreamHandler.put')
         self.target_file.close()
         logging.info('StreamHandler: closed file')
         self.set_status(201)
@@ -236,7 +246,18 @@ class ProxyHandler(AuthRequestHandler):
         """Called after entire body has been read."""
         logging.info('ProxyHandler.post')
         yield self.chunks.put(None)
-        response = yield self.fetch_future # wait for request to finish.
+        # wait for request to finish.
+        response = yield self.fetch_future
+        self.set_status(response.code)
+        self.write(response.body)
+
+    @gen.coroutine
+    def put(self):
+        """Called after entire body has been read."""
+        logging.info('ProxyHandler.put')
+        yield self.chunks.put(None)
+        # wait for request to finish.
+        response = yield self.fetch_future
         self.set_status(response.code)
         self.write(response.body)
 
@@ -273,16 +294,11 @@ class ChecksumHandler(AuthRequestHandler):
         self.validate_token()
 
     def get(self):
-        # TODO
         # Consider: http://www.tornadoweb.org/en/stable/escape.html#tornado.escape.url_unescape
         filename = secure_filename(self.get_query_argument('filename'))
-        algorithm = self.get_query_argument('algorithm')
-        if algorithm != 'md5':
-            self.finish({ 'message': 'algorithm not supported' })
-        else:
-            path = os.path.normpath(options.uploads_folder + '/' + filename)
-            checksum = self.md5sum(path)
-            self.write({ 'checksum': checksum, 'algorithm': 'md5' })
+        path = os.path.normpath(options.uploads_folder + '/' + filename)
+        checksum = self.md5sum(path)
+        self.write({ 'checksum': checksum, 'algorithm': 'md5' })
 
 
 def main():
