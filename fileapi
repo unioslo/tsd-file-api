@@ -49,6 +49,7 @@ _guide="\
 
         systemctl start file-api
         systemctl status file-api
+        systemctl enable file-api
 
     5. Run tests to verify it works
 
