@@ -35,7 +35,7 @@ def _table_name_from_form_id(form_id):
 
 def _statement_from_data(table_name, data):
     """
-    Construct an insert safe SQL statement from data. Avoids parsing data.
+    Construct a safe and correct SQL insert statement from data. Avoids parsing data.
 
     Security measures
     -----------------
@@ -99,6 +99,47 @@ def insert_into(table_name, data):
     conn.execute('delete from %s' % table_name)
     conn.close()
 
+
+def _sqltype_from_nstype(t):
+    type_map = {
+        'QUESTION': 'text',
+        'QUESTION_MULTILINE': 'text',
+        'RADIO': 'text',
+        'CHECKBOX': 'text',
+        'MATRIX_RADIO': 'text',
+        'MATRIX_CHECKBOX': 'text',
+        'NATIONAL_ID_NUMBER': 'text',
+        'ATTACHMENT': 'text',
+        'NUMBER': 'real',
+        'DATE': 'text',
+        'EMAIL': 'text',
+        'SELECT': 'text'
+    }
+    try:
+        return type_map(t)
+    except KeyError:
+        raise Exception('Nettskjema codebook type not supported')
+
+
+def create_table_from_codebook(data):
+    """
+    data = { definition: json, type: text <codebook, generic>, form_id: int }
+
+    Should be idempotent.
+    """
+    pass
+    # get table name safely
+    # 'create table if not exists %s()'
+    # alter table %s add column submission_id int primary key (catch exception)
+    # definition->pages->0->elements
+    # for el in elements
+        # type : el->elementType
+        # el->questions
+        # for q in el->questions
+            # colname : q->externalQuestionId
+            # alter table %(table)s add column %(colname)s type (catching exception)
+    # set owner correctly if relevant
+    # also leep track of definitions in a codebooks table? I think no
 
 def main():
     data = {'x': 99, 'y': 10, 'z': 'afbhew'}
