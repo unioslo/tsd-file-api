@@ -21,6 +21,7 @@ from tornado.web import Application, RequestHandler, stream_request_body, HTTPEr
 
 from auth import verify_json_web_token
 from utils import secure_filename
+from db import insert_into, create_table_from_codebook, sqlite_init
 
 
 def read_config(file):
@@ -44,6 +45,7 @@ define('max_body_size', config['max_body_size'])
 define('uploads_folder', config['uploads_folder'])
 define('import_secret', config['import_secret'])
 define('export_secret', config['export_secret'])
+define('nsdb_path', config['sqlite_folder'])
 
 
 class AuthRequestHandler(RequestHandler):
@@ -301,14 +303,61 @@ class ChecksumHandler(AuthRequestHandler):
         self.write({ 'checksum': checksum, 'algorithm': 'md5' })
 
 
+class TableCreatorHandler(AuthRequestHandler):
+
+    def prepare(self):
+        self.validate_token()
+        pass
+
+    def post(self, pnum):
+        try:
+            data = json_decode(self.request.body)
+            definition = data['definition']
+            form_id = data['form_id']
+            def_type = data['type']
+        # need to fail gracefully
+        except KeyError as e:
+            logging.error(e)
+            raise Exception
+        try:
+            engine = sqlite_init(options.nsdb_path, pnum)
+            create_table_from_codebook(definition, form_id, engine)
+            self.set_status(201)
+            self.write({'message': 'table created'})
+        except Exception as e:
+            logging.error(e.message)
+            self.set_status(400)
+            self.finish({'message': e.message})
+
+
+
+class JsonToSQLiteHandler(AuthRequestHandler):
+
+    def prepare(self):
+        #self.validate_token()
+        pass
+
+    def post(self, pnum, resource_name):
+        # sanitise inputs
+        logging.info('%s' % pnum)
+        logging.info('%s' % resource_name)
+        data = json_decode(self.request.body)
+        insert_into(resource_name, data)
+        self.set_status(201)
+        self.write({'message': '\o/'})
+
+
 def main():
     parse_command_line()
     app = Application([
+        # todo add project numbers in url
         ('/upload_stream', StreamHandler),
         ('/stream', ProxyHandler),
         ('/upload', FormDataHandler),
         ('/checksum', ChecksumHandler),
-        ('/list', MetaDataHandler)
+        ('/list', MetaDataHandler),
+        ('/(.*)/storage/(.*)', JsonToSQLiteHandler),
+        ('/(.*)/rpc/create_table', TableCreatorHandler)
     ], debug=options.debug)
     app.listen(options.port, max_body_size=options.max_body_size)
     IOLoop.instance().start()
