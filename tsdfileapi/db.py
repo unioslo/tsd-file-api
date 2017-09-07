@@ -10,7 +10,7 @@ from sqlalchemy.pool import QueuePool
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy import create_engine
 from contextlib import contextmanager
-from sqlalchemy.exc import OperationalError, IntegrityError
+from sqlalchemy.exc import OperationalError, IntegrityError, StatementError
 
 
 _valid_id = re.compile(r'([0-9])')
@@ -69,7 +69,7 @@ def session_scope(engine):
     try:
         yield session
         session.commit()
-    except Exception as e:
+    except (OperationalError, IntegrityError, StatementError) as e:
         logging.error("Could not commit data")
         logging.error("Rolling back transaction")
         session.rollback()
@@ -161,31 +161,22 @@ def insert_into(engine, table_name, data):
     -------
     bool
     """
-    # TODO: dryer
-    if type(data) is list:
-        stmt = _statement_from_data(table_name, data[0])
-        try:
-            with session_scope(engine) as session:
+    dtype = type(data)
+    stmt = _statement_from_data(table_name, data[0])
+    try:
+        with session_scope(engine) as session:
+            if dtype is list:
                 for row in data:
                     session.execute(stmt, row)
-        except OperationalError as e:
-            logging.error(e.message)
-            raise InsertException
-        except IntegrityError as e:
-            logging.error(e.message)
-            raise DuplicateRowException
-    elif type(data) is dict:
-        stmt = _statement_from_data(table_name, data)
-        try:
-            with session_scope(engine) as session:
+            elif dtype is dict:
                 session.execute(stmt, data)
-        except OperationalError as e:
-            logging.error(e.message)
-            raise InsertException
-        except IntegrityError as e:
-            logging.error(e.message)
-            raise DuplicateRowException
-    return True
+        return True
+    except (OperationalError, StatementError) as e:
+        logging.error(e.message)
+        raise InsertException
+    except IntegrityError as e:
+        logging.error(e.message)
+        raise DuplicateRowException
 
 
 def _sqltype_from_nstype(t):

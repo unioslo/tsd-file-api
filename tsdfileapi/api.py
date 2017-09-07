@@ -343,8 +343,9 @@ class JsonToSQLiteHandler(AuthRequestHandler):
             engine = sqlite_init(options.nsdb_path, pnum)
             insert_into(engine, resource_name, data)
             self.set_status(201)
-            self.write({'message': '\o/'})
+            self.write({'message': 'data stored'})
         except Exception as e:
+            logging.error(e)
             self.set_status(400)
             self.write({'message': e.message})
 
