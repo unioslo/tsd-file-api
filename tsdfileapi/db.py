@@ -10,7 +10,7 @@ from sqlalchemy.pool import QueuePool
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy import create_engine
 from contextlib import contextmanager
-from sqlalchemy.exc import  OperationalError
+from sqlalchemy.exc import OperationalError, IntegrityError
 
 
 _valid_id = re.compile(r'([0-9])')
@@ -37,8 +37,16 @@ class UnsupportedTypeException(Exception):
     message = 'Nettskjema codebook type not supported'
 
 
-class DbCreationExceptio(Exception):
+class DbCreationException(Exception):
     message = 'Cannot create sqlite db for project'
+
+
+class InsertException(Exception):
+    message = 'Data insert failed - check URL and JSON'
+
+
+class DuplicateRowException(Exception):
+    message = 'Duplicate row - submission already stored'
 
 
 def sqlite_init(path, pnum):
@@ -46,7 +54,7 @@ def sqlite_init(path, pnum):
         assert _valid_pnum.match(pnum)
     except AssertionError as e:
         logging.error(e)
-        raise DbCreationExceptio
+        raise DbCreationException
     dbname = pnum + '-forms.db'
     dburl = 'sqlite:///' + path + '/' + dbname
     engine = create_engine(dburl, poolclass=QueuePool)
@@ -139,17 +147,45 @@ def _statement_from_data(table_name, data):
     return stmt
 
 
-def insert_into(table_name, data):
-    stmt = _statement_from_data(table_name, data)
-    print stmt
-    return
-    engine = create_engine('sqlite:///testdb1')
-    conn = engine.connect()
-    conn.execute('create table if not exists %s(x int, y int, z text)' % table)
-    conn.execute(stmt, data)
-    print conn.execute('select * from %s' % table_name).fetchall()
-    conn.execute('delete from %s' % table_name)
-    conn.close()
+def insert_into(engine, table_name, data):
+    """
+    Insert a dictionary of data into one row of a table.
+
+    Parameters
+    ----------
+    engine: sqlalchemy engine for sqlite
+    table_name: string
+    data: dict
+
+    Returns
+    -------
+    bool
+    """
+    # TODO: dryer
+    if type(data) is list:
+        stmt = _statement_from_data(table_name, data[0])
+        try:
+            with session_scope(engine) as session:
+                for row in data:
+                    session.execute(stmt, row)
+        except OperationalError as e:
+            logging.error(e.message)
+            raise InsertException
+        except IntegrityError as e:
+            logging.error(e.message)
+            raise DuplicateRowException
+    elif type(data) is dict:
+        stmt = _statement_from_data(table_name, data)
+        try:
+            with session_scope(engine) as session:
+                session.execute(stmt, data)
+        except OperationalError as e:
+            logging.error(e.message)
+            raise InsertException
+        except IntegrityError as e:
+            logging.error(e.message)
+            raise DuplicateRowException
+    return True
 
 
 def _sqltype_from_nstype(t):
@@ -224,4 +260,3 @@ def create_table_from_codebook(definition, form_id, engine):
                 except OperationalError as e:
                     logging.info('duplicate column - skipping creation')
     return True
-

@@ -315,36 +315,38 @@ class TableCreatorHandler(AuthRequestHandler):
             definition = data['definition']
             form_id = data['form_id']
             def_type = data['type']
-        # need to fail gracefully
-        except KeyError as e:
-            logging.error(e)
-            raise Exception
-        try:
             engine = sqlite_init(options.nsdb_path, pnum)
             create_table_from_codebook(definition, form_id, engine)
             self.set_status(201)
             self.write({'message': 'table created'})
         except Exception as e:
             logging.error(e.message)
+            if e is KeyError:
+                m = 'Check your JSON'
+            else:
+                m = e.message
             self.set_status(400)
-            self.finish({'message': e.message})
-
+            self.finish({'message': m})
 
 
 class JsonToSQLiteHandler(AuthRequestHandler):
 
     def prepare(self):
-        #self.validate_token()
+        self.validate_token()
         pass
 
     def post(self, pnum, resource_name):
-        # sanitise inputs
-        logging.info('%s' % pnum)
-        logging.info('%s' % resource_name)
-        data = json_decode(self.request.body)
-        insert_into(resource_name, data)
-        self.set_status(201)
-        self.write({'message': '\o/'})
+        # data inputs are checked to prevent SQL injection
+        # see the db module for more details
+        try:
+            data = json_decode(self.request.body)
+            engine = sqlite_init(options.nsdb_path, pnum)
+            insert_into(engine, resource_name, data)
+            self.set_status(201)
+            self.write({'message': '\o/'})
+        except Exception as e:
+            self.set_status(400)
+            self.write({'message': e.message})
 
 
 def main():
