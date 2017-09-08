@@ -149,7 +149,7 @@ def _statement_from_data(table_name, data):
 
 def insert_into(engine, table_name, data):
     """
-    Insert a dictionary of data into one row of a table.
+    Inserts data into a table - either one row or in bulk.
 
     Parameters
     ----------
@@ -162,13 +162,14 @@ def insert_into(engine, table_name, data):
     bool
     """
     dtype = type(data)
-    stmt = _statement_from_data(table_name, data[0])
     try:
         with session_scope(engine) as session:
             if dtype is list:
+                stmt = _statement_from_data(table_name, data[0])
                 for row in data:
                     session.execute(stmt, row)
             elif dtype is dict:
+                stmt = _statement_from_data(table_name, data)
                 session.execute(stmt, data)
         return True
     except (OperationalError, StatementError) as e:

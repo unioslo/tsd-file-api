@@ -110,6 +110,7 @@ class TestFileApi(unittest.TestCase):
         cls.base_url = 'http://localhost' + ':' + str(cls.config['port'])
         cls.data_folder = cls.config['data_folder']
         cls.example_csv = os.path.normpath(cls.data_folder + '/example.csv')
+        cls.example_codebook = json.loads(open(os.path.normpath(cls.data_folder + '/example-ns.json')).read())
         cls.uploads_folder = cls.config['uploads_folder']
         # all endpoints
         cls.upload = cls.base_url + '/upload'
@@ -117,6 +118,7 @@ class TestFileApi(unittest.TestCase):
         cls.checksum = cls.base_url + '/checksum'
         cls.stream = cls.base_url + '/stream'
         cls.upload_stream = cls.base_url + '/upload_stream'
+        cls.test_project = '/p19'
 
 
     @classmethod
@@ -133,6 +135,7 @@ class TestFileApi(unittest.TestCase):
                 except OSError as e:
                     logging.error(e)
                     continue
+        # TODO remove sqlite db
 
     # Import Auth
     #------------
@@ -360,13 +363,57 @@ class TestFileApi(unittest.TestCase):
 
     # Space issues
 
-    def test_report_informative_error_when_running_out_space(self):
+    def test_R_report_informative_error_when_running_out_space(self):
         pass
         # [Errno 28] No space left on device
 
     # https://auth0.com/blog/critical-vulnerabilities-in-json-web-token-libraries/
     # make sure alg : none JWT rejected
     # make sure cannot select any other alg
+
+    # JSON data (from nettskjema)
+    #----------------------------
+
+    def test_S_create_table(self):
+        table_def = self.example_codebook
+        headers={ 'Authorization': 'Bearer ' + IMPORT_TOKENS['VALID'] }
+        resp = requests.post(self.base_url + self.test_project + '/rpc/create_table',
+                    data=json.dumps(table_def), headers=headers)
+        self.assertEqual(resp.status_code, 201)
+
+
+    def test_T_create_table_is_idempotent(self):
+        table_def = self.example_codebook
+        headers={ 'Authorization': 'Bearer ' + IMPORT_TOKENS['VALID'] }
+        resp = requests.post(self.base_url + self.test_project + '/rpc/create_table',
+                    data=json.dumps(table_def), headers=headers)
+        self.assertEqual(resp.status_code, 201)
+
+
+    def test_U_add_column_codebook(self):
+        table_def = self.example_codebook
+        table_def['definition']['pages'][0]['elements'].append({
+            'elementType': 'QUESTION',
+            'questions': [{'externalQuestionId': 'var3'}]
+        })
+        headers={ 'Authorization': 'Bearer ' + IMPORT_TOKENS['VALID'] }
+        resp = requests.post(self.base_url + self.test_project + '/rpc/create_table',
+                    data=json.dumps(table_def), headers=headers)
+        self.assertEqual(resp.status_code, 201)
+
+
+    def test_V_post_data(self):
+        data = {'submission_id':1, 'age':93}
+        bulk_data = [{'submission_id':4, 'var1':'something', 'var2':'nothing'},
+                     {'submission_id':3, 'var1':'sensitive', 'var2': 'kablamo'}]
+        headers={ 'Authorization': 'Bearer ' + IMPORT_TOKENS['VALID'] }
+        resp1 = requests.post(self.base_url + self.test_project + '/storage/form_63332',
+                    data=json.dumps(data), headers=headers)
+        resp2 = requests.post(self.base_url + self.test_project + '/storage/form_63332',
+                    data=json.dumps(bulk_data), headers=headers)
+        self.assertEqual(resp1.status_code, 201)
+        self.assertEqual(resp2.status_code, 201)
+
 
 def main():
     runner = unittest.TextTestRunner()
@@ -387,6 +434,10 @@ def main():
         'test_M_get_file_checksum',
         'test_N_head_on_uploads_fails_when_it_should',
         'test_O_head_on_uploads_succeeds_when_conditions_are_met',
+        'test_S_create_table',
+        'test_T_create_table_is_idempotent',
+        'test_U_add_column_codebook',
+        'test_V_post_data',
         ])))
     map(runner.run, suite)
 

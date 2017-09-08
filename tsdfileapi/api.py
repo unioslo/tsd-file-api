@@ -307,7 +307,6 @@ class TableCreatorHandler(AuthRequestHandler):
 
     def prepare(self):
         self.validate_token()
-        pass
 
     def post(self, pnum):
         try:
@@ -333,7 +332,6 @@ class JsonToSQLiteHandler(AuthRequestHandler):
 
     def prepare(self):
         self.validate_token()
-        pass
 
     def post(self, pnum, resource_name):
         # data inputs are checked to prevent SQL injection
