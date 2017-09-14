@@ -17,11 +17,13 @@ from tornado import gen
 from tornado.httpclient import AsyncHTTPClient
 from tornado.ioloop import IOLoop
 from tornado.options import parse_command_line, define, options
-from tornado.web import Application, RequestHandler, stream_request_body, HTTPError, MissingArgumentError
+from tornado.web import Application, RequestHandler, stream_request_body, \
+                        HTTPError, MissingArgumentError
 
 from auth import verify_json_web_token
 from utils import secure_filename
-from db import insert_into, create_table_from_codebook, sqlite_init
+from db import insert_into, create_table_from_codebook, sqlite_init, \
+               create_table_from_generic
 
 
 def read_config(file):
@@ -305,19 +307,38 @@ class ChecksumHandler(AuthRequestHandler):
 
 class TableCreatorHandler(AuthRequestHandler):
 
+    """
+    Creates tables in sqlite.
+    Data inputs are checked to prevent SQL injection.
+    See the db module for more details.
+    """
+
     def prepare(self):
         self.validate_token()
+
 
     def post(self, pnum):
         try:
             data = json_decode(self.request.body)
-            definition = data['definition']
-            form_id = data['form_id']
-            def_type = data['type']
             engine = sqlite_init(options.nsdb_path, pnum)
-            create_table_from_codebook(definition, form_id, engine)
-            self.set_status(201)
-            self.write({'message': 'table created'})
+            try:
+                _type = data['type']
+            except KeyError as e:
+                logging.error(e.message)
+                logging.error('missing table definition type')
+                raise e
+            if _type == 'codebook':
+                definition = data['definition']
+                form_id = data['form_id']
+                def_type = data['type']
+                create_table_from_codebook(definition, form_id, engine)
+                self.set_status(201)
+                self.write({'message': 'table created'})
+            elif _type == 'generic':
+                definition = data['definition']
+                create_table_from_generic(definition, engine)
+                self.set_status(201)
+                self.write({'message': 'table created'})
         except Exception as e:
             logging.error(e.message)
             if e is KeyError:
@@ -330,12 +351,16 @@ class TableCreatorHandler(AuthRequestHandler):
 
 class JsonToSQLiteHandler(AuthRequestHandler):
 
+    """
+    Stores JSON data in sqlite.
+    Data inputs are checked to prevent SQL injection.
+    See the db module for more details.
+    """
+
     def prepare(self):
         self.validate_token()
 
     def post(self, pnum, resource_name):
-        # data inputs are checked to prevent SQL injection
-        # see the db module for more details
         try:
             data = json_decode(self.request.body)
             engine = sqlite_init(options.nsdb_path, pnum)

@@ -415,6 +415,21 @@ class TestFileApi(unittest.TestCase):
         self.assertEqual(resp2.status_code, 201)
 
 
+    def test_W_create_table_generic(self):
+        table_def = {
+            'table_name': 'test1',
+            'columns': [
+                {'name': 'x', 'type': 'int', 'constraints': { 'not_null': True } },
+                {'name': 'y', 'type': 'text'}
+            ]
+        }
+        data = {'type': 'generic', 'definition': table_def}
+        headers={ 'Authorization': 'Bearer ' + IMPORT_TOKENS['VALID'] }
+        resp = requests.post(self.base_url + self.test_project + '/rpc/create_table',
+                    data=json.dumps(data), headers=headers)
+        self.assertEqual(resp.status_code, 201)
+
+
 def main():
     runner = unittest.TextTestRunner()
     suite = []
@@ -438,6 +453,7 @@ def main():
         'test_T_create_table_is_idempotent',
         'test_U_add_column_codebook',
         'test_V_post_data',
+        'test_W_create_table_generic',
         ])))
     map(runner.run, suite)
 

@@ -15,6 +15,7 @@ from sqlalchemy.exc import OperationalError, IntegrityError, StatementError
 
 _valid_id = re.compile(r'([0-9])')
 _valid_pnum = re.compile(r'([0-9a-z])')
+_valid_colname = re.compile(r'([0-9a-z])')
 
 
 class TableNameException(Exception):
@@ -55,6 +56,8 @@ def sqlite_init(path, pnum):
     except AssertionError as e:
         logging.error(e)
         raise DbCreationException
+    # this might contain project data that is not forms
+    # maybe pnum-data.db
     dbname = pnum + '-forms.db'
     dburl = 'sqlite:///' + path + '/' + dbname
     engine = create_engine(dburl, poolclass=QueuePool)
@@ -211,6 +214,7 @@ def create_table_from_codebook(definition, form_id, engine):
     ----------
     definition: dict
     form_id: int
+    engine: sqlite engine
 
     Returns
     -------
@@ -252,3 +256,63 @@ def create_table_from_codebook(definition, form_id, engine):
                 except OperationalError as e:
                     logging.info('duplicate column - skipping creation')
     return True
+
+
+def create_table_from_generic(definition, engine):
+    """
+    Create table in SQLite DB from generic table definition.
+
+    Parameters
+    ----------
+    definition: dict
+    engine: sqlite engine
+
+    Returns
+    -------
+    bool
+    """
+    try:
+        table_name = secure_filename(definition['table_name'])
+    except KeyError as e:
+        logging.error(e)
+        raise TableCreationException
+    try:
+        with session_scope(engine) as session:
+            session.execute('create table if not exists \
+                %s(submission_ts default (datetime(current_timestamp)))' % table_name)
+            try:
+                cols = definition['columns']
+                assert type(cols) is list
+            except (AssertionError, KeyError) as e:
+                logging.error(e.message)
+                raise TableCreationException
+            for col in cols:
+                try:
+                    colname = secure_filename(col['name'])
+                    assert _valid_colname.match(col['type'])
+                    coltype = col['type']
+                except AssertionError as e:
+                    logging.error(e.message)
+                    raise TableCreationException
+                try:
+                    constraints = col['constraints']
+                except KeyError as e:
+                    constraints = False
+                try:
+                    if not constraints:
+                        session.execute('alter table %s \
+                            add column %s %s' % (table_name, colname, coltype))
+                    if constraints:
+                        if 'primary_key' in constraints.keys():
+                            session.execute('alter table %s add column %s %s primary key' %
+                                (table_name, colname, coltype))
+                        elif 'not_null' in constraints.keys():
+                            session.execute('alter table %s add column %s %s not null default 0' %
+                                (table_name, colname, coltype))
+                except OperationalError as e:
+                    logging.info('duplicate column - skipping creation')
+    except Exception as e:
+        logging.error(e.message)
+        raise TableCreationException
+    return True
+
