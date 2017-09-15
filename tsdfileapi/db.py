@@ -58,7 +58,7 @@ def sqlite_init(path, pnum):
         raise DbCreationException
     # this might contain project data that is not forms
     # maybe pnum-data.db
-    dbname = pnum + '-forms.db'
+    dbname = pnum + '-data.db'
     dburl = 'sqlite:///' + path + '/' + dbname
     engine = create_engine(dburl, poolclass=QueuePool)
     return engine
