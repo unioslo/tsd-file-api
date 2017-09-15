@@ -63,6 +63,8 @@ import json
 import os
 import unittest
 import yaml
+import random
+import gnupg
 from datetime import datetime
 
 from tokens import IMPORT_TOKENS, EXPORT_TOKENS
@@ -95,6 +97,31 @@ def md5sum(filename, blocksize=65536):
     return hash.hexdigest()
 
 
+def build_payload():
+    gpg = gnupg.GPG(
+        # TODO: get this from config
+        binary='/usr/local/bin/gpg',
+        homedir='/Users/leondutoit/.gnupg',
+        keyring='pubring.gpg',
+        secring='secring.gpg')
+    key_id = '264CE5ED60A7548B'
+    id = random.randint(1, 1000000)
+    message = json.dumps({
+            'submission_id': id, 'consent': 'yes', 'age': 20, 'email_address': 'my2@email.com',
+            'national_id_number': '18101922351', 'phone_number': '4820666472',
+            'children_ages': '{"6", "70"}', 'var1': '{"val2"}' })
+    encr = str(gpg.encrypt(message, key_id))
+    data = {
+        'form_id': 63332,
+        'submission_id': id,
+        'submission_timestamp': datetime.utcnow().isoformat(),
+        'key_id': key_id,
+        'data': encr
+    }
+    return data
+
+
+
 class TestFileApi(unittest.TestCase):
 
 
@@ -107,7 +134,8 @@ class TestFileApi(unittest.TestCase):
             print e
             print "Missing config file?"
             sys.exit(1)
-        cls.base_url = 'http://localhost' + ':' + str(cls.config['port'])
+        # includes p19 - a random project number for integration testing
+        cls.base_url = 'http://localhost' + ':' + str(cls.config['port']) + '/p19'
         cls.data_folder = cls.config['data_folder']
         cls.example_csv = os.path.normpath(cls.data_folder + '/example.csv')
         cls.example_codebook = json.loads(open(os.path.normpath(cls.data_folder + '/example-ns.json')).read())
@@ -377,7 +405,7 @@ class TestFileApi(unittest.TestCase):
     def test_S_create_table(self):
         table_def = self.example_codebook
         headers={ 'Authorization': 'Bearer ' + IMPORT_TOKENS['VALID'] }
-        resp = requests.post(self.base_url + self.test_project + '/rpc/create_table',
+        resp = requests.post(self.base_url + '/rpc/create_table',
                     data=json.dumps(table_def), headers=headers)
         self.assertEqual(resp.status_code, 201)
 
@@ -385,7 +413,7 @@ class TestFileApi(unittest.TestCase):
     def test_T_create_table_is_idempotent(self):
         table_def = self.example_codebook
         headers={ 'Authorization': 'Bearer ' + IMPORT_TOKENS['VALID'] }
-        resp = requests.post(self.base_url + self.test_project + '/rpc/create_table',
+        resp = requests.post(self.base_url + '/rpc/create_table',
                     data=json.dumps(table_def), headers=headers)
         self.assertEqual(resp.status_code, 201)
 
@@ -397,7 +425,7 @@ class TestFileApi(unittest.TestCase):
             'questions': [{'externalQuestionId': 'var3'}]
         })
         headers={ 'Authorization': 'Bearer ' + IMPORT_TOKENS['VALID'] }
-        resp = requests.post(self.base_url + self.test_project + '/rpc/create_table',
+        resp = requests.post(self.base_url + '/rpc/create_table',
                     data=json.dumps(table_def), headers=headers)
         self.assertEqual(resp.status_code, 201)
 
@@ -407,9 +435,9 @@ class TestFileApi(unittest.TestCase):
         bulk_data = [{'submission_id':4, 'var1':'something', 'var2':'nothing'},
                      {'submission_id':3, 'var1':'sensitive', 'var2': 'kablamo'}]
         headers={ 'Authorization': 'Bearer ' + IMPORT_TOKENS['VALID'] }
-        resp1 = requests.post(self.base_url + self.test_project + '/storage/form_63332',
+        resp1 = requests.post(self.base_url + '/storage/form_63332',
                     data=json.dumps(data), headers=headers)
-        resp2 = requests.post(self.base_url + self.test_project + '/storage/form_63332',
+        resp2 = requests.post(self.base_url + '/storage/form_63332',
                     data=json.dumps(bulk_data), headers=headers)
         self.assertEqual(resp1.status_code, 201)
         self.assertEqual(resp2.status_code, 201)
@@ -425,8 +453,16 @@ class TestFileApi(unittest.TestCase):
         }
         data = {'type': 'generic', 'definition': table_def}
         headers={ 'Authorization': 'Bearer ' + IMPORT_TOKENS['VALID'] }
-        resp = requests.post(self.base_url + self.test_project + '/rpc/create_table',
+        resp = requests.post(self.base_url + '/rpc/create_table',
                     data=json.dumps(data), headers=headers)
+        self.assertEqual(resp.status_code, 201)
+
+
+    def test_X_post_encrypted_data(self):
+        encrypted_data = build_payload()
+        headers={ 'Authorization': 'Bearer ' + IMPORT_TOKENS['VALID'] }
+        resp = requests.post(self.base_url + '/encrypted_data',
+                    data=json.dumps(encrypted_data), headers=headers)
         self.assertEqual(resp.status_code, 201)
 
 
@@ -454,6 +490,7 @@ def main():
         'test_U_add_column_codebook',
         'test_V_post_data',
         'test_W_create_table_generic',
+        'test_X_post_encrypted_data',
         ])))
     map(runner.run, suite)
 

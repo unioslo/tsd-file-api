@@ -23,7 +23,9 @@ from tornado.web import Application, RequestHandler, stream_request_body, \
 from auth import verify_json_web_token
 from utils import secure_filename
 from db import insert_into, create_table_from_codebook, sqlite_init, \
-               create_table_from_generic
+               create_table_from_generic, _table_name_from_form_id, \
+               _valid_pnum
+from pgp import decrypt_pgp_json
 
 
 def read_config(file):
@@ -99,22 +101,22 @@ class FormDataHandler(AuthRequestHandler):
             self.set_status(400)
             raise MissingArgumentError('file')
 
-    def post(self):
+    def post(self, pnum):
         self.write_file('ab+')
         self.set_status(201)
         self.write({'message': 'file uploaded'})
 
-    def patch(self):
+    def patch(self, pnum):
         self.write_file('ab+')
         self.set_status(201)
         self.write({'message': 'file uploaded'})
 
-    def put(self):
+    def put(self, pnum):
         self.write_file('wb+')
         self.set_status(201)
         self.write({'message': 'file uploaded'})
 
-    def head(self):
+    def head(self, pnum):
         self.set_status(201)
 
 
@@ -158,21 +160,21 @@ class StreamHandler(AuthRequestHandler):
             self.target_file.close()
             self.send_error("something went wrong")
 
-    def post(self):
+    def post(self, pnum):
         logging.info('StreamHandler.post')
         self.target_file.close()
         logging.info('StreamHandler: closed file')
         self.set_status(201)
         self.write({ 'message': 'data streamed to file' })
 
-    def put(self):
+    def put(self, pnum):
         logging.info('StreamHandler.put')
         self.target_file.close()
         logging.info('StreamHandler: closed file')
         self.set_status(201)
         self.write({ 'message': 'data streamed to file' })
 
-    def head(self):
+    def head(self, pnum):
         self.set_status(201)
 
     def on_finish(self):
@@ -217,8 +219,14 @@ class ProxyHandler(AuthRequestHandler):
                 body = None
             else:
                 body = self.body_producer
+            pnum = self.request.uri.split('/')[1]
+            try:
+                assert _valid_pnum.match(pnum)
+            except AssertionError as e:
+                logging.error('URI does not contain a valid pnum')
+                raise e
             self.fetch_future = AsyncHTTPClient().fetch(
-                'http://localhost:%d/upload_stream' % options.port,
+                'http://localhost:%d/%s/upload_stream' % (options.port, pnum),
                 method=self.request.method,
                 body_producer=body,
                 # for the _entire_ request
@@ -228,7 +236,7 @@ class ProxyHandler(AuthRequestHandler):
                 # in seconds, both
                 request_timeout=12000.0,
                 headers={ 'Authorization': 'Bearer ' + self.jwt, 'Filename': self.filename })
-        except (AttributeError, HTTPError) as e:
+        except (AttributeError, HTTPError, AssertionError) as e:
             logging.error('Problem in async client')
             logging.error(e)
 
@@ -246,7 +254,7 @@ class ProxyHandler(AuthRequestHandler):
         yield self.chunks.put(chunk)
 
     @gen.coroutine
-    def post(self):
+    def post(self, pnum):
         """Called after entire body has been read."""
         logging.info('ProxyHandler.post')
         yield self.chunks.put(None)
@@ -256,7 +264,7 @@ class ProxyHandler(AuthRequestHandler):
         self.write(response.body)
 
     @gen.coroutine
-    def put(self):
+    def put(self, pnum):
         """Called after entire body has been read."""
         logging.info('ProxyHandler.put')
         yield self.chunks.put(None)
@@ -265,7 +273,7 @@ class ProxyHandler(AuthRequestHandler):
         self.set_status(response.code)
         self.write(response.body)
 
-    def head(self):
+    def head(self, pnum):
         self.set_status(201)
 
 
@@ -274,7 +282,7 @@ class MetaDataHandler(AuthRequestHandler):
     def prepare(self):
         self.validate_token()
 
-    def get(self):
+    def get(self, pnum):
         _dir = options.uploads_folder
         files = os.listdir(_dir)
         times = map(lambda x:
@@ -287,6 +295,8 @@ class MetaDataHandler(AuthRequestHandler):
 
 class ChecksumHandler(AuthRequestHandler):
 
+    # TODO: consider removing
+
     def md5sum(self, filename, blocksize=65536):
         hash = hashlib.md5()
         with open(filename, "rb") as f:
@@ -297,7 +307,7 @@ class ChecksumHandler(AuthRequestHandler):
     def prepare(self):
         self.validate_token()
 
-    def get(self):
+    def get(self, pnum):
         # Consider: http://www.tornadoweb.org/en/stable/escape.html#tornado.escape.url_unescape
         filename = secure_filename(self.get_query_argument('filename'))
         path = os.path.normpath(options.uploads_folder + '/' + filename)
@@ -373,17 +383,44 @@ class JsonToSQLiteHandler(AuthRequestHandler):
             self.write({'message': e.message})
 
 
+class PGPJsonToSQLiteHandler(AuthRequestHandler):
+
+    """
+    Decrypts JSON data, stores it in sqlite.
+    """
+
+    def prepare(self):
+        self.validate_token()
+        pass
+
+    def post(self, pnum):
+        try:
+            all_data = json_decode(self.request.body)
+            table_name = _table_name_from_form_id(all_data['form_id'])
+            decrypted_data = decrypt_pgp_json(config, all_data['data'])
+            engine = sqlite_init(options.nsdb_path, pnum)
+            insert_into(engine, table_name, decrypted_data)
+            self.set_status(201)
+            self.write({'message': 'data stored'})
+        except Exception as e:
+            logging.error(e)
+            self.set_status(400)
+            self.write({'message': e.message})
+
+
 def main():
     parse_command_line()
     app = Application([
-        # todo add project numbers in url
-        ('/upload_stream', StreamHandler),
-        ('/stream', ProxyHandler),
-        ('/upload', FormDataHandler),
-        ('/checksum', ChecksumHandler),
-        ('/list', MetaDataHandler),
+        ('/(.*)/upload_stream', StreamHandler),
+        ('/(.*)/stream', ProxyHandler),
+        ('/(.*)/upload', FormDataHandler),
+        ('/(.*)/checksum', ChecksumHandler),
+        ('/(.*)/list', MetaDataHandler),
+        # this has to present the same interface as
+        # the postgrest API in terms of endpoints
         ('/(.*)/storage/(.*)', JsonToSQLiteHandler),
-        ('/(.*)/rpc/create_table', TableCreatorHandler)
+        ('/(.*)/rpc/create_table', TableCreatorHandler),
+        ('/(.*)/encrypted_data', PGPJsonToSQLiteHandler),
     ], debug=options.debug)
     app.listen(options.port, max_body_size=options.max_body_size)
     IOLoop.instance().start()
