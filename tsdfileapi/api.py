@@ -51,7 +51,7 @@ define('nsdb_path', config['sqlite_folder'])
 if not config['use_secret_store']:
     define('secret', config['secret'])
 else:
-    from secrets import load_jwk_store
+    from db import load_jwk_store
     define('secret_store', load_jwk_store(config))
 
 
@@ -66,11 +66,17 @@ class AuthRequestHandler(RequestHandler):
             if not config['use_secret_store']:
                 project_specific_secret = options.secret
             else:
-                pnum = 'p19' # TODO get from request
+                pnum = self.request.uri.split('/')[1]
+                try:
+                    assert _valid_pnum.match(pnum)
+                except AssertionError as e:
+                    logging.error(e.message)
+                    logging.error('pnum invalid')
+                    raise e
                 project_specific_secret = options.secret_store[pnum]
             token_verified_status = verify_json_web_token(auth_header, project_specific_secret, 'app_user')
-        except (KeyError, UnboundLocalError) as e:
-            logging.error(e)
+        except (KeyError, UnboundLocalError, AssertionError) as e:
+            logging.error(e.message)
             token_verified_status = {}
             token_verified_status['message'] = 'Missing Authorization header.'
             token_verified_status['status'] = False

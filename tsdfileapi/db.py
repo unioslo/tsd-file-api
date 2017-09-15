@@ -81,6 +81,35 @@ def session_scope(engine):
         session.close()
 
 
+def _postgres_connect_str(config):
+    user = config['ss_user']
+    pw = config['ss_pw']
+    host = config['ss_host']
+    db = config['ss_dbname']
+    connect_str = ''.join(['postgresql://', user, ':', pw, '@', host, ':5432/', db])
+    return connect_str
+
+
+def _pg_connect(config):
+    if config['ss_ssl']:
+        args = { 'sslmode':'require' }
+    else:
+        args = {}
+    dburl = _postgres_connect_str(config)
+    engine = create_engine(dburl, connect_args=args, poolclass=QueuePool)
+    return engine
+
+
+def load_jwk_store(config):
+    secrets = {}
+    engine = _pg_connect(config)
+    with session_scope(engine) as session:
+        res = session.execute('select pnum, secret from project_jwks').fetchall()
+    for row in res:
+        secrets[row[0]] = row[1]
+    return secrets
+
+
 def _table_name_from_form_id(form_id):
     """Return a secure and legal table name, given a nettskjema form id."""
     try:
