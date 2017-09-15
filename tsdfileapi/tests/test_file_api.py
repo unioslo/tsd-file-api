@@ -67,7 +67,7 @@ import random
 import gnupg
 from datetime import datetime
 
-from tokens import IMPORT_TOKENS, EXPORT_TOKENS
+from tokens import gen_test_tokens
 
 # seems like the steaming ono=ly works with this in place
 # don't really understand that
@@ -121,7 +121,6 @@ def build_payload(config):
     return data
 
 
-
 class TestFileApi(unittest.TestCase):
 
 
@@ -135,7 +134,8 @@ class TestFileApi(unittest.TestCase):
             print "Missing config file?"
             sys.exit(1)
         # includes p19 - a random project number for integration testing
-        cls.base_url = 'http://localhost' + ':' + str(cls.config['port']) + '/p19'
+        cls.test_project = cls.config['test_project']
+        cls.base_url = 'http://localhost' + ':' + str(cls.config['port']) + '/' + cls.test_project
         cls.data_folder = cls.config['data_folder']
         cls.example_csv = os.path.normpath(cls.data_folder + '/example.csv')
         cls.example_codebook = json.loads(open(os.path.normpath(cls.data_folder + '/example-ns.json')).read())
@@ -146,7 +146,9 @@ class TestFileApi(unittest.TestCase):
         cls.checksum = cls.base_url + '/checksum'
         cls.stream = cls.base_url + '/stream'
         cls.upload_stream = cls.base_url + '/upload_stream'
-        cls.test_project = '/p19'
+        cls.test_project = cls.test_project
+        global IMPORT_TOKENS
+        IMPORT_TOKENS = gen_test_tokens(cls.config)
 
 
     @classmethod
@@ -464,6 +466,10 @@ class TestFileApi(unittest.TestCase):
         resp = requests.post(self.base_url + '/encrypted_data',
                     data=json.dumps(encrypted_data), headers=headers)
         self.assertEqual(resp.status_code, 201)
+
+
+    def test_Y_invalid_project_number_rejected(self):
+        pass
 
 
 def main():

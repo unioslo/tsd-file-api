@@ -1,20 +1,77 @@
 
+import time
 from jwcrypto import jwt, jwk
 from datetime import datetime, timedelta
-import time
+from sqlalchemy import create_engine
+from sqlalchemy.pool import QueuePool
+from sqlalchemy.orm import sessionmaker
+from contextlib import contextmanager
 
-def generate_token(email, secret, token_type=None, import_role=None, export_role=None, \
-                    import_timeout=(datetime.now() + timedelta(hours=24)), \
-                    export_timeout=(datetime.now() + timedelta(hours=1))):
-    """Import tokens last for 24 hours and export tokens last for one hour."""
-    if token_type == 'import':
-        exp = int(time.mktime(import_timeout.timetuple()))
-        claims =  {'email': email, 'role': import_role, 'exp': exp}
-    elif token_type == 'export':
-        exp = int(time.mktime(export_timeout.timetuple()))
-        claims = {'role': export_role, 'exp': exp}
+# --- TODO: figure out how to import these from module ----
+
+@contextmanager
+def session_scope(engine):
+    """Provide a transactional scope around a series of operations."""
+    Session = sessionmaker(bind=engine)
+    session = Session()
+    try:
+        yield session
+        session.commit()
+    except (OperationalError, IntegrityError, StatementError) as e:
+        logging.error("Could not commit data")
+        logging.error("Rolling back transaction")
+        session.rollback()
+        raise e
+    finally:
+        session.close()
+
+
+def _postgres_connect_str(config):
+    user = config['ss_user']
+    pw = config['ss_pw']
+    host = config['ss_host']
+    db = config['ss_dbname']
+    connect_str = ''.join(['postgresql://', user, ':', pw, '@', host, ':5432/', db])
+    return connect_str
+
+
+def _pg_connect(config):
+    if config['ss_ssl']:
+        args = { 'sslmode':'require' }
     else:
-        raise Exception('token_type not specified by caller')
+        args = {}
+    dburl = _postgres_connect_str(config)
+    engine = create_engine(dburl, connect_args=args, poolclass=QueuePool)
+    return engine
+
+
+def load_jwk_store(config):
+    secrets = {}
+    engine = _pg_connect(config)
+    with session_scope(engine) as session:
+        res = session.execute('select pnum, secret from project_jwks').fetchall()
+    for row in res:
+        secrets[row[0]] = row[1]
+    return secrets
+
+# ---------------------------------------------------------
+
+
+def tk(secret, exp=1, role=None, pnum=None):
+    """
+    This is the same token generation function as found in tsd-auth-api/auth.py
+    """
+    allowed_roles = ['app_user', 'full_access_reports_user', 'import_user',
+                     'export_user', 'admin_user']
+    if role in allowed_roles:
+        d = datetime.now() + timedelta(hours=exp)
+        exp = int(time.mktime(d.timetuple()))
+        if pnum:
+            claims = {'role': role, 'exp': exp, 'p': pnum}
+        else:
+            claims = {'role': role, 'exp': exp}
+    else:
+        raise Exception('specified role not allowed')
     k = {'k': secret, 'kty': 'oct'}
     key = jwk.JWK(**k)
     token = jwt.JWT(header={'alg': 'HS256'}, claims=claims, algs=['HS256'])
@@ -22,35 +79,15 @@ def generate_token(email, secret, token_type=None, import_role=None, export_role
     return token.serialize()
 
 
-TEST_IMPORT_USER = 'health@check.local'
-TEST_EXPORT_USER = '20097000574'
-TEST_IMPORT_SECRET = 'dGVzdF9pbXBvcnRfc2VjcmV0'
-TEST_EXPORT_SECRET = 'dGVzdF9leHBvcnRfc2VjcmV0'
-
-
-IMPORT_TOKENS = {
-    'VALID': generate_token(TEST_IMPORT_USER, TEST_IMPORT_SECRET, token_type='import', \
-        import_role='app_user'),
-    'MANGLED_VALID': generate_token(TEST_IMPORT_USER, TEST_IMPORT_SECRET, token_type='import', \
-        import_role='app_user')[:-1],
-    'INVALID_SIGNATURE': generate_token(TEST_IMPORT_USER, 'WRONG_SECRET', token_type='import', \
-        import_role='app_user'),
-    'WRONG_ROLE': generate_token(TEST_IMPORT_USER, TEST_IMPORT_SECRET, token_type='import', \
-        import_role='WRONG_ROLE'),
-    'TIMED_OUT': generate_token(TEST_IMPORT_USER, TEST_IMPORT_SECRET, token_type='import', \
-        import_role='app_user', import_timeout=(datetime.utcnow() + timedelta(hours=-1)))
-}
-
-
-EXPORT_TOKENS = {
-    'VALID': generate_token(TEST_EXPORT_USER, TEST_EXPORT_SECRET, token_type='export', \
-        export_role='full_access_reports_user'),
-    'MANGLED_VALID': generate_token(TEST_EXPORT_USER, TEST_EXPORT_SECRET, token_type='export', \
-        export_role='full_access_reports_user')[:-1],
-    'INVALID_SIGNATURE': generate_token(TEST_EXPORT_USER, 'BAD_SECRET', token_type='export', \
-        export_role='full_access_reports_user'),
-    'WRONG_ROLE': generate_token(TEST_EXPORT_USER, TEST_EXPORT_SECRET, token_type='export', \
-        export_role='full_access_mofo'),
-    'TIMED_OUT': generate_token(TEST_EXPORT_USER, TEST_EXPORT_SECRET, token_type='export', \
-        export_role='full_access_reports_user', export_timeout=(datetime.utcnow() + timedelta(hours=-1)))
-}
+def gen_test_tokens(config):
+    p = config['test_project']
+    ss = load_jwk_store(config)
+    s = ss[p]
+    wrong = ss['p01']
+    return {
+        'VALID': tk(s, role='app_user', pnum=p),
+        'MANGLED_VALID': tk(s, role='app_user', pnum=p)[:-1],
+        'INVALID_SIGNATURE': tk(wrong, role='app_user', pnum=p),
+        'WRONG_ROLE': tk(s, role='admin_user', pnum=p),
+        'TIMED_OUT': tk(s, exp=-1, role='app_user', pnum=p)
+    }
