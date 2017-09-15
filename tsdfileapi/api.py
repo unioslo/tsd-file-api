@@ -47,21 +47,28 @@ define('server_delay', default=config['server_delay'])
 define('num_chunks', default=config['num_chunks'])
 define('max_body_size', config['max_body_size'])
 define('uploads_folder', config['uploads_folder'])
-define('import_secret', config['import_secret'])
-define('export_secret', config['export_secret'])
 define('nsdb_path', config['sqlite_folder'])
+if not config['use_secret_store']:
+    define('secret', config['secret'])
+else:
+    from secrets import load_jwk_store
+    define('secret_store', load_jwk_store(config))
 
 
 class AuthRequestHandler(RequestHandler):
 
     def validate_token(self):
-        # this only supports uploads, not downloads (yet)
         logging.info("checking JWT")
         self.status = None
         try:
             auth_header = self.request.headers['Authorization']
             self.jwt = auth_header.split(' ')[1]
-            token_verified_status = verify_json_web_token(auth_header, options.import_secret, 'app_user')
+            if not config['use_secret_store']:
+                project_specific_secret = options.secret
+            else:
+                pnum = 'p19' # TODO get from request
+                project_specific_secret = options.secret_store[pnum]
+            token_verified_status = verify_json_web_token(auth_header, project_specific_secret, 'app_user')
         except (KeyError, UnboundLocalError) as e:
             logging.error(e)
             token_verified_status = {}
