@@ -97,14 +97,14 @@ def md5sum(filename, blocksize=65536):
     return hash.hexdigest()
 
 
-def build_payload():
+def build_payload(config):
     gpg = gnupg.GPG(
         # TODO: get this from config
-        binary='/usr/local/bin/gpg',
-        homedir='/Users/leondutoit/.gnupg',
-        keyring='pubring.gpg',
-        secring='secring.gpg')
-    key_id = '264CE5ED60A7548B'
+        binary=config['gpg_binary'],
+        homedir=config['gpg_homedir'],
+        keyring=config['gpg_keyring'],
+        secring=config['gpg_secring'])
+    key_id = config['public_key_id']
     id = random.randint(1, 1000000)
     message = json.dumps({
             'submission_id': id, 'consent': 'yes', 'age': 20, 'email_address': 'my2@email.com',
@@ -459,7 +459,7 @@ class TestFileApi(unittest.TestCase):
 
 
     def test_X_post_encrypted_data(self):
-        encrypted_data = build_payload()
+        encrypted_data = build_payload(self.config)
         headers={ 'Authorization': 'Bearer ' + IMPORT_TOKENS['VALID'] }
         resp = requests.post(self.base_url + '/encrypted_data',
                     data=json.dumps(encrypted_data), headers=headers)
