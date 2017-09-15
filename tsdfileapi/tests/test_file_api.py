@@ -1,5 +1,10 @@
 
 """
+
+Run this as: python -m tsdfileapi.tests.test_file_api test-config.yaml
+
+-------------------------------------------------------------------------------
+
 Exploring Transfer-Encoding: chunked with a minimal python client.
 
 From: https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Transfer-Encoding
