@@ -11,9 +11,25 @@ max_body_size: 5368709120 # 5 GB
 # should be base64 encoded
 import_secret: ''
 export_secret: ''
+use_secret_store: False
+secret_store_type: 'postgresql' # if sqlite will use sqlite (not advised in prod)
+secret_store_sqlite: ''
+ss_host: ''
+ss_user: ''
+ss_pw: ''
+ss_dbname: ''
+ss_ssl: True # always True in prod
 
 # folders
 uploads_folder: '/opt/file-api-uploads'
 
 # Testing
 data_folder: '/opt/tsd-file-api-env/lib/python2.7/site-packages/tsdfileapi/data'
+
+# pgp - which key will the API use to decrypt data
+public_key_id: ''
+gpg_binary: ''
+gpg_homedir: ''
+gpg_keyring: ''
+gpg_secring: ''
+test_key_dir: ''
