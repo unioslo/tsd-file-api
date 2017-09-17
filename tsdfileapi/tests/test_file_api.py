@@ -473,8 +473,23 @@ class TestFileApi(unittest.TestCase):
         self.assertEqual(resp.status_code, 201)
 
 
+    # More Authn+z
+    # ------------
+
     def test_Y_invalid_project_number_rejected(self):
-        pass
+        data = {'submission_id':11, 'age':193}
+        headers={ 'Authorization': 'Bearer ' + IMPORT_TOKENS['VALID'] }
+        resp = requests.post('http://localhost:3003/p12-2193-1349213*&^/storage/form_63332',
+                    data=json.dumps(data), headers=headers)
+        self.assertEqual(resp.status_code, 400)
+
+
+    def test_Z_token_for_other_project_rejected(self):
+        data = {'submission_id':11, 'age':193}
+        headers={ 'Authorization': 'Bearer ' + IMPORT_TOKENS['WRONG_PROJECT'] }
+        resp = requests.post(self.base_url + '/storage/form_63332',
+                    data=json.dumps(data), headers=headers)
+        self.assertEqual(resp.status_code, 401)
 
 
 def main():
@@ -502,6 +517,8 @@ def main():
         'test_V_post_data',
         'test_W_create_table_generic',
         'test_X_post_encrypted_data',
+        'test_Y_invalid_project_number_rejected',
+        'test_Z_token_for_other_project_rejected'
         ])))
     map(runner.run, suite)
 

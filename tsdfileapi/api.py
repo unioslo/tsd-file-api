@@ -66,15 +66,16 @@ class AuthRequestHandler(RequestHandler):
             if not config['use_secret_store']:
                 project_specific_secret = options.secret
             else:
-                pnum = self.request.uri.split('/')[1]
                 try:
+                    pnum = self.request.uri.split('/')[1]
                     assert _valid_pnum.match(pnum)
                 except AssertionError as e:
                     logging.error(e.message)
                     logging.error('pnum invalid')
                     raise e
                 project_specific_secret = options.secret_store[pnum]
-            token_verified_status = verify_json_web_token(auth_header, project_specific_secret, 'app_user')
+            required_role = 'app_user'
+            token_verified_status = verify_json_web_token(auth_header, project_specific_secret, required_role, pnum)
         except (KeyError, UnboundLocalError, AssertionError) as e:
             logging.error(e.message)
             token_verified_status = {}

@@ -38,5 +38,6 @@ def gen_test_tokens(config):
         'MANGLED_VALID': tk(s, role='app_user', pnum=p)[:-1],
         'INVALID_SIGNATURE': tk(wrong, role='app_user', pnum=p),
         'WRONG_ROLE': tk(s, role='admin_user', pnum=p),
-        'TIMED_OUT': tk(s, exp=-1, role='app_user', pnum=p)
+        'TIMED_OUT': tk(s, exp=-1, role='app_user', pnum=p),
+        'WRONG_PROJECT': tk(wrong, exp=-1, role='app_user', pnum='p01')
     }
