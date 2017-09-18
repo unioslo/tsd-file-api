@@ -8,7 +8,7 @@ from jwcrypto import jwt, jwk, jws
 from datetime import datetime
 
 
-def verify_json_web_token(auth_header, secret, required_role, pnum):
+def verify_json_web_token(auth_header, secret, roles_allowed, pnum):
     """
     Verifies the authenticity of API credentials, as stored in a
     JSON Web Token (see jwt.io for more).
@@ -28,7 +28,7 @@ def verify_json_web_token(auth_header, secret, required_role, pnum):
     2) Extracts the JWT header and the claims
     3) Checks that the token grants access to the requested project
     4) Checks that the role assigned to the user in the db is allowed to perform
-       the action
+       the action - the caller passes the authorized list
     5) Checks that the token has not expired - 1 hour is the current lifetime
 
     If the JWT authn+z fails in any way we log the reason but do not communicate
@@ -64,7 +64,7 @@ def verify_json_web_token(auth_header, secret, required_role, pnum):
     if claims['p'] != pnum:
         # this _should_ be impossible
         logging.error('Access denied to project - mismatch in project numbers')
-    if claims['role'] != required_role:
+    if claims['role'] not in roles_allowed:
         logging.error('Role not allowed to perform requested operation')
         return failure_message
     if int(time.time()) > int(claims['exp']):

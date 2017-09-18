@@ -57,10 +57,39 @@ else:
 
 class AuthRequestHandler(RequestHandler):
 
-    def validate_token(self):
+    def validate_token(self, roles_allowed=None):
+        """
+        Token validation is about authorization. Clients and/or users authenticate
+        themselves with the auth-api to obtain tokens. When performing requests
+        against the file-api these tokens are presented in the Authorization header
+        of the HTTP request as a Bearer token.
+
+        Before the body of each request is process this method is called in 'prepare'.
+        The caller passes a list of roles that should be authorized to perform the HTTP
+        request(s) in the request handler.
+
+        The verify_json_web_token method will check whether the authenticated client/user
+        belongs to a role that is authorized to perform the request. If not, the request
+        will be terminated with 401 not authorized. Otherwise it will continue.
+
+        For more details about the full authorization check the docstring of
+        verify_json_web_token.
+
+        Parameters
+        ----------
+        roles_allowed: list
+            should contain the names of the roles that are allowed to
+            perform the operation on the resource.
+
+        Returns
+        -------
+        bool or dict
+
+        """
         logging.info("checking JWT")
         self.status = None
         try:
+            assert roles_allowed
             auth_header = self.request.headers['Authorization']
             self.jwt = auth_header.split(' ')[1]
             if not config['use_secret_store']:
@@ -74,8 +103,7 @@ class AuthRequestHandler(RequestHandler):
                     logging.error('pnum invalid')
                     raise e
                 project_specific_secret = options.secret_store[pnum]
-            required_role = 'app_user'
-            token_verified_status = verify_json_web_token(auth_header, project_specific_secret, required_role, pnum)
+            token_verified_status = verify_json_web_token(auth_header, project_specific_secret, roles_allowed, pnum)
         except (KeyError, UnboundLocalError, AssertionError) as e:
             logging.error(e.message)
             token_verified_status = {}
@@ -102,7 +130,7 @@ class FormDataHandler(AuthRequestHandler):
             f.write(filebody)
 
     def prepare(self):
-        self.validate_token()
+        self.validate_token(roles_allowed=['app_user', 'import_user', 'export_user', 'admin_user'])
         try:
             if len(self.request.files['file']) > 1:
                 self.set_status(405)
@@ -142,7 +170,7 @@ class StreamHandler(AuthRequestHandler):
     @gen.coroutine
     def prepare(self):
         logging.info('StreamHandler')
-        self.validate_token()
+        self.validate_token(roles_allowed=['app_user', 'import_user', 'export_user', 'admin_user'])
         try:
             filename = secure_filename(self.request.headers['Filename'])
             path = os.path.normpath(options.uploads_folder + '/' + filename)
@@ -220,7 +248,7 @@ class ProxyHandler(AuthRequestHandler):
     def prepare(self):
         """Called after headers have been read."""
         logging.info('ProxyHandler.prepare')
-        self.validate_token()
+        self.validate_token(roles_allowed=['app_user', 'import_user', 'export_user', 'admin_user'])
         try:
             self.filename = secure_filename(self.request.headers['Filename'])
             logging.info('supplied filename: %s', self.filename)
@@ -294,7 +322,7 @@ class ProxyHandler(AuthRequestHandler):
 class MetaDataHandler(AuthRequestHandler):
 
     def prepare(self):
-        self.validate_token()
+        self.validate_token(roles_allowed=['app_user', 'import_user', 'export_user', 'admin_user'])
 
     def get(self, pnum):
         _dir = options.uploads_folder
@@ -319,7 +347,7 @@ class ChecksumHandler(AuthRequestHandler):
         return hash.hexdigest()
 
     def prepare(self):
-        self.validate_token()
+        self.validate_token(roles_allowed=['app_user', 'import_user', 'export_user', 'admin_user'])
 
     def get(self, pnum):
         # Consider: http://www.tornadoweb.org/en/stable/escape.html#tornado.escape.url_unescape
@@ -338,7 +366,7 @@ class TableCreatorHandler(AuthRequestHandler):
     """
 
     def prepare(self):
-        self.validate_token()
+        self.validate_token(roles_allowed=['app_user', 'import_user', 'export_user', 'admin_user'])
 
 
     def post(self, pnum):
@@ -382,7 +410,7 @@ class JsonToSQLiteHandler(AuthRequestHandler):
     """
 
     def prepare(self):
-        self.validate_token()
+        self.validate_token(roles_allowed=['app_user', 'import_user', 'export_user', 'admin_user'])
 
     def post(self, pnum, resource_name):
         try:
@@ -404,7 +432,7 @@ class PGPJsonToSQLiteHandler(AuthRequestHandler):
     """
 
     def prepare(self):
-        self.validate_token()
+        self.validate_token(roles_allowed=['app_user', 'import_user', 'export_user', 'admin_user'])
         pass
 
     def post(self, pnum):
@@ -432,6 +460,7 @@ def main():
         ('/(.*)/list', MetaDataHandler),
         # this has to present the same interface as
         # the postgrest API in terms of endpoints
+        # storage backends should be transparent
         ('/(.*)/storage/(.*)', JsonToSQLiteHandler),
         ('/(.*)/rpc/create_table', TableCreatorHandler),
         ('/(.*)/encrypted_data', PGPJsonToSQLiteHandler),
