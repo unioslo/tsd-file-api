@@ -64,7 +64,7 @@ class AuthRequestHandler(RequestHandler):
         against the file-api these tokens are presented in the Authorization header
         of the HTTP request as a Bearer token.
 
-        Before the body of each request is process this method is called in 'prepare'.
+        Before the body of each request is processed this method is called in 'prepare'.
         The caller passes a list of roles that should be authorized to perform the HTTP
         request(s) in the request handler.
 
