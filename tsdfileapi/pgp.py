@@ -1,11 +1,10 @@
 
 """Tools to decrypt PGP encrypted JSON."""
 
-import os
-import gnupg
 import logging
 import json
 
+import gnupg
 
 class PGPKeyLoadError(Exception):
     message = 'Issue with keys'
@@ -20,7 +19,7 @@ def _import_keys(config):
     This assumes you have the necessary keys in the keyring on the host.
     """
     gpg = gnupg.GPG(binary=config['gpg_binary'], homedir=config['gpg_homedir'],
-        keyring=config['gpg_keyring'], secring=config['gpg_secring'])
+                    keyring=config['gpg_keyring'], secring=config['gpg_secring'])
     return gpg
 
 
