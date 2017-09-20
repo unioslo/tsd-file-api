@@ -1,21 +1,24 @@
 
 """A _simple_ sqlite db backend designed for JSON data, primarily from nettskjema"""
 
-import re
-import os
+# too pedantic regarding docstrings - we can decide in code review
+# pylint: disable=missing-docstring
+
 import logging
-import sqlalchemy
-from utils import secure_filename
+import re
+from contextlib import contextmanager
+
 from sqlalchemy.pool import QueuePool
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy import create_engine
-from contextlib import contextmanager
 from sqlalchemy.exc import OperationalError, IntegrityError, StatementError
 
+# pylint: disable=relative-import
+from utils import secure_filename
 
-_valid_id = re.compile(r'([0-9])')
-_valid_pnum = re.compile(r'([0-9a-z])')
-_valid_colname = re.compile(r'([0-9a-z])')
+_VALID_ID = re.compile(r'([0-9])')
+_VALID_PNUM = re.compile(r'([0-9a-z])')
+_VALID_COLNAME = re.compile(r'([0-9a-z])')
 
 
 class TableNameException(Exception):
@@ -52,7 +55,7 @@ class DuplicateRowException(Exception):
 
 def sqlite_init(path, pnum):
     try:
-        assert _valid_pnum.match(pnum)
+        assert _VALID_PNUM.match(pnum)
     except AssertionError as e:
         logging.error(e)
         raise DbCreationException
@@ -92,7 +95,7 @@ def _postgres_connect_str(config):
 
 def _pg_connect(config):
     if config['ss_ssl']:
-        args = { 'sslmode':'require' }
+        args = {'sslmode':'require'}
     else:
         args = {}
     dburl = _postgres_connect_str(config)
@@ -113,12 +116,12 @@ def load_jwk_store(config):
 def _table_name_from_form_id(form_id):
     """Return a secure and legal table name, given a nettskjema form id."""
     try:
-        assert type(form_id) is int
+        assert isinstance(form_id, int)
     except AssertionError:
         logging.error('form id not int')
         raise TableNameException
     _id = str(form_id)
-    if _valid_id.match(_id):
+    if _VALID_ID.match(_id):
         return 'form_' + _id
     else:
         logging.error('problem with form id - unknown what the issue is')
@@ -152,6 +155,7 @@ def _statement_from_data(table_name, data):
     Returns
     -------
     string
+
     """
     cols = data.keys()
     cols.sort()
@@ -192,6 +196,7 @@ def insert_into(engine, table_name, data):
     Returns
     -------
     bool
+
     """
     dtype = type(data)
     try:
@@ -204,15 +209,15 @@ def insert_into(engine, table_name, data):
                 stmt = _statement_from_data(table_name, data)
                 session.execute(stmt, data)
         return True
-    except (OperationalError, StatementError) as e:
-        logging.error(e.message)
-        raise InsertException
     except IntegrityError as e:
         logging.error(e.message)
         raise DuplicateRowException
+    except (OperationalError, StatementError) as e:
+        logging.error(e.message)
+        raise InsertException
 
 
-def _sqltype_from_nstype(t):
+def _sqltype_from_nstype(ns_type):
     type_map = {
         'QUESTION': 'text',
         'QUESTION_MULTILINE': 'text',
@@ -228,7 +233,7 @@ def _sqltype_from_nstype(t):
         'SELECT': 'text'
     }
     try:
-        return type_map[t]
+        return type_map[ns_type]
     except KeyError:
         raise UnsupportedTypeException
 
@@ -248,6 +253,7 @@ def create_table_from_codebook(definition, form_id, engine):
     Returns
     -------
     bool
+
     """
     try:
         table_name = _table_name_from_form_id(form_id)
@@ -256,7 +262,8 @@ def create_table_from_codebook(definition, form_id, engine):
         raise e
     with session_scope(engine) as session:
         try:
-            session.execute('create table if not exists %s(submission_id int primary key)' % table_name)
+            session.execute('create table if not exists %s(submission_id int primary key)' %
+                            table_name)
         except Exception as e:
             logging.error(e.message)
             raise TableCreationException
@@ -265,15 +272,15 @@ def create_table_from_codebook(definition, form_id, engine):
         except KeyError as e:
             logging.error(e.message)
             raise MalformedCodebookException
-        for el in elements:
+        for elem in elements:
             try:
-                dtype = _sqltype_from_nstype(el['elementType'])
-                questions = el['questions']
+                dtype = _sqltype_from_nstype(elem['elementType'])
+                questions = elem['questions']
             except (UnsupportedTypeException, KeyError) as e:
                 logging.error(e.message)
                 raise e
-            for q in questions:
-                colname = q['externalQuestionId']
+            for question in questions:
+                colname = question['externalQuestionId']
                 sanitised_colname = secure_filename(colname)
                 try:
                     assert colname == sanitised_colname
@@ -281,7 +288,8 @@ def create_table_from_codebook(definition, form_id, engine):
                     logging.error(e.message)
                     raise e
                 try:
-                    session.execute('alter table %s add column %s %s' % (table_name, sanitised_colname, dtype))
+                    session.execute('alter table %s add column %s %s' %
+                                    (table_name, sanitised_colname, dtype))
                 except OperationalError as e:
                     logging.info('duplicate column - skipping creation')
     return True
@@ -299,6 +307,7 @@ def create_table_from_generic(definition, engine):
     Returns
     -------
     bool
+
     """
     try:
         table_name = secure_filename(definition['table_name'])
@@ -311,14 +320,14 @@ def create_table_from_generic(definition, engine):
                 %s(submission_ts default (datetime(current_timestamp)))' % table_name)
             try:
                 cols = definition['columns']
-                assert type(cols) is list
+                assert isinstance(cols, list)
             except (AssertionError, KeyError) as e:
                 logging.error(e.message)
                 raise TableCreationException
             for col in cols:
                 try:
                     colname = secure_filename(col['name'])
-                    assert _valid_colname.match(col['type'])
+                    assert _VALID_COLNAME.match(col['type'])
                     coltype = col['type']
                 except AssertionError as e:
                     logging.error(e.message)
@@ -334,14 +343,13 @@ def create_table_from_generic(definition, engine):
                     if constraints:
                         if 'primary_key' in constraints.keys():
                             session.execute('alter table %s add column %s %s primary key' %
-                                (table_name, colname, coltype))
+                                            (table_name, colname, coltype))
                         elif 'not_null' in constraints.keys():
                             session.execute('alter table %s add column %s %s not null default 0' %
-                                (table_name, colname, coltype))
+                                            (table_name, colname, coltype))
                 except OperationalError as e:
                     logging.info('duplicate column - skipping creation')
     except Exception as e:
         logging.error(e.message)
         raise TableCreationException
     return True
-

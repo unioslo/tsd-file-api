@@ -29,7 +29,7 @@ from auth import verify_json_web_token
 from utils import secure_filename
 from db import insert_into, create_table_from_codebook, sqlite_init, \
                create_table_from_generic, _table_name_from_form_id, \
-               _valid_pnum
+               _VALID_PNUM
 from pgp import decrypt_pgp_json
 
 
@@ -102,7 +102,7 @@ class AuthRequestHandler(RequestHandler):
             else:
                 try:
                     pnum = self.request.uri.split('/')[1]
-                    assert _valid_pnum.match(pnum)
+                    assert _VALID_PNUM.match(pnum)
                 except AssertionError as e:
                     logging.error(e.message)
                     logging.error('pnum invalid')
@@ -270,7 +270,7 @@ class ProxyHandler(AuthRequestHandler):
                 body = self.body_producer
             pnum = self.request.uri.split('/')[1]
             try:
-                assert _valid_pnum.match(pnum)
+                assert _VALID_PNUM.match(pnum)
             except AssertionError as e:
                 logging.error('URI does not contain a valid pnum')
                 raise e
