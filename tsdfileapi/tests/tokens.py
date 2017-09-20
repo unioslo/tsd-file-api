@@ -1,20 +1,23 @@
 
+"""Helper functions for testing JWT."""
+
 import time
-from jwcrypto import jwt, jwk
 from datetime import datetime, timedelta
+
+from jwcrypto import jwt, jwk
 
 from ..db import load_jwk_store
 
 
-def tk(secret, exp=1, role=None, pnum=None):
+def tkn(secret, exp=1, role=None, pnum=None):
     """
     This is the same token generation function as found in tsd-auth-api/auth.py
     """
     allowed_roles = ['app_user', 'full_access_reports_user', 'import_user',
                      'export_user', 'admin_user']
     if role in allowed_roles:
-        d = datetime.now() + timedelta(hours=exp)
-        exp = int(time.mktime(d.timetuple()))
+        expiry = datetime.now() + timedelta(hours=exp)
+        exp = int(time.mktime(expiry.timetuple()))
         if pnum:
             claims = {'role': role, 'exp': exp, 'p': pnum}
         else:
@@ -29,15 +32,18 @@ def tk(secret, exp=1, role=None, pnum=None):
 
 
 def gen_test_tokens(config):
-    p = config['test_project']
-    ss = load_jwk_store(config)
-    s = ss[p]
-    wrong = ss['p01']
+    """
+    A set of tokens to be used in tests.
+    """
+    proj = config['test_project']
+    store = load_jwk_store(config)
+    secret = store[proj]
+    wrong = store['p01']
     return {
-        'VALID': tk(s, role='app_user', pnum=p),
-        'MANGLED_VALID': tk(s, role='app_user', pnum=p)[:-1],
-        'INVALID_SIGNATURE': tk(wrong, role='app_user', pnum=p),
-        'WRONG_ROLE': tk(s, role='full_access_reports_user', pnum=p),
-        'TIMED_OUT': tk(s, exp=-1, role='app_user', pnum=p),
-        'WRONG_PROJECT': tk(wrong, exp=-1, role='app_user', pnum='p01')
+        'VALID': tkn(secret, role='app_user', pnum=proj),
+        'MANGLED_VALID': tkn(secret, role='app_user', pnum=proj)[:-1],
+        'INVALID_SIGNATURE': tkn(wrong, role='app_user', pnum=proj),
+        'WRONG_ROLE': tkn(secret, role='full_access_reports_user', pnum=proj),
+        'TIMED_OUT': tkn(secret, exp=-1, role='app_user', pnum=proj),
+        'WRONG_PROJECT': tkn(wrong, exp=-1, role='app_user', pnum='p01')
     }
