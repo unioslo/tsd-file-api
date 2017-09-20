@@ -1,18 +1,22 @@
 
 """API for uploading files and data streams to TSD."""
 
-import os
+# tornado RequestHandler classes are simple enough to grok
+# pylint: disable=attribute-defined-outside-init
+# pylint tends to be too pedantic regarding docstrings - we can decide in code review
+# pylint: disable=missing-docstring
+
 import logging
-import json
-import yaml
+import os
+
 import datetime
 import hashlib
 from sys import argv
 from collections import OrderedDict
 
+import yaml
 import tornado.queues
-from tornado.concurrent import Future
-from tornado.escape import utf8, json_decode
+from tornado.escape import json_decode
 from tornado import gen
 from tornado.httpclient import AsyncHTTPClient
 from tornado.ioloop import IOLoop
@@ -20,6 +24,7 @@ from tornado.options import parse_command_line, define, options
 from tornado.web import Application, RequestHandler, stream_request_body, \
                         HTTPError, MissingArgumentError
 
+# pylint: disable=relative-import
 from auth import verify_json_web_token
 from utils import secure_filename
 from db import insert_into, create_table_from_codebook, sqlite_init, \
@@ -28,31 +33,31 @@ from db import insert_into, create_table_from_codebook, sqlite_init, \
 from pgp import decrypt_pgp_json
 
 
-def read_config(file):
-    with open(file) as f:
+def read_config(filename):
+    with open(filename) as f:
         conf = yaml.load(f)
     return conf
 
 try:
-    file = argv[1]
-    config = read_config(file)
+    CONFIG_FILE = argv[1]
+    CONFIG = read_config(CONFIG_FILE)
 except Exception as e:
     logging.error(e)
     raise e
 
 
-define('port', default=config['port'])
-define('debug', default=config['debug'])
-define('server_delay', default=config['server_delay'])
-define('num_chunks', default=config['num_chunks'])
-define('max_body_size', config['max_body_size'])
-define('uploads_folder', config['uploads_folder'])
-define('nsdb_path', config['sqlite_folder'])
-if not config['use_secret_store']:
-    define('secret', config['secret'])
+define('port', default=CONFIG['port'])
+define('debug', default=CONFIG['debug'])
+define('server_delay', default=CONFIG['server_delay'])
+define('num_chunks', default=CONFIG['num_chunks'])
+define('max_body_size', CONFIG['max_body_size'])
+define('uploads_folder', CONFIG['uploads_folder'])
+define('nsdb_path', CONFIG['sqlite_folder'])
+if not CONFIG['use_secret_store']:
+    define('secret', CONFIG['secret'])
 else:
     from db import load_jwk_store
-    define('secret_store', load_jwk_store(config))
+    define('secret_store', load_jwk_store(CONFIG))
 
 
 class AuthRequestHandler(RequestHandler):
@@ -92,7 +97,7 @@ class AuthRequestHandler(RequestHandler):
             assert roles_allowed
             auth_header = self.request.headers['Authorization']
             self.jwt = auth_header.split(' ')[1]
-            if not config['use_secret_store']:
+            if not CONFIG['use_secret_store']:
                 project_specific_secret = options.secret
             else:
                 try:
@@ -103,7 +108,8 @@ class AuthRequestHandler(RequestHandler):
                     logging.error('pnum invalid')
                     raise e
                 project_specific_secret = options.secret_store[pnum]
-            token_verified_status = verify_json_web_token(auth_header, project_specific_secret, roles_allowed, pnum)
+            token_verified_status = verify_json_web_token(auth_header, project_specific_secret,
+                                                          roles_allowed, pnum)
         except (KeyError, UnboundLocalError, AssertionError) as e:
             logging.error(e.message)
             token_verified_status = {}
@@ -117,7 +123,7 @@ class AuthRequestHandler(RequestHandler):
                 self.set_status(400)
             else:
                 self.set_status(401)
-            self.finish({ 'message': token_verified_status['message'] })
+            self.finish({'message': token_verified_status['message']})
 
 
 class FormDataHandler(AuthRequestHandler):
@@ -165,6 +171,7 @@ class FormDataHandler(AuthRequestHandler):
 @stream_request_body
 class StreamHandler(AuthRequestHandler):
 
+    #pylint: disable=line-too-long
     # Future: http://www.tornadoweb.org/en/stable/util.html?highlight=gzip#tornado.util.GzipDecompressor
 
     @gen.coroutine
@@ -207,14 +214,14 @@ class StreamHandler(AuthRequestHandler):
         self.target_file.close()
         logging.info('StreamHandler: closed file')
         self.set_status(201)
-        self.write({ 'message': 'data streamed to file' })
+        self.write({'message': 'data streamed to file'})
 
     def put(self, pnum):
         logging.info('StreamHandler.put')
         self.target_file.close()
         logging.info('StreamHandler: closed file')
         self.set_status(201)
-        self.write({ 'message': 'data streamed to file' })
+        self.write({'message': 'data streamed to file'})
 
     def head(self, pnum):
         self.set_status(201)
@@ -254,7 +261,7 @@ class ProxyHandler(AuthRequestHandler):
             logging.info('supplied filename: %s', self.filename)
         except KeyError:
             self.filename = datetime.datetime.now().isoformat() + '.txt'
-            logging.info("filename not found - going to use this filename: %s" % self.filename)
+            logging.info("filename not found - going to use this filename: %s", self.filename)
         self.chunks = tornado.queues.Queue(1) # TODO: performace tuning here
         try:
             if self.request.method == 'HEAD':
@@ -277,7 +284,7 @@ class ProxyHandler(AuthRequestHandler):
                 # for the initial connection
                 # in seconds, both
                 request_timeout=12000.0,
-                headers={ 'Authorization': 'Bearer ' + self.jwt, 'Filename': self.filename })
+                headers={'Authorization': 'Bearer ' + self.jwt, 'Filename': self.filename})
         except (AttributeError, HTTPError, AssertionError) as e:
             logging.error('Problem in async client')
             logging.error(e)
@@ -328,7 +335,8 @@ class MetaDataHandler(AuthRequestHandler):
         _dir = options.uploads_folder
         files = os.listdir(_dir)
         times = map(lambda x:
-            datetime.datetime.fromtimestamp(os.stat(os.path.normpath(_dir + '/' + x)).st_mtime).isoformat(), files)
+                    datetime.datetime.fromtimestamp(
+                        os.stat(os.path.normpath(_dir + '/' + x)).st_mtime).isoformat(), files)
         file_info = OrderedDict()
         for i in zip(files, times):
             file_info[i[0]] = i[1]
@@ -354,7 +362,7 @@ class ChecksumHandler(AuthRequestHandler):
         filename = secure_filename(self.get_query_argument('filename'))
         path = os.path.normpath(options.uploads_folder + '/' + filename)
         checksum = self.md5sum(path)
-        self.write({ 'checksum': checksum, 'algorithm': 'md5' })
+        self.write({'checksum': checksum, 'algorithm': 'md5'})
 
 
 class TableCreatorHandler(AuthRequestHandler):
@@ -439,7 +447,7 @@ class PGPJsonToSQLiteHandler(AuthRequestHandler):
         try:
             all_data = json_decode(self.request.body)
             table_name = _table_name_from_form_id(all_data['form_id'])
-            decrypted_data = decrypt_pgp_json(config, all_data['data'])
+            decrypted_data = decrypt_pgp_json(CONFIG, all_data['data'])
             engine = sqlite_init(options.nsdb_path, pnum)
             insert_into(engine, table_name, decrypted_data)
             self.set_status(201)
