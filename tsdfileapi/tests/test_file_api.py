@@ -56,22 +56,30 @@ Some background on python2.7 and requests
 https://github.com/kennethreitz/requests/issues/713
 
 """
+
+# pylint tends to be too pedantic regarding docstrings - we can decide in code review
+# pylint: disable=missing-docstring
+# test names are verbose...
+# pylint: disable=too-many-public-methods
+# method names are verbose in tests
+# pylint: disable=invalid-name
+
 import hashlib
-import click
-import logging
 import httplib
-import requests
-import string
-import time
-import sys
 import json
+import logging
 import os
-import unittest
-import yaml
 import random
-import gnupg
+import sys
+import time
+import unittest
 from datetime import datetime
 
+import gnupg
+import requests
+import yaml
+
+# pylint: disable=relative-import
 from tokens import gen_test_tokens
 
 # seems like the steaming ono=ly works with this in place
@@ -95,34 +103,27 @@ def lazy_file_reader(filename):
 
 
 def md5sum(filename, blocksize=65536):
-    hash = hashlib.md5()
+    _hash = hashlib.md5()
     with open(filename, "rb") as f:
         for block in iter(lambda: f.read(blocksize), b""):
-            hash.update(block)
-    return hash.hexdigest()
+            _hash.update(block)
+    return _hash.hexdigest()
 
 
 def build_payload(config):
-    gpg = gnupg.GPG(
-        # TODO: get this from config
-        binary=config['gpg_binary'],
-        homedir=config['gpg_homedir'],
-        keyring=config['gpg_keyring'],
-        secring=config['gpg_secring'])
+    gpg = gnupg.GPG(binary=config['gpg_binary'], homedir=config['gpg_homedir'],
+                    keyring=config['gpg_keyring'], secring=config['gpg_secring'])
     key_id = config['public_key_id']
-    id = random.randint(1, 1000000)
-    message = json.dumps({
-            'submission_id': id, 'consent': 'yes', 'age': 20, 'email_address': 'my2@email.com',
-            'national_id_number': '18101922351', 'phone_number': '4820666472',
-            'children_ages': '{"6", "70"}', 'var1': '{"val2"}' })
+    _id = random.randint(1, 1000000)
+    message = json.dumps({'submission_id': _id, 'consent': 'yes', 'age': 20,
+                          'email_address': 'my2@email.com',
+                          'national_id_number': '18101922351',
+                          'phone_number': '4820666472',
+                          'children_ages': '{"6", "70"}', 'var1': '{"val2"}'})
     encr = str(gpg.encrypt(message, key_id))
-    data = {
-        'form_id': 63332,
-        'submission_id': id,
-        'submission_timestamp': datetime.utcnow().isoformat(),
-        'key_id': key_id,
-        'data': encr
-    }
+    data = {'form_id': 63332, 'submission_id': _id,
+            'submission_timestamp': datetime.utcnow().isoformat(),
+            'key_id': key_id, 'data': encr}
     return data
 
 
@@ -143,7 +144,8 @@ class TestFileApi(unittest.TestCase):
         cls.base_url = 'http://localhost' + ':' + str(cls.config['port']) + '/' + cls.test_project
         cls.data_folder = cls.config['data_folder']
         cls.example_csv = os.path.normpath(cls.data_folder + '/example.csv')
-        cls.example_codebook = json.loads(open(os.path.normpath(cls.data_folder + '/example-ns.json')).read())
+        cls.example_codebook = json.loads(
+            open(os.path.normpath(cls.data_folder + '/example-ns.json')).read())
         cls.uploads_folder = cls.config['uploads_folder']
         # all endpoints
         cls.upload = cls.base_url + '/upload'
@@ -161,22 +163,23 @@ class TestFileApi(unittest.TestCase):
         uploaded_files = os.listdir(cls.uploads_folder)
         test_files = os.listdir(cls.config['data_folder'])
         today = datetime.fromtimestamp(time.time()).isoformat()[:10]
-        for file in uploaded_files:
-            if (file in test_files) or (today in file) or (file in [ 'streamed-example.csv',
-                'uploaded-example.csv', 'uploaded-example-2.csv', 'uploaded-example-3.csv',
-                'streamed-not-chunked' ]):
+        file_list = ['streamed-example.csv', 'uploaded-example.csv',
+                     'uploaded-example-2.csv', 'uploaded-example-3.csv',
+                     'streamed-not-chunked']
+        for _file in uploaded_files:
+            if (_file in test_files) or (today in _file) or (_file in file_list):
                 try:
-                    os.remove(os.path.normpath(cls.uploads_folder + '/' + file))
+                    os.remove(os.path.normpath(cls.uploads_folder + '/' + _file))
                 except OSError as e:
                     logging.error(e)
                     continue
-        # TODO remove sqlite db
+        # TODO remove tables from sqlite db
 
     # Import Auth
     #------------
 
     def test_A_mangled_valid_token_rejected(self):
-        headers = { 'Authorization': 'Bearer ' + IMPORT_TOKENS['MANGLED_VALID'] }
+        headers = {'Authorization': 'Bearer ' + IMPORT_TOKENS['MANGLED_VALID']}
         files = {'file': ('example.csv', open(self.example_csv))}
         resp1 = requests.get(self.list, headers=headers)
         self.assertEqual(resp1.status_code, 401)
@@ -195,7 +198,7 @@ class TestFileApi(unittest.TestCase):
 
 
     def test_B_invalid_signature_rejected(self):
-        headers = { 'Authorization': 'Bearer ' + IMPORT_TOKENS['INVALID_SIGNATURE'] }
+        headers = {'Authorization': 'Bearer ' + IMPORT_TOKENS['INVALID_SIGNATURE']}
         files = {'file': ('example.csv', open(self.example_csv))}
         resp1 = requests.get(self.list, headers=headers)
         self.assertEqual(resp1.status_code, 401)
@@ -214,7 +217,7 @@ class TestFileApi(unittest.TestCase):
 
 
     def test_C_token_with_wrong_role_rejected(self):
-        headers = { 'Authorization': 'Bearer ' + IMPORT_TOKENS['WRONG_ROLE'] }
+        headers = {'Authorization': 'Bearer ' + IMPORT_TOKENS['WRONG_ROLE']}
         files = {'file': ('example.csv', open(self.example_csv))}
         resp1 = requests.get(self.list, headers=headers)
         self.assertEqual(resp1.status_code, 401)
@@ -233,7 +236,7 @@ class TestFileApi(unittest.TestCase):
 
 
     def test_D_timed_out_token_rejected(self):
-        headers = { 'Authorization': 'Bearer ' + IMPORT_TOKENS['TIMED_OUT'] }
+        headers = {'Authorization': 'Bearer ' + IMPORT_TOKENS['TIMED_OUT']}
         files = {'file': ('example.csv', open(self.example_csv))}
         resp1 = requests.get(self.list, headers=headers)
         self.assertEqual(resp1.status_code, 401)
@@ -280,7 +283,7 @@ class TestFileApi(unittest.TestCase):
             os.remove(os.path.normpath(self.uploads_folder + '/' + newfilename))
         except OSError:
             pass
-        headers = { 'Authorization': 'Bearer ' + IMPORT_TOKENS['VALID'] }
+        headers = {'Authorization': 'Bearer ' + IMPORT_TOKENS['VALID']}
         files = {'file': (newfilename, open(self.example_csv))}
         resp = requests.post(self.upload, files=files, headers=headers)
         self.assertEqual(resp.status_code, 201)
@@ -294,7 +297,7 @@ class TestFileApi(unittest.TestCase):
             os.remove(os.path.normpath(self.uploads_folder + '/' + newfilename))
         except OSError:
             pass
-        headers = { 'Authorization': 'Bearer ' + IMPORT_TOKENS['VALID'] }
+        headers = {'Authorization': 'Bearer ' + IMPORT_TOKENS['VALID']}
         files = {'file': (newfilename, open(self.example_csv))}
         resp = requests.patch(self.upload, files=files, headers=headers)
         self.assertEqual(resp.status_code, 201)
@@ -308,7 +311,7 @@ class TestFileApi(unittest.TestCase):
             os.remove(os.path.normpath(self.uploads_folder + '/' + newfilename))
         except OSError:
             pass
-        headers = { 'Authorization': 'Bearer ' + IMPORT_TOKENS['VALID'] }
+        headers = {'Authorization': 'Bearer ' + IMPORT_TOKENS['VALID']}
         files = {'file': (newfilename, open(self.example_csv))}
         resp = requests.patch(self.upload, files=files, headers=headers)
         uploaded_file = os.path.normpath(self.uploads_folder + '/' + newfilename)
@@ -324,7 +327,7 @@ class TestFileApi(unittest.TestCase):
             os.remove(os.path.normpath(self.uploads_folder + '/' + newfilename))
         except OSError:
             pass
-        headers = { 'Authorization': 'Bearer ' + IMPORT_TOKENS['VALID'], 'Filename': newfilename }
+        headers = {'Authorization': 'Bearer ' + IMPORT_TOKENS['VALID'], 'Filename': newfilename}
         resp = requests.post(self.stream, data=open(self.example_csv), headers=headers)
         self.assertEqual(resp.status_code, 201)
         uploaded_file = os.path.normpath(self.uploads_folder + '/' + newfilename)
@@ -332,8 +335,11 @@ class TestFileApi(unittest.TestCase):
 
 
     def test_J_post_stream_file_chunked_transfer_encoding(self):
-        headers = { 'Filename': 'streamed-example.csv', 'Authorization': 'Bearer ' + IMPORT_TOKENS['VALID'], 'Expect': '100-Continue' }
+        headers = {'Filename': 'streamed-example.csv',
+                   'Authorization': 'Bearer ' + IMPORT_TOKENS['VALID'],
+                   'Expect': '100-Continue'}
         resp = requests.post(self.stream, data=lazy_file_reader(self.example_csv), headers=headers)
+        self.assertEqual(resp.status_code, 201)
 
 
     def test_K_put_stream_file_chunked_transfer_encoding(self):
@@ -342,20 +348,22 @@ class TestFileApi(unittest.TestCase):
             os.remove(os.path.normpath(self.uploads_folder + '/' + newfilename))
         except OSError:
             pass
-        headers = { 'Filename': 'streamed-put-example.csv', 'Authorization': 'Bearer ' + IMPORT_TOKENS['VALID'], 'Expect': '100-Continue' }
+        headers = {'Filename': 'streamed-put-example.csv',
+                   'Authorization': 'Bearer ' + IMPORT_TOKENS['VALID'],
+                   'Expect': '100-Continue'}
         resp = requests.put(self.stream, data=lazy_file_reader(self.example_csv), headers=headers)
         uploaded_file = os.path.normpath(self.uploads_folder + '/' + newfilename)
         self.assertEqual(md5sum(self.example_csv), md5sum(uploaded_file))
         resp = requests.put(self.stream, data=lazy_file_reader(self.example_csv), headers=headers)
         self.assertEqual(md5sum(self.example_csv), md5sum(uploaded_file))
-
+        self.assertEqual(resp.status_code, 201)
 
     # Metadata
     #---------
 
 
     def test_L_get_file_list(self):
-        headers = { 'Authorization': 'Bearer ' + IMPORT_TOKENS['VALID'] }
+        headers = {'Authorization': 'Bearer ' + IMPORT_TOKENS['VALID']}
         resp = requests.get(self.list, headers=headers)
         data = json.loads(resp.text)
         self.assertTrue('uploaded-example.csv' in data.keys())
@@ -363,8 +371,9 @@ class TestFileApi(unittest.TestCase):
 
     def test_M_get_file_checksum(self):
         src = os.path.normpath(self.uploads_folder + '/' + 'uploaded-example.csv')
-        headers = { 'Authorization': 'Bearer ' + IMPORT_TOKENS['VALID'] }
-        resp = requests.get(self.base_url + '/checksum?filename=uploaded-example.csv&algorithm=md5', headers=headers)
+        headers = {'Authorization': 'Bearer ' + IMPORT_TOKENS['VALID']}
+        resp = requests.get(self.base_url + '/checksum?filename=uploaded-example.csv&algorithm=md5',
+                            headers=headers)
         data = json.loads(resp.text)
         self.assertEqual(resp.status_code, 200)
         self.assertEqual(data['checksum'], md5sum(src))
@@ -376,13 +385,15 @@ class TestFileApi(unittest.TestCase):
     def test_N_head_on_uploads_fails_when_it_should(self):
         resp1 = requests.head(self.upload)
         self.assertEqual(resp1.status_code, 400)
-        resp2 = requests.head(self.upload, headers={ 'Authorization': 'Bearer ' + IMPORT_TOKENS['VALID'] })
+        resp2 = requests.head(self.upload,
+                              headers={'Authorization': 'Bearer ' + IMPORT_TOKENS['VALID']})
+        self.assertEqual(resp1.status_code, 400)
         self.assertEqual(resp2.status_code, 400)
 
 
     def test_O_head_on_uploads_succeeds_when_conditions_are_met(self):
         files = {'file': ('example.csv', open(self.example_csv))}
-        headers={ 'Authorization': 'Bearer ' + IMPORT_TOKENS['VALID'] }
+        headers = {'Authorization': 'Bearer ' + IMPORT_TOKENS['VALID']}
         resp = requests.head(self.upload, headers=headers, files=files)
         self.assertEqual(resp.status_code, 201)
 
@@ -411,17 +422,17 @@ class TestFileApi(unittest.TestCase):
 
     def test_S_create_table(self):
         table_def = self.example_codebook
-        headers={ 'Authorization': 'Bearer ' + IMPORT_TOKENS['VALID'] }
+        headers = {'Authorization': 'Bearer ' + IMPORT_TOKENS['VALID']}
         resp = requests.post(self.base_url + '/rpc/create_table',
-                    data=json.dumps(table_def), headers=headers)
+                             data=json.dumps(table_def), headers=headers)
         self.assertEqual(resp.status_code, 201)
 
 
     def test_T_create_table_is_idempotent(self):
         table_def = self.example_codebook
-        headers={ 'Authorization': 'Bearer ' + IMPORT_TOKENS['VALID'] }
+        headers = {'Authorization': 'Bearer ' + IMPORT_TOKENS['VALID']}
         resp = requests.post(self.base_url + '/rpc/create_table',
-                    data=json.dumps(table_def), headers=headers)
+                             data=json.dumps(table_def), headers=headers)
         self.assertEqual(resp.status_code, 201)
 
 
@@ -429,11 +440,10 @@ class TestFileApi(unittest.TestCase):
         table_def = self.example_codebook
         table_def['definition']['pages'][0]['elements'].append({
             'elementType': 'QUESTION',
-            'questions': [{'externalQuestionId': 'var3'}]
-        })
-        headers={ 'Authorization': 'Bearer ' + IMPORT_TOKENS['VALID'] }
+            'questions': [{'externalQuestionId': 'var3'}]})
+        headers = {'Authorization': 'Bearer ' + IMPORT_TOKENS['VALID']}
         resp = requests.post(self.base_url + '/rpc/create_table',
-                    data=json.dumps(table_def), headers=headers)
+                             data=json.dumps(table_def), headers=headers)
         self.assertEqual(resp.status_code, 201)
 
 
@@ -441,35 +451,31 @@ class TestFileApi(unittest.TestCase):
         data = {'submission_id':1, 'age':93}
         bulk_data = [{'submission_id':4, 'var1':'something', 'var2':'nothing'},
                      {'submission_id':3, 'var1':'sensitive', 'var2': 'kablamo'}]
-        headers={ 'Authorization': 'Bearer ' + IMPORT_TOKENS['VALID'] }
+        headers = {'Authorization': 'Bearer ' + IMPORT_TOKENS['VALID']}
         resp1 = requests.post(self.base_url + '/storage/form_63332',
-                    data=json.dumps(data), headers=headers)
+                              data=json.dumps(data), headers=headers)
         resp2 = requests.post(self.base_url + '/storage/form_63332',
-                    data=json.dumps(bulk_data), headers=headers)
+                              data=json.dumps(bulk_data), headers=headers)
         self.assertEqual(resp1.status_code, 201)
         self.assertEqual(resp2.status_code, 201)
 
 
     def test_W_create_table_generic(self):
-        table_def = {
-            'table_name': 'test1',
-            'columns': [
-                {'name': 'x', 'type': 'int', 'constraints': { 'not_null': True } },
-                {'name': 'y', 'type': 'text'}
-            ]
-        }
+        table_def = {'table_name': 'test1',
+                     'columns': [{'name': 'x', 'type': 'int', 'constraints': {'not_null': True}},
+                                 {'name': 'y', 'type': 'text'}]}
         data = {'type': 'generic', 'definition': table_def}
-        headers={ 'Authorization': 'Bearer ' + IMPORT_TOKENS['VALID'] }
+        headers = {'Authorization': 'Bearer ' + IMPORT_TOKENS['VALID']}
         resp = requests.post(self.base_url + '/rpc/create_table',
-                    data=json.dumps(data), headers=headers)
+                             data=json.dumps(data), headers=headers)
         self.assertEqual(resp.status_code, 201)
 
 
     def test_X_post_encrypted_data(self):
         encrypted_data = build_payload(self.config)
-        headers={ 'Authorization': 'Bearer ' + IMPORT_TOKENS['VALID'] }
+        headers = {'Authorization': 'Bearer ' + IMPORT_TOKENS['VALID']}
         resp = requests.post(self.base_url + '/encrypted_data',
-                    data=json.dumps(encrypted_data), headers=headers)
+                             data=json.dumps(encrypted_data), headers=headers)
         self.assertEqual(resp.status_code, 201)
 
 
@@ -478,17 +484,17 @@ class TestFileApi(unittest.TestCase):
 
     def test_Y_invalid_project_number_rejected(self):
         data = {'submission_id':11, 'age':193}
-        headers={ 'Authorization': 'Bearer ' + IMPORT_TOKENS['VALID'] }
+        headers = {'Authorization': 'Bearer ' + IMPORT_TOKENS['VALID']}
         resp = requests.post('http://localhost:3003/p12-2193-1349213*&^/storage/form_63332',
-                    data=json.dumps(data), headers=headers)
+                             data=json.dumps(data), headers=headers)
         self.assertEqual(resp.status_code, 400)
 
 
     def test_Z_token_for_other_project_rejected(self):
         data = {'submission_id':11, 'age':193}
-        headers={ 'Authorization': 'Bearer ' + IMPORT_TOKENS['WRONG_PROJECT'] }
+        headers = {'Authorization': 'Bearer ' + IMPORT_TOKENS['WRONG_PROJECT']}
         resp = requests.post(self.base_url + '/storage/form_63332',
-                    data=json.dumps(data), headers=headers)
+                             data=json.dumps(data), headers=headers)
         self.assertEqual(resp.status_code, 401)
 
 
@@ -525,4 +531,3 @@ def main():
 
 if __name__ == '__main__':
     main()
-
