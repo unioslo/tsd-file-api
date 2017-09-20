@@ -5,7 +5,6 @@ import json
 import time
 import logging
 from jwcrypto import jwt, jwk, jws
-from datetime import datetime
 
 
 def verify_json_web_token(auth_header, secret, roles_allowed, pnum):
@@ -64,13 +63,11 @@ def verify_json_web_token(auth_header, secret, roles_allowed, pnum):
     if claims['p'] != pnum:
         # this _should_ be impossible
         logging.error('Access denied to project - mismatch in project numbers')
+        return failure_message
     if claims['role'] not in roles_allowed:
         logging.error('Role not allowed to perform requested operation')
         return failure_message
     if int(time.time()) > int(claims['exp']):
         logging.error('JWT expired')
         return failure_message
-    else:
-        return { 'message': 'OK', 'status': True }
-
-
+    return {'message': 'OK', 'status': True}
