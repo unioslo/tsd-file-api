@@ -91,39 +91,64 @@ class AuthRequestHandler(RequestHandler):
         bool or dict
 
         """
-        logging.info("checking JWT")
+        logging.info("Checking JWT")
         self.status = None
         try:
-            assert roles_allowed
-            auth_header = self.request.headers['Authorization']
-            self.jwt = auth_header.split(' ')[1]
-            if not CONFIG['use_secret_store']:
-                project_specific_secret = options.secret
-            else:
-                try:
-                    pnum = self.request.uri.split('/')[1]
-                    assert _VALID_PNUM.match(pnum)
-                except AssertionError as e:
-                    logging.error(e.message)
-                    logging.error('pnum invalid')
-                    raise e
-                project_specific_secret = options.secret_store[pnum]
-            token_verified_status = verify_json_web_token(auth_header, project_specific_secret,
-                                                          roles_allowed, pnum)
-        except (KeyError, UnboundLocalError, AssertionError) as e:
-            logging.error(e.message)
-            token_verified_status = {}
-            token_verified_status['message'] = 'Missing Authorization header.'
-            token_verified_status['status'] = False
-            self.status = 400
-        if token_verified_status['status'] is True:
-            return
-        else:
-            if self.status == 400:
+            try:
+                assert roles_allowed
+            except AssertionError as e:
+                logging.error(e)
+                logging.error('No roles specified, cannot do authorization')
+                self.set_status(500)
+                raise Exception('Authorization not possible: caller must specify roles')
+            try:
+                auth_header = self.request.headers['Authorization']
+            except (KeyError, UnboundLocalError) as e:
+                logging.error(e)
+                logging.error('Missing authorization header')
                 self.set_status(400)
-            else:
+                raise Exception('Authorization not possible: missing header')
+            try:
+                self.jwt = auth_header.split(' ')[1]
+            except IndexError as e:
+                logging.error(e)
+                logging.error('Malformed authorization header')
+                self.set_status(400)
+                raise Exception('Authorization not possible: malformed header')
+            try:
+                if not CONFIG['use_secret_store']:
+                    project_specific_secret = options.secret
+                else:
+                    try:
+                        pnum = self.request.uri.split('/')[1]
+                        assert _VALID_PNUM.match(pnum)
+                    except AssertionError as e:
+                        logging.error(e.message)
+                        logging.error('pnum invalid')
+                        self.set_status(400)
+                        raise e
+                    project_specific_secret = options.secret_store[pnum]
+            except Exception as e:
+                logging.error(e)
+                logging.error('Could not get project specific secret key for JWT validation')
+                self.set_status(500)
+                raise Exception('Authorization not possible: server error')
+            try:
+                token_verified_status = verify_json_web_token(auth_header, project_specific_secret,
+                                                              roles_allowed, pnum)
+                if not token_verified_status['status']:
+                    self.set_status(401)
+                    raise Exception('JWT verification failed')
+                elif token_verified_status['status']:
+                    return True
+            except Exception as e:
+                logging.error(e)
                 self.set_status(401)
-            self.finish({'message': token_verified_status['message']})
+                raise Exception('Authorization failed')
+        except Exception as e:
+            if not self.status:
+                self.set_status(401)
+            raise Exception
 
 
 class FormDataHandler(AuthRequestHandler):
@@ -136,7 +161,10 @@ class FormDataHandler(AuthRequestHandler):
             f.write(filebody)
 
     def prepare(self):
-        self.validate_token(roles_allowed=['app_user', 'import_user', 'export_user', 'admin_user'])
+        try:
+            valid = self.validate_token(roles_allowed=['app_user', 'import_user', 'export_user', 'admin_user'])
+        except Exception as e:
+            self.finish({'message': 'Authorization failed'})
         try:
             if len(self.request.files['file']) > 1:
                 self.set_status(405)
@@ -177,25 +205,32 @@ class StreamHandler(AuthRequestHandler):
     @gen.coroutine
     def prepare(self):
         logging.info('StreamHandler')
-        self.validate_token(roles_allowed=['app_user', 'import_user', 'export_user', 'admin_user'])
         try:
-            filename = secure_filename(self.request.headers['Filename'])
-            path = os.path.normpath(options.uploads_folder + '/' + filename)
-            logging.info('opening file')
-            logging.info('path: %s', path)
-            if self.request.method == 'POST':
-                self.target_file = open(path, 'ab+')
-            elif self.request.method == 'PUT':
-                self.target_file = open(path, 'wb+')
-        except Exception as e:
-            logging.error(e)
-            logging.error("filename not found")
             try:
-                self.target_file.close()
-            except AttributeError as e:
+                valid = self.validate_token(roles_allowed=['app_user', 'import_user', 'export_user', 'admin_user'])
+            except Exception as e:
                 logging.error(e)
-                logging.error('No file to close after all - so nothing to worry about')
-
+                raise Exception
+            try:
+                filename = secure_filename(self.request.headers['Filename'])
+                path = os.path.normpath(options.uploads_folder + '/' + filename)
+                logging.info('opening file')
+                logging.info('path: %s', path)
+                if self.request.method == 'POST':
+                    self.target_file = open(path, 'ab+')
+                elif self.request.method == 'PUT':
+                    self.target_file = open(path, 'wb+')
+            except Exception as e:
+                logging.error(e)
+                logging.error("filename not found")
+                try:
+                    self.target_file.close()
+                except AttributeError as e:
+                    logging.error(e)
+                    logging.error('No file to close after all - so nothing to worry about')
+        except Exception as e:
+            logging.error('stream handler failed')
+            self.finish({'message': 'no stream processing will happen'})
 
     @gen.coroutine
     def data_received(self, chunk):
@@ -255,39 +290,49 @@ class ProxyHandler(AuthRequestHandler):
     def prepare(self):
         """Called after headers have been read."""
         logging.info('ProxyHandler.prepare')
-        self.validate_token(roles_allowed=['app_user', 'import_user', 'export_user', 'admin_user'])
         try:
-            self.filename = secure_filename(self.request.headers['Filename'])
-            logging.info('supplied filename: %s', self.filename)
-        except KeyError:
-            self.filename = datetime.datetime.now().isoformat() + '.txt'
-            logging.info("filename not found - going to use this filename: %s", self.filename)
-        self.chunks = tornado.queues.Queue(1) # TODO: performace tuning here
-        try:
-            if self.request.method == 'HEAD':
-                body = None
-            else:
-                body = self.body_producer
-            pnum = self.request.uri.split('/')[1]
             try:
-                assert _VALID_PNUM.match(pnum)
-            except AssertionError as e:
-                logging.error('URI does not contain a valid pnum')
+                valid = self.validate_token(roles_allowed=['app_user', 'import_user', 'export_user', 'admin_user'])
+            except Exception as e:
                 raise e
-            self.fetch_future = AsyncHTTPClient().fetch(
-                'http://localhost:%d/%s/upload_stream' % (options.port, pnum),
-                method=self.request.method,
-                body_producer=body,
-                # for the _entire_ request
-                # will have to adjust this
-                # there is also connect_timeout
-                # for the initial connection
-                # in seconds, both
-                request_timeout=12000.0,
-                headers={'Authorization': 'Bearer ' + self.jwt, 'Filename': self.filename})
-        except (AttributeError, HTTPError, AssertionError) as e:
-            logging.error('Problem in async client')
-            logging.error(e)
+            try:
+                self.filename = secure_filename(self.request.headers['Filename'])
+                logging.info('supplied filename: %s', self.filename)
+            except KeyError:
+                self.filename = datetime.datetime.now().isoformat() + '.txt'
+                logging.info("filename not found - going to use this filename: %s", self.filename)
+            self.chunks = tornado.queues.Queue(1) # TODO: performace tuning here
+            try:
+                if self.request.method == 'HEAD':
+                    body = None
+                else:
+                    body = self.body_producer
+                pnum = self.request.uri.split('/')[1]
+                try:
+                    assert _VALID_PNUM.match(pnum)
+                except AssertionError as e:
+                    logging.error('URI does not contain a valid pnum')
+                    raise e
+                self.fetch_future = AsyncHTTPClient().fetch(
+                    'http://localhost:%d/%s/upload_stream' % (options.port, pnum),
+                    method=self.request.method,
+                    body_producer=body,
+                    # for the _entire_ request
+                    # will have to adjust this
+                    # there is also connect_timeout
+                    # for the initial connection
+                    # in seconds, both
+                    request_timeout=12000.0,
+                    headers={'Authorization': 'Bearer ' + self.jwt, 'Filename': self.filename})
+                logging.info('have future')
+                logging.info(self.fetch_future)
+            except (AttributeError, HTTPError, AssertionError) as e:
+                logging.error('Problem in async client')
+                logging.error(e)
+                raise e
+        except Exception as e:
+            self.set_status(401)
+            self.finish({'message': 'authz failed'})
 
     @gen.coroutine
     def body_producer(self, write):
@@ -329,7 +374,10 @@ class ProxyHandler(AuthRequestHandler):
 class MetaDataHandler(AuthRequestHandler):
 
     def prepare(self):
-        self.validate_token(roles_allowed=['app_user', 'import_user', 'export_user', 'admin_user'])
+        try:
+            valid = self.validate_token(roles_allowed=['app_user', 'import_user', 'export_user', 'admin_user'])
+        except Exception as e:
+            self.finish({'message': 'Authorization failed'})
 
     def get(self, pnum):
         _dir = options.uploads_folder
@@ -355,7 +403,10 @@ class ChecksumHandler(AuthRequestHandler):
         return hash.hexdigest()
 
     def prepare(self):
-        self.validate_token(roles_allowed=['app_user', 'import_user', 'export_user', 'admin_user'])
+        try:
+            valid = self.validate_token(roles_allowed=['app_user', 'import_user', 'export_user', 'admin_user'])
+        except Exception as e:
+            self.finish({'message': 'Authorization failed'})
 
     def get(self, pnum):
         # Consider: http://www.tornadoweb.org/en/stable/escape.html#tornado.escape.url_unescape
@@ -374,7 +425,10 @@ class TableCreatorHandler(AuthRequestHandler):
     """
 
     def prepare(self):
-        self.validate_token(roles_allowed=['app_user', 'import_user', 'export_user', 'admin_user'])
+        try:
+            valid = self.validate_token(roles_allowed=['app_user', 'import_user', 'export_user', 'admin_user'])
+        except Exception as e:
+            self.finish({'message': 'Authorization failed'})
 
 
     def post(self, pnum):
@@ -418,7 +472,10 @@ class JsonToSQLiteHandler(AuthRequestHandler):
     """
 
     def prepare(self):
-        self.validate_token(roles_allowed=['app_user', 'import_user', 'export_user', 'admin_user'])
+        try:
+            valid = self.validate_token(roles_allowed=['app_user', 'import_user', 'export_user', 'admin_user'])
+        except Exception as e:
+            self.finish({'message': 'Authorization failed'})
 
     def post(self, pnum, resource_name):
         try:
@@ -440,8 +497,10 @@ class PGPJsonToSQLiteHandler(AuthRequestHandler):
     """
 
     def prepare(self):
-        self.validate_token(roles_allowed=['app_user', 'import_user', 'export_user', 'admin_user'])
-        pass
+        try:
+            valid = self.validate_token(roles_allowed=['app_user', 'import_user', 'export_user', 'admin_user'])
+        except Exception as e:
+            self.finish({'message': 'Authorization failed'})
 
     def post(self, pnum):
         try:
