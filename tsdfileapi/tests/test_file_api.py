@@ -187,20 +187,20 @@ class TestFileApi(unittest.TestCase):
     def test_A_mangled_valid_token_rejected(self):
         headers = {'Authorization': 'Bearer ' + IMPORT_TOKENS['MANGLED_VALID']}
         files = {'file': ('example.csv', open(self.example_csv))}
-        #resp1 = requests.get(self.list, headers=headers)
-        #self.assertEqual(resp1.status_code, 401)
-        #resp2 = requests.get(self.checksum, headers=headers)
-        #self.assertEqual(resp2.status_code, 401)
-        #resp3 = requests.post(self.upload, headers=headers, files=files)
-        #self.assertEqual(resp3.status_code, 401)
+        resp1 = requests.get(self.list, headers=headers)
+        self.assertEqual(resp1.status_code, 401)
+        resp2 = requests.get(self.checksum, headers=headers)
+        self.assertEqual(resp2.status_code, 401)
+        resp3 = requests.post(self.upload, headers=headers, files=files)
+        self.assertEqual(resp3.status_code, 401)
         resp4 = requests.post(self.stream, headers=headers, files=files)
         self.assertEqual(resp4.status_code, 401)
-        #resp5 = requests.post(self.upload_stream, headers=headers, files=files)
-        #self.assertEqual(resp5.status_code, 401)
-        #resp6 = requests.patch(self.upload, headers=headers, files=files)
-        #self.assertEqual(resp6.status_code, 401)
-        #resp7 = requests.put(self.upload, headers=headers, files=files)
-        #self.assertEqual(resp7.status_code, 401)
+        resp5 = requests.post(self.upload_stream, headers=headers, files=files)
+        self.assertEqual(resp5.status_code, 401)
+        resp6 = requests.patch(self.upload, headers=headers, files=files)
+        self.assertEqual(resp6.status_code, 401)
+        resp7 = requests.put(self.upload, headers=headers, files=files)
+        self.assertEqual(resp7.status_code, 401)
 
 
     def test_B_invalid_signature_rejected(self):
