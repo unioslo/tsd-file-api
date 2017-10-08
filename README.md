@@ -3,7 +3,23 @@
 
 A REST API for upload and streaming of files to TSD, authenticated by JWT.
 
-## timings
+## Build and release
+
+Download [VirtualBox](https://www.virtualbox.org/wiki/Downloads) and [vagrant](https://www.vagrantup.com/downloads.html)
+
+```
+git clone ssh://git@bitbucket.usit.uio.no:7999/tsd/tsd-file-api.git
+cd tsd-file-api
+vagrant up
+```
+
+This will build two rpms and place them in the repo directory:
+- tsd-file-api-venv
+- python-tsd-file-api
+
+Releasing them is a manual process.
+
+## Performance notes
 
 Some initial indications of performance.
 
