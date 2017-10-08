@@ -19,6 +19,7 @@ from utils import secure_filename
 _VALID_ID = re.compile(r'([0-9])')
 _VALID_PNUM = re.compile(r'([0-9a-z])')
 _VALID_COLNAME = re.compile(r'([0-9a-z])')
+_VALID_TABLE_NAME = re.compile(r'([0-9a-z])')
 
 
 class TableNameException(Exception):
@@ -123,6 +124,20 @@ def _table_name_from_form_id(form_id):
     _id = str(form_id)
     if _VALID_ID.match(_id):
         return 'form_' + _id
+    else:
+        logging.error('problem with form id - unknown what the issue is')
+        raise TableNameException
+
+
+def _table_name_from_table_name(table_name):
+    """Return a secure and legal table name."""
+    try:
+        assert isinstance(table_name, str)
+    except AssertionError:
+        logging.error('table name not str')
+        raise TableNameException
+    if _VALID_TABLE_NAME.match(table_name):
+        return table_name
     else:
         logging.error('problem with form id - unknown what the issue is')
         raise TableNameException

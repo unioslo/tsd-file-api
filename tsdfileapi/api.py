@@ -29,7 +29,7 @@ from auth import verify_json_web_token
 from utils import secure_filename
 from db import insert_into, create_table_from_codebook, sqlite_init, \
                create_table_from_generic, _table_name_from_form_id, \
-               _VALID_PNUM
+               _VALID_PNUM, _table_name_from_table_name
 from pgp import decrypt_pgp_json
 
 
@@ -505,7 +505,10 @@ class PGPJsonToSQLiteHandler(AuthRequestHandler):
     def post(self, pnum):
         try:
             all_data = json_decode(self.request.body)
-            table_name = _table_name_from_form_id(all_data['form_id'])
+            if 'form_id' in all_data.keys():
+                table_name = _table_name_from_form_id(all_data['form_id'])
+            else:
+                table_name = _table_name_from_table_name(all_data['table_name'])
             decrypted_data = decrypt_pgp_json(CONFIG, all_data['data'])
             engine = sqlite_init(options.nsdb_path, pnum)
             insert_into(engine, table_name, decrypted_data)
