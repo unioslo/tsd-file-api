@@ -21,8 +21,10 @@ Vagrant.configure(2) do |config|
     sudo pip install virtualenv virtualenv-tools
     sudo yum -y install ruby-devel gcc make rpm-build rubygems
     sudo gem install --no-ri --no-rdoc fpm
-    sudo fpm --verbose -s virtualenv -t rpm --name tsd-file-api-venv --prefix /opt/tsd-file-api-venv/virtualenv /vagrant/requirements.txt
-    sudo fpm -s python -t rpm /vagrant/setup.py
+    sudo rm /vagrant/tsd-file-api-venv-1.0-1.x86_64.rpm
+    sudo rm /vagrant/python-tsd-file-api-0.1.0-1.noarch.rpm
+    sudo fpm --verbose -s virtualenv -p /vagrant -t rpm --name tsd-file-api-venv --prefix /opt/tsd-file-api-venv/virtualenv /vagrant/requirements.txt
+    sudo fpm -s python -p /vagrant -t rpm /vagrant/setup.py
   SHELL
 
 end
