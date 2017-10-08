@@ -5,3 +5,5 @@ api-users.db
 test-config.yaml
 .vagrant/
 *.rpm
+build/
+tsd_file_api.egg-info/

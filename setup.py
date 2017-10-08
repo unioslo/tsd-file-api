@@ -1,4 +1,5 @@
-from distutils.core import setup
+
+from setuptools import setup
 
 setup(
     name='tsd-file-api',
@@ -11,7 +12,10 @@ setup(
     package_data={
         'tsdfileapi': [
             'tests/*.py',
-            'data/*'
+            'data/*',
+            'config/file-api-config.yaml.example',
+            'config/file-api.service'
         ]
-    }
+    },
+    scripts=['scripts/fileapi']
 )

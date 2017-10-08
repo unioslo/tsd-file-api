@@ -34,19 +34,20 @@ _guide="\
 
     1. Create a config file
 
-        cp /etc/opt/file-api-config.yaml.example /etc/opt/file-api-config.yaml
-        chown fileapi:fileapi /etc/opt/file-api-config.yaml
+        mkdir /etc/tsd-file-api/
+        cp /lib/python2.7/site-packages/tsdfileapi/config/file-api-config.yaml.example /etc/tsd-file-api/file-api-config.yaml
 
     2. Fill in the correct values
 
-        emacs /etc/opt/file-api-config.yaml
+        emacs /etc/tsd-file-api/file-api-config.yaml
 
-    3. Create the default file upload directory
-
-        mkdir /opt/file-api-uploads && chown fileapi:fileapi /opt/file-api-uploads
+        E.g. which secret store to use, where to store files
 
     4. Start the service, check its status
 
+        groupadd fileapi
+        useradd fileapi -g fileapi
+        cp /lib/python2.7/site-packages/tsdfileapi/config/file-api.service /etc/systemd/system/file-api.service
         systemctl start file-api
         systemctl status file-api
         systemctl enable file-api
@@ -57,9 +58,9 @@ _guide="\
 
 "
 
-VENV_PYTHON=/opt/tsd-file-api-env/bin/python
-MODULE_DIR=/opt/tsd-file-api-env/lib/python2.7/site-packages/tsdfileapi
-CONFIG_FILE=/etc/opt/file-api-config.yaml
+VENV_PYTHON=/opt/tsd-file-api-venv/virtualenv/bin/python
+MODULE_DIR=/lib/python2.7/site-packages/tsdfileapi
+CONFIG_FILE=/etc/tsd-file-api/file-api-config.yaml
 
 tests() {
     $VENV_PYTHON $MODULE_DIR/tests/test_file_api.py $CONFIG_FILE

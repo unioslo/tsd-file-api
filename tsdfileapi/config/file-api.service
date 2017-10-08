@@ -1,0 +1,10 @@
+[Unit]
+Description=file api REST Service
+
+[Service]
+User=fileapi
+Group=fileapi
+ExecStart=/opt/tsd-file-api-venv/virtualenv/bin/python /lib/python2.7/site-packages/tsdfileapi/api.py /etc/tsd-file-api/file-api-config.yaml
+
+[Install]
+WantedBy=multi-user.target
