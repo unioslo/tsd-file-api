@@ -112,20 +112,26 @@ def md5sum(filename, blocksize=65536):
     return _hash.hexdigest()
 
 
-def build_payload(config):
+def build_payload(config, dtype):
     gpg = gnupg.GPG(binary=config['gpg_binary'], homedir=config['gpg_homedir'],
                     keyring=config['gpg_keyring'], secring=config['gpg_secring'])
     key_id = config['public_key_id']
     _id = random.randint(1, 1000000)
-    message = json.dumps({'submission_id': _id, 'consent': 'yes', 'age': 20,
-                          'email_address': 'my2@email.com',
-                          'national_id_number': '18101922351',
-                          'phone_number': '4820666472',
-                          'children_ages': '{"6", "70"}', 'var1': '{"val2"}'})
-    encr = str(gpg.encrypt(message, key_id))
-    data = {'form_id': 63332, 'submission_id': _id,
-            'submission_timestamp': datetime.utcnow().isoformat(),
-            'key_id': key_id, 'data': encr}
+    if dtype == 'ns':
+        message = json.dumps({'submission_id': _id, 'consent': 'yes', 'age': 20,
+                              'email_address': 'my2@email.com',
+                              'national_id_number': '18101922351',
+                              'phone_number': '4820666472',
+                              'children_ages': '{"6", "70"}', 'var1': '{"val2"}'})
+        encr = str(gpg.encrypt(message, key_id))
+        data = {'form_id': 63332, 'submission_id': _id,
+                'submission_timestamp': datetime.utcnow().isoformat(),
+                'key_id': key_id, 'data': encr}
+    elif dtype == 'generic':
+        message = json.dumps({'x': 10, 'y': 'bla'})
+        encr = str(gpg.encrypt(message, key_id))
+        data = {'table_name': 'test1', 'submission_id': _id,
+                'key_id': key_id, 'data': encr}
     return data
 
 
@@ -477,11 +483,16 @@ class TestFileApi(unittest.TestCase):
 
 
     def test_X_post_encrypted_data(self):
-        encrypted_data = build_payload(self.config)
+        encrypted_data_ns = build_payload(self.config, 'ns')
+        encrypted_data_gen = build_payload(self.config, 'generic')
         headers = {'Authorization': 'Bearer ' + IMPORT_TOKENS['VALID']}
-        resp = requests.post(self.base_url + '/encrypted_data',
-                             data=json.dumps(encrypted_data), headers=headers)
-        self.assertEqual(resp.status_code, 201)
+        resp1 = requests.post(self.base_url + '/encrypted_data',
+                             data=json.dumps(encrypted_data_ns), headers=headers)
+        resp2 = requests.post(self.base_url + '/encrypted_data',
+                             data=json.dumps(encrypted_data_gen), headers=headers)
+        print resp2.text
+        self.assertEqual(resp1.status_code, 201)
+        self.assertEqual(resp2.status_code, 201)
 
 
     # More Authn+z

@@ -508,7 +508,7 @@ class PGPJsonToSQLiteHandler(AuthRequestHandler):
             if 'form_id' in all_data.keys():
                 table_name = _table_name_from_form_id(all_data['form_id'])
             else:
-                table_name = _table_name_from_table_name(all_data['table_name'])
+                table_name = _table_name_from_table_name(str(all_data['table_name']))
             decrypted_data = decrypt_pgp_json(CONFIG, all_data['data'])
             engine = sqlite_init(options.nsdb_path, pnum)
             insert_into(engine, table_name, decrypted_data)
