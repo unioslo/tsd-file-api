@@ -8,7 +8,7 @@
 
 import logging
 import os
-
+import pwd
 import datetime
 import hashlib
 from sys import argv
@@ -38,6 +38,13 @@ def read_config(filename):
         conf = yaml.load(f)
     return conf
 
+def to_user(username):
+    try:
+        os.setuid(pwd.getpwnam(username).pw_uid)
+    except OSError:
+        logging.error('Cannot change to user, aborting write')
+        raise Exception('API not authorized to change to user')
+
 try:
     CONFIG_FILE = argv[1]
     CONFIG = read_config(CONFIG_FILE)
@@ -52,6 +59,7 @@ define('server_delay', default=CONFIG['server_delay'])
 define('num_chunks', default=CONFIG['num_chunks'])
 define('max_body_size', CONFIG['max_body_size'])
 define('user_authorization', default=CONFIG['user_authorization'])
+define('api_user', pwd.getpwuid(os.getuid()).pw_name)
 define('uploads_folder', CONFIG['uploads_folder'])
 define('nsdb_path', CONFIG['sqlite_folder'])
 if not CONFIG['use_secret_store']:
@@ -155,16 +163,25 @@ class AuthRequestHandler(RequestHandler):
 
 class FormDataHandler(AuthRequestHandler):
 
-    def write_file(self, filemode):
+    def write_file(self, filemode, user=None):
+        if options.user_authorization:
+            logging.info('writing file as user %s', user)
+            to_user(user)
         filename = secure_filename(self.request.files['file'][0]['filename'])
         target = os.path.normpath(options.uploads_folder + '/' + filename)
         filebody = self.request.files['file'][0]['body']
-        with open(target, filemode) as f:
-            f.write(filebody)
+        try:
+            with open(target, filemode) as f:
+                f.write(filebody)
+        except Exception as e:
+            logging.error('Could not write to file')
+        finally:
+            if options.user_authorization:
+                to_user(options.api_user)
 
     def prepare(self):
         try:
-            valid = self.validate_token(roles_allowed=['app_user', 'import_user', 'export_user', 'admin_user'])
+            self.authnz = self.validate_token(roles_allowed=['app_user', 'import_user', 'export_user', 'admin_user'])
         except Exception as e:
             self.finish({'message': 'Authorization failed'})
         try:
@@ -180,17 +197,17 @@ class FormDataHandler(AuthRequestHandler):
             raise MissingArgumentError('file')
 
     def post(self, pnum):
-        self.write_file('ab+')
+        self.write_file('ab+', self.authnz['user'])
         self.set_status(201)
         self.write({'message': 'file uploaded'})
 
     def patch(self, pnum):
-        self.write_file('ab+')
+        self.write_file('ab+', self.authnz['user'])
         self.set_status(201)
         self.write({'message': 'file uploaded'})
 
     def put(self, pnum):
-        self.write_file('wb+')
+        self.write_file('wb+', self.authnz['user'])
         self.set_status(201)
         self.write({'message': 'file uploaded'})
 
