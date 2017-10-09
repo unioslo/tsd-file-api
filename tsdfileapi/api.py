@@ -51,6 +51,7 @@ define('debug', default=CONFIG['debug'])
 define('server_delay', default=CONFIG['server_delay'])
 define('num_chunks', default=CONFIG['num_chunks'])
 define('max_body_size', CONFIG['max_body_size'])
+define('user_authorization', default=CONFIG['user_authorization'])
 define('uploads_folder', CONFIG['uploads_folder'])
 define('nsdb_path', CONFIG['sqlite_folder'])
 if not CONFIG['use_secret_store']:
@@ -134,13 +135,14 @@ class AuthRequestHandler(RequestHandler):
                 self.set_status(500)
                 raise Exception('Authorization not possible: server error')
             try:
-                token_verified_status = verify_json_web_token(auth_header, project_specific_secret,
+                # extract user info from token
+                authnz = verify_json_web_token(auth_header, project_specific_secret,
                                                               roles_allowed, pnum)
-                if not token_verified_status['status']:
+                if not authnz['status']:
                     self.set_status(401)
                     raise Exception('JWT verification failed')
-                elif token_verified_status['status']:
-                    return True
+                elif authnz['status']:
+                    return authnz
             except Exception as e:
                 logging.error(e)
                 self.set_status(401)

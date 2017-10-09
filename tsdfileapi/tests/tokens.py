@@ -9,7 +9,7 @@ from jwcrypto import jwt, jwk
 from ..db import load_jwk_store
 
 
-def tkn(secret, exp=1, role=None, pnum=None):
+def tkn(secret, exp=1, role=None, pnum=None, user=None):
     """
     This is the same token generation function as found in tsd-auth-api/auth.py
     """
@@ -19,7 +19,10 @@ def tkn(secret, exp=1, role=None, pnum=None):
         expiry = datetime.now() + timedelta(hours=exp)
         exp = int(time.mktime(expiry.timetuple()))
         if pnum:
-            claims = {'role': role, 'exp': exp, 'p': pnum}
+            if not user:
+                user = pnum + '-' + role
+            claims = {'role': role, 'exp': exp, 'p': pnum,
+                      'u': user}
         else:
             claims = {'role': role, 'exp': exp}
     else:

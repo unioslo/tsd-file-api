@@ -38,7 +38,7 @@ def verify_json_web_token(auth_header, secret, roles_allowed, pnum):
 
     Returns
     -------
-    dict {message, status}
+    dict {message, status, user}
 
     """
     failure_message = {'message': 'Access forbidden', 'status': False}
@@ -70,4 +70,4 @@ def verify_json_web_token(auth_header, secret, roles_allowed, pnum):
     if int(time.time()) > int(claims['exp']):
         logging.error('JWT expired')
         return failure_message
-    return {'message': 'OK', 'status': True}
+    return {'message': 'OK', 'status': True, 'user': claims['u']}
