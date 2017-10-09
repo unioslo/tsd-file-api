@@ -226,7 +226,7 @@ class StreamHandler(AuthRequestHandler):
         logging.info('StreamHandler')
         try:
             try:
-                valid = self.validate_token(roles_allowed=['app_user', 'import_user', 'export_user', 'admin_user'])
+                self.authnz = self.validate_token(roles_allowed=['app_user', 'import_user', 'export_user', 'admin_user'])
             except Exception as e:
                 logging.error(e)
                 raise Exception
@@ -235,6 +235,10 @@ class StreamHandler(AuthRequestHandler):
                 path = os.path.normpath(options.uploads_folder + '/' + filename)
                 logging.info('opening file')
                 logging.info('path: %s', path)
+                if options.user_authorization:
+                    user = self.authnz['user']
+                    logging.info('Switching to user: %s', user)
+                    to_user(user)
                 if self.request.method == 'POST':
                     self.target_file = open(path, 'ab+')
                 elif self.request.method == 'PUT':
@@ -286,9 +290,11 @@ class StreamHandler(AuthRequestHandler):
             if not self.target_file.closed:
                 self.target_file.close()
                 logging.info('StreamHandler: Closed file')
+            to_user(options.api_user)
         except AttributeError as e:
             logging.info(e)
             logging.info('There was no open file to close')
+            to_user(options.api_user)
         logging.info("Stream processing finished")
 
     def on_connection_close(self):
@@ -343,8 +349,6 @@ class ProxyHandler(AuthRequestHandler):
                     # in seconds, both
                     request_timeout=12000.0,
                     headers={'Authorization': 'Bearer ' + self.jwt, 'Filename': self.filename})
-                logging.info('have future')
-                logging.info(self.fetch_future)
             except (AttributeError, HTTPError, AssertionError) as e:
                 logging.error('Problem in async client')
                 logging.error(e)
