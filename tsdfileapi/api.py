@@ -41,8 +41,9 @@ def read_config(filename):
 def to_user(username):
     try:
         os.setuid(pwd.getpwnam(username).pw_uid)
+        logging.info('Switching to user: %s', username)
     except OSError:
-        logging.error('Cannot change to user, aborting write')
+        logging.error('Cannot change to user: %s, aborting write', username)
         raise Exception('API not authorized to change to user')
 
 try:
@@ -59,7 +60,7 @@ define('server_delay', default=CONFIG['server_delay'])
 define('num_chunks', default=CONFIG['num_chunks'])
 define('max_body_size', CONFIG['max_body_size'])
 define('user_authorization', default=CONFIG['user_authorization'])
-define('api_user', pwd.getpwuid(os.getuid()).pw_name)
+define('api_user', CONFIG['api_user'])
 define('uploads_folder', CONFIG['uploads_folder'])
 define('nsdb_path', CONFIG['sqlite_folder'])
 if not CONFIG['use_secret_store']:
@@ -165,15 +166,17 @@ class FormDataHandler(AuthRequestHandler):
 
     def write_file(self, filemode, user=None):
         if options.user_authorization:
-            logging.info('writing file as user %s', user)
+            logging.info('running as user: %s', options.api_user)
             to_user(user)
-        filename = secure_filename(self.request.files['file'][0]['filename'])
-        target = os.path.normpath(options.uploads_folder + '/' + filename)
-        filebody = self.request.files['file'][0]['body']
+            logging.info('writing file as user: %s', user)
         try:
+            filename = secure_filename(self.request.files['file'][0]['filename'])
+            target = os.path.normpath(options.uploads_folder + '/' + filename)
+            filebody = self.request.files['file'][0]['body']
             with open(target, filemode) as f:
                 f.write(filebody)
         except Exception as e:
+            logging.error(e)
             logging.error('Could not write to file')
         finally:
             if options.user_authorization:
@@ -237,7 +240,6 @@ class StreamHandler(AuthRequestHandler):
                 logging.info('path: %s', path)
                 if options.user_authorization:
                     user = self.authnz['user']
-                    logging.info('Switching to user: %s', user)
                     to_user(user)
                 if self.request.method == 'POST':
                     self.target_file = open(path, 'ab+')
@@ -290,11 +292,13 @@ class StreamHandler(AuthRequestHandler):
             if not self.target_file.closed:
                 self.target_file.close()
                 logging.info('StreamHandler: Closed file')
-            to_user(options.api_user)
+            if options.user_authorization:
+                to_user(options.api_user)
         except AttributeError as e:
             logging.info(e)
             logging.info('There was no open file to close')
-            to_user(options.api_user)
+            if options.user_authorization:
+                to_user(options.api_user)
         logging.info("Stream processing finished")
 
     def on_connection_close(self):
@@ -355,7 +359,7 @@ class ProxyHandler(AuthRequestHandler):
                 raise e
         except Exception as e:
             self.set_status(401)
-            self.finish({'message': 'authz failed'})
+            self.finish({'message': 'Authentication failed'})
 
     @gen.coroutine
     def body_producer(self, write):
@@ -398,13 +402,19 @@ class MetaDataHandler(AuthRequestHandler):
 
     def prepare(self):
         try:
-            valid = self.validate_token(roles_allowed=['app_user', 'import_user', 'export_user', 'admin_user'])
+            self.authnz = self.validate_token(roles_allowed=['app_user', 'import_user', 'export_user', 'admin_user'])
         except Exception as e:
             self.finish({'message': 'Authorization failed'})
 
     def get(self, pnum):
         _dir = options.uploads_folder
+        if options.user_authorization:
+            user = self.authnz['user']
+            logging.info('Switching to user: %s', user)
+            to_user(user)
         files = os.listdir(_dir)
+        if options.user_authorization:
+            to_user(options.api_user)
         times = map(lambda x:
                     datetime.datetime.fromtimestamp(
                         os.stat(os.path.normpath(_dir + '/' + x)).st_mtime).isoformat(), files)
@@ -427,7 +437,7 @@ class ChecksumHandler(AuthRequestHandler):
 
     def prepare(self):
         try:
-            valid = self.validate_token(roles_allowed=['app_user', 'import_user', 'export_user', 'admin_user'])
+            self.authnz = self.validate_token(roles_allowed=['app_user', 'import_user', 'export_user', 'admin_user'])
         except Exception as e:
             self.finish({'message': 'Authorization failed'})
 
@@ -435,7 +445,13 @@ class ChecksumHandler(AuthRequestHandler):
         # Consider: http://www.tornadoweb.org/en/stable/escape.html#tornado.escape.url_unescape
         filename = secure_filename(self.get_query_argument('filename'))
         path = os.path.normpath(options.uploads_folder + '/' + filename)
+        if options.user_authorization:
+            user = self.authnz['user']
+            logging.info('Switching to user: %s', user)
+            to_user(user)
         checksum = self.md5sum(path)
+        if options.user_authorization:
+            to_user(options.api_user)
         self.write({'checksum': checksum, 'algorithm': 'md5'})
 
 
@@ -449,14 +465,17 @@ class TableCreatorHandler(AuthRequestHandler):
 
     def prepare(self):
         try:
-            valid = self.validate_token(roles_allowed=['app_user', 'import_user', 'export_user', 'admin_user'])
+            self.authnz = self.validate_token(roles_allowed=['app_user', 'import_user', 'export_user', 'admin_user'])
         except Exception as e:
             self.finish({'message': 'Authorization failed'})
-
 
     def post(self, pnum):
         try:
             data = json_decode(self.request.body)
+            if options.user_authorization:
+                user = self.authnz['user']
+                logging.info('Switching to user: %s', user)
+                to_user(user)
             engine = sqlite_init(options.nsdb_path, pnum)
             try:
                 _type = data['type']
@@ -485,6 +504,10 @@ class TableCreatorHandler(AuthRequestHandler):
             self.set_status(400)
             self.finish({'message': m})
 
+    def on_finish(self):
+        if options.user_authorization:
+            to_user(options.api_user)
+
 
 class JsonToSQLiteHandler(AuthRequestHandler):
 
@@ -496,13 +519,17 @@ class JsonToSQLiteHandler(AuthRequestHandler):
 
     def prepare(self):
         try:
-            valid = self.validate_token(roles_allowed=['app_user', 'import_user', 'export_user', 'admin_user'])
+            self.authnz = self.validate_token(roles_allowed=['app_user', 'import_user', 'export_user', 'admin_user'])
         except Exception as e:
             self.finish({'message': 'Authorization failed'})
 
     def post(self, pnum, resource_name):
         try:
             data = json_decode(self.request.body)
+            if options.user_authorization:
+                user = self.authnz['user']
+                logging.info('Switching to user: %s', user)
+                to_user(user)
             engine = sqlite_init(options.nsdb_path, pnum)
             insert_into(engine, resource_name, data)
             self.set_status(201)
@@ -511,6 +538,10 @@ class JsonToSQLiteHandler(AuthRequestHandler):
             logging.error(e)
             self.set_status(400)
             self.write({'message': e.message})
+
+    def on_finish(self):
+        if options.user_authorization:
+            to_user(options.api_user)
 
 
 class PGPJsonToSQLiteHandler(AuthRequestHandler):
@@ -521,7 +552,7 @@ class PGPJsonToSQLiteHandler(AuthRequestHandler):
 
     def prepare(self):
         try:
-            valid = self.validate_token(roles_allowed=['app_user', 'import_user', 'export_user', 'admin_user'])
+            self.authnz = self.validate_token(roles_allowed=['app_user', 'import_user', 'export_user', 'admin_user'])
         except Exception as e:
             self.finish({'message': 'Authorization failed'})
 
@@ -533,6 +564,10 @@ class PGPJsonToSQLiteHandler(AuthRequestHandler):
             else:
                 table_name = _table_name_from_table_name(str(all_data['table_name']))
             decrypted_data = decrypt_pgp_json(CONFIG, all_data['data'])
+            if options.user_authorization:
+                user = self.authnz['user']
+                logging.info('Switching to user: %s', user)
+                to_user(user)
             engine = sqlite_init(options.nsdb_path, pnum)
             insert_into(engine, table_name, decrypted_data)
             self.set_status(201)
@@ -541,6 +576,10 @@ class PGPJsonToSQLiteHandler(AuthRequestHandler):
             logging.error(e)
             self.set_status(400)
             self.write({'message': e.message})
+
+    def on_finish(self):
+        if options.user_authorization:
+            to_user(options.api_user)
 
 
 def main():
