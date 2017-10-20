@@ -16,7 +16,7 @@ Vagrant.configure(2) do |config|
   # rom -e <name> to remove
   config.vm.provision "shell", inline: <<-SHELL
     sudo yum -y install emacs rpm-build git
-    sudo yum -y install python-devel openssl openssl-devel
+    sudo yum -y install python-devel openssl openssl-devel postgresql-devel
     sudo easy_install pip
     sudo pip install virtualenv virtualenv-tools
     sudo yum -y install ruby-devel gcc make rpm-build rubygems
