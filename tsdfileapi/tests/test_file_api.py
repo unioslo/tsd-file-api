@@ -78,6 +78,7 @@ from datetime import datetime
 import gnupg
 import requests
 import yaml
+from sqlalchemy.exc import OperationalError
 
 # pylint: disable=relative-import
 from tokens import gen_test_tokens
@@ -156,11 +157,11 @@ class TestFileApi(unittest.TestCase):
             open(os.path.normpath(cls.data_folder + '/example-ns.json')).read())
         cls.uploads_folder = cls.config['uploads_folder']
         # all endpoints
-        cls.upload = cls.base_url + '/upload'
-        cls.list = cls.base_url + '/list'
-        cls.checksum = cls.base_url + '/checksum'
-        cls.stream = cls.base_url + '/stream'
-        cls.upload_stream = cls.base_url + '/upload_stream'
+        cls.upload = cls.base_url + '/files/upload'
+        cls.list = cls.base_url + '/files/list'
+        cls.checksum = cls.base_url + '/files/checksum'
+        cls.stream = cls.base_url + '/files/stream'
+        cls.upload_stream = cls.base_url + '/files/upload_stream'
         cls.test_project = cls.test_project
         global IMPORT_TOKENS
         IMPORT_TOKENS = gen_test_tokens(cls.config)
@@ -182,9 +183,13 @@ class TestFileApi(unittest.TestCase):
                     logging.error(e)
                     continue
         cls.sqlite_path = cls.config['sqlite_folder']
-        with session_scope(sqlite_init(cls.sqlite_path, cls.test_project)) as session:
-            session.execute('delete from test1')
-            session.execute('delete from form_63332')
+        try:
+            with session_scope(sqlite_init(cls.sqlite_path, cls.test_project)) as session:
+                session.execute('delete from test1')
+                session.execute('delete from form_63332')
+        except OperationalError as e:
+            logging.info(e)
+            logging.info('no tables in test db to remove')
 
 
     # Import Auth
@@ -384,7 +389,7 @@ class TestFileApi(unittest.TestCase):
     def test_M_get_file_checksum(self):
         src = os.path.normpath(self.uploads_folder + '/' + 'uploaded-example.csv')
         headers = {'Authorization': 'Bearer ' + IMPORT_TOKENS['VALID']}
-        resp = requests.get(self.base_url + '/checksum?filename=uploaded-example.csv&algorithm=md5',
+        resp = requests.get(self.base_url + '/files/checksum?filename=uploaded-example.csv&algorithm=md5',
                             headers=headers)
         data = json.loads(resp.text)
         self.assertEqual(resp.status_code, 200)
@@ -434,7 +439,7 @@ class TestFileApi(unittest.TestCase):
     def test_S_create_table(self):
         table_def = self.example_codebook
         headers = {'Authorization': 'Bearer ' + IMPORT_TOKENS['VALID']}
-        resp = requests.post(self.base_url + '/rpc/create_table',
+        resp = requests.post(self.base_url + '/storage/rpc/create_table',
                              data=json.dumps(table_def), headers=headers)
         self.assertEqual(resp.status_code, 201)
 
@@ -442,7 +447,7 @@ class TestFileApi(unittest.TestCase):
     def test_T_create_table_is_idempotent(self):
         table_def = self.example_codebook
         headers = {'Authorization': 'Bearer ' + IMPORT_TOKENS['VALID']}
-        resp = requests.post(self.base_url + '/rpc/create_table',
+        resp = requests.post(self.base_url + '/storage/rpc/create_table',
                              data=json.dumps(table_def), headers=headers)
         self.assertEqual(resp.status_code, 201)
 
@@ -453,7 +458,7 @@ class TestFileApi(unittest.TestCase):
             'elementType': 'QUESTION',
             'questions': [{'externalQuestionId': 'var3'}]})
         headers = {'Authorization': 'Bearer ' + IMPORT_TOKENS['VALID']}
-        resp = requests.post(self.base_url + '/rpc/create_table',
+        resp = requests.post(self.base_url + '/storage/rpc/create_table',
                              data=json.dumps(table_def), headers=headers)
         self.assertEqual(resp.status_code, 201)
 
@@ -477,7 +482,7 @@ class TestFileApi(unittest.TestCase):
                                  {'name': 'y', 'type': 'text'}]}
         data = {'type': 'generic', 'definition': table_def}
         headers = {'Authorization': 'Bearer ' + IMPORT_TOKENS['VALID']}
-        resp = requests.post(self.base_url + '/rpc/create_table',
+        resp = requests.post(self.base_url + '/storage/rpc/create_table',
                              data=json.dumps(data), headers=headers)
         self.assertEqual(resp.status_code, 201)
 
@@ -486,11 +491,10 @@ class TestFileApi(unittest.TestCase):
         encrypted_data_ns = build_payload(self.config, 'ns')
         encrypted_data_gen = build_payload(self.config, 'generic')
         headers = {'Authorization': 'Bearer ' + IMPORT_TOKENS['VALID']}
-        resp1 = requests.post(self.base_url + '/encrypted_data',
+        resp1 = requests.post(self.base_url + '/storage/encrypted_data',
                              data=json.dumps(encrypted_data_ns), headers=headers)
-        resp2 = requests.post(self.base_url + '/encrypted_data',
+        resp2 = requests.post(self.base_url + '/storage/encrypted_data',
                              data=json.dumps(encrypted_data_gen), headers=headers)
-        print resp2.text
         self.assertEqual(resp1.status_code, 201)
         self.assertEqual(resp2.status_code, 201)
 
