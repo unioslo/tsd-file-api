@@ -19,7 +19,7 @@ from utils import secure_filename
 _VALID_ID = re.compile(r'([0-9])')
 _VALID_PNUM = re.compile(r'([0-9a-z])')
 _VALID_COLNAME = re.compile(r'([0-9a-z])')
-_VALID_TABLE_NAME = re.compile(r'([0-9a-z])')
+_VALID_TABLE_NAME = re.compile(r'([0-9a-z_])')
 
 
 class TableNameException(Exception):
@@ -63,7 +63,8 @@ def sqlite_init(path, pnum):
     # this might contain project data that is not forms
     # maybe pnum-data.db
     dbname = pnum + '-data.db'
-    dburl = 'sqlite:///' + path + '/' + dbname
+    project_path = path + '/' + pnum + 'api'
+    dburl = 'sqlite:///' + project_path + '/' + dbname
     engine = create_engine(dburl, poolclass=QueuePool)
     return engine
 
@@ -131,11 +132,6 @@ def _table_name_from_form_id(form_id):
 
 def _table_name_from_table_name(table_name):
     """Return a secure and legal table name."""
-    try:
-        assert isinstance(table_name, str)
-    except AssertionError:
-        logging.error('table name not str')
-        raise TableNameException
     if _VALID_TABLE_NAME.match(table_name):
         return table_name
     else:
