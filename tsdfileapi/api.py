@@ -29,7 +29,7 @@ from auth import verify_json_web_token
 from utils import secure_filename
 from db import insert_into, create_table_from_codebook, sqlite_init, \
                create_table_from_generic, _table_name_from_form_id, \
-               _VALID_PNUM, _table_name_from_table_name
+               _VALID_PNUM, _table_name_from_table_name, TableNameException
 from pgp import decrypt_pgp_json
 
 
@@ -343,7 +343,7 @@ class ProxyHandler(AuthRequestHandler):
                     logging.error('URI does not contain a valid pnum')
                     raise e
                 self.fetch_future = AsyncHTTPClient().fetch(
-                    'http://localhost:%d/%s/upload_stream' % (options.port, pnum),
+                    'http://localhost:%d/%s/files/upload_stream' % (options.port, pnum),
                     method=self.request.method,
                     body_producer=body,
                     # for the _entire_ request
@@ -531,7 +531,12 @@ class JsonToSQLiteHandler(AuthRequestHandler):
                 logging.info('Switching to user: %s', user)
                 to_user(user)
             engine = sqlite_init(options.nsdb_path, pnum)
-            insert_into(engine, resource_name, data)
+            try:
+                valid_resource_name = _table_name_from_table_name(resource_name)
+            except TableNameException as e:
+                logging.error('invalid request resource')
+                raise e
+            insert_into(engine, valid_resource_name, data)
             self.set_status(201)
             self.write({'message': 'data stored'})
         except Exception as e:
@@ -585,17 +590,18 @@ class PGPJsonToSQLiteHandler(AuthRequestHandler):
 def main():
     parse_command_line()
     app = Application([
-        ('/(.*)/upload_stream', StreamHandler),
-        ('/(.*)/stream', ProxyHandler),
-        ('/(.*)/upload', FormDataHandler),
-        ('/(.*)/checksum', ChecksumHandler),
-        ('/(.*)/list', MetaDataHandler),
+        ('/(.*)/files/upload_stream', StreamHandler),
+        ('/(.*)/files/stream', ProxyHandler),
+        ('/(.*)/files/upload', FormDataHandler),
+        ('/(.*)/files/checksum', ChecksumHandler),
+        ('/(.*)/files/list', MetaDataHandler),
         # this has to present the same interface as
         # the postgrest API in terms of endpoints
         # storage backends should be transparent
+        ('/(.*)/storage/rpc/create_table', TableCreatorHandler),
+        ('/(.*)/storage/encrypted_data', PGPJsonToSQLiteHandler),
+        # this route should be last - exact route matches first
         ('/(.*)/storage/(.*)', JsonToSQLiteHandler),
-        ('/(.*)/rpc/create_table', TableCreatorHandler),
-        ('/(.*)/encrypted_data', PGPJsonToSQLiteHandler),
     ], debug=options.debug)
     app.listen(options.port, max_body_size=options.max_body_size)
     IOLoop.instance().start()
