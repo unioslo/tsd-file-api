@@ -54,3 +54,11 @@ def secure_filename(filename):
             filename = filename.replace(sep, ' ')
     filename = str(_filename_ascii_strip_re.sub('', '_'.join(filename.split()))).strip('._')
     return filename
+
+
+def project_import_dir(basename, pnum):
+    """
+    Create a project specific path, e.g. /tsd/p11api from
+    a basename and a project number.
+    """
+    return os.path.normpath(basename + '/' + pnum + 'api')

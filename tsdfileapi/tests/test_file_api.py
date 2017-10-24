@@ -83,6 +83,7 @@ from sqlalchemy.exc import OperationalError
 # pylint: disable=relative-import
 from tokens import gen_test_tokens
 from ..db import session_scope, sqlite_init
+from ..utils import project_import_dir
 
 
 # seems like the steaming ono=ly works with this in place
@@ -155,7 +156,7 @@ class TestFileApi(unittest.TestCase):
         cls.example_csv = os.path.normpath(cls.data_folder + '/example.csv')
         cls.example_codebook = json.loads(
             open(os.path.normpath(cls.data_folder + '/example-ns.json')).read())
-        cls.uploads_folder = cls.config['uploads_folder']
+        cls.uploads_folder = project_import_dir(cls.config['uploads_folder'], cls.config['test_project'])
         # all endpoints
         cls.upload = cls.base_url + '/files/upload'
         cls.list = cls.base_url + '/files/list'

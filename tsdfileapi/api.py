@@ -26,7 +26,7 @@ from tornado.web import Application, RequestHandler, stream_request_body, \
 
 # pylint: disable=relative-import
 from auth import verify_json_web_token
-from utils import secure_filename
+from utils import secure_filename, project_import_dir
 from db import insert_into, create_table_from_codebook, sqlite_init, \
                create_table_from_generic, _table_name_from_form_id, \
                _VALID_PNUM, _table_name_from_table_name, TableNameException
@@ -164,14 +164,15 @@ class AuthRequestHandler(RequestHandler):
 
 class FormDataHandler(AuthRequestHandler):
 
-    def write_file(self, filemode, user=None):
+    def write_file(self, filemode, pnum, user=None):
         if options.user_authorization:
             logging.info('running as user: %s', options.api_user)
             to_user(user)
             logging.info('writing file as user: %s', user)
         try:
             filename = secure_filename(self.request.files['file'][0]['filename'])
-            target = os.path.normpath(options.uploads_folder + '/' + filename)
+            project_dir = project_import_dir(options.uploads_folder, pnum)
+            target = os.path.normpath(project_dir + '/' + filename)
             filebody = self.request.files['file'][0]['body']
             with open(target, filemode) as f:
                 f.write(filebody)
@@ -200,17 +201,17 @@ class FormDataHandler(AuthRequestHandler):
             raise MissingArgumentError('file')
 
     def post(self, pnum):
-        self.write_file('ab+', self.authnz['user'])
+        self.write_file('ab+', pnum, self.authnz['user'])
         self.set_status(201)
         self.write({'message': 'file uploaded'})
 
     def patch(self, pnum):
-        self.write_file('ab+', self.authnz['user'])
+        self.write_file('ab+', pnum, self.authnz['user'])
         self.set_status(201)
         self.write({'message': 'file uploaded'})
 
     def put(self, pnum):
-        self.write_file('wb+', self.authnz['user'])
+        self.write_file('wb+', pnum, self.authnz['user'])
         self.set_status(201)
         self.write({'message': 'file uploaded'})
 
@@ -235,7 +236,14 @@ class StreamHandler(AuthRequestHandler):
                 raise Exception
             try:
                 filename = secure_filename(self.request.headers['Filename'])
-                path = os.path.normpath(options.uploads_folder + '/' + filename)
+                pnum = self.request.uri.split('/')[1]
+                try:
+                    assert _VALID_PNUM.match(pnum)
+                except AssertionError as e:
+                    logging.error('URI does not contain a valid pnum')
+                    raise e
+                project_dir = project_import_dir(options.uploads_folder, pnum)
+                path = os.path.normpath(project_dir + '/' + filename)
                 logging.info('opening file')
                 logging.info('path: %s', path)
                 if options.user_authorization:
@@ -407,7 +415,7 @@ class MetaDataHandler(AuthRequestHandler):
             self.finish({'message': 'Authorization failed'})
 
     def get(self, pnum):
-        _dir = options.uploads_folder
+        _dir = project_import_dir(options.uploads_folder, pnum)
         if options.user_authorization:
             user = self.authnz['user']
             logging.info('Switching to user: %s', user)
@@ -444,7 +452,8 @@ class ChecksumHandler(AuthRequestHandler):
     def get(self, pnum):
         # Consider: http://www.tornadoweb.org/en/stable/escape.html#tornado.escape.url_unescape
         filename = secure_filename(self.get_query_argument('filename'))
-        path = os.path.normpath(options.uploads_folder + '/' + filename)
+        project_dir = project_import_dir(options.uploads_folder, pnum)
+        path = os.path.normpath(project_dir + '/' + filename)
         if options.user_authorization:
             user = self.authnz['user']
             logging.info('Switching to user: %s', user)
