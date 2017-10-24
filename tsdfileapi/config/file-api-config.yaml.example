@@ -20,7 +20,7 @@ ss_dbname: ''
 ss_ssl: True # always True in prod
 
 # folders
-uploads_folder: '/opt/file-api-uploads'
+uploads_folder: '/tsd'
 
 # Testing
 data_folder: '/lib/python2.7/site-packages/tsdfileapi/data'
