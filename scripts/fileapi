@@ -45,8 +45,6 @@ _guide="\
 
     4. Start the service, check its status
 
-        groupadd fileapi
-        useradd fileapi -g fileapi
         cp /lib/python2.7/site-packages/tsdfileapi/config/file-api.service /etc/systemd/system/file-api.service
         systemctl start file-api
         systemctl status file-api
@@ -63,7 +61,9 @@ MODULE_DIR=/lib/python2.7/site-packages/tsdfileapi
 CONFIG_FILE=/etc/tsd-file-api/file-api-config.yaml
 
 tests() {
-    $VENV_PYTHON $MODULE_DIR/tests/test_file_api.py $CONFIG_FILE
+    cd /lib/python2.7/site-packages/
+    $VENV_PYTHON $MODULE_DIR/tests/test_file_api.py -m tsdfileapi.tests.test_file_api $CONFIG_FILE
+    cd -
 }
 
 while (( "$#" )); do
