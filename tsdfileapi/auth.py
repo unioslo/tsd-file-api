@@ -60,7 +60,7 @@ def verify_json_web_token(auth_header, secret, roles_allowed, pnum):
         logging.error(e)
         logging.error('JWT expired')
         return failure_message
-    if claims['p'] != pnum:
+    if claims['proj'] != pnum:
         # this _should_ be impossible
         logging.error('Access denied to project - mismatch in project numbers')
         return failure_message
@@ -70,4 +70,4 @@ def verify_json_web_token(auth_header, secret, roles_allowed, pnum):
     if int(time.time()) > int(claims['exp']):
         logging.error('JWT expired')
         return failure_message
-    return {'message': 'OK', 'status': True, 'user': claims['u']}
+    return {'message': 'OK', 'status': True, 'user': claims['user']}

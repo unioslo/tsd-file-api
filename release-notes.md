@@ -1,4 +1,8 @@
 
+# v0.1.1
+
+- update JWT validation to match new claims issued from auth-api v0.4.2
+
 # v0.1.0
 
 - first release: HTTP API for storing data in files and sqlite in TSD

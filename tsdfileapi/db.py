@@ -218,6 +218,8 @@ def insert_into(engine, table_name, data):
                     session.execute(stmt, row)
             elif dtype is dict:
                 stmt = _statement_from_data(table_name, data)
+                # investigate: http://docs.sqlalchemy.org/en/latest/faq/performance.html
+                # Bulk_insert_mappings or use raw sqlite3
                 session.execute(stmt, data)
         return True
     except IntegrityError as e:
