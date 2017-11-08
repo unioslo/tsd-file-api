@@ -2,6 +2,7 @@
 # v0.1.1
 
 - update JWT validation to match new claims issued from auth-api v0.4.2
+- anly allows the following roles: import_user, export_user, admin_user
 
 # v0.1.0
 

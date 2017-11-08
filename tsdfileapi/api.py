@@ -185,7 +185,7 @@ class FormDataHandler(AuthRequestHandler):
 
     def prepare(self):
         try:
-            self.authnz = self.validate_token(roles_allowed=['app_user', 'import_user', 'export_user', 'admin_user'])
+            self.authnz = self.validate_token(roles_allowed=['import_user', 'export_user', 'admin_user'])
         except Exception as e:
             self.finish({'message': 'Authorization failed'})
         try:
@@ -230,7 +230,7 @@ class StreamHandler(AuthRequestHandler):
         logging.info('StreamHandler')
         try:
             try:
-                self.authnz = self.validate_token(roles_allowed=['app_user', 'import_user', 'export_user', 'admin_user'])
+                self.authnz = self.validate_token(roles_allowed=['import_user', 'export_user', 'admin_user'])
             except Exception as e:
                 logging.error(e)
                 raise Exception
@@ -329,7 +329,7 @@ class ProxyHandler(AuthRequestHandler):
         logging.info('ProxyHandler.prepare')
         try:
             try:
-                valid = self.validate_token(roles_allowed=['app_user', 'import_user', 'export_user', 'admin_user'])
+                valid = self.validate_token(roles_allowed=['import_user', 'export_user', 'admin_user'])
             except Exception as e:
                 raise e
             try:
@@ -410,7 +410,7 @@ class MetaDataHandler(AuthRequestHandler):
 
     def prepare(self):
         try:
-            self.authnz = self.validate_token(roles_allowed=['app_user', 'import_user', 'export_user', 'admin_user'])
+            self.authnz = self.validate_token(roles_allowed=['import_user', 'export_user', 'admin_user'])
         except Exception as e:
             self.finish({'message': 'Authorization failed'})
 
@@ -445,7 +445,7 @@ class ChecksumHandler(AuthRequestHandler):
 
     def prepare(self):
         try:
-            self.authnz = self.validate_token(roles_allowed=['app_user', 'import_user', 'export_user', 'admin_user'])
+            self.authnz = self.validate_token(roles_allowed=['import_user', 'export_user', 'admin_user'])
         except Exception as e:
             self.finish({'message': 'Authorization failed'})
 
@@ -474,7 +474,7 @@ class TableCreatorHandler(AuthRequestHandler):
 
     def prepare(self):
         try:
-            self.authnz = self.validate_token(roles_allowed=['app_user', 'import_user', 'export_user', 'admin_user'])
+            self.authnz = self.validate_token(roles_allowed=['import_user', 'export_user', 'admin_user'])
         except Exception as e:
             self.finish({'message': 'Authorization failed'})
 
@@ -528,7 +528,7 @@ class JsonToSQLiteHandler(AuthRequestHandler):
 
     def prepare(self):
         try:
-            self.authnz = self.validate_token(roles_allowed=['app_user', 'import_user', 'export_user', 'admin_user'])
+            self.authnz = self.validate_token(roles_allowed=['import_user', 'export_user', 'admin_user'])
         except Exception as e:
             self.finish({'message': 'Authorization failed'})
 
@@ -566,7 +566,7 @@ class PGPJsonToSQLiteHandler(AuthRequestHandler):
 
     def prepare(self):
         try:
-            self.authnz = self.validate_token(roles_allowed=['app_user', 'import_user', 'export_user', 'admin_user'])
+            self.authnz = self.validate_token(roles_allowed=['import_user', 'export_user', 'admin_user'])
         except Exception as e:
             self.finish({'message': 'Authorization failed'})
 

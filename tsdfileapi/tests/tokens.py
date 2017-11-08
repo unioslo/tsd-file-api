@@ -13,8 +13,7 @@ def tkn(secret, exp=1, role=None, pnum=None, user=None):
     """
     This is the same token generation function as found in tsd-auth-api/auth.py
     """
-    allowed_roles = ['app_user', 'full_access_reports_user', 'import_user',
-                     'export_user', 'admin_user']
+    allowed_roles = ['import_user', 'export_user', 'admin_user', 'wrong_user']
     if role in allowed_roles:
         expiry = datetime.now() + timedelta(hours=exp)
         exp = int(time.mktime(expiry.timetuple()))
@@ -43,10 +42,10 @@ def gen_test_tokens(config):
     secret = store[proj]
     wrong = store['p01']
     return {
-        'VALID': tkn(secret, role='app_user', pnum=proj),
-        'MANGLED_VALID': tkn(secret, role='app_user', pnum=proj)[:-1],
-        'INVALID_SIGNATURE': tkn(wrong, role='app_user', pnum=proj),
-        'WRONG_ROLE': tkn(secret, role='full_access_reports_user', pnum=proj),
-        'TIMED_OUT': tkn(secret, exp=-1, role='app_user', pnum=proj),
-        'WRONG_PROJECT': tkn(wrong, exp=-1, role='app_user', pnum='p01')
+        'VALID': tkn(secret, role='import_user', pnum=proj),
+        'MANGLED_VALID': tkn(secret, role='import_user', pnum=proj)[:-1],
+        'INVALID_SIGNATURE': tkn(wrong, role='import_user', pnum=proj),
+        'WRONG_ROLE': tkn(secret, role='wrong_user', pnum=proj),
+        'TIMED_OUT': tkn(secret, exp=-1, role='import_user', pnum=proj),
+        'WRONG_PROJECT': tkn(wrong, exp=-1, role='import_user', pnum='p01')
     }
