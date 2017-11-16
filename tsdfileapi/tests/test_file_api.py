@@ -86,16 +86,6 @@ from ..db import session_scope, sqlite_init
 from ..utils import project_import_dir
 
 
-# seems like the steaming ono=ly works with this in place
-# don't really understand that
-httplib.HTTPConnection.debuglevel = 1
-logging.basicConfig()
-logging.getLogger().setLevel(logging.DEBUG)
-requests_log = logging.getLogger("requests.packages.urllib3")
-requests_log.setLevel(logging.DEBUG)
-requests_log.propagate = True
-
-
 def lazy_file_reader(filename):
     with open(filename, 'r+') as f:
         while True:
