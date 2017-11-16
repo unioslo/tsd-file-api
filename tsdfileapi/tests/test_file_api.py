@@ -156,6 +156,7 @@ class TestFileApi(unittest.TestCase):
         cls.test_project = cls.test_project
         global IMPORT_TOKENS
         IMPORT_TOKENS = gen_test_tokens(cls.config)
+        cls.example_tar = os.path.normpath(cls.data_folder + '/example.tar')
 
 
     @classmethod
@@ -165,8 +166,10 @@ class TestFileApi(unittest.TestCase):
         today = datetime.fromtimestamp(time.time()).isoformat()[:10]
         file_list = ['streamed-example.csv', 'uploaded-example.csv',
                      'uploaded-example-2.csv', 'uploaded-example-3.csv',
-                     'streamed-not-chunked']
+                     'streamed-not-chunked', 'streamed-put-example.csv']
         for _file in uploaded_files:
+            if _file == 'example.tar':
+                continue
             if (_file in test_files) or (today in _file) or (_file in file_list):
                 try:
                     os.remove(os.path.normpath(cls.uploads_folder + '/' + _file))
@@ -509,6 +512,22 @@ class TestFileApi(unittest.TestCase):
         self.assertEqual(resp.status_code, 401)
 
 
+    def test_Za_stream_tar_without_custom_content_type_works(self):
+        headers = {'Authorization': 'Bearer ' + IMPORT_TOKENS['VALID'],
+                   'Filename': 'example.tar'}
+        resp = requests.post(self.stream, data=lazy_file_reader(self.example_tar), headers=headers)
+        self.assertEqual(resp.status_code, 201)
+        # checksum comparison
+
+    def test_Zb_stream_tar_with_custom_content_type_untar_works(self):
+        headers = {'Authorization': 'Bearer ' + IMPORT_TOKENS['VALID'],
+                   'Content-Type': 'application/tar'}
+        resp = requests.post(self.stream, data=lazy_file_reader(self.example_tar), headers=headers)
+        self.assertEqual(resp.status_code, 201)
+        # check contents
+
+
+
 def main():
     runner = unittest.TextTestRunner()
     suite = []
@@ -535,7 +554,8 @@ def main():
         'test_W_create_table_generic',
         'test_X_post_encrypted_data',
         'test_Y_invalid_project_number_rejected',
-        'test_Z_token_for_other_project_rejected'
+        'test_Z_token_for_other_project_rejected',
+        'test_Za_stream_tar_without_custom_content_type_works',
         ])))
     map(runner.run, suite)
 
