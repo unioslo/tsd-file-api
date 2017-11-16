@@ -244,8 +244,6 @@ class StreamHandler(AuthRequestHandler):
                     raise e
                 project_dir = project_import_dir(options.uploads_folder, pnum)
                 path = os.path.normpath(project_dir + '/' + filename)
-                logging.info('opening file')
-                logging.info('path: %s', path)
                 if options.user_authorization:
                     user = self.authnz['user']
                     to_user(user)
@@ -257,9 +255,16 @@ class StreamHandler(AuthRequestHandler):
                     content_type = self.request.headers['Content-Type']
                     if content_type == 'application/gpg':
                         logging.info('Detected Content-Type: %s', content_type)
+                        self.custom_content_type = content_type
                     elif content_type == 'application/gpg.tar':
                         logging.info('Detected Content-Type: %s', content_type)
+                        self.custom_content_type = content_type
+                    elif content_type == 'application/tar':
+                        logging.info('Detected Content-Type: %s', content_type)
+                        self.custom_content_type = content_type
                     else:
+                        self.custom_content_type = None
+                        logging.info('opening file: %s', path)
                         self.target_file = open(path, filemode)
                 except KeyError:
                     logging.info('No content-type - do not know what to do with data')
@@ -281,7 +286,8 @@ class StreamHandler(AuthRequestHandler):
         # yield gen.Task(IOLoop.current().call_later, options.server_delay)
         #logging.info('StreamHandler.data_received(%d bytes: %r)', len(chunk), chunk[:9])
         try:
-            self.target_file.write(chunk)
+            if not self.custom_content_type:
+                self.target_file.write(chunk)
         except Exception:
             logging.error("something went wrong with stream processing have to close file")
             self.target_file.close()
