@@ -168,7 +168,7 @@ class TestFileApi(unittest.TestCase):
                      'uploaded-example-2.csv', 'uploaded-example-3.csv',
                      'streamed-not-chunked', 'streamed-put-example.csv']
         for _file in uploaded_files:
-            if _file == 'example.tar':
+            if _file == 'totar':
                 continue
             if (_file in test_files) or (today in _file) or (_file in file_list):
                 try:
@@ -556,6 +556,7 @@ def main():
         'test_Y_invalid_project_number_rejected',
         'test_Z_token_for_other_project_rejected',
         'test_Za_stream_tar_without_custom_content_type_works',
+        'test_Zb_stream_tar_with_custom_content_type_untar_works',
         ])))
     map(runner.run, suite)
 

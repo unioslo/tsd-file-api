@@ -11,6 +11,7 @@ import os
 import pwd
 import datetime
 import hashlib
+import subprocess
 from sys import argv
 from collections import OrderedDict
 
@@ -235,15 +236,12 @@ class StreamHandler(AuthRequestHandler):
                 logging.error(e)
                 raise Exception
             try:
-                filename = secure_filename(self.request.headers['Filename'])
                 pnum = self.request.uri.split('/')[1]
                 try:
                     assert _VALID_PNUM.match(pnum)
                 except AssertionError as e:
                     logging.error('URI does not contain a valid pnum')
                     raise e
-                project_dir = project_import_dir(options.uploads_folder, pnum)
-                path = os.path.normpath(project_dir + '/' + filename)
                 if options.user_authorization:
                     user = self.authnz['user']
                     to_user(user)
@@ -253,6 +251,7 @@ class StreamHandler(AuthRequestHandler):
                     filemode = 'wb+'
                 try:
                     content_type = self.request.headers['Content-Type']
+                    project_dir = project_import_dir(options.uploads_folder, pnum)
                     if content_type == 'application/gpg':
                         logging.info('Detected Content-Type: %s', content_type)
                         self.custom_content_type = content_type
@@ -262,8 +261,13 @@ class StreamHandler(AuthRequestHandler):
                     elif content_type == 'application/tar':
                         logging.info('Detected Content-Type: %s', content_type)
                         self.custom_content_type = content_type
+                        self.proc = subprocess.Popen(['tar', '-C', project_dir, '-xf', '-'],
+                                                 stdin=subprocess.PIPE)
+                        logging.info('unpacking tarball')
                     else:
                         self.custom_content_type = None
+                        filename = secure_filename(self.request.headers['Filename'])
+                        path = os.path.normpath(project_dir + '/' + filename)
                         logging.info('opening file: %s', path)
                         self.target_file = open(path, filemode)
                 except KeyError:
@@ -288,6 +292,10 @@ class StreamHandler(AuthRequestHandler):
         try:
             if not self.custom_content_type:
                 self.target_file.write(chunk)
+            elif self.custom_content_type == 'application/tar':
+                self.proc.stdin.write(chunk)
+                if not chunk:
+                    self.proc.stdin.flush()
         except Exception:
             logging.error("something went wrong with stream processing have to close file")
             self.target_file.close()
@@ -295,17 +303,22 @@ class StreamHandler(AuthRequestHandler):
 
     def post(self, pnum):
         logging.info('StreamHandler.post')
-        self.target_file.close()
-        logging.info('StreamHandler: closed file')
+        if not self.custom_content_type:
+            self.target_file.close()
+            logging.info('StreamHandler: closed file')
+        elif self.custom_content_type == 'application/tar':
+            out, err = self.proc.communicate()
+            logging.info('tarball unpacked')
         self.set_status(201)
-        self.write({'message': 'data streamed to file'})
+        self.write({'message': 'data streamed'})
 
     def put(self, pnum):
         logging.info('StreamHandler.put')
-        self.target_file.close()
-        logging.info('StreamHandler: closed file')
+        if not self.custom_content_type:
+            self.target_file.close()
+            logging.info('StreamHandler: closed file')
         self.set_status(201)
-        self.write({'message': 'data streamed to file'})
+        self.write({'message': 'data streamed'})
 
     def head(self, pnum):
         self.set_status(201)
@@ -353,7 +366,7 @@ class ProxyHandler(AuthRequestHandler):
                 logging.info('supplied filename: %s', self.filename)
             except KeyError:
                 self.filename = datetime.datetime.now().isoformat() + '.txt'
-                logging.info("filename not found - going to use this filename: %s", self.filename)
+                logging.info("filename not found - setting filename to: %s", self.filename)
             self.chunks = tornado.queues.Queue(1) # TODO: performace tuning here
             try:
                 if self.request.method == 'HEAD':
