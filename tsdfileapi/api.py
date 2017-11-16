@@ -254,8 +254,11 @@ class StreamHandler(AuthRequestHandler):
                 elif self.request.method == 'PUT':
                     filemode = 'wb+'
                 try:
-                    if self.request.headers['Content-Type'] in ['application/gpg', 'application/gpg.tar']:
-                        logging.info('Detected custom content type')
+                    content_type = self.request.headers['Content-Type']
+                    if content_type == 'application/gpg':
+                        logging.info('Detected Content-Type: %s', content_type)
+                    elif content_type == 'application/gpg.tar':
+                        logging.info('Detected Content-Type: %s', content_type)
                     else:
                         self.target_file = open(path, filemode)
                 except KeyError:
