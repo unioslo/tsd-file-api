@@ -250,9 +250,16 @@ class StreamHandler(AuthRequestHandler):
                     user = self.authnz['user']
                     to_user(user)
                 if self.request.method == 'POST':
-                    self.target_file = open(path, 'ab+')
+                    filemode = 'ab+'
                 elif self.request.method == 'PUT':
-                    self.target_file = open(path, 'wb+')
+                    filemode = 'wb+'
+                try:
+                    if self.request.headers['Content-Type'] in ['application/gpg', 'application/gpg.tar']:
+                        logging.info('Detected custom content type')
+                    else:
+                        self.target_file = open(path, filemode)
+                except KeyError:
+                    logging.info('No content-type - do not know what to do with data')
             except Exception as e:
                 logging.error(e)
                 logging.error("filename not found")
@@ -350,6 +357,11 @@ class ProxyHandler(AuthRequestHandler):
                 except AssertionError as e:
                     logging.error('URI does not contain a valid pnum')
                     raise e
+                if 'Content-Type' not in self.request.headers.keys():
+                    logging.info('Setting content type to application/octet-stream')
+                    content_type = 'application/octet-stream'
+                elif 'Content-Type' in self.request.headers.keys():
+                    content_type = self.request.headers['Content-Type']
                 self.fetch_future = AsyncHTTPClient().fetch(
                     'http://localhost:%d/%s/files/upload_stream' % (options.port, pnum),
                     method=self.request.method,
@@ -360,7 +372,9 @@ class ProxyHandler(AuthRequestHandler):
                     # for the initial connection
                     # in seconds, both
                     request_timeout=12000.0,
-                    headers={'Authorization': 'Bearer ' + self.jwt, 'Filename': self.filename})
+                    headers={'Authorization': 'Bearer ' + self.jwt,
+                             'Filename': self.filename,
+                             'Content-Type': content_type})
             except (AttributeError, HTTPError, AssertionError) as e:
                 logging.error('Problem in async client')
                 logging.error(e)
