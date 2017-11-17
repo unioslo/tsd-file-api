@@ -6,6 +6,7 @@
 # pylint tends to be too pedantic regarding docstrings - we can decide in code review
 # pylint: disable=missing-docstring
 
+import base64
 import logging
 import os
 import pwd
@@ -31,7 +32,7 @@ from utils import secure_filename, project_import_dir
 from db import insert_into, create_table_from_codebook, sqlite_init, \
                create_table_from_generic, _table_name_from_form_id, \
                _VALID_PNUM, _table_name_from_table_name, TableNameException
-from pgp import decrypt_pgp_json
+from pgp import decrypt_pgp_json, _import_keys
 
 
 def read_config(filename):
@@ -253,18 +254,28 @@ class StreamHandler(AuthRequestHandler):
                     content_type = self.request.headers['Content-Type']
                     project_dir = project_import_dir(options.uploads_folder, pnum)
                     if content_type == 'application/aes':
+                        # only decryption, write to file
                         logging.info('Detected Content-Type: %s', content_type)
                         self.custom_content_type = content_type
-                    elif content_type == 'application/gpg.tar':
-                        logging.info('Detected Content-Type: %s', content_type)
-                        self.custom_content_type = content_type
+                        enc_aes_key = self.request.headers['Aes-Key']
+                        gpg = _import_keys(CONFIG)
+                        decr_aes_key = str(gpg.decrypt(base64.b64decode(enc_aes_key)))
+                        pw = 'pass:%s' % decr_aes_key.strip() # no trailing ws
+                        filename = secure_filename(self.request.headers['Filename'])
+                        path = os.path.normpath(project_dir + '/' + filename)
+                        logging.info('decrypting AES data to %s', filename)
+                        self.proc = subprocess.Popen(['openssl', 'enc', '-aes-256-cbc', '-a', '-d',
+                                                      '-pass', pw, '-out', path],
+                                                      stdin=subprocess.PIPE)
                     elif content_type in ['application/tar', 'application/tar.gz']:
+                        # tar command creates the directory, no filename to use, no file to open
                         logging.info('Detected Content-Type: %s', content_type)
                         self.custom_content_type = content_type
                         self.proc = subprocess.Popen(['tar', '-C', project_dir, '-xf', '-'],
                                                  stdin=subprocess.PIPE)
                         logging.info('unpacking tarball')
                     else:
+                        # write data to file, as-is
                         self.custom_content_type = None
                         filename = secure_filename(self.request.headers['Filename'])
                         path = os.path.normpath(project_dir + '/' + filename)
@@ -292,7 +303,8 @@ class StreamHandler(AuthRequestHandler):
         try:
             if not self.custom_content_type:
                 self.target_file.write(chunk)
-            elif self.custom_content_type in ['application/tar', 'application/tar.gz']:
+            elif self.custom_content_type in ['application/tar', 'application/tar.gz',
+                                              'application/aes']:
                 self.proc.stdin.write(chunk)
                 if not chunk:
                     self.proc.stdin.flush()
@@ -306,9 +318,10 @@ class StreamHandler(AuthRequestHandler):
         if not self.custom_content_type:
             self.target_file.close()
             logging.info('StreamHandler: closed file')
-        elif self.custom_content_type in ['application/tar', 'application/tar.gz']:
+        elif self.custom_content_type in ['application/tar', 'application/tar.gz',
+                                          'application/aes']:
             out, err = self.proc.communicate()
-            logging.info('tarball unpacked')
+            logging.info('stream processing finished')
         self.set_status(201)
         self.write({'message': 'data streamed'})
 
@@ -384,6 +397,11 @@ class ProxyHandler(AuthRequestHandler):
                     content_type = 'application/octet-stream'
                 elif 'Content-Type' in self.request.headers.keys():
                     content_type = self.request.headers['Content-Type']
+                headers = {'Authorization': 'Bearer ' + self.jwt,
+                           'Filename': self.filename,
+                           'Content-Type': content_type}
+                if 'Aes-Key' in self.request.headers.keys():
+                    headers['Aes-Key'] = self.request.headers['Aes-Key']
                 self.fetch_future = AsyncHTTPClient().fetch(
                     'http://localhost:%d/%s/files/upload_stream' % (options.port, pnum),
                     method=self.request.method,
@@ -394,9 +412,7 @@ class ProxyHandler(AuthRequestHandler):
                     # for the initial connection
                     # in seconds, both
                     request_timeout=12000.0,
-                    headers={'Authorization': 'Bearer ' + self.jwt,
-                             'Filename': self.filename,
-                             'Content-Type': content_type})
+                    headers=headers)
             except (AttributeError, HTTPError, AssertionError) as e:
                 logging.error('Problem in async client')
                 logging.error(e)
