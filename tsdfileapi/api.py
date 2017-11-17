@@ -353,11 +353,18 @@ class StreamHandler(AuthRequestHandler):
         self.write({'message': 'data streamed'})
 
     def put(self, pnum):
-        # TODO: implement custom headers here too
-        logging.info('StreamHandler.put')
+        logging.info('StreamHandler.post')
         if not self.custom_content_type:
             self.target_file.close()
             logging.info('StreamHandler: closed file')
+        elif self.custom_content_type in ['application/tar', 'application/tar.gz',
+                                          'application/aes']:
+            out, err = self.proc.communicate()
+            logging.info('stream processing finished')
+        elif self.custom_content_type in ['application/tar.aes', 'application/tar.gz.aes']:
+            out, err = self.openssl_proc.communicate()
+            out, err = self.tar_proc.communicate()
+            logging.info('stream processing finished')
         self.set_status(201)
         self.write({'message': 'data streamed'})
 
