@@ -258,7 +258,7 @@ class StreamHandler(AuthRequestHandler):
                     elif content_type == 'application/gpg.tar':
                         logging.info('Detected Content-Type: %s', content_type)
                         self.custom_content_type = content_type
-                    elif content_type == 'application/tar':
+                    elif content_type in ['application/tar', 'application/tar.gz']:
                         logging.info('Detected Content-Type: %s', content_type)
                         self.custom_content_type = content_type
                         self.proc = subprocess.Popen(['tar', '-C', project_dir, '-xf', '-'],
@@ -292,7 +292,7 @@ class StreamHandler(AuthRequestHandler):
         try:
             if not self.custom_content_type:
                 self.target_file.write(chunk)
-            elif self.custom_content_type == 'application/tar':
+            elif self.custom_content_type in ['application/tar', 'application/tar.gz']:
                 self.proc.stdin.write(chunk)
                 if not chunk:
                     self.proc.stdin.flush()
@@ -306,7 +306,7 @@ class StreamHandler(AuthRequestHandler):
         if not self.custom_content_type:
             self.target_file.close()
             logging.info('StreamHandler: closed file')
-        elif self.custom_content_type == 'application/tar':
+        elif self.custom_content_type in ['application/tar', 'application/tar.gz']:
             out, err = self.proc.communicate()
             logging.info('tarball unpacked')
         self.set_status(201)
