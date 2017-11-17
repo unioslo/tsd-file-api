@@ -516,6 +516,14 @@ class TestFileApi(unittest.TestCase):
         self.assertEqual(resp.status_code, 401)
 
 
+    # Handling custom content-types, on-the-fly
+    # -----------------------------------------
+    # tar           -> untar
+    # tar.gz        -> decompress, untar
+    # aes           -> decrypt
+    # tar.aes       -> decrypt, untar
+    # tar.gz.aes    -> decrypt, uncompress, untar
+
     def test_Za_stream_tar_without_custom_content_type_works(self):
         headers = {'Authorization': 'Bearer ' + IMPORT_TOKENS['VALID'],
                    'Filename': 'example.tar'}

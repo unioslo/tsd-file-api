@@ -252,7 +252,7 @@ class StreamHandler(AuthRequestHandler):
                 try:
                     content_type = self.request.headers['Content-Type']
                     project_dir = project_import_dir(options.uploads_folder, pnum)
-                    if content_type == 'application/gpg':
+                    if content_type == 'application/aes':
                         logging.info('Detected Content-Type: %s', content_type)
                         self.custom_content_type = content_type
                     elif content_type == 'application/gpg.tar':
