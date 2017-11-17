@@ -162,6 +162,10 @@ class TestFileApi(unittest.TestCase):
         # base64 encoded, gpg encrypted symmetric secret
         cls.enc_symmetric_secret = 'hQEMA8dm3avZ7GdFAQf/Z8VNFPBJW7nZ9J9qEiNdKYRPrKB92Tevw3UlwshNp7Y3toRc1oRxX2P61eLoZzZDZ51mx0YfmYD7ZlOoxxQsOaM90nTIAzqN3DvUMFiT51STEK35okbpttIz9sDzxBkuiobB5A4fCX6+Tzq6r5+IHElIr2ruKhlDXBXtEE4/J+zw2CzNj0yVh4lTWLIcQjOVcsU7WbnCaPWdtad+DPDY2aKZb+n6QFZJ0CibVuhQJ9yFlJSUFLpht/C+vxhQQaNGb2CICLErJTyzy/Nxqzx8plFBhsKCmTR0y6+beMCJbI1k4V377fZRy7+E6xqCQCEREe5z7ZFECMcG2s2LizIrKNJMAfxl+E0JNbbyYkRC+gaoDcJnERYhjfe/AcrJRz8QHM0yvIfMAiPt8zM3ypq+03cVtBXdu4AV5apk7enQiC6IQt08EF1ol38z3Ee/uA=='
         cls.example_aes = os.path.normpath(cls.data_folder + '/example.csv.aes')
+        # tar -cf - totar3 | openssl enc -aes-256-cbc -a -pass file:<( echo $PW ) > example.tar.aes
+        cls.example_tar_aes = os.path.normpath(cls.data_folder + '/example.tar.aes')
+        # tar -cf - totar3 | gzip -9 | openssl enc -aes-256-cbc -a -pass file:<( echo $PW ) > example.tar.gz.aes
+        cls.example_tar_gz_aes = os.path.normpath(cls.data_folder + '/example.tar.gz.aes')
 
 
     @classmethod
@@ -173,7 +177,7 @@ class TestFileApi(unittest.TestCase):
                      'uploaded-example-2.csv', 'uploaded-example-3.csv',
                      'streamed-not-chunked', 'streamed-put-example.csv']
         for _file in uploaded_files:
-            if _file in ['totar', 'totar2', 'decrypted-aes.csv']:
+            if _file in ['totar', 'totar2', 'decrypted-aes.csv', 'totar3', 'totar4']:
                 continue
             if (_file in test_files) or (today in _file) or (_file in file_list):
                 try:
@@ -555,6 +559,22 @@ class TestFileApi(unittest.TestCase):
         self.assertEqual(resp.status_code, 201)
         # check contents
 
+    def test_Ze_stream_tar_aes_with_custom_content_type_decrypt_untar_works(self):
+        headers = {'Authorization': 'Bearer ' + IMPORT_TOKENS['VALID'],
+                   'Content-Type': 'application/tar.aes',
+                   'Aes-Key': self.enc_symmetric_secret}
+        resp = requests.post(self.stream, data=lazy_file_reader(self.example_tar_aes), headers=headers)
+        self.assertEqual(resp.status_code, 201)
+        # check contents
+
+    def test_Zf_stream_tar_aes_with_custom_content_type_decrypt_untar_works(self):
+        headers = {'Authorization': 'Bearer ' + IMPORT_TOKENS['VALID'],
+                   'Content-Type': 'application/tar.aes',
+                   'Aes-Key': self.enc_symmetric_secret}
+        resp = requests.post(self.stream, data=lazy_file_reader(self.example_tar_gz_aes), headers=headers)
+        self.assertEqual(resp.status_code, 201)
+        # check contents
+
 def main():
     runner = unittest.TextTestRunner()
     suite = []
@@ -586,6 +606,8 @@ def main():
         'test_Zb_stream_tar_with_custom_content_type_untar_works',
         'test_Zc_stream_tar_gz_with_custom_content_type_untar_works',
         'test_Zd_stream_aes_with_custom_content_type_decrypt_works',
+        'test_Ze_stream_tar_aes_with_custom_content_type_decrypt_untar_works',
+        'test_Zf_stream_tar_aes_with_custom_content_type_decrypt_untar_works',
         ])))
     map(runner.run, suite)
 

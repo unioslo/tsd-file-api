@@ -227,6 +227,11 @@ class StreamHandler(AuthRequestHandler):
     #pylint: disable=line-too-long
     # Future: http://www.tornadoweb.org/en/stable/util.html?highlight=gzip#tornado.util.GzipDecompressor
 
+    def decrypt_aes_key(self, b64encoded_pgpencrypted_key):
+        gpg = _import_keys(CONFIG)
+        decr_aes_key = str(gpg.decrypt(base64.b64decode(b64encoded_pgpencrypted_key))).strip()
+        return decr_aes_key
+
     @gen.coroutine
     def prepare(self):
         logging.info('StreamHandler')
@@ -257,10 +262,8 @@ class StreamHandler(AuthRequestHandler):
                         # only decryption, write to file
                         logging.info('Detected Content-Type: %s', content_type)
                         self.custom_content_type = content_type
-                        enc_aes_key = self.request.headers['Aes-Key']
-                        gpg = _import_keys(CONFIG)
-                        decr_aes_key = str(gpg.decrypt(base64.b64decode(enc_aes_key)))
-                        pw = 'pass:%s' % decr_aes_key.strip() # no trailing ws
+                        decr_aes_key = self.decrypt_aes_key(self.request.headers['Aes-Key'])
+                        pw = 'pass:%s' % decr_aes_key
                         filename = secure_filename(self.request.headers['Filename'])
                         path = os.path.normpath(project_dir + '/' + filename)
                         logging.info('decrypting AES data to %s', filename)
@@ -268,12 +271,26 @@ class StreamHandler(AuthRequestHandler):
                                                       '-pass', pw, '-out', path],
                                                       stdin=subprocess.PIPE)
                     elif content_type in ['application/tar', 'application/tar.gz']:
-                        # tar command creates the directory, no filename to use, no file to open
+                        # tar command creates the dir, no filename to use, no file to open
                         logging.info('Detected Content-Type: %s', content_type)
                         self.custom_content_type = content_type
                         self.proc = subprocess.Popen(['tar', '-C', project_dir, '-xf', '-'],
                                                  stdin=subprocess.PIPE)
                         logging.info('unpacking tarball')
+                    elif content_type in ['application/tar.aes', 'application/tar.gz.aes']:
+                        # tar command creates the dir, no filename to use, no file to open
+                        logging.info('Detected Content-Type: %s', content_type)
+                        self.custom_content_type = content_type
+                        decr_aes_key = self.decrypt_aes_key(self.request.headers['Aes-Key'])
+                        pw = 'pass:%s' % decr_aes_key
+                        self.openssl_proc = subprocess.Popen(['openssl', 'enc', '-aes-256-cbc', '-a', '-d',
+                                                      '-pass', pw],
+                                                      stdin=subprocess.PIPE,
+                                                      stdout=subprocess.PIPE)
+                        logging.info('started openssl process')
+                        self.tar_proc = subprocess.Popen(['tar', '-C', project_dir, '-xf', '-'],
+                                                 stdin=self.openssl_proc.stdout)
+                        logging.info('started tar process')
                     else:
                         # write data to file, as-is
                         self.custom_content_type = None
@@ -308,7 +325,13 @@ class StreamHandler(AuthRequestHandler):
                 self.proc.stdin.write(chunk)
                 if not chunk:
                     self.proc.stdin.flush()
-        except Exception:
+            elif self.custom_content_type in ['application/tar.aes', 'application/tar.gz.aes']:
+                self.openssl_proc.stdin.write(chunk)
+                if not chunk:
+                    self.openssl_proc.stdin.flush()
+                    self.tar_proc.stdin.flush()
+        except Exception as e:
+            logging.error(e)
             logging.error("something went wrong with stream processing have to close file")
             self.target_file.close()
             self.send_error("something went wrong")
@@ -322,10 +345,15 @@ class StreamHandler(AuthRequestHandler):
                                           'application/aes']:
             out, err = self.proc.communicate()
             logging.info('stream processing finished')
+        elif self.custom_content_type in ['application/tar.aes', 'application/tar.gz.aes']:
+            out, err = self.openssl_proc.communicate()
+            out, err = self.tar_proc.communicate()
+            logging.info('stream processing finished')
         self.set_status(201)
         self.write({'message': 'data streamed'})
 
     def put(self, pnum):
+        # TODO: implement custom headers here too
         logging.info('StreamHandler.put')
         if not self.custom_content_type:
             self.target_file.close()
