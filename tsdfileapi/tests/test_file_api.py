@@ -166,6 +166,7 @@ class TestFileApi(unittest.TestCase):
         cls.example_tar_aes = os.path.normpath(cls.data_folder + '/example.tar.aes')
         # tar -cf - totar3 | gzip -9 | openssl enc -aes-256-cbc -a -pass file:<( echo $PW ) > example.tar.gz.aes
         cls.example_tar_gz_aes = os.path.normpath(cls.data_folder + '/example.tar.gz.aes')
+        cls.example_gz = os.path.normpath(cls.data_folder + '/example.csv.gz')
 
 
     @classmethod
@@ -177,7 +178,7 @@ class TestFileApi(unittest.TestCase):
                      'uploaded-example-2.csv', 'uploaded-example-3.csv',
                      'streamed-not-chunked', 'streamed-put-example.csv']
         for _file in uploaded_files:
-            if _file in ['totar', 'totar2', 'decrypted-aes.csv', 'totar3', 'totar4']:
+            if _file in ['totar', 'totar2', 'decrypted-aes.csv', 'totar3', 'totar4', 'ungz1']:
                 continue
             if (_file in test_files) or (today in _file) or (_file in file_list):
                 try:
@@ -523,11 +524,16 @@ class TestFileApi(unittest.TestCase):
 
     # Handling custom content-types, on-the-fly
     # -----------------------------------------
+    # Directories:
+    # -----------
     # tar           -> untar
     # tar.gz        -> decompress, untar
-    # aes           -> decrypt
     # tar.aes       -> decrypt, untar
     # tar.gz.aes    -> decrypt, uncompress, untar
+    # Files:
+    # -----
+    # aes           -> decrypt
+    # gz            -> uncompress
 
     def test_Za_stream_tar_without_custom_content_type_works(self):
         headers = {'Authorization': 'Bearer ' + IMPORT_TOKENS['VALID'],
@@ -587,6 +593,15 @@ class TestFileApi(unittest.TestCase):
         self.assertEqual(resp1.status_code, 201)
         # check contents
 
+    def test_Zg_stream_gz_with_custom_header_decompress_works(self):
+        headers = {'Authorization': 'Bearer ' + IMPORT_TOKENS['VALID'],
+                   'Content-Type': 'application/gz',
+                   'Filename': 'ungz1'}
+        resp = requests.post(self.stream, data=lazy_file_reader(self.example_gz), headers=headers)
+        self.assertEqual(resp.status_code, 201)
+        resp1 = requests.put(self.stream, data=lazy_file_reader(self.example_gz), headers=headers)
+        self.assertEqual(resp1.status_code, 201)
+
 def main():
     runner = unittest.TextTestRunner()
     suite = []
@@ -620,6 +635,7 @@ def main():
         'test_Zd_stream_aes_with_custom_content_type_decrypt_works',
         'test_Ze_stream_tar_aes_with_custom_content_type_decrypt_untar_works',
         'test_Zf_stream_tar_aes_with_custom_content_type_decrypt_untar_works',
+        'test_Zg_stream_gz_with_custom_header_decompress_works',
         ])))
     map(runner.run, suite)
 

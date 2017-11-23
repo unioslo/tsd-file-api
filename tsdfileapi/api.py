@@ -291,6 +291,17 @@ class StreamHandler(AuthRequestHandler):
                         self.tar_proc = subprocess.Popen(['tar', '-C', project_dir, '-xf', '-'],
                                                  stdin=self.openssl_proc.stdout)
                         logging.info('started tar process')
+                    elif content_type == 'application/gz':
+                        logging.info('Detected Content-Type: %s', content_type)
+                        self.custom_content_type = content_type
+                        filename = secure_filename(self.request.headers['Filename'])
+                        path = os.path.normpath(project_dir + '/' + filename)
+                        logging.info('opening file: %s', path)
+                        self.target_file = open(path, filemode)
+                        self.gunzip_proc = subprocess.Popen(['gunzip', '-c', '-'],
+                                                             stdin=subprocess.PIPE,
+                                                             stdout=self.target_file)
+                        logging.info('started gunzip process')
                     else:
                         # write data to file, as-is
                         self.custom_content_type = None
@@ -330,6 +341,10 @@ class StreamHandler(AuthRequestHandler):
                 if not chunk:
                     self.openssl_proc.stdin.flush()
                     self.tar_proc.stdin.flush()
+            elif self.custom_content_type == 'application/gz':
+                self.gunzip_proc.stdin.write(chunk)
+                if not chunk:
+                    self.gunzip_proc.stdin.flush()
         except Exception as e:
             logging.error(e)
             logging.error("something went wrong with stream processing have to close file")
@@ -349,6 +364,9 @@ class StreamHandler(AuthRequestHandler):
             out, err = self.openssl_proc.communicate()
             out, err = self.tar_proc.communicate()
             logging.info('stream processing finished')
+        elif self.custom_content_type == 'application/gz':
+            out, err = self.gunzip_proc.communicate()
+            self.target_file.close()
         self.set_status(201)
         self.write({'message': 'data streamed'})
 
@@ -365,6 +383,9 @@ class StreamHandler(AuthRequestHandler):
             out, err = self.openssl_proc.communicate()
             out, err = self.tar_proc.communicate()
             logging.info('stream processing finished')
+        elif self.custom_content_type == 'application/gz':
+            out, err = self.gunzip_proc.communicate()
+            self.target_file.close()
         self.set_status(201)
         self.write({'message': 'data streamed'})
 
