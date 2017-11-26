@@ -1,4 +1,17 @@
 
+# v0.2.0
+
+- introduces stream processing pipelines, triggered by custom Content-Type headers
+    - direcories:
+        - tar           -> untar
+        - tar.gz        -> decompress, untar
+        - tar.aes       -> decrypt, untar
+        - tar.gz.aes    -> decrypt, uncompress, untar
+    - Files:
+        - aes           -> decrypt
+        - gz            -> uncompress
+        - gz.aes        -> decrypt, uncompress
+
 # v0.1.1
 
 - update JWT validation to match new claims issued from auth-api v0.4.2
