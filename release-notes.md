@@ -1,4 +1,8 @@
 
+# v0.2.1
+
+- bugfix for untar pipeline
+
 # v0.2.0
 
 - introduces stream processing pipelines, triggered by custom Content-Type headers

@@ -273,12 +273,20 @@ class StreamHandler(AuthRequestHandler):
                     elif content_type in ['application/tar', 'application/tar.gz']:
                         # tar command creates the dir, no filename to use, no file to open
                         logging.info('Detected Content-Type: %s', content_type)
+                        if 'gz' in content_type:
+                            tarflags = '-xzf'
+                        else:
+                            tarflags = '-xf'
                         self.custom_content_type = content_type
-                        self.proc = subprocess.Popen(['tar', '-C', project_dir, '-xf', '-'],
+                        self.proc = subprocess.Popen(['tar', '-C', project_dir, tarflags, '-'],
                                                  stdin=subprocess.PIPE)
                         logging.info('unpacking tarball')
                     elif content_type in ['application/tar.aes', 'application/tar.gz.aes']:
                         # tar command creates the dir, no filename to use, no file to open
+                        if 'gz' in content_type:
+                            tarflags = '-xzf'
+                        else:
+                            tarflags = '-xf'
                         logging.info('Detected Content-Type: %s', content_type)
                         self.custom_content_type = content_type
                         decr_aes_key = self.decrypt_aes_key(self.request.headers['Aes-Key'])
@@ -288,7 +296,7 @@ class StreamHandler(AuthRequestHandler):
                                                       stdin=subprocess.PIPE,
                                                       stdout=subprocess.PIPE)
                         logging.info('started openssl process')
-                        self.tar_proc = subprocess.Popen(['tar', '-C', project_dir, '-xf', '-'],
+                        self.tar_proc = subprocess.Popen(['tar', '-C', project_dir, tarflags, '-'],
                                                  stdin=self.openssl_proc.stdout)
                         logging.info('started tar process')
                     elif content_type == 'application/gz':
@@ -303,6 +311,7 @@ class StreamHandler(AuthRequestHandler):
                                                              stdout=self.target_file)
                         logging.info('started gunzip process')
                     elif content_type == 'application/gz.aes':
+                        # seeing a non-determnistic failure here sometimes...
                         logging.info('Detected Content-Type: %s', content_type)
                         self.custom_content_type = content_type
                         filename = secure_filename(self.request.headers['Filename'])
