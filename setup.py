@@ -1,3 +1,4 @@
+#!/usr/bin/env python
 
 from setuptools import setup
 
@@ -14,7 +15,7 @@ setup(
             'tests/*.py',
             'data/*',
             'config/file-api-config.yaml.example',
-            'config/file-api.service'
+            'config/file-api.service',
         ]
     },
     scripts=['scripts/fileapi']
