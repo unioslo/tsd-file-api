@@ -591,7 +591,7 @@ class TestFileApi(unittest.TestCase):
 
     def test_Zf_stream_tar_aes_with_custom_content_type_decrypt_untar_works(self):
         headers = {'Authorization': 'Bearer ' + IMPORT_TOKENS['VALID'],
-                   'Content-Type': 'application/tar.aes',
+                   'Content-Type': 'application/tar.gz.aes',
                    'Aes-Key': self.enc_symmetric_secret}
         resp = requests.post(self.stream, data=lazy_file_reader(self.example_tar_gz_aes), headers=headers)
         self.assertEqual(resp.status_code, 201)
