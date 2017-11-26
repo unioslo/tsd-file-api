@@ -167,7 +167,7 @@ class TestFileApi(unittest.TestCase):
         # tar -cf - totar3 | gzip -9 | openssl enc -aes-256-cbc -a -pass file:<( echo $PW ) > example.tar.gz.aes
         cls.example_tar_gz_aes = os.path.normpath(cls.data_folder + '/example.tar.gz.aes')
         cls.example_gz = os.path.normpath(cls.data_folder + '/example.csv.gz')
-
+        cls.example_gz_aes = os.path.normpath(cls.data_folder + '/example.csv.gz.aes')
 
     @classmethod
     def tearDownClass(cls):
@@ -178,7 +178,10 @@ class TestFileApi(unittest.TestCase):
                      'uploaded-example-2.csv', 'uploaded-example-3.csv',
                      'streamed-not-chunked', 'streamed-put-example.csv']
         for _file in uploaded_files:
-            if _file in ['totar', 'totar2', 'decrypted-aes.csv', 'totar3', 'totar4', 'ungz1']:
+            # TODO: eventually remove - still want to inspect them
+            # manually while the data pipelines are in alpha
+            if _file in ['totar', 'totar2', 'decrypted-aes.csv',
+                         'totar3', 'totar4', 'ungz1', 'ungz-aes1']:
                 continue
             if (_file in test_files) or (today in _file) or (_file in file_list):
                 try:
@@ -524,16 +527,19 @@ class TestFileApi(unittest.TestCase):
 
     # Handling custom content-types, on-the-fly
     # -----------------------------------------
+
     # Directories:
     # -----------
     # tar           -> untar
     # tar.gz        -> decompress, untar
     # tar.aes       -> decrypt, untar
     # tar.gz.aes    -> decrypt, uncompress, untar
+
     # Files:
     # -----
     # aes           -> decrypt
     # gz            -> uncompress
+    # gz.aes        -> decrypt, uncompress
 
     def test_Za_stream_tar_without_custom_content_type_works(self):
         headers = {'Authorization': 'Bearer ' + IMPORT_TOKENS['VALID'],
@@ -602,6 +608,16 @@ class TestFileApi(unittest.TestCase):
         resp1 = requests.put(self.stream, data=lazy_file_reader(self.example_gz), headers=headers)
         self.assertEqual(resp1.status_code, 201)
 
+    def test_Zh_stream_gz_with_custom_header_decompress_works(self):
+        headers = {'Authorization': 'Bearer ' + IMPORT_TOKENS['VALID'],
+                   'Content-Type': 'application/gz.aes',
+                   'Filename': 'ungz-aes1',
+                   'Aes-Key': self.enc_symmetric_secret}
+        resp = requests.post(self.stream, data=lazy_file_reader(self.example_gz_aes), headers=headers)
+        self.assertEqual(resp.status_code, 201)
+        resp1 = requests.put(self.stream, data=lazy_file_reader(self.example_gz_aes), headers=headers)
+        self.assertEqual(resp1.status_code, 201)
+
 def main():
     runner = unittest.TextTestRunner()
     suite = []
@@ -629,6 +645,7 @@ def main():
         'test_X_post_encrypted_data',
         'test_Y_invalid_project_number_rejected',
         'test_Z_token_for_other_project_rejected',
+        # Data pipelines
         'test_Za_stream_tar_without_custom_content_type_works',
         'test_Zb_stream_tar_with_custom_content_type_untar_works',
         'test_Zc_stream_tar_gz_with_custom_content_type_untar_works',
@@ -636,6 +653,7 @@ def main():
         'test_Ze_stream_tar_aes_with_custom_content_type_decrypt_untar_works',
         'test_Zf_stream_tar_aes_with_custom_content_type_decrypt_untar_works',
         'test_Zg_stream_gz_with_custom_header_decompress_works',
+        'test_Zh_stream_gz_with_custom_header_decompress_works',
         ])))
     map(runner.run, suite)
 
