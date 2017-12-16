@@ -381,6 +381,7 @@ class StreamHandler(AuthRequestHandler):
             self.target_file.close()
             self.send_error("something went wrong")
 
+    # TODO: check for errors
     def post(self, pnum):
         logging.info('StreamHandler.post')
         if not self.custom_content_type:
@@ -404,6 +405,7 @@ class StreamHandler(AuthRequestHandler):
         self.set_status(201)
         self.write({'message': 'data streamed'})
 
+    # TODO: check for errors
     def put(self, pnum):
         logging.info('StreamHandler.post')
         if not self.custom_content_type:

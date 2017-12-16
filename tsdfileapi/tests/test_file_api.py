@@ -544,27 +544,33 @@ class TestFileApi(unittest.TestCase):
     def test_Za_stream_tar_without_custom_content_type_works(self):
         headers = {'Authorization': 'Bearer ' + IMPORT_TOKENS['VALID'],
                    'Filename': 'example.tar'}
-        resp = requests.post(self.stream, data=lazy_file_reader(self.example_tar), headers=headers)
+        resp = requests.post(self.stream, data=lazy_file_reader(self.example_tar),
+                             headers=headers)
         self.assertEqual(resp.status_code, 201)
-        resp1 = requests.put(self.stream, data=lazy_file_reader(self.example_tar), headers=headers)
+        resp1 = requests.put(self.stream, data=lazy_file_reader(self.example_tar),
+                             headers=headers)
         self.assertEqual(resp1.status_code, 201)
         # checksum comparison
 
     def test_Zb_stream_tar_with_custom_content_type_untar_works(self):
         headers = {'Authorization': 'Bearer ' + IMPORT_TOKENS['VALID'],
                    'Content-Type': 'application/tar'}
-        resp = requests.post(self.stream, data=lazy_file_reader(self.example_tar), headers=headers)
+        resp = requests.post(self.stream, data=lazy_file_reader(self.example_tar),
+                             headers=headers)
         self.assertEqual(resp.status_code, 201)
-        resp1 = requests.put(self.stream, data=lazy_file_reader(self.example_tar), headers=headers)
+        resp1 = requests.put(self.stream, data=lazy_file_reader(self.example_tar),
+                             headers=headers)
         self.assertEqual(resp1.status_code, 201)
         # check contents
 
     def test_Zc_stream_tar_gz_with_custom_content_type_untar_works(self):
         headers = {'Authorization': 'Bearer ' + IMPORT_TOKENS['VALID'],
                    'Content-Type': 'application/tar.gz'}
-        resp = requests.post(self.stream, data=lazy_file_reader(self.example_tar_gz), headers=headers)
+        resp = requests.post(self.stream, data=lazy_file_reader(self.example_tar_gz),
+                             headers=headers)
         self.assertEqual(resp.status_code, 201)
-        resp1 = requests.put(self.stream, data=lazy_file_reader(self.example_tar_gz), headers=headers)
+        resp1 = requests.put(self.stream, data=lazy_file_reader(self.example_tar_gz),
+                             headers=headers)
         self.assertEqual(resp1.status_code, 201)
         # check contents
 
@@ -573,9 +579,11 @@ class TestFileApi(unittest.TestCase):
                    'Content-Type': 'application/aes',
                    'Aes-Key': self.enc_symmetric_secret,
                    'Filename': 'decrypted-aes.csv'}
-        resp = requests.post(self.stream, data=lazy_file_reader(self.example_aes), headers=headers)
+        resp = requests.post(self.stream, data=lazy_file_reader(self.example_aes),
+                             headers=headers)
         self.assertEqual(resp.status_code, 201)
-        resp1 = requests.put(self.stream, data=lazy_file_reader(self.example_aes), headers=headers)
+        resp1 = requests.put(self.stream, data=lazy_file_reader(self.example_aes),
+                             headers=headers)
         self.assertEqual(resp1.status_code, 201)
         # check contents
 
@@ -583,9 +591,11 @@ class TestFileApi(unittest.TestCase):
         headers = {'Authorization': 'Bearer ' + IMPORT_TOKENS['VALID'],
                    'Content-Type': 'application/tar.aes',
                    'Aes-Key': self.enc_symmetric_secret}
-        resp = requests.post(self.stream, data=lazy_file_reader(self.example_tar_aes), headers=headers)
+        resp = requests.post(self.stream, data=lazy_file_reader(self.example_tar_aes),
+                             headers=headers)
         self.assertEqual(resp.status_code, 201)
-        resp1 = requests.put(self.stream, data=lazy_file_reader(self.example_tar_aes), headers=headers)
+        resp1 = requests.put(self.stream, data=lazy_file_reader(self.example_tar_aes),
+                             headers=headers)
         self.assertEqual(resp1.status_code, 201)
         # check contents
 
@@ -593,9 +603,11 @@ class TestFileApi(unittest.TestCase):
         headers = {'Authorization': 'Bearer ' + IMPORT_TOKENS['VALID'],
                    'Content-Type': 'application/tar.gz.aes',
                    'Aes-Key': self.enc_symmetric_secret}
-        resp = requests.post(self.stream, data=lazy_file_reader(self.example_tar_gz_aes), headers=headers)
+        resp = requests.post(self.stream, data=lazy_file_reader(self.example_tar_gz_aes),
+                             headers=headers)
         self.assertEqual(resp.status_code, 201)
-        resp1 = requests.put(self.stream, data=lazy_file_reader(self.example_tar_gz_aes), headers=headers)
+        resp1 = requests.put(self.stream, data=lazy_file_reader(self.example_tar_gz_aes),
+                             headers=headers)
         self.assertEqual(resp1.status_code, 201)
         # check contents
 
@@ -603,9 +615,11 @@ class TestFileApi(unittest.TestCase):
         headers = {'Authorization': 'Bearer ' + IMPORT_TOKENS['VALID'],
                    'Content-Type': 'application/gz',
                    'Filename': 'ungz1'}
-        resp = requests.post(self.stream, data=lazy_file_reader(self.example_gz), headers=headers)
+        resp = requests.post(self.stream, data=lazy_file_reader(self.example_gz),
+                             headers=headers)
         self.assertEqual(resp.status_code, 201)
-        resp1 = requests.put(self.stream, data=lazy_file_reader(self.example_gz), headers=headers)
+        resp1 = requests.put(self.stream, data=lazy_file_reader(self.example_gz),
+                             headers=headers)
         self.assertEqual(resp1.status_code, 201)
 
     def test_Zh_stream_gz_with_custom_header_decompress_works(self):
@@ -613,9 +627,11 @@ class TestFileApi(unittest.TestCase):
                    'Content-Type': 'application/gz.aes',
                    'Filename': 'ungz-aes1',
                    'Aes-Key': self.enc_symmetric_secret}
-        resp = requests.post(self.stream, data=lazy_file_reader(self.example_gz_aes), headers=headers)
+        resp = requests.post(self.stream, data=lazy_file_reader(self.example_gz_aes),
+                             headers=headers)
         self.assertEqual(resp.status_code, 201)
-        resp1 = requests.put(self.stream, data=lazy_file_reader(self.example_gz_aes), headers=headers)
+        resp1 = requests.put(self.stream, data=lazy_file_reader(self.example_gz_aes),
+                             headers=headers)
         self.assertEqual(resp1.status_code, 201)
 
 def main():
