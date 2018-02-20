@@ -186,7 +186,8 @@ class TestFileApi(unittest.TestCase):
             # TODO: eventually remove - still want to inspect them
             # manually while the data pipelines are in alpha
             if _file in ['totar', 'totar2', 'decrypted-aes.csv',
-                         'totar3', 'totar4', 'ungz1', 'ungz-aes1']:
+                         'totar3', 'totar4', 'ungz1', 'ungz-aes1',
+                         'uploaded-example-2.csv', 'uploaded-example-3.csv']:
                 continue
             if (_file in test_files) or (today in _file) or (_file in file_list):
                 try:
@@ -320,6 +321,30 @@ class TestFileApi(unittest.TestCase):
         self.assertEqual(md5sum(self.example_csv), md5sum(uploaded_file))
 
 
+    def test_FA_post_multiple_files_multi_part_form_data(self):
+        newfilename1 = 'n1'
+        newfilename2 = 'n2'
+        try:
+            os.remove(os.path.normpath(self.uploads_folder + '/' + newfilename1))
+            os.remove(os.path.normpath(self.uploads_folder + '/' + newfilename2))
+        except OSError:
+            pass
+        files = [('file', (newfilename1, open(self.example_csv, 'rb'), 'text/html')),
+                 ('file', (newfilename2, open(self.example_csv, 'rb'), 'text/html'))]
+        headers = {'Authorization': 'Bearer ' + IMPORT_TOKENS['VALID']}
+        resp = requests.post(self.upload, files=files, headers=headers)
+        self.assertEqual(resp.status_code, 201)
+        uploaded_file1 = os.path.normpath(self.uploads_folder + '/' + newfilename1)
+        uploaded_file2 = os.path.normpath(self.uploads_folder + '/' + newfilename2)
+        self.assertEqual(md5sum(self.example_csv), md5sum(uploaded_file1))
+        self.assertEqual(md5sum(self.example_csv), md5sum(uploaded_file2))
+        files = [('file', (newfilename1, open(self.example_csv, 'rb'), 'text/html')),
+                 ('file', (newfilename2, open(self.example_csv, 'rb'), 'text/html'))]
+        resp2 = requests.post(self.upload, files=files, headers=headers)
+        self.assertEqual(resp2.status_code, 201)
+        self.assertNotEqual(md5sum(self.example_csv), md5sum(uploaded_file1))
+        self.assertNotEqual(md5sum(self.example_csv), md5sum(uploaded_file2))
+
     def test_G_patch_file_multi_part_form_data(self):
         newfilename = 'uploaded-example-2.csv'
         try:
@@ -328,11 +353,38 @@ class TestFileApi(unittest.TestCase):
             pass
         headers = {'Authorization': 'Bearer ' + IMPORT_TOKENS['VALID']}
         files = {'file': (newfilename, open(self.example_csv))}
-        resp = requests.patch(self.upload, files=files, headers=headers)
+        resp = requests.post(self.upload, files=files, headers=headers)
         self.assertEqual(resp.status_code, 201)
         uploaded_file = os.path.normpath(self.uploads_folder + '/' + newfilename)
         self.assertEqual(md5sum(self.example_csv), md5sum(uploaded_file))
+        files = {'file': (newfilename, open(self.example_csv))}
+        resp2 = requests.patch(self.upload, files=files, headers=headers)
+        self.assertEqual(resp2.status_code, 201)
+        self.assertNotEqual(md5sum(self.example_csv), md5sum(uploaded_file))
 
+    def test_GA_patch_multiple_files_multi_part_form_data(self):
+        newfilename1 = 'n3'
+        newfilename2 = 'n4'
+        try:
+            os.remove(os.path.normpath(self.uploads_folder + '/' + newfilename1))
+            os.remove(os.path.normpath(self.uploads_folder + '/' + newfilename2))
+        except OSError:
+            pass
+        files = [('file', (newfilename1, open(self.example_csv, 'rb'), 'text/html')),
+                 ('file', (newfilename2, open(self.example_csv, 'rb'), 'text/html'))]
+        headers = {'Authorization': 'Bearer ' + IMPORT_TOKENS['VALID']}
+        resp = requests.post(self.upload, files=files, headers=headers)
+        self.assertEqual(resp.status_code, 201)
+        uploaded_file1 = os.path.normpath(self.uploads_folder + '/' + newfilename1)
+        uploaded_file2 = os.path.normpath(self.uploads_folder + '/' + newfilename2)
+        self.assertEqual(md5sum(self.example_csv), md5sum(uploaded_file1))
+        self.assertEqual(md5sum(self.example_csv), md5sum(uploaded_file2))
+        files = [('file', (newfilename1, open(self.example_csv, 'rb'), 'text/html')),
+                 ('file', (newfilename2, open(self.example_csv, 'rb'), 'text/html'))]
+        resp2 = requests.patch(self.upload, files=files, headers=headers)
+        self.assertEqual(resp2.status_code, 201)
+        self.assertNotEqual(md5sum(self.example_csv), md5sum(uploaded_file1))
+        self.assertNotEqual(md5sum(self.example_csv), md5sum(uploaded_file2))
 
     def test_H_put_file_multi_part_form_data(self):
         newfilename = 'uploaded-example-3.csv'
@@ -342,12 +394,34 @@ class TestFileApi(unittest.TestCase):
             pass
         headers = {'Authorization': 'Bearer ' + IMPORT_TOKENS['VALID']}
         files = {'file': (newfilename, open(self.example_csv))}
-        resp = requests.patch(self.upload, files=files, headers=headers)
+        resp = requests.put(self.upload, files=files, headers=headers)
         uploaded_file = os.path.normpath(self.uploads_folder + '/' + newfilename)
         self.assertEqual(resp.status_code, 201)
         self.assertEqual(md5sum(self.example_csv), md5sum(uploaded_file))
-        resp = requests.patch(self.upload, files=files, headers=headers)
+        files = {'file': (newfilename, open(self.example_csv))}
+        resp2 = requests.put(self.upload, files=files, headers=headers)
+        self.assertEqual(resp2.status_code, 201)
         self.assertEqual(md5sum(self.example_csv), md5sum(uploaded_file))
+
+
+    def test_HA_put_multiple_files_multi_part_form_data(self):
+        newfilename1 = 'n5'
+        newfilename2 = 'n6'
+        files = [('file', (newfilename1, open(self.example_csv, 'rb'), 'text/html')),
+                 ('file', (newfilename2, open(self.example_csv, 'rb'), 'text/html'))]
+        headers = {'Authorization': 'Bearer ' + IMPORT_TOKENS['VALID']}
+        resp = requests.put(self.upload, files=files, headers=headers)
+        self.assertEqual(resp.status_code, 201)
+        uploaded_file1 = os.path.normpath(self.uploads_folder + '/' + newfilename1)
+        uploaded_file2 = os.path.normpath(self.uploads_folder + '/' + newfilename2)
+        self.assertEqual(md5sum(self.example_csv), md5sum(uploaded_file1))
+        self.assertEqual(md5sum(self.example_csv), md5sum(uploaded_file2))
+        files = [('file', (newfilename1, open(self.example_csv, 'rb'), 'text/html')),
+                 ('file', (newfilename2, open(self.example_csv, 'rb'), 'text/html'))]
+        resp2 = requests.put(self.upload, files=files, headers=headers)
+        self.assertEqual(resp2.status_code, 201)
+        self.assertEqual(md5sum(self.example_csv), md5sum(uploaded_file1))
+        self.assertEqual(md5sum(self.example_csv), md5sum(uploaded_file2))
 
 
     def test_I_post_file_to_streaming_endpoint_no_chunked_encoding_data_binary(self):
@@ -649,8 +723,11 @@ def main():
         'test_D_timed_out_token_rejected',
         'test_E_unauthenticated_request_rejected',
         'test_F_post_file_multi_part_form_data',
+        'test_FA_post_multiple_files_multi_part_form_data',
         'test_G_patch_file_multi_part_form_data',
+        'test_GA_patch_multiple_files_multi_part_form_data',
         'test_H_put_file_multi_part_form_data',
+        'test_HA_put_multiple_files_multi_part_form_data',
         'test_I_post_file_to_streaming_endpoint_no_chunked_encoding_data_binary',
         'test_J_post_stream_file_chunked_transfer_encoding',
         'test_K_put_stream_file_chunked_transfer_encoding',

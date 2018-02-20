@@ -166,54 +166,53 @@ class AuthRequestHandler(RequestHandler):
 
 class FormDataHandler(AuthRequestHandler):
 
-    def write_file(self, filemode, pnum, user=None):
-        if options.user_authorization:
-            logging.info('running as user: %s', options.api_user)
-            to_user(user)
-            logging.info('writing file as user: %s', user)
+    def write_files(self, filemode, pnum):
         try:
-            filename = secure_filename(self.request.files['file'][0]['filename'])
+            for i in range(len(self.request.files['file'])):
+                filename = secure_filename(self.request.files['file'][i]['filename'])
+                filebody = self.request.files['file'][i]['body']
+                self.write_file(filemode, filename, filebody, pnum)
+        except Exception as e:
+            logging.error(e)
+            logging.error('Could not process files')
+
+    def write_file(self, filemode, filename, filebody, pnum):
+        try:
             project_dir = project_import_dir(options.uploads_folder, pnum)
             target = os.path.normpath(project_dir + '/' + filename)
-            filebody = self.request.files['file'][0]['body']
             with open(target, filemode) as f:
                 f.write(filebody)
         except Exception as e:
             logging.error(e)
             logging.error('Could not write to file')
-        finally:
-            if options.user_authorization:
-                to_user(options.api_user)
 
     def prepare(self):
         try:
             self.authnz = self.validate_token(roles_allowed=['import_user', 'export_user', 'admin_user'])
+            if not self.authnz:
+                self.set_status(401)
+                raise Exception
+            if not self.request.files['file']:
+                logging.error('No file(s) supplied with upload request')
+                self.set_status(400)
+                raise Exception
         except Exception as e:
-            self.finish({'message': 'Authorization failed'})
-        try:
-            if len(self.request.files['file']) > 1:
-                self.set_status(405)
-                self.message = 'Only one file per request is allowed.'
-                raise KeyError
-        except KeyError:
-            issue = 'No file supplied with upload request'
-            logging.error(issue)
-            self.message = issue
-            self.set_status(400)
-            raise MissingArgumentError('file')
+            if self._status_code != 401:
+                self.set_status(400)
+            self.finish({'message': 'request failed'})
 
     def post(self, pnum):
-        self.write_file('ab+', pnum, self.authnz['user'])
+        self.write_files('ab+', pnum)
         self.set_status(201)
         self.write({'message': 'file uploaded'})
 
     def patch(self, pnum):
-        self.write_file('ab+', pnum, self.authnz['user'])
+        self.write_files('ab+', pnum)
         self.set_status(201)
         self.write({'message': 'file uploaded'})
 
     def put(self, pnum):
-        self.write_file('wb+', pnum, self.authnz['user'])
+        self.write_files('wb+', pnum)
         self.set_status(201)
         self.write({'message': 'file uploaded'})
 
