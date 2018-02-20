@@ -80,6 +80,11 @@ import requests
 import yaml
 from sqlalchemy.exc import OperationalError
 
+# monkey patch to avoid random error message
+# https://github.com/isislovecruft/python-gnupg/issues/207
+import gnupg._parsers
+gnupg._parsers.Verify.TRUST_LEVELS["ENCRYPTION_COMPLIANCE_MODE"] = 23
+
 # pylint: disable=relative-import
 from tokens import gen_test_tokens
 from ..db import session_scope, sqlite_init

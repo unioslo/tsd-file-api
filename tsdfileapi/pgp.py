@@ -6,6 +6,12 @@ import json
 
 import gnupg
 
+# monkey patch to avoid random error message
+# https://github.com/isislovecruft/python-gnupg/issues/207
+import gnupg._parsers
+gnupg._parsers.Verify.TRUST_LEVELS["DECRYPTION_KEY"] = 23
+gnupg._parsers.Verify.TRUST_LEVELS["DECRYPTION_COMPLIANCE_MODE"] = 23
+
 class PGPKeyLoadError(Exception):
     message = 'Issue with keys'
 
