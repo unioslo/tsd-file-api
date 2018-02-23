@@ -257,13 +257,14 @@ class StreamHandler(AuthRequestHandler):
                 try:
                     content_type = self.request.headers['Content-Type']
                     project_dir = project_import_dir(options.uploads_folder, pnum)
+                    filename = secure_filename(self.request.headers['Filename'])
                     if content_type == 'application/aes':
                         # only decryption, write to file
                         logging.info('Detected Content-Type: %s', content_type)
                         self.custom_content_type = content_type
                         decr_aes_key = self.decrypt_aes_key(self.request.headers['Aes-Key'])
                         pw = 'pass:%s' % decr_aes_key
-                        filename = secure_filename(self.request.headers['Filename'])
+
                         path = os.path.normpath(project_dir + '/' + filename)
                         logging.info('decrypting AES data to %s', filename)
                         self.proc = subprocess.Popen(['openssl', 'enc', '-aes-256-cbc', '-a', '-d',
@@ -301,7 +302,7 @@ class StreamHandler(AuthRequestHandler):
                     elif content_type == 'application/gz':
                         logging.info('Detected Content-Type: %s', content_type)
                         self.custom_content_type = content_type
-                        filename = secure_filename(self.request.headers['Filename'])
+
                         path = os.path.normpath(project_dir + '/' + filename)
                         logging.info('opening file: %s', path)
                         self.target_file = open(path, filemode)
@@ -313,7 +314,7 @@ class StreamHandler(AuthRequestHandler):
                         # seeing a non-determnistic failure here sometimes...
                         logging.info('Detected Content-Type: %s', content_type)
                         self.custom_content_type = content_type
-                        filename = secure_filename(self.request.headers['Filename'])
+
                         path = os.path.normpath(project_dir + '/' + filename)
                         logging.info('opening file: %s', path)
                         self.target_file = open(path, filemode)
@@ -329,7 +330,7 @@ class StreamHandler(AuthRequestHandler):
                     else:
                         # write data to file, as-is
                         self.custom_content_type = None
-                        filename = secure_filename(self.request.headers['Filename'])
+
                         path = os.path.normpath(project_dir + '/' + filename)
                         logging.info('opening file: %s', path)
                         self.target_file = open(path, filemode)
