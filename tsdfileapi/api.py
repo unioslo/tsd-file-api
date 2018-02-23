@@ -103,7 +103,6 @@ class AuthRequestHandler(RequestHandler):
         bool or dict
 
         """
-        logging.info("Checking JWT")
         self.status = None
         try:
             try:
@@ -233,7 +232,6 @@ class StreamHandler(AuthRequestHandler):
 
     @gen.coroutine
     def prepare(self):
-        logging.info('StreamHandler')
         try:
             try:
                 self.authnz = self.validate_token(roles_allowed=['import_user', 'export_user', 'admin_user'])
@@ -261,17 +259,14 @@ class StreamHandler(AuthRequestHandler):
                     path = os.path.normpath(project_dir + '/' + filename)
                     if content_type == 'application/aes':
                         # only decryption, write to file
-                        logging.info('Detected Content-Type: %s', content_type)
                         self.custom_content_type = content_type
                         decr_aes_key = self.decrypt_aes_key(self.request.headers['Aes-Key'])
                         pw = 'pass:%s' % decr_aes_key
-                        logging.info('decrypting AES data to %s', filename)
                         self.proc = subprocess.Popen(['openssl', 'enc', '-aes-256-cbc', '-a', '-d',
                                                       '-pass', pw, '-out', path],
                                                       stdin=subprocess.PIPE)
                     elif content_type in ['application/tar', 'application/tar.gz']:
                         # tar command creates the dir, no filename to use, no file to open
-                        logging.info('Detected Content-Type: %s', content_type)
                         if 'gz' in content_type:
                             tarflags = '-xzf'
                         else:
@@ -286,7 +281,6 @@ class StreamHandler(AuthRequestHandler):
                             tarflags = '-xzf'
                         else:
                             tarflags = '-xf'
-                        logging.info('Detected Content-Type: %s', content_type)
                         self.custom_content_type = content_type
                         decr_aes_key = self.decrypt_aes_key(self.request.headers['Aes-Key'])
                         pw = 'pass:%s' % decr_aes_key
@@ -299,7 +293,6 @@ class StreamHandler(AuthRequestHandler):
                                                  stdin=self.openssl_proc.stdout)
                         logging.info('started tar process')
                     elif content_type == 'application/gz':
-                        logging.info('Detected Content-Type: %s', content_type)
                         self.custom_content_type = content_type
                         logging.info('opening file: %s', path)
                         self.target_file = open(path, filemode)
@@ -309,7 +302,6 @@ class StreamHandler(AuthRequestHandler):
                         logging.info('started gunzip process')
                     elif content_type == 'application/gz.aes':
                         # seeing a non-determnistic failure here sometimes...
-                        logging.info('Detected Content-Type: %s', content_type)
                         self.custom_content_type = content_type
                         logging.info('opening file: %s', path)
                         self.target_file = open(path, filemode)
@@ -376,7 +368,6 @@ class StreamHandler(AuthRequestHandler):
 
     # TODO: check for errors
     def post(self, pnum):
-        logging.info('StreamHandler.post')
         if not self.custom_content_type:
             self.target_file.close()
             logging.info('StreamHandler: closed file')
@@ -400,7 +391,6 @@ class StreamHandler(AuthRequestHandler):
 
     # TODO: check for errors
     def put(self, pnum):
-        logging.info('StreamHandler.post')
         if not self.custom_content_type:
             self.target_file.close()
             logging.info('StreamHandler: closed file')
@@ -457,7 +447,6 @@ class ProxyHandler(AuthRequestHandler):
     @gen.coroutine
     def prepare(self):
         """Called after headers have been read."""
-        logging.info('ProxyHandler.prepare')
         try:
             try:
                 valid = self.validate_token(roles_allowed=['import_user', 'export_user', 'admin_user'])
@@ -526,7 +515,6 @@ class ProxyHandler(AuthRequestHandler):
     @gen.coroutine
     def post(self, pnum):
         """Called after entire body has been read."""
-        logging.info('ProxyHandler.post')
         yield self.chunks.put(None)
         # wait for request to finish.
         response = yield self.fetch_future
@@ -536,7 +524,6 @@ class ProxyHandler(AuthRequestHandler):
     @gen.coroutine
     def put(self, pnum):
         """Called after entire body has been read."""
-        logging.info('ProxyHandler.put')
         yield self.chunks.put(None)
         # wait for request to finish.
         response = yield self.fetch_future
