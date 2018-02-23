@@ -256,18 +256,26 @@ class StreamHandler(AuthRequestHandler):
                     content_type = self.request.headers['Content-Type']
                     project_dir = project_import_dir(options.uploads_folder, pnum)
                     filename = secure_filename(self.request.headers['Filename'])
-                    path = os.path.normpath(project_dir + '/' + filename)
-                    path_part = path + '.part'
-                    if os.path.lexists(path_part):
+                    self.path = os.path.normpath(project_dir + '/' + filename)
+                    self.path_part = self.path + '.part'
+                    if os.path.lexists(self.path_part):
                         logging.error('trying to write to partial file - killing request')
                         raise Exception
+                    if os.path.lexists(self.path):
+                        logging.info('%s already exists, renaming to %s', self.path, self.path_part)
+                        os.rename(self.path, self.path_part)
+                        assert os.path.lexists(self.path_part)
+                        assert not os.path.lexists(self.path)
+                    self.path, self.path_part = self.path_part, self.path
+                    logging.info('path: %s', self.path)
+                    logging.info('path_part: %s', self.path_part)
                     if content_type == 'application/aes':
                         # only decryption, write to file
                         self.custom_content_type = content_type
                         decr_aes_key = self.decrypt_aes_key(self.request.headers['Aes-Key'])
                         pw = 'pass:%s' % decr_aes_key
                         self.proc = subprocess.Popen(['openssl', 'enc', '-aes-256-cbc', '-a', '-d',
-                                                      '-pass', pw, '-out', path],
+                                                      '-pass', pw, '-out', self.path],
                                                       stdin=subprocess.PIPE)
                     elif content_type in ['application/tar', 'application/tar.gz']:
                         # tar command creates the dir, no filename to use, no file to open
@@ -298,8 +306,8 @@ class StreamHandler(AuthRequestHandler):
                         logging.info('started tar process')
                     elif content_type == 'application/gz':
                         self.custom_content_type = content_type
-                        logging.info('opening file: %s', path)
-                        self.target_file = open(path, filemode)
+                        logging.info('opening file: %s', self.path)
+                        self.target_file = open(self.path, filemode)
                         self.gunzip_proc = subprocess.Popen(['gunzip', '-c', '-'],
                                                              stdin=subprocess.PIPE,
                                                              stdout=self.target_file)
@@ -307,8 +315,8 @@ class StreamHandler(AuthRequestHandler):
                     elif content_type == 'application/gz.aes':
                         # seeing a non-determnistic failure here sometimes...
                         self.custom_content_type = content_type
-                        logging.info('opening file: %s', path)
-                        self.target_file = open(path, filemode)
+                        logging.info('opening file: %s', self.path)
+                        self.target_file = open(self.path, filemode)
                         decr_aes_key = self.decrypt_aes_key(self.request.headers['Aes-Key'])
                         pw = 'pass:%s' % decr_aes_key
                         self.openssl_proc = subprocess.Popen(['openssl', 'enc', '-aes-256-cbc', '-a', '-d',
@@ -321,8 +329,8 @@ class StreamHandler(AuthRequestHandler):
                     else:
                         # write data to file, as-is
                         self.custom_content_type = None
-                        logging.info('opening file: %s', path)
-                        self.target_file = open(path, filemode)
+                        logging.info('opening file: %s', self.path)
+                        self.target_file = open(self.path, filemode)
                 except KeyError:
                     logging.info('No content-type - do not know what to do with data')
             except Exception as e:
@@ -330,6 +338,7 @@ class StreamHandler(AuthRequestHandler):
                 logging.error("filename not found")
                 try:
                     self.target_file.close()
+                    os.rename(self.path, self.path_part)
                 except AttributeError as e:
                     logging.error(e)
                     logging.error('No file to close after all - so nothing to worry about')
@@ -368,26 +377,32 @@ class StreamHandler(AuthRequestHandler):
             logging.error(e)
             logging.error("something went wrong with stream processing have to close file")
             self.target_file.close()
+            os.rename(self.path, self.path_part)
             self.send_error("something went wrong")
 
     # TODO: check for errors
     def post(self, pnum):
         if not self.custom_content_type:
             self.target_file.close()
+            os.rename(self.path, self.path_part)
             logging.info('StreamHandler: closed file')
         elif self.custom_content_type in ['application/tar', 'application/tar.gz',
                                           'application/aes']:
             out, err = self.proc.communicate()
+            if self.custom_content_type == 'application/aes':
+                os.rename(self.path, self.path_part)
         elif self.custom_content_type in ['application/tar.aes', 'application/tar.gz.aes']:
             out, err = self.openssl_proc.communicate()
             out, err = self.tar_proc.communicate()
         elif self.custom_content_type == 'application/gz':
             out, err = self.gunzip_proc.communicate()
             self.target_file.close()
+            os.rename(self.path, self.path_part)
         elif self.custom_content_type == 'application/gz.aes':
             out, err = self.openssl_proc.communicate()
             out, err = self.gunzip_proc.communicate()
             self.target_file.close()
+            os.rename(self.path, self.path_part)
         self.set_status(201)
         self.write({'message': 'data streamed'})
 
@@ -395,22 +410,25 @@ class StreamHandler(AuthRequestHandler):
     def put(self, pnum):
         if not self.custom_content_type:
             self.target_file.close()
+            os.rename(self.path, self.path_part)
             logging.info('StreamHandler: closed file')
         elif self.custom_content_type in ['application/tar', 'application/tar.gz',
                                           'application/aes']:
             out, err = self.proc.communicate()
-            logging.info('stream processing finished')
+            if self.custom_content_type == 'application/aes':
+                os.rename(self.path, self.path_part)
         elif self.custom_content_type in ['application/tar.aes', 'application/tar.gz.aes']:
             out, err = self.openssl_proc.communicate()
             out, err = self.tar_proc.communicate()
-            logging.info('stream processing finished')
         elif self.custom_content_type == 'application/gz':
             out, err = self.gunzip_proc.communicate()
             self.target_file.close()
+            os.rename(self.path, self.path_part)
         elif self.custom_content_type == 'application/gz.aes':
             out, err = self.openssl_proc.communicate()
             out, err = self.gunzip_proc.communicate()
             self.target_file.close()
+            os.rename(self.path, self.path_part)
         self.set_status(201)
         self.write({'message': 'data streamed'})
 
@@ -422,6 +440,7 @@ class StreamHandler(AuthRequestHandler):
         try:
             if not self.target_file.closed:
                 self.target_file.close()
+                os.rename(self.path, self.path_part)
                 logging.info('StreamHandler: Closed file')
             if options.user_authorization:
                 to_user(options.api_user)
@@ -437,6 +456,7 @@ class StreamHandler(AuthRequestHandler):
         try:
             if not self.target_file.closed:
                 self.target_file.close()
+                os.rename(self.path, self.path_part)
                 logging.info('StreamHandler: Closed file after client closed connection')
         except AttributeError as e:
             logging.info(e)
