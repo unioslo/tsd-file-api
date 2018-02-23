@@ -257,6 +257,10 @@ class StreamHandler(AuthRequestHandler):
                     project_dir = project_import_dir(options.uploads_folder, pnum)
                     filename = secure_filename(self.request.headers['Filename'])
                     path = os.path.normpath(project_dir + '/' + filename)
+                    path_part = path + '.part'
+                    if os.path.lexists(path_part):
+                        logging.error('trying to write to partial file - killing request')
+                        raise Exception
                     if content_type == 'application/aes':
                         # only decryption, write to file
                         self.custom_content_type = content_type
@@ -374,11 +378,9 @@ class StreamHandler(AuthRequestHandler):
         elif self.custom_content_type in ['application/tar', 'application/tar.gz',
                                           'application/aes']:
             out, err = self.proc.communicate()
-            logging.info('stream processing finished')
         elif self.custom_content_type in ['application/tar.aes', 'application/tar.gz.aes']:
             out, err = self.openssl_proc.communicate()
             out, err = self.tar_proc.communicate()
-            logging.info('stream processing finished')
         elif self.custom_content_type == 'application/gz':
             out, err = self.gunzip_proc.communicate()
             self.target_file.close()
