@@ -178,9 +178,20 @@ class FormDataHandler(AuthRequestHandler):
     def write_file(self, filemode, filename, filebody, pnum):
         try:
             project_dir = project_import_dir(options.uploads_folder, pnum)
-            target = os.path.normpath(project_dir + '/' + filename)
-            with open(target, filemode) as f:
+            self.path = os.path.normpath(project_dir + '/' + filename)
+            self.path_part = self.path + '.part'
+            if os.path.lexists(self.path_part):
+                logging.error('trying to write to partial file - killing request')
+                raise Exception
+            if os.path.lexists(self.path):
+                logging.info('%s already exists, renaming to %s', self.path, self.path_part)
+                os.rename(self.path, self.path_part)
+                assert os.path.lexists(self.path_part)
+                assert not os.path.lexists(self.path)
+            self.path, self.path_part = self.path_part, self.path
+            with open(self.path, filemode) as f:
                 f.write(filebody)
+                os.rename(self.path, self.path_part)
         except Exception as e:
             logging.error(e)
             logging.error('Could not write to file')
@@ -267,8 +278,6 @@ class StreamHandler(AuthRequestHandler):
                         assert os.path.lexists(self.path_part)
                         assert not os.path.lexists(self.path)
                     self.path, self.path_part = self.path_part, self.path
-                    logging.info('path: %s', self.path)
-                    logging.info('path_part: %s', self.path_part)
                     if content_type == 'application/aes':
                         # only decryption, write to file
                         self.custom_content_type = content_type
