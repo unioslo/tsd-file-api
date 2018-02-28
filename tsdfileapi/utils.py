@@ -56,9 +56,22 @@ def secure_filename(filename):
     return filename
 
 
-def project_import_dir(basename, pnum):
+def project_import_dir(uploads_folder, pnum):
     """
-    Create a project specific path, e.g. /tsd/p11api from
-    a basename and a project number.
+    Create a project specific path based on config and a project number.
+
+    Paramaters
+    ----------
+    uploads_folder: list
+    pnum: str
+
+    Returns
+    -------
+    path
+
     """
-    return os.path.normpath(basename + '/' + pnum + 'api')
+    try:
+        folder = uploads_folder[pnum]
+    except KeyError as e:
+        folder = uploads_folder['default'].replace('pXX', pnum)
+    return os.path.normpath(folder)

@@ -49,3 +49,8 @@ def gen_test_tokens(config):
         'TIMED_OUT': tkn(secret, exp=-1, role='import_user', pnum=proj),
         'WRONG_PROJECT': tkn(wrong, exp=-1, role='import_user', pnum='p01')
     }
+
+def get_test_token_for_p12(config):
+    store = load_jwk_store(config)
+    secret = store['p12']
+    return tkn(secret, role='import_user', pnum='p12')

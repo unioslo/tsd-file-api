@@ -86,7 +86,7 @@ import gnupg._parsers
 gnupg._parsers.Verify.TRUST_LEVELS["ENCRYPTION_COMPLIANCE_MODE"] = 23
 
 # pylint: disable=relative-import
-from tokens import gen_test_tokens
+from tokens import gen_test_tokens, get_test_token_for_p12
 from ..db import session_scope, sqlite_init
 from ..utils import project_import_dir
 
@@ -152,6 +152,7 @@ class TestFileApi(unittest.TestCase):
         cls.example_codebook = json.loads(
             open(os.path.normpath(cls.data_folder + '/example-ns.json')).read())
         cls.uploads_folder = project_import_dir(cls.config['uploads_folder'], cls.config['test_project'])
+        cls.uploads_folder_p12 = project_import_dir(cls.config['uploads_folder'], 'p12')
         # all endpoints
         cls.upload = cls.base_url + '/files/upload'
         cls.list = cls.base_url + '/files/list'
@@ -161,6 +162,8 @@ class TestFileApi(unittest.TestCase):
         cls.test_project = cls.test_project
         global IMPORT_TOKENS
         IMPORT_TOKENS = gen_test_tokens(cls.config)
+        global P12_TOKEN
+        P12_TOKEN = get_test_token_for_p12(cls.config)
         cls.example_tar = os.path.normpath(cls.data_folder + '/example.tar')
         cls.example_tar_gz = os.path.normpath(cls.data_folder + '/example.tar.gz')
         cls.symmetric_secret = 'tOg1qbyhRMdZLg=='
@@ -713,6 +716,33 @@ class TestFileApi(unittest.TestCase):
                              headers=headers)
         self.assertEqual(resp1.status_code, 201)
 
+    def test_ZA_choosing_file_upload_directories_based_on_pnum_works(self):
+        newfilename = 'uploaded-example-p12.csv'
+        try:
+            os.remove(os.path.normpath(self.uploads_folder_p12 + '/' + newfilename))
+        except OSError:
+            pass
+        headers = {'Authorization': 'Bearer ' + P12_TOKEN}
+        files = {'file': (newfilename, open(self.example_csv))}
+        resp1 = requests.post('http://localhost:3003/p12/files/upload', files=files, headers=headers)
+        self.assertEqual(resp1.status_code, 201)
+        uploaded_file = os.path.normpath(self.uploads_folder_p12 + '/' + newfilename)
+        self.assertEqual(md5sum(self.example_csv), md5sum(uploaded_file))
+        newfilename2 = 'streamed-put-example-p12.csv'
+        try:
+            os.remove(os.path.normpath(self.uploads_folder_p12 + '/' + newfilename2))
+        except OSError:
+            pass
+        headers2 = {'Filename': 'streamed-put-example-p12.csv',
+                   'Authorization': 'Bearer ' + P12_TOKEN,
+                   'Expect': '100-Continue'}
+        resp2 = requests.put('http://localhost:3003/p12/files/stream',
+                            data=lazy_file_reader(self.example_csv), headers=headers2)
+        self.assertEqual(resp2.status_code, 201)
+        uploaded_file2 = os.path.normpath(self.uploads_folder_p12 + '/' + newfilename2)
+        self.assertEqual(md5sum(self.example_csv), md5sum(uploaded_file2))
+
+
 def main():
     runner = unittest.TextTestRunner()
     suite = []
@@ -752,6 +782,7 @@ def main():
         'test_Zf_stream_tar_aes_with_custom_content_type_decrypt_untar_works',
         'test_Zg_stream_gz_with_custom_header_decompress_works',
         'test_Zh_stream_gz_with_custom_header_decompress_works',
+        'test_ZA_choosing_file_upload_directories_based_on_pnum_works',
         ])))
     map(runner.run, suite)
 
