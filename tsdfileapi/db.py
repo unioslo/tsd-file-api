@@ -54,17 +54,9 @@ class DuplicateRowException(Exception):
     message = 'Duplicate row - submission already stored'
 
 
-def sqlite_init(path, pnum):
-    try:
-        assert _VALID_PNUM.match(pnum)
-    except AssertionError as e:
-        logging.error(e)
-        raise DbCreationException
-    # this might contain project data that is not forms
-    # maybe pnum-data.db
-    dbname = pnum + '-data.db'
-    project_path = path + '/' + pnum + 'api'
-    dburl = 'sqlite:///' + project_path + '/' + dbname
+def sqlite_init(path):
+    dbname = 'api-data.db'
+    dburl = 'sqlite:///' + path + '/' + dbname
     engine = create_engine(dburl, poolclass=QueuePool)
     return engine
 

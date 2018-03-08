@@ -198,15 +198,12 @@ class TestFileApi(unittest.TestCase):
                 except OSError as e:
                     logging.error(e)
                     continue
-        cls.sqlite_path = cls.config['sqlite_folder']
+        sqlite_path = cls.config['uploads_folder'][cls.config['test_project']] + '/api-data.db'
         try:
-            with session_scope(sqlite_init(cls.sqlite_path, cls.test_project)) as session:
-                session.execute('delete from test1')
-                session.execute('delete from form_63332')
-        except OperationalError as e:
-            logging.info(e)
-            logging.info('no tables in test db to remove')
-
+            os.remove(sqlite_path)
+        except OSError:
+            print 'not tables to cleanup'
+            return
 
     # Import Auth
     #------------

@@ -64,7 +64,6 @@ define('max_body_size', CONFIG['max_body_size'])
 define('user_authorization', default=CONFIG['user_authorization'])
 define('api_user', CONFIG['api_user'])
 define('uploads_folder', CONFIG['uploads_folder'])
-define('nsdb_path', CONFIG['sqlite_folder'])
 if not CONFIG['use_secret_store']:
     define('secret', CONFIG['secret'])
 else:
@@ -644,7 +643,9 @@ class TableCreatorHandler(AuthRequestHandler):
                 user = self.authnz['user']
                 logging.info('Switching to user: %s', user)
                 to_user(user)
-            engine = sqlite_init(options.nsdb_path, pnum)
+            assert _VALID_PNUM.match(pnum)
+            project_dir = project_import_dir(options.uploads_folder, pnum)
+            engine = sqlite_init(project_dir)
             try:
                 _type = data['type']
             except KeyError as e:
@@ -698,7 +699,9 @@ class JsonToSQLiteHandler(AuthRequestHandler):
                 user = self.authnz['user']
                 logging.info('Switching to user: %s', user)
                 to_user(user)
-            engine = sqlite_init(options.nsdb_path, pnum)
+            assert _VALID_PNUM.match(pnum)
+            project_dir = project_import_dir(options.uploads_folder, pnum)
+            engine = sqlite_init(project_dir)
             try:
                 valid_resource_name = _table_name_from_table_name(resource_name)
             except TableNameException as e:
@@ -741,7 +744,9 @@ class PGPJsonToSQLiteHandler(AuthRequestHandler):
                 user = self.authnz['user']
                 logging.info('Switching to user: %s', user)
                 to_user(user)
-            engine = sqlite_init(options.nsdb_path, pnum)
+            assert _VALID_PNUM.match(pnum)
+            project_dir = project_import_dir(options.uploads_folder, pnum)
+            engine = sqlite_init(project_dir)
             insert_into(engine, table_name, decrypted_data)
             self.set_status(201)
             self.write({'message': 'data stored'})
