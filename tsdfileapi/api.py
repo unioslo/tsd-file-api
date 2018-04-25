@@ -229,6 +229,15 @@ class FormDataHandler(AuthRequestHandler):
         self.set_status(201)
 
 
+def start_openssl_proc(pw, output_file=None):
+    cmd = ['openssl', 'enc', '-aes-256-cbc', '-a', '-d',
+                             '-pass', pw]
+    if output_file is not None:
+        cmd = cmd + ['-out', output_file]
+    return subprocess.Popen(cmd,
+                            stdin=subprocess.PIPE,
+                            stdout=subprocess.PIPE if output_file is None else None)
+ 
 @stream_request_body
 class StreamHandler(AuthRequestHandler):
 
@@ -282,9 +291,7 @@ class StreamHandler(AuthRequestHandler):
                         self.custom_content_type = content_type
                         decr_aes_key = self.decrypt_aes_key(self.request.headers['Aes-Key'])
                         pw = 'pass:%s' % decr_aes_key
-                        self.proc = subprocess.Popen(['openssl', 'enc', '-aes-256-cbc', '-a', '-d',
-                                                      '-pass', pw, '-out', self.path],
-                                                      stdin=subprocess.PIPE)
+                        self.proc = start_openssl_proc(pw, output_file=self.path)
                     elif content_type in ['application/tar', 'application/tar.gz']:
                         # tar command creates the dir, no filename to use, no file to open
                         if 'gz' in content_type:
@@ -304,10 +311,7 @@ class StreamHandler(AuthRequestHandler):
                         self.custom_content_type = content_type
                         decr_aes_key = self.decrypt_aes_key(self.request.headers['Aes-Key'])
                         pw = 'pass:%s' % decr_aes_key
-                        self.openssl_proc = subprocess.Popen(['openssl', 'enc', '-aes-256-cbc', '-a', '-d',
-                                                      '-pass', pw],
-                                                      stdin=subprocess.PIPE,
-                                                      stdout=subprocess.PIPE)
+                        self.openssl_proc = start_openssl_proc(pw)
                         logging.info('started openssl process')
                         self.tar_proc = subprocess.Popen(['tar', '-C', project_dir, tarflags, '-'],
                                                  stdin=self.openssl_proc.stdout)
@@ -327,10 +331,7 @@ class StreamHandler(AuthRequestHandler):
                         self.target_file = open(self.path, filemode)
                         decr_aes_key = self.decrypt_aes_key(self.request.headers['Aes-Key'])
                         pw = 'pass:%s' % decr_aes_key
-                        self.openssl_proc = subprocess.Popen(['openssl', 'enc', '-aes-256-cbc', '-a', '-d',
-                                                      '-pass', pw],
-                                                      stdin=subprocess.PIPE,
-                                                      stdout=subprocess.PIPE)
+                        self.openssl_proc = start_openssl_proc(pw)
                         self.gunzip_proc = subprocess.Popen(['gunzip', '-c', '-'],
                                                              stdin=self.openssl_proc.stdout,
                                                              stdout=self.target_file)
