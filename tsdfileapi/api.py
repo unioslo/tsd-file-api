@@ -229,15 +229,7 @@ class FormDataHandler(AuthRequestHandler):
         self.set_status(201)
 
 
-def start_openssl_proc(pw, output_file=None):
-    cmd = ['openssl', 'enc', '-aes-256-cbc', '-a', '-d',
-                             '-pass', pw]
-    if output_file is not None:
-        cmd = cmd + ['-out', output_file]
-    return subprocess.Popen(cmd,
-                            stdin=subprocess.PIPE,
-                            stdout=subprocess.PIPE if output_file is None else None)
- 
+    
 @stream_request_body
 class StreamHandler(AuthRequestHandler):
 
@@ -248,6 +240,22 @@ class StreamHandler(AuthRequestHandler):
         gpg = _import_keys(CONFIG)
         decr_aes_key = str(gpg.decrypt(base64.b64decode(b64encoded_pgpencrypted_key))).strip()
         return decr_aes_key
+
+    def start_openssl_proc(self, output_file=None):
+        cmd = ['openssl', 'enc', '-aes-256-cbc', '-a', '-d'] + self.aes_decryption_args_from_headers()
+        if output_file is not None:
+            cmd = cmd + ['-out', output_file]
+        return subprocess.Popen(cmd,
+                                stdin=subprocess.PIPE,
+                                stdout=subprocess.PIPE if output_file is None else None)
+
+    def aes_decryption_args_from_headers(self):
+        decr_aes_key = self.decrypt_aes_key(self.request.headers['Aes-Key'])
+        if "Aes-Iv" in self.request.headers:
+            return ['-iv', self.request.headers["Aes-Iv"], '-K', decr_aes_key]
+        else:
+            return ['-pass', 'pass:%s' % decr_aes_key]
+
 
     @gen.coroutine
     def prepare(self):
@@ -289,9 +297,7 @@ class StreamHandler(AuthRequestHandler):
                     if content_type == 'application/aes':
                         # only decryption, write to file
                         self.custom_content_type = content_type
-                        decr_aes_key = self.decrypt_aes_key(self.request.headers['Aes-Key'])
-                        pw = 'pass:%s' % decr_aes_key
-                        self.proc = start_openssl_proc(pw, output_file=self.path)
+                        self.proc = self.start_openssl_proc(output_file=self.path)
                     elif content_type in ['application/tar', 'application/tar.gz']:
                         # tar command creates the dir, no filename to use, no file to open
                         if 'gz' in content_type:
@@ -309,9 +315,7 @@ class StreamHandler(AuthRequestHandler):
                         else:
                             tarflags = '-xf'
                         self.custom_content_type = content_type
-                        decr_aes_key = self.decrypt_aes_key(self.request.headers['Aes-Key'])
-                        pw = 'pass:%s' % decr_aes_key
-                        self.openssl_proc = start_openssl_proc(pw)
+                        self.openssl_proc = self.start_openssl_proc()
                         logging.info('started openssl process')
                         self.tar_proc = subprocess.Popen(['tar', '-C', project_dir, tarflags, '-'],
                                                  stdin=self.openssl_proc.stdout)
@@ -329,9 +333,7 @@ class StreamHandler(AuthRequestHandler):
                         self.custom_content_type = content_type
                         logging.info('opening file: %s', self.path)
                         self.target_file = open(self.path, filemode)
-                        decr_aes_key = self.decrypt_aes_key(self.request.headers['Aes-Key'])
-                        pw = 'pass:%s' % decr_aes_key
-                        self.openssl_proc = start_openssl_proc(pw)
+                        self.openssl_proc = self.start_openssl_proc()
                         self.gunzip_proc = subprocess.Popen(['gunzip', '-c', '-'],
                                                              stdin=self.openssl_proc.stdout,
                                                              stdout=self.target_file)
@@ -511,6 +513,8 @@ class ProxyHandler(AuthRequestHandler):
                            'Content-Type': content_type}
                 if 'Aes-Key' in self.request.headers.keys():
                     headers['Aes-Key'] = self.request.headers['Aes-Key']
+                if 'Aes-Iv' in self.request.headers.keys():
+                    headers['Aes-Iv'] = self.request.headers['Aes-Iv']
                 self.fetch_future = AsyncHTTPClient().fetch(
                     'http://localhost:%d/%s/files/upload_stream' % (options.port, pnum),
                     method=self.request.method,

@@ -175,6 +175,8 @@ class TestFileApi(unittest.TestCase):
         cls.example_tar = os.path.normpath(cls.data_folder + '/example.tar')
         cls.example_tar_gz = os.path.normpath(cls.data_folder + '/example.tar.gz')
         cls.enc_symmetric_secret = cls.pgp_encrypt_and_base64_encode('tOg1qbyhRMdZLg==')
+        cls.enc_hex_aes_key = cls.pgp_encrypt_and_base64_encode('ed6d4be32230db647bc63627f98daba0ac1c5d04ab6d1b44b74501ff445ddd97')
+        cls.hex_aes_iv = 'a53c9b54b5f84e543b592050c52531ef'
         cls.example_aes = os.path.normpath(cls.data_folder + '/example.csv.aes')
         # tar -cf - totar3 | openssl enc -aes-256-cbc -a -pass file:<( echo $PW ) > example.tar.aes
         cls.example_tar_aes = os.path.normpath(cls.data_folder + '/example.tar.aes')
@@ -182,6 +184,11 @@ class TestFileApi(unittest.TestCase):
         cls.example_tar_gz_aes = os.path.normpath(cls.data_folder + '/example.tar.gz.aes')
         cls.example_gz = os.path.normpath(cls.data_folder + '/example.csv.gz')
         cls.example_gz_aes = os.path.normpath(cls.data_folder + '/example.csv.gz.aes')
+        # openssl enc -aes-256-cbc -a -iv ${hex_aes_iv} -K ${hex_aes_iv}
+        cls.example_aes_with_key_and_iv = os.path.normpath(cls.data_folder + '/example.csv.aes-with-key-and-iv')
+        cls.example_tar_aes_with_key_and_iv = os.path.normpath(cls.data_folder + '/example.tar.aes-with-key-and-iv')
+        cls.example_tar_gz_aes_with_key_and_iv = os.path.normpath(cls.data_folder + '/example.tar.gz.aes-with-key-and-iv')
+        cls.example_gz_aes_with_key_and_iv = os.path.normpath(cls.data_folder + '/example.csv.gz.aes-with-key-and-iv')
 
     @classmethod
     def tearDownClass(cls):
@@ -673,6 +680,23 @@ class TestFileApi(unittest.TestCase):
         with open(self.uploads_folder + '/decrypted-aes.csv', 'r') as uploaded_file:
            self.assertEqual('x,y\n4,5\n2,1\n', uploaded_file.read())
 
+    def test_Zd0_stream_aes_with_iv_and_custom_content_type_decrypt_works(self):
+        headers = {'Authorization': 'Bearer ' + IMPORT_TOKENS['VALID'],
+                   'Content-Type': 'application/aes',
+                   'Aes-Key': self.enc_hex_aes_key,
+                   'Aes-Iv': self.hex_aes_iv,
+                   'Filename': 'decrypted-aes.csv'}
+        resp = requests.post(self.stream,
+                             data=lazy_file_reader(self.example_aes_with_key_and_iv),
+                             headers=headers)
+        self.assertEqual(resp.status_code, 201)
+        resp1 = requests.put(self.stream,
+                             data=lazy_file_reader(self.example_aes_with_key_and_iv),
+                             headers=headers)
+        self.assertEqual(resp1.status_code, 201)
+        with open(self.uploads_folder + '/decrypted-aes.csv', 'r') as uploaded_file:
+           self.assertEqual('x,y\n4,5\n2,1\n', uploaded_file.read())
+
     def test_Ze_stream_tar_aes_with_custom_content_type_decrypt_untar_works(self):
         headers = {'Authorization': 'Bearer ' + IMPORT_TOKENS['VALID'],
                    'Content-Type': 'application/tar.aes',
@@ -685,6 +709,19 @@ class TestFileApi(unittest.TestCase):
         self.assertEqual(resp1.status_code, 201)
         # check contents
 
+    def test_Ze0_stream_tar_aes_with_iv_and_custom_content_type_decrypt_untar_works(self):
+        headers = {'Authorization': 'Bearer ' + IMPORT_TOKENS['VALID'],
+                   'Content-Type': 'application/tar.aes',
+                   'Aes-Key': self.enc_hex_aes_key,
+                   'Aes-Iv': self.hex_aes_iv}
+        resp = requests.post(self.stream, data=lazy_file_reader(self.example_tar_aes_with_key_and_iv),
+                             headers=headers)
+        self.assertEqual(resp.status_code, 201)
+        resp1 = requests.put(self.stream, data=lazy_file_reader(self.example_tar_aes_with_key_and_iv),
+                             headers=headers)
+        self.assertEqual(resp1.status_code, 201)
+        # check contents
+
     def test_Zf_stream_tar_aes_with_custom_content_type_decrypt_untar_works(self):
         headers = {'Authorization': 'Bearer ' + IMPORT_TOKENS['VALID'],
                    'Content-Type': 'application/tar.gz.aes',
@@ -693,6 +730,19 @@ class TestFileApi(unittest.TestCase):
                              headers=headers)
         self.assertEqual(resp.status_code, 201)
         resp1 = requests.put(self.stream, data=lazy_file_reader(self.example_tar_gz_aes),
+                             headers=headers)
+        self.assertEqual(resp1.status_code, 201)
+        # check contents
+
+    def test_Zf0_stream_tar_aes_with_iv_and_custom_content_type_decrypt_untar_works(self):
+        headers = {'Authorization': 'Bearer ' + IMPORT_TOKENS['VALID'],
+                   'Content-Type': 'application/tar.gz.aes',
+                   'Aes-Key': self.enc_hex_aes_key,
+                   'Aes-Iv': self.hex_aes_iv}
+        resp = requests.post(self.stream, data=lazy_file_reader(self.example_tar_gz_aes_with_key_and_iv),
+                             headers=headers)
+        self.assertEqual(resp.status_code, 201)
+        resp1 = requests.put(self.stream, data=lazy_file_reader(self.example_tar_gz_aes_with_key_and_iv),
                              headers=headers)
         self.assertEqual(resp1.status_code, 201)
         # check contents
@@ -726,6 +776,19 @@ class TestFileApi(unittest.TestCase):
         # with open(self.uploads_folder + '/ungz-aes1', 'r') as uploaded_file:
         #     self.assertEqual('x,y\n4,5\n2,1\n', uploaded_file.read())
 
+
+    def test_Zh0_stream_gz_with_iv_and_custom_header_decompress_works(self):
+        headers = {'Authorization': 'Bearer ' + IMPORT_TOKENS['VALID'],
+                   'Content-Type': 'application/gz.aes',
+                   'Filename': 'ungz-aes1',
+                   'Aes-Key': self.enc_hex_aes_key,
+                   'Aes-Iv': self.hex_aes_iv}
+        resp = requests.post(self.stream, data=lazy_file_reader(self.example_gz_aes_with_key_and_iv),
+                             headers=headers)
+        self.assertEqual(resp.status_code, 201)
+        resp1 = requests.put(self.stream, data=lazy_file_reader(self.example_gz_aes_with_key_and_iv),
+                             headers=headers)
+        self.assertEqual(resp1.status_code, 201)
 
     def test_ZA_choosing_file_upload_directories_based_on_pnum_works(self):
         newfilename = 'uploaded-example-p12.csv'
@@ -789,10 +852,14 @@ def main():
         'test_Zb_stream_tar_with_custom_content_type_untar_works',
         'test_Zc_stream_tar_gz_with_custom_content_type_untar_works',
         'test_Zd_stream_aes_with_custom_content_type_decrypt_works',
+        'test_Zd0_stream_aes_with_iv_and_custom_content_type_decrypt_works',
         'test_Ze_stream_tar_aes_with_custom_content_type_decrypt_untar_works',
+        'test_Ze0_stream_tar_aes_with_iv_and_custom_content_type_decrypt_untar_works',
         'test_Zf_stream_tar_aes_with_custom_content_type_decrypt_untar_works',
+        'test_Zf0_stream_tar_aes_with_iv_and_custom_content_type_decrypt_untar_works',
         'test_Zg_stream_gz_with_custom_header_decompress_works',
         'test_Zh_stream_gz_with_custom_header_decompress_works',
+        'test_Zh0_stream_gz_with_iv_and_custom_header_decompress_works',
         'test_ZA_choosing_file_upload_directories_based_on_pnum_works',
         ])))
     map(runner.run, suite)
