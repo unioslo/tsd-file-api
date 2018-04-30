@@ -64,6 +64,7 @@ https://github.com/kennethreitz/requests/issues/713
 # method names are verbose in tests
 # pylint: disable=invalid-name
 
+import base64
 import hashlib
 import httplib
 import json
@@ -89,6 +90,7 @@ gnupg._parsers.Verify.TRUST_LEVELS["ENCRYPTION_COMPLIANCE_MODE"] = 23
 from tokens import gen_test_tokens, get_test_token_for_p12
 from ..db import session_scope, sqlite_init
 from ..utils import project_import_dir
+from ..pgp import _import_keys
 
 
 def lazy_file_reader(filename):
@@ -134,6 +136,12 @@ def build_payload(config, dtype):
 
 class TestFileApi(unittest.TestCase):
 
+    @classmethod
+    def pgp_encrypt_and_base64_encode(cls, string):
+        gpg = _import_keys(cls.config)
+        encrypted = gpg.encrypt(string, cls.config['public_key_id'], armor=False)
+        encoded = base64.b64encode(encrypted.data)
+        return encoded
 
     @classmethod
     def setUpClass(cls):
@@ -166,9 +174,7 @@ class TestFileApi(unittest.TestCase):
         P12_TOKEN = get_test_token_for_p12(cls.config)
         cls.example_tar = os.path.normpath(cls.data_folder + '/example.tar')
         cls.example_tar_gz = os.path.normpath(cls.data_folder + '/example.tar.gz')
-        cls.symmetric_secret = 'tOg1qbyhRMdZLg=='
-        # base64 encoded, gpg encrypted symmetric secret
-        cls.enc_symmetric_secret = 'hQEMA8dm3avZ7GdFAQf/Z8VNFPBJW7nZ9J9qEiNdKYRPrKB92Tevw3UlwshNp7Y3toRc1oRxX2P61eLoZzZDZ51mx0YfmYD7ZlOoxxQsOaM90nTIAzqN3DvUMFiT51STEK35okbpttIz9sDzxBkuiobB5A4fCX6+Tzq6r5+IHElIr2ruKhlDXBXtEE4/J+zw2CzNj0yVh4lTWLIcQjOVcsU7WbnCaPWdtad+DPDY2aKZb+n6QFZJ0CibVuhQJ9yFlJSUFLpht/C+vxhQQaNGb2CICLErJTyzy/Nxqzx8plFBhsKCmTR0y6+beMCJbI1k4V377fZRy7+E6xqCQCEREe5z7ZFECMcG2s2LizIrKNJMAfxl+E0JNbbyYkRC+gaoDcJnERYhjfe/AcrJRz8QHM0yvIfMAiPt8zM3ypq+03cVtBXdu4AV5apk7enQiC6IQt08EF1ol38z3Ee/uA=='
+        cls.enc_symmetric_secret = cls.pgp_encrypt_and_base64_encode('tOg1qbyhRMdZLg==')
         cls.example_aes = os.path.normpath(cls.data_folder + '/example.csv.aes')
         # tar -cf - totar3 | openssl enc -aes-256-cbc -a -pass file:<( echo $PW ) > example.tar.aes
         cls.example_tar_aes = os.path.normpath(cls.data_folder + '/example.tar.aes')
