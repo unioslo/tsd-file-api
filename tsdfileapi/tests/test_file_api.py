@@ -670,7 +670,8 @@ class TestFileApi(unittest.TestCase):
         resp1 = requests.put(self.stream, data=lazy_file_reader(self.example_aes),
                              headers=headers)
         self.assertEqual(resp1.status_code, 201)
-        # check contents
+        with open(self.uploads_folder + '/decrypted-aes.csv', 'r') as uploaded_file:
+           self.assertEqual('x,y\n4,5\n2,1\n', uploaded_file.read())
 
     def test_Ze_stream_tar_aes_with_custom_content_type_decrypt_untar_works(self):
         headers = {'Authorization': 'Bearer ' + IMPORT_TOKENS['VALID'],
@@ -706,6 +707,9 @@ class TestFileApi(unittest.TestCase):
         resp1 = requests.put(self.stream, data=lazy_file_reader(self.example_gz),
                              headers=headers)
         self.assertEqual(resp1.status_code, 201)
+        with open(self.uploads_folder + '/ungz1', 'r') as uploaded_file:
+           self.assertEqual('x,y\n4,5\n2,1\n', uploaded_file.read())
+
 
     def test_Zh_stream_gz_with_custom_header_decompress_works(self):
         headers = {'Authorization': 'Bearer ' + IMPORT_TOKENS['VALID'],
