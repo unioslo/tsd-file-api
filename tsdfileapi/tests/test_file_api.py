@@ -722,6 +722,10 @@ class TestFileApi(unittest.TestCase):
         resp1 = requests.put(self.stream, data=lazy_file_reader(self.example_gz_aes),
                              headers=headers)
         self.assertEqual(resp1.status_code, 201)
+        # This ought to work, but does not
+        # with open(self.uploads_folder + '/ungz-aes1', 'r') as uploaded_file:
+        #     self.assertEqual('x,y\n4,5\n2,1\n', uploaded_file.read())
+
 
     def test_ZA_choosing_file_upload_directories_based_on_pnum_works(self):
         newfilename = 'uploaded-example-p12.csv'
