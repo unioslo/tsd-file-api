@@ -773,8 +773,8 @@ class TestFileApi(unittest.TestCase):
                              headers=headers)
         self.assertEqual(resp1.status_code, 201)
         # This ought to work, but does not
-        # with open(self.uploads_folder + '/ungz-aes1', 'r') as uploaded_file:
-        #     self.assertEqual('x,y\n4,5\n2,1\n', uploaded_file.read())
+        with open(self.uploads_folder + '/ungz-aes1', 'r') as uploaded_file:
+            self.assertEqual('x,y\n4,5\n2,1\n', uploaded_file.read())
 
 
     def test_Zh0_stream_gz_with_iv_and_custom_header_decompress_works(self):
