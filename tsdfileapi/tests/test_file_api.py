@@ -89,7 +89,7 @@ gnupg._parsers.Verify.TRUST_LEVELS["ENCRYPTION_COMPLIANCE_MODE"] = 23
 # pylint: disable=relative-import
 from tokens import gen_test_tokens, get_test_token_for_p12
 from ..db import session_scope, sqlite_init
-from ..utils import project_import_dir
+from ..utils import project_import_dir, project_sns_dir
 from ..pgp import _import_keys
 
 
@@ -145,6 +145,7 @@ class TestFileApi(unittest.TestCase):
 
     @classmethod
     def setUpClass(cls):
+
         try:
             with open(sys.argv[1]) as f:
                 cls.config = yaml.load(f)
@@ -152,6 +153,7 @@ class TestFileApi(unittest.TestCase):
             print e
             print "Missing config file?"
             sys.exit(1)
+
         # includes p19 - a random project number for integration testing
         cls.test_project = cls.config['test_project']
         cls.base_url = 'http://localhost' + ':' + str(cls.config['port']) + '/' + cls.test_project
@@ -161,17 +163,27 @@ class TestFileApi(unittest.TestCase):
             open(os.path.normpath(cls.data_folder + '/example-ns.json')).read())
         cls.uploads_folder = project_import_dir(cls.config['uploads_folder'], cls.config['test_project'])
         cls.uploads_folder_p12 = project_import_dir(cls.config['uploads_folder'], 'p12')
-        # all endpoints
+        cls.sns_uploads_folder = project_sns_dir(cls.config['sns_uploads_folder'],
+                                                 cls.config['test_project'],
+                                                 cls.config['test_keyid'],
+                                                 cls.config['test_formid'])
+
+        # endpoints
         cls.upload = cls.base_url + '/files/upload'
+        cls.sns_upload = cls.base_url + '/sns/' + cls.config['test_keyid'] + '/' + cls.config['test_formid']
         cls.list = cls.base_url + '/files/list'
         cls.checksum = cls.base_url + '/files/checksum'
         cls.stream = cls.base_url + '/files/stream'
         cls.upload_stream = cls.base_url + '/files/upload_stream'
         cls.test_project = cls.test_project
+
+        # auth tokens
         global IMPORT_TOKENS
         IMPORT_TOKENS = gen_test_tokens(cls.config)
         global P12_TOKEN
         P12_TOKEN = get_test_token_for_p12(cls.config)
+
+        # example data
         cls.example_tar = os.path.normpath(cls.data_folder + '/example.tar')
         cls.example_tar_gz = os.path.normpath(cls.data_folder + '/example.tar.gz')
         cls.enc_symmetric_secret = cls.pgp_encrypt_and_base64_encode('tOg1qbyhRMdZLg==')
@@ -325,9 +337,11 @@ class TestFileApi(unittest.TestCase):
 
     def remove(self, target_uploads_folder, newfilename):
         try:
-            os.remove(os.path.normpath(target_uploads_folder + '/' + newfilename))
+            _file = os.path.normpath(target_uploads_folder + '/' + newfilename)
+            os.remove(_file)
         except OSError:
             pass
+
 
     def mp_fd(self, newfilename, target_uploads_folder, url, method):
         headers = {'Authorization': 'Bearer ' + IMPORT_TOKENS['VALID']}
@@ -345,15 +359,20 @@ class TestFileApi(unittest.TestCase):
         f.close()
         return resp
 
+
     def t_post_mp(self, uploads_folder, newfilename, url):
         target = os.path.normpath(uploads_folder + '/' + newfilename)
-        resp = self.mp_fd(newfilename, target, url, 'POST')
+        resp = self.mp_fd(newfilename, uploads_folder, url, 'POST')
         self.assertEqual(resp.status_code, 201)
-        uploaded_file = os.path.normpath(self.uploads_folder + '/' + newfilename)
+        uploaded_file = os.path.normpath(uploads_folder + '/' + newfilename)
         self.assertEqual(md5sum(self.example_csv), md5sum(uploaded_file))
 
     def test_F_post_file_multi_part_form_data(self):
         self.t_post_mp(self.uploads_folder, 'uploaded-example.csv', self.upload)
+
+
+    def test_F1_post_file_multi_part_form_data_sns(self):
+        self.t_post_mp(self.sns_uploads_folder, 'sns-uploaded-example.csv', self.sns_upload)
 
 
     def test_FA_post_multiple_files_multi_part_form_data(self):
@@ -864,6 +883,7 @@ def main():
         'test_D_timed_out_token_rejected',
         'test_E_unauthenticated_request_rejected',
         'test_F_post_file_multi_part_form_data',
+        'test_F1_post_file_multi_part_form_data_sns',
         'test_FA_post_multiple_files_multi_part_form_data',
         'test_G_patch_file_multi_part_form_data',
         'test_GA_patch_multiple_files_multi_part_form_data',
