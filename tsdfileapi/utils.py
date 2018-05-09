@@ -14,8 +14,10 @@
 
 import os
 import re
+import logging
 
 _VALID_PNUM = re.compile(r'([0-9a-z])')
+_VALID_FORMID = re.compile(r'([0-9])')
 
 # from werkzeug/_compat.py#L16
 text_type = unicode
@@ -82,9 +84,42 @@ def project_import_dir(uploads_folder, pnum, keyid=None, formid=None):
     return os.path.normpath(folder)
 
 def project_sns_dir(sns_uploads_folder, pnum, keyid=None, formid=None):
+    """
+    Construct a path for sns uploads.
+
+    Paramaters
+    ----------
+    uploads_folder: list
+    pnum: str
+    keyid: PGP public key id - must match what we already have
+    formid: nettskjema form id - restricted to numerical chars
+
+    Notes
+    -----
+    The following must be true for the path to be constructed
+    (and, therefore, data to be written to a file):
+
+        1) pnum must be alphanumeric
+        2) formid must be numeric
+        3) the provided PGP key id must match the one TSD has
+
+    If the formid folder does not exist, it will be created.
+
+    Returns
+    -------
+    path
+    """
     try:
         assert _VALID_PNUM.match(pnum)
-        folder = sns_uploads_folder.replace('pXX', pnum).replace('KEYID', keyid).replace('FORMID', formid)
-        return os.path.normpath(folder)
+        assert _VALID_FORMID.match(formid)
+        sns_folder = sns_uploads_folder[pnum]
+        existing_key_id_folder = sns_folder.split('/')[6]
+        assert existing_key_id_folder == keyid
+        folder = sns_folder.replace('FORMID', formid)
+        _path = os.path.normpath(folder)
+        if not os.path.lexists(_path):
+            logging.info('Creating %s', _path)
+            os.mkdir(_path)
+        return _path
     except Exception as e:
         raise e

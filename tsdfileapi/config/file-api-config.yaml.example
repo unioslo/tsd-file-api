@@ -20,11 +20,12 @@ ss_dbname: ''
 ss_ssl: True # always True in prod
 
 # uploads_folder:
-  default: '/tmp/pXX/data/durable/api'
-  p11: '/tmp/p11/fx/import_alt/lanthir'
+  default: '/tsd/pXX/data/durable/api'
+  p11: '/tsd/p11/fx/import_alt/lanthir'
 
 # sns pattern - can change this on demand
-sns_uploads_folder: '/tsd/pXX/fx/import/sns-test/KEYID/FORMID'
+sns_uploads_folder:
+  p11: '/tsd/p11/fx/import/sns-test/264CE5ED60A7548B/FORMID'
 
 # Testing
 data_folder: '/lib/python2.7/site-packages/tsdfileapi/data'
