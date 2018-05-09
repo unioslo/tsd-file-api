@@ -345,13 +345,15 @@ class TestFileApi(unittest.TestCase):
         f.close()
         return resp
 
-    def test_F_post_file_multi_part_form_data(self):
-        newfilename = 'uploaded-example.csv'
-        target = os.path.normpath(self.uploads_folder + '/' + newfilename)
-        resp = self.mp_fd(newfilename, target, self.upload, 'POST')
+    def t_post_mp(self, uploads_folder, newfilename, url):
+        target = os.path.normpath(uploads_folder + '/' + newfilename)
+        resp = self.mp_fd(newfilename, target, url, 'POST')
         self.assertEqual(resp.status_code, 201)
         uploaded_file = os.path.normpath(self.uploads_folder + '/' + newfilename)
         self.assertEqual(md5sum(self.example_csv), md5sum(uploaded_file))
+
+    def test_F_post_file_multi_part_form_data(self):
+        self.t_post_mp(self.uploads_folder, 'uploaded-example.csv', self.upload)
 
 
     def test_FA_post_multiple_files_multi_part_form_data(self):
