@@ -162,7 +162,22 @@ class AuthRequestHandler(RequestHandler):
             raise Exception
 
 
-class FormDataHandler(AuthRequestHandler):
+class GenericFormDataHandler(AuthRequestHandler):
+
+    def prepare(self):
+        try:
+            self.authnz = self.validate_token(roles_allowed=['import_user', 'export_user', 'admin_user'])
+            if not self.authnz:
+                self.set_status(401)
+                raise Exception
+            if not self.request.files['file']:
+                logging.error('No file(s) supplied with upload request')
+                self.set_status(400)
+                raise Exception
+        except Exception as e:
+            if self._status_code != 401:
+                self.set_status(400)
+            self.finish({'message': 'request failed'})
 
     def write_files(self, filemode, pnum):
         try:
@@ -195,20 +210,7 @@ class FormDataHandler(AuthRequestHandler):
             logging.error(e)
             logging.error('Could not write to file')
 
-    def prepare(self):
-        try:
-            self.authnz = self.validate_token(roles_allowed=['import_user', 'export_user', 'admin_user'])
-            if not self.authnz:
-                self.set_status(401)
-                raise Exception
-            if not self.request.files['file']:
-                logging.error('No file(s) supplied with upload request')
-                self.set_status(400)
-                raise Exception
-        except Exception as e:
-            if self._status_code != 401:
-                self.set_status(400)
-            self.finish({'message': 'request failed'})
+class FormDataHandler(GenericFormDataHandler):
 
     def post(self, pnum):
         self.write_files('ab+', pnum)
@@ -229,7 +231,7 @@ class FormDataHandler(AuthRequestHandler):
         self.set_status(201)
 
 
-    
+
 @stream_request_body
 class StreamHandler(AuthRequestHandler):
 
@@ -301,7 +303,7 @@ class StreamHandler(AuthRequestHandler):
                         self.custom_content_type = content_type
                         self.proc = self.start_openssl_proc(output_file=self.path)
                     elif content_type == 'application/aes-octet-stream':
-                        # AES binary data, treat like application/aes but do not attempt base64 decoding 
+                        # AES binary data, treat like application/aes but do not attempt base64 decoding
                         self.custom_content_type = 'application/aes'
                         self.proc = self.start_openssl_proc(output_file=self.path, base64=False)
                     elif content_type in ['application/tar', 'application/tar.gz']:
