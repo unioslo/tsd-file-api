@@ -75,3 +75,10 @@ def project_import_dir(uploads_folder, pnum):
     except KeyError as e:
         folder = uploads_folder['default'].replace('pXX', pnum)
     return os.path.normpath(folder)
+
+def project_sns_dir(sns_uploads_folder, pnum):
+    try:
+        folder = sns_uploads_folder.replace('pXX', pnum)
+        return os.path.normpath(folder)
+    except Exception as e:
+        raise e

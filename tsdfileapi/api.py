@@ -28,7 +28,7 @@ from tornado.web import Application, RequestHandler, stream_request_body, \
 
 # pylint: disable=relative-import
 from auth import verify_json_web_token
-from utils import secure_filename, project_import_dir
+from utils import secure_filename, project_import_dir, project_sns_dir
 from db import insert_into, create_table_from_codebook, sqlite_init, \
                create_table_from_generic, _table_name_from_form_id, \
                _VALID_PNUM, _table_name_from_table_name, TableNameException
@@ -179,7 +179,7 @@ class GenericFormDataHandler(AuthRequestHandler):
                 self.set_status(400)
             self.finish({'message': 'request failed'})
 
-    def write_files(self, filemode, pnum):
+    def write_files(self, filemode, pnum, folder_func=project_import_dir):
         try:
             for i in range(len(self.request.files['file'])):
                 filename = secure_filename(self.request.files['file'][i]['filename'])
@@ -189,9 +189,9 @@ class GenericFormDataHandler(AuthRequestHandler):
             logging.error(e)
             logging.error('Could not process files')
 
-    def write_file(self, filemode, filename, filebody, pnum):
+    def write_file(self, filemode, filename, filebody, pnum, folder_func=project_import_dir):
         try:
-            project_dir = project_import_dir(options.uploads_folder, pnum)
+            project_dir = folder_func(options.uploads_folder, pnum)
             self.path = os.path.normpath(project_dir + '/' + filename)
             self.path_part = self.path + '.part'
             if os.path.lexists(self.path_part):
@@ -230,6 +230,26 @@ class FormDataHandler(GenericFormDataHandler):
     def head(self, pnum):
         self.set_status(201)
 
+
+class SnsFormDataHandler(GenericFormDataHandler):
+
+    def post(self, pnum):
+        self.write_files('ab+', pnum, folder_func=project_sns_dir)
+        self.set_status(201)
+        self.write({'message': 'file uploaded'})
+
+    def patch(self, pnum):
+        self.write_files('ab+', pnum, folder_func=project_sns_dir)
+        self.set_status(201)
+        self.write({'message': 'file uploaded'})
+
+    def put(self, pnum):
+        self.write_files('wb+', pnum, folder_func=project_sns_dir)
+        self.set_status(201)
+        self.write({'message': 'file uploaded'})
+
+    def head(self, pnum):
+        self.set_status(201)
 
 
 @stream_request_body
