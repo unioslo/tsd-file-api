@@ -447,7 +447,8 @@ class TestFileApi(unittest.TestCase):
         self.assertNotEqual(md5sum(self.example_csv), md5sum(uploaded_file1))
         self.assertNotEqual(md5sum(self.example_csv), md5sum(uploaded_file2))
 
-    def test_H_put_file_multi_part_form_data(self):
+
+    def t_put_mp(self, uploads_folder, newfilename, url):
         newfilename = 'uploaded-example-3.csv'
         target = os.path.normpath(self.uploads_folder + '/' + newfilename)
         # remove file from previous round
@@ -457,10 +458,18 @@ class TestFileApi(unittest.TestCase):
         uploaded_file = os.path.normpath(self.uploads_folder + '/' + newfilename)
         self.assertEqual(resp.status_code, 201)
         self.assertEqual(md5sum(self.example_csv), md5sum(uploaded_file))
-        # re2
+        # req2
         resp2 = self.mp_fd(newfilename, target, self.upload, 'PUT')
         self.assertEqual(resp2.status_code, 201)
         self.assertEqual(md5sum(self.example_csv), md5sum(uploaded_file))
+
+
+    def test_H_put_file_multi_part_form_data(self):
+        self.t_put_mp(self.uploads_folder, 'uploaded-example-3.csv', self.upload)
+
+
+    def test_H1_put_file_multi_part_form_data_sns(self):
+        self.t_put_mp(self.sns_uploads_folder, 'sns-uploaded-example-3.csv', self.sns_upload)
 
 
     def test_HA_put_multiple_files_multi_part_form_data(self):
@@ -898,6 +907,7 @@ def main():
         'test_G1_patch_file_multi_part_form_data_sns',
         'test_GA_patch_multiple_files_multi_part_form_data',
         'test_H_put_file_multi_part_form_data',
+        'test_H1_put_file_multi_part_form_data_sns',
         'test_HA_put_multiple_files_multi_part_form_data',
         'test_I_post_file_to_streaming_endpoint_no_chunked_encoding_data_binary',
         'test_J_post_stream_file_chunked_transfer_encoding',
