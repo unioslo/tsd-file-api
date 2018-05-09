@@ -15,6 +15,8 @@
 import os
 import re
 
+_VALID_PNUM = re.compile(r'([0-9a-z])')
+
 # from werkzeug/_compat.py#L16
 text_type = unicode
 # from werkzeug/utils.py#L30
@@ -73,6 +75,7 @@ def project_import_dir(uploads_folder, pnum, keyid=None, formid=None):
 
     """
     try:
+        assert _VALID_PNUM.match(pnum)
         folder = uploads_folder[pnum]
     except KeyError as e:
         folder = uploads_folder['default'].replace('pXX', pnum)
@@ -80,6 +83,7 @@ def project_import_dir(uploads_folder, pnum, keyid=None, formid=None):
 
 def project_sns_dir(sns_uploads_folder, pnum, keyid=None, formid=None):
     try:
+        assert _VALID_PNUM.match(pnum)
         folder = sns_uploads_folder.replace('pXX', pnum).replace('KEYID', keyid).replace('FORMID', formid)
         return os.path.normpath(folder)
     except Exception as e:
