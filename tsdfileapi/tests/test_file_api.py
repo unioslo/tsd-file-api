@@ -319,18 +319,24 @@ class TestFileApi(unittest.TestCase):
 
 
     # uploading files and streams
-    #--------------------------
+    #----------------------------
 
+    # multipart formdata endpoint
 
-    def test_F_post_file_multi_part_form_data(self):
-        newfilename = 'uploaded-example.csv'
+    def post_mp_fd(self, newfilename, target_uploads_folder, url):
         try:
-            os.remove(os.path.normpath(self.uploads_folder + '/' + newfilename))
+            os.remove(os.path.normpath(target_uploads_folder + '/' + newfilename))
         except OSError:
             pass
         headers = {'Authorization': 'Bearer ' + IMPORT_TOKENS['VALID']}
         files = {'file': (newfilename, open(self.example_csv))}
-        resp = requests.post(self.upload, files=files, headers=headers)
+        resp = requests.post(url, files=files, headers=headers)
+        return resp
+
+    def test_F_post_file_multi_part_form_data(self):
+        newfilename = 'uploaded-example.csv'
+        target = os.path.normpath(self.uploads_folder + '/' + newfilename)
+        resp = self.post_mp_fd(newfilename, target, self.upload)
         self.assertEqual(resp.status_code, 201)
         uploaded_file = os.path.normpath(self.uploads_folder + '/' + newfilename)
         self.assertEqual(md5sum(self.example_csv), md5sum(uploaded_file))
@@ -438,6 +444,8 @@ class TestFileApi(unittest.TestCase):
         self.assertEqual(md5sum(self.example_csv), md5sum(uploaded_file1))
         self.assertEqual(md5sum(self.example_csv), md5sum(uploaded_file2))
 
+
+    # streaming endpoint
 
     def test_I_post_file_to_streaming_endpoint_no_chunked_encoding_data_binary(self):
         newfilename = 'streamed-not-chunked'
