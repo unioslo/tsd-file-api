@@ -241,10 +241,12 @@ class StreamHandler(AuthRequestHandler):
         decr_aes_key = str(gpg.decrypt(base64.b64decode(b64encoded_pgpencrypted_key))).strip()
         return decr_aes_key
 
-    def start_openssl_proc(self, output_file=None):
-        cmd = ['openssl', 'enc', '-aes-256-cbc', '-a', '-d'] + self.aes_decryption_args_from_headers()
+    def start_openssl_proc(self, output_file=None, base64=True):
+        cmd = ['openssl', 'enc', '-aes-256-cbc', '-d'] + self.aes_decryption_args_from_headers()
         if output_file is not None:
             cmd = cmd + ['-out', output_file]
+        if base64:
+            cmd = cmd + ['-a']
         return subprocess.Popen(cmd,
                                 stdin=subprocess.PIPE,
                                 stdout=subprocess.PIPE if output_file is None else None)
@@ -298,6 +300,10 @@ class StreamHandler(AuthRequestHandler):
                         # only decryption, write to file
                         self.custom_content_type = content_type
                         self.proc = self.start_openssl_proc(output_file=self.path)
+                    elif content_type == 'application/aes-octet-stream':
+                        # AES binary data, treat like application/aes but do not attempt base64 decoding 
+                        self.custom_content_type = 'application/aes'
+                        self.proc = self.start_openssl_proc(output_file=self.path, base64=False)
                     elif content_type in ['application/tar', 'application/tar.gz']:
                         # tar command creates the dir, no filename to use, no file to open
                         if 'gz' in content_type:
