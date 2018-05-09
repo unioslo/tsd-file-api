@@ -286,7 +286,7 @@ class SnsFormDataHandler(GenericFormDataHandler):
         self.set_status(201)
         self.write({'message': 'file uploaded'})
 
-    def head(self, pnum, keyid):
+    def head(self, pnum, keyid, formid):
         self.set_status(201)
 
 
