@@ -19,18 +19,18 @@ ss_pw: ''
 ss_dbname: ''
 ss_ssl: True # always True in prod
 
-# folders
-uploads_folder: '/tsd'
+# uploads_folder:
+  default: '/tmp/pXX/data/durable/api'
+  p11: '/tmp/p11/fx/import_alt/lanthir'
 
 # sns pattern - can change this on demand
 sns_uploads_folder: '/tsd/pXX/fx/import/sns-test/KEYID/FORMID'
 
 # Testing
 data_folder: '/lib/python2.7/site-packages/tsdfileapi/data'
-test_project: 'p19'
-
-# sqlite
-sqlite_folder: '/tsd'
+test_project: 'p11'
+test_keyid: '264CE5ED60A7548B'
+test_formid: '12345'
 
 # pgp - which key will the API use to decrypt data
 public_key_id: '264CE5ED60A7548B'
