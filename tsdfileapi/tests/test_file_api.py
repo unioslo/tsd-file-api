@@ -329,7 +329,7 @@ class TestFileApi(unittest.TestCase):
         except OSError:
             pass
 
-    def post_mp_fd(self, newfilename, target_uploads_folder, url, method):
+    def mp_fd(self, newfilename, target_uploads_folder, url, method):
         headers = {'Authorization': 'Bearer ' + IMPORT_TOKENS['VALID']}
         f = open(self.example_csv)
         files = {'file': (newfilename, f)}
@@ -339,13 +339,16 @@ class TestFileApi(unittest.TestCase):
         elif method == 'PATCH':
             # not going to remove here, since we need to test non-idempotent uploads
             resp = requests.patch(url, files=files, headers=headers)
+        elif method == 'PUT':
+            # not going to remove, need to check that it is idempotent
+            resp = requests.put(url, files=files, headers=headers)
         f.close()
         return resp
 
     def test_F_post_file_multi_part_form_data(self):
         newfilename = 'uploaded-example.csv'
         target = os.path.normpath(self.uploads_folder + '/' + newfilename)
-        resp = self.post_mp_fd(newfilename, target, self.upload, 'POST')
+        resp = self.mp_fd(newfilename, target, self.upload, 'POST')
         self.assertEqual(resp.status_code, 201)
         uploaded_file = os.path.normpath(self.uploads_folder + '/' + newfilename)
         self.assertEqual(md5sum(self.example_csv), md5sum(uploaded_file))
@@ -380,13 +383,13 @@ class TestFileApi(unittest.TestCase):
         target = os.path.normpath(self.uploads_folder + '/' + newfilename)
         # need to get rid of previous round's file, if present
         self.remove(self.uploads_folder, newfilename)
-        resp = self.post_mp_fd(newfilename, target, self.upload, 'PATCH')
+        resp = self.mp_fd(newfilename, target, self.upload, 'PATCH')
         # first request - create a new file
         self.assertEqual(resp.status_code, 201)
         uploaded_file = os.path.normpath(self.uploads_folder + '/' + newfilename)
         self.assertEqual(md5sum(self.example_csv), md5sum(uploaded_file))
         # second request - PATCH should not be idempotent
-        resp2 = self.post_mp_fd(newfilename, target, self.upload, 'PATCH')
+        resp2 = self.mp_fd(newfilename, target, self.upload, 'PATCH')
         self.assertEqual(resp2.status_code, 201)
         self.assertNotEqual(md5sum(self.example_csv), md5sum(uploaded_file))
 
@@ -416,18 +419,16 @@ class TestFileApi(unittest.TestCase):
 
     def test_H_put_file_multi_part_form_data(self):
         newfilename = 'uploaded-example-3.csv'
-        try:
-            os.remove(os.path.normpath(self.uploads_folder + '/' + newfilename))
-        except OSError:
-            pass
-        headers = {'Authorization': 'Bearer ' + IMPORT_TOKENS['VALID']}
-        files = {'file': (newfilename, open(self.example_csv))}
-        resp = requests.put(self.upload, files=files, headers=headers)
+        target = os.path.normpath(self.uploads_folder + '/' + newfilename)
+        # remove file from previous round
+        self.remove(self.uploads_folder, newfilename)
+        # req1
+        resp = self.mp_fd(newfilename, target, self.upload, 'PUT')
         uploaded_file = os.path.normpath(self.uploads_folder + '/' + newfilename)
         self.assertEqual(resp.status_code, 201)
         self.assertEqual(md5sum(self.example_csv), md5sum(uploaded_file))
-        files = {'file': (newfilename, open(self.example_csv))}
-        resp2 = requests.put(self.upload, files=files, headers=headers)
+        # re2
+        resp2 = self.mp_fd(newfilename, target, self.upload, 'PUT')
         self.assertEqual(resp2.status_code, 201)
         self.assertEqual(md5sum(self.example_csv), md5sum(uploaded_file))
 
