@@ -76,9 +76,9 @@ def project_import_dir(uploads_folder, pnum):
         folder = uploads_folder['default'].replace('pXX', pnum)
     return os.path.normpath(folder)
 
-def project_sns_dir(sns_uploads_folder, pnum):
+def project_sns_dir(sns_uploads_folder, pnum, keyid, formid):
     try:
-        folder = sns_uploads_folder.replace('pXX', pnum)
+        folder = sns_uploads_folder.replace('pXX', pnum).replace('KEYID', keyid).replace('FORMID', formid)
         return os.path.normpath(folder)
     except Exception as e:
         raise e

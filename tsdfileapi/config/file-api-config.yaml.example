@@ -22,6 +22,9 @@ ss_ssl: True # always True in prod
 # folders
 uploads_folder: '/tsd'
 
+# sns pattern - can change this on demand
+sns_uploads_folder: '/tsd/pXX/fx/import/sns-test/KEYID/FORMID'
+
 # Testing
 data_folder: '/lib/python2.7/site-packages/tsdfileapi/data'
 test_project: 'p19'

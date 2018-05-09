@@ -179,7 +179,8 @@ class GenericFormDataHandler(AuthRequestHandler):
                 self.set_status(400)
             self.finish({'message': 'request failed'})
 
-    def write_files(self, filemode, pnum, folder_func=project_import_dir):
+    def write_files(self, filemode, pnum, folder_func=project_import_dir,
+                    keyid=None, formid=None):
         try:
             for i in range(len(self.request.files['file'])):
                 filename = secure_filename(self.request.files['file'][i]['filename'])
@@ -189,7 +190,9 @@ class GenericFormDataHandler(AuthRequestHandler):
             logging.error(e)
             logging.error('Could not process files')
 
-    def write_file(self, filemode, filename, filebody, pnum, folder_func=project_import_dir):
+    def write_file(self, filemode, filename, filebody, pnum,
+                   folder_func=project_import_dir, keyid=None,
+                   formid=None):
         try:
             project_dir = folder_func(options.uploads_folder, pnum)
             self.path = os.path.normpath(project_dir + '/' + filename)
@@ -233,22 +236,27 @@ class FormDataHandler(GenericFormDataHandler):
 
 class SnsFormDataHandler(GenericFormDataHandler):
 
-    def post(self, pnum):
-        self.write_files('ab+', pnum, folder_func=project_sns_dir)
+    """Used to upload nettskjema files to fx dir."""
+
+    def post(self, pnum, keyid, formid):
+        self.write_files('ab+', pnum, folder_func=project_sns_dir,
+                         keyid=keyid, formid=formid)
         self.set_status(201)
         self.write({'message': 'file uploaded'})
 
-    def patch(self, pnum):
-        self.write_files('ab+', pnum, folder_func=project_sns_dir)
+    def patch(self, pnum, keyid):
+        self.write_files('ab+', pnum, folder_func=project_sns_dir,
+                         keyid=keyid, formid=formid)
         self.set_status(201)
         self.write({'message': 'file uploaded'})
 
-    def put(self, pnum):
-        self.write_files('wb+', pnum, folder_func=project_sns_dir)
+    def put(self, pnum, keyid):
+        self.write_files('wb+', pnum, folder_func=project_sns_dir,
+                         keyid=keyid, formid=formid)
         self.set_status(201)
         self.write({'message': 'file uploaded'})
 
-    def head(self, pnum):
+    def head(self, pnum, keyid):
         self.set_status(201)
 
 
@@ -808,6 +816,8 @@ def main():
         ('/(.*)/storage/encrypted_data', PGPJsonToSQLiteHandler),
         # this route should be last - exact route matches first
         ('/(.*)/storage/(.*)', JsonToSQLiteHandler),
+        # e.g. /p11/sns/94F0E05DB5093C71/54162
+        ('/(.*)/sns/(.*)/(.*)', SnsFormDataHandler),
     ], debug=options.debug)
     app.listen(options.port, max_body_size=options.max_body_size)
     IOLoop.instance().start()
