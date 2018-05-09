@@ -266,7 +266,7 @@ class SnsFormDataHandler(GenericFormDataHandler):
         self.set_status(201)
         self.write({'message': 'file uploaded'})
 
-    def patch(self, pnum, keyid):
+    def patch(self, pnum, keyid, formid):
         self.write_files('ab+',
                          pnum,
                          uploads_folder=options.sns_uploads_folder,
@@ -276,7 +276,7 @@ class SnsFormDataHandler(GenericFormDataHandler):
         self.set_status(201)
         self.write({'message': 'file uploaded'})
 
-    def put(self, pnum, keyid):
+    def put(self, pnum, keyid, formid):
         self.write_files('wb+',
                          pnum,
                          uploads_folder=options.sns_uploads_folder,

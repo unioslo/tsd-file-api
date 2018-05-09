@@ -401,12 +401,11 @@ class TestFileApi(unittest.TestCase):
 
 
     def t_patch_mp(self, uploads_folder, newfilename, url):
-        newfilename = 'uploaded-example-2.csv'
         target = os.path.normpath(uploads_folder + '/' + newfilename)
         # need to get rid of previous round's file, if present
         self.remove(uploads_folder, newfilename)
-        resp = self.mp_fd(newfilename, target, url, 'PATCH')
         # first request - create a new file
+        resp = self.mp_fd(newfilename, target, url, 'PATCH')
         self.assertEqual(resp.status_code, 201)
         uploaded_file = os.path.normpath(uploads_folder + '/' + newfilename)
         self.assertEqual(md5sum(self.example_csv), md5sum(uploaded_file))
@@ -418,6 +417,10 @@ class TestFileApi(unittest.TestCase):
 
     def test_G_patch_file_multi_part_form_data(self):
         self.t_patch_mp(self.uploads_folder, 'uploaded-example-2.csv', self.upload)
+
+
+    def test_G1_patch_file_multi_part_form_data_sns(self):
+        self.t_patch_mp(self.sns_uploads_folder, 'sns-uploaded-example-2.csv', self.sns_upload)
 
 
     def test_GA_patch_multiple_files_multi_part_form_data(self):
@@ -892,6 +895,7 @@ def main():
         'test_F1_post_file_multi_part_form_data_sns',
         'test_FA_post_multiple_files_multi_part_form_data',
         'test_G_patch_file_multi_part_form_data',
+        'test_G1_patch_file_multi_part_form_data_sns',
         'test_GA_patch_multiple_files_multi_part_form_data',
         'test_H_put_file_multi_part_form_data',
         'test_HA_put_multiple_files_multi_part_form_data',
