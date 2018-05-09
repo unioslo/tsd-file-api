@@ -56,7 +56,7 @@ def secure_filename(filename):
     return filename
 
 
-def project_import_dir(uploads_folder, pnum):
+def project_import_dir(uploads_folder, pnum, keyid=None, formid=None):
     """
     Create a project specific path based on config and a project number.
 
@@ -64,6 +64,8 @@ def project_import_dir(uploads_folder, pnum):
     ----------
     uploads_folder: list
     pnum: str
+    keyid: not used
+    formid: not used
 
     Returns
     -------
@@ -76,7 +78,7 @@ def project_import_dir(uploads_folder, pnum):
         folder = uploads_folder['default'].replace('pXX', pnum)
     return os.path.normpath(folder)
 
-def project_sns_dir(sns_uploads_folder, pnum, keyid, formid):
+def project_sns_dir(sns_uploads_folder, pnum, keyid=None, formid=None):
     try:
         folder = sns_uploads_folder.replace('pXX', pnum).replace('KEYID', keyid).replace('FORMID', formid)
         return os.path.normpath(folder)
