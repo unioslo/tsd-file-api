@@ -64,6 +64,7 @@ define('max_body_size', CONFIG['max_body_size'])
 define('user_authorization', default=CONFIG['user_authorization'])
 define('api_user', CONFIG['api_user'])
 define('uploads_folder', CONFIG['uploads_folder'])
+define('sns_uploads_folder', CONFIG['sns_uploads_folder'])
 if not CONFIG['use_secret_store']:
     define('secret', CONFIG['secret'])
 else:
@@ -179,23 +180,39 @@ class GenericFormDataHandler(AuthRequestHandler):
                 self.set_status(400)
             self.finish({'message': 'request failed'})
 
-    def write_files(self, filemode, pnum, folder_func=project_import_dir,
-                    keyid=None, formid=None):
+    def write_files(self,
+                    filemode,
+                    pnum,
+                    uploads_folder=options.uploads_folder,
+                    folder_func=project_import_dir,
+                    keyid=None,
+                    formid=None):
         try:
             for i in range(len(self.request.files['file'])):
                 filename = secure_filename(self.request.files['file'][i]['filename'])
                 filebody = self.request.files['file'][i]['body']
-                self.write_file(filemode, filename, filebody, pnum)
+                # add all optional parameters to file writer
+                # this is used for nettskjema specific backend
+                self.write_file(filemode, filename, filebody, pnum,
+                                uploads_folder, folder_func, keyid, formid)
         except Exception as e:
             logging.error(e)
             logging.error('Could not process files')
 
-    def write_file(self, filemode, filename, filebody, pnum,
-                   folder_func=project_import_dir, keyid=None,
+    def write_file(self,
+                   filemode,
+                   filename,
+                   filebody,
+                   pnum,
+                   uploads_folder=options.uploads_folder,
+                   folder_func=project_import_dir,
+                   keyid=None,
                    formid=None):
         try:
-            project_dir = folder_func(options.uploads_folder, pnum)
+            # create the filename
+            project_dir = folder_func(uploads_folder, pnum, keyid, formid)
             self.path = os.path.normpath(project_dir + '/' + filename)
+            # add the parial file indicator, check existence
             self.path_part = self.path + '.part'
             if os.path.lexists(self.path_part):
                 logging.error('trying to write to partial file - killing request')
@@ -206,6 +223,7 @@ class GenericFormDataHandler(AuthRequestHandler):
                 assert os.path.lexists(self.path_part)
                 assert not os.path.lexists(self.path)
             self.path, self.path_part = self.path_part, self.path
+            # write data, rename when done
             with open(self.path, filemode) as f:
                 f.write(filebody)
                 os.rename(self.path, self.path_part)
@@ -239,20 +257,32 @@ class SnsFormDataHandler(GenericFormDataHandler):
     """Used to upload nettskjema files to fx dir."""
 
     def post(self, pnum, keyid, formid):
-        self.write_files('ab+', pnum, folder_func=project_sns_dir,
-                         keyid=keyid, formid=formid)
+        self.write_files('ab+',
+                         pnum,
+                         uploads_folder=options.sns_uploads_folder,
+                         folder_func=project_sns_dir,
+                         keyid=keyid,
+                         formid=formid)
         self.set_status(201)
         self.write({'message': 'file uploaded'})
 
     def patch(self, pnum, keyid):
-        self.write_files('ab+', pnum, folder_func=project_sns_dir,
-                         keyid=keyid, formid=formid)
+        self.write_files('ab+',
+                         pnum,
+                         uploads_folder=options.sns_uploads_folder,
+                         folder_func=project_sns_dir,
+                         keyid=keyid,
+                         formid=formid)
         self.set_status(201)
         self.write({'message': 'file uploaded'})
 
     def put(self, pnum, keyid):
-        self.write_files('wb+', pnum, folder_func=project_sns_dir,
-                         keyid=keyid, formid=formid)
+        self.write_files('wb+',
+                         pnum,
+                         uploads_folder=options.sns_uploads_folder,
+                         folder_func=project_sns_dir,
+                         keyid=keyid,
+                         formid=formid)
         self.set_status(201)
         self.write({'message': 'file uploaded'})
 
@@ -313,7 +343,7 @@ class StreamHandler(AuthRequestHandler):
                     filemode = 'wb+'
                 try:
                     content_type = self.request.headers['Content-Type']
-                    project_dir = project_import_dir(options.uploads_folder, pnum)
+                    project_dir = project_import_dir(options.uploads_folder, pnum, None, None)
                     filename = secure_filename(self.request.headers['Filename'])
                     self.path = os.path.normpath(project_dir + '/' + filename)
                     self.path_part = self.path + '.part'
@@ -614,7 +644,8 @@ class MetaDataHandler(AuthRequestHandler):
             self.finish({'message': 'Authorization failed'})
 
     def get(self, pnum):
-        _dir = project_import_dir(options.uploads_folder, pnum)
+        # calls to None are for compatibility with the signature of project_sns_dir
+        _dir = project_import_dir(options.uploads_folder, pnum, None, None)
         if options.user_authorization:
             user = self.authnz['user']
             logging.info('Switching to user: %s', user)
@@ -651,7 +682,7 @@ class ChecksumHandler(AuthRequestHandler):
     def get(self, pnum):
         # Consider: http://www.tornadoweb.org/en/stable/escape.html#tornado.escape.url_unescape
         filename = secure_filename(self.get_query_argument('filename'))
-        project_dir = project_import_dir(options.uploads_folder, pnum)
+        project_dir = project_import_dir(options.uploads_folder, pnum, None, None)
         path = os.path.normpath(project_dir + '/' + filename)
         if options.user_authorization:
             user = self.authnz['user']
@@ -685,7 +716,7 @@ class TableCreatorHandler(AuthRequestHandler):
                 logging.info('Switching to user: %s', user)
                 to_user(user)
             assert _VALID_PNUM.match(pnum)
-            project_dir = project_import_dir(options.uploads_folder, pnum)
+            project_dir = project_import_dir(options.uploads_folder, pnum, None, None)
             engine = sqlite_init(project_dir)
             try:
                 _type = data['type']
@@ -741,7 +772,7 @@ class JsonToSQLiteHandler(AuthRequestHandler):
                 logging.info('Switching to user: %s', user)
                 to_user(user)
             assert _VALID_PNUM.match(pnum)
-            project_dir = project_import_dir(options.uploads_folder, pnum)
+            project_dir = project_import_dir(options.uploads_folder, pnum, None, None)
             engine = sqlite_init(project_dir)
             try:
                 valid_resource_name = _table_name_from_table_name(resource_name)
@@ -786,7 +817,7 @@ class PGPJsonToSQLiteHandler(AuthRequestHandler):
                 logging.info('Switching to user: %s', user)
                 to_user(user)
             assert _VALID_PNUM.match(pnum)
-            project_dir = project_import_dir(options.uploads_folder, pnum)
+            project_dir = project_import_dir(options.uploads_folder, pnum, None, None)
             engine = sqlite_init(project_dir)
             insert_into(engine, table_name, decrypted_data)
             self.set_status(201)
