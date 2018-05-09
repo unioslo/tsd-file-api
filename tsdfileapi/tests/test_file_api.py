@@ -399,20 +399,26 @@ class TestFileApi(unittest.TestCase):
         self.assertNotEqual(md5sum(self.example_csv), md5sum(uploaded_file1))
         self.assertNotEqual(md5sum(self.example_csv), md5sum(uploaded_file2))
 
-    def test_G_patch_file_multi_part_form_data(self):
+
+    def t_patch_mp(self, uploads_folder, newfilename, url):
         newfilename = 'uploaded-example-2.csv'
-        target = os.path.normpath(self.uploads_folder + '/' + newfilename)
+        target = os.path.normpath(uploads_folder + '/' + newfilename)
         # need to get rid of previous round's file, if present
-        self.remove(self.uploads_folder, newfilename)
-        resp = self.mp_fd(newfilename, target, self.upload, 'PATCH')
+        self.remove(uploads_folder, newfilename)
+        resp = self.mp_fd(newfilename, target, url, 'PATCH')
         # first request - create a new file
         self.assertEqual(resp.status_code, 201)
-        uploaded_file = os.path.normpath(self.uploads_folder + '/' + newfilename)
+        uploaded_file = os.path.normpath(uploads_folder + '/' + newfilename)
         self.assertEqual(md5sum(self.example_csv), md5sum(uploaded_file))
         # second request - PATCH should not be idempotent
-        resp2 = self.mp_fd(newfilename, target, self.upload, 'PATCH')
+        resp2 = self.mp_fd(newfilename, target, url, 'PATCH')
         self.assertEqual(resp2.status_code, 201)
         self.assertNotEqual(md5sum(self.example_csv), md5sum(uploaded_file))
+
+
+    def test_G_patch_file_multi_part_form_data(self):
+        self.t_patch_mp(self.uploads_folder, 'uploaded-example-2.csv', self.upload)
+
 
     def test_GA_patch_multiple_files_multi_part_form_data(self):
         newfilename1 = 'n3'
