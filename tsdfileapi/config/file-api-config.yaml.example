@@ -23,9 +23,8 @@ ss_ssl: True # always True in prod
   default: '/tsd/pXX/data/durable/api'
   p11: '/tsd/p11/fx/import_alt/lanthir'
 
-# sns pattern - can change this on demand
-sns_uploads_folder:
-  p11: '/tsd/p11/fx/import/sns-test/264CE5ED60A7548B/FORMID'
+# sns key id and pnum mappings
+sns_uploads_folder_mappings: '/etc/tsd-file-api/sns-mappings.yaml'
 
 # Testing
 data_folder: '/lib/python2.7/site-packages/tsdfileapi/data'
