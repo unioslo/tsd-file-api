@@ -163,7 +163,9 @@ class TestFileApi(unittest.TestCase):
             open(os.path.normpath(cls.data_folder + '/example-ns.json')).read())
         cls.uploads_folder = project_import_dir(cls.config['uploads_folder'], cls.config['test_project'])
         cls.uploads_folder_p12 = project_import_dir(cls.config['uploads_folder'], 'p12')
-        cls.sns_uploads_folder = project_sns_dir(cls.config['sns_uploads_folder'],
+        with open(cls.config['sns_uploads_folder_mappings']) as f:
+            cls.sns_uploads_folders = yaml.load(f)['sns_uploads_folder']
+        cls.sns_uploads_folder = project_sns_dir(cls.sns_uploads_folders,
                                                  cls.config['test_project'],
                                                  cls.config['test_keyid'],
                                                  cls.config['test_formid'])
