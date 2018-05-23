@@ -232,6 +232,8 @@ class GenericFormDataHandler(AuthRequestHandler):
         except Exception as e:
             logging.error(e)
             logging.error('Could not write to file')
+            self.set_status(400)
+            self.write({'message': 'could not write file'})
 
 
 class FormDataHandler(GenericFormDataHandler):
