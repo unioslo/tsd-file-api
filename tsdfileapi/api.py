@@ -13,6 +13,8 @@ import pwd
 import datetime
 import hashlib
 import subprocess
+
+from uuid import uuid4
 from sys import argv
 from collections import OrderedDict
 
@@ -212,8 +214,8 @@ class GenericFormDataHandler(AuthRequestHandler):
             # create the filename
             project_dir = folder_func(uploads_folder, pnum, keyid, formid)
             self.path = os.path.normpath(project_dir + '/' + filename)
-            # add the parial file indicator, check existence
-            self.path_part = self.path + '.part'
+            # add the partial file indicator, check existence
+            self.path_part = self.path + '.' + str(uuid4()) + '.part'
             if os.path.lexists(self.path_part):
                 logging.error('trying to write to partial file - killing request')
                 raise Exception
@@ -230,6 +232,7 @@ class GenericFormDataHandler(AuthRequestHandler):
         except Exception as e:
             logging.error(e)
             logging.error('Could not write to file')
+
 
 class FormDataHandler(GenericFormDataHandler):
 
@@ -346,7 +349,7 @@ class StreamHandler(AuthRequestHandler):
                     project_dir = project_import_dir(options.uploads_folder, pnum, None, None)
                     filename = secure_filename(self.request.headers['Filename'])
                     self.path = os.path.normpath(project_dir + '/' + filename)
-                    self.path_part = self.path + '.part'
+                    self.path_part = self.path + '.' + str(uuid4()) + '.part'
                     if os.path.lexists(self.path_part):
                         logging.error('trying to write to partial file - killing request')
                         raise Exception
