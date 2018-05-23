@@ -242,20 +242,23 @@ class GenericFormDataHandler(AuthRequestHandler):
 
 class FormDataHandler(GenericFormDataHandler):
 
+    def handle_data(self, filemode, pnum):
+        try:
+            assert self.write_files(filemode, pnum)
+            self.set_status(201)
+            self.write({'message': 'data uploaded'})
+        except Exception:
+            self.set_status(400)
+            self.write({'message': 'could not upload data'})
+
     def post(self, pnum):
-        self.write_files('ab+', pnum)
-        self.set_status(201)
-        self.write({'message': 'file uploaded'})
+        self.handle_data('ab+', pnum)
 
     def patch(self, pnum):
-        self.write_files('ab+', pnum)
-        self.set_status(201)
-        self.write({'message': 'file uploaded'})
+        self.handle_data('ab+', pnum)
 
     def put(self, pnum):
-        self.write_files('wb+', pnum)
-        self.set_status(201)
-        self.write({'message': 'file uploaded'})
+        self.handle_data('wb+', pnum)
 
     def head(self, pnum):
         self.set_status(201)
@@ -274,7 +277,7 @@ class SnsFormDataHandler(GenericFormDataHandler):
                          keyid=keyid,
                          formid=formid)
             self.set_status(201)
-            self.write({'message': 'file uploaded'})
+            self.write({'message': 'data uploaded'})
         except Exception:
             self.set_status(400)
             self.write({'message': 'could not upload data'})
