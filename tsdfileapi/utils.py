@@ -122,4 +122,5 @@ def project_sns_dir(sns_uploads_folder, pnum, keyid=None, formid=None):
             os.mkdir(_path)
         return _path
     except Exception as e:
+        logging.error('Could not resolve specified directory: %s', sns_uploads_folder)
         raise e

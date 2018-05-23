@@ -450,16 +450,16 @@ class TestFileApi(unittest.TestCase):
 
     def t_put_mp(self, uploads_folder, newfilename, url):
         newfilename = 'uploaded-example-3.csv'
-        target = os.path.normpath(self.uploads_folder + '/' + newfilename)
+        target = os.path.normpath(uploads_folder + '/' + newfilename)
         # remove file from previous round
-        self.remove(self.uploads_folder, newfilename)
+        self.remove(uploads_folder, newfilename)
         # req1
-        resp = self.mp_fd(newfilename, target, self.upload, 'PUT')
-        uploaded_file = os.path.normpath(self.uploads_folder + '/' + newfilename)
+        resp = self.mp_fd(newfilename, target, url, 'PUT')
+        uploaded_file = os.path.normpath(uploads_folder + '/' + newfilename)
         self.assertEqual(resp.status_code, 201)
         self.assertEqual(md5sum(self.example_csv), md5sum(uploaded_file))
         # req2
-        resp2 = self.mp_fd(newfilename, target, self.upload, 'PUT')
+        resp2 = self.mp_fd(newfilename, target, url, 'PUT')
         self.assertEqual(resp2.status_code, 201)
         self.assertEqual(md5sum(self.example_csv), md5sum(uploaded_file))
 
@@ -490,6 +490,7 @@ class TestFileApi(unittest.TestCase):
         self.assertEqual(resp2.status_code, 201)
         self.assertEqual(md5sum(self.example_csv), md5sum(uploaded_file1))
         self.assertEqual(md5sum(self.example_csv), md5sum(uploaded_file2))
+
 
 
     # streaming endpoint
