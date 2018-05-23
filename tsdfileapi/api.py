@@ -33,7 +33,8 @@ from auth import verify_json_web_token
 from utils import secure_filename, project_import_dir, project_sns_dir
 from db import insert_into, create_table_from_codebook, sqlite_init, \
                create_table_from_generic, _table_name_from_form_id, \
-               _VALID_PNUM, _table_name_from_table_name, TableNameException
+               _VALID_PNUM, _table_name_from_table_name, TableNameException, \
+               load_jwk_store
 from pgp import decrypt_pgp_json, _import_keys
 
 
@@ -67,11 +68,7 @@ define('user_authorization', default=CONFIG['user_authorization'])
 define('api_user', CONFIG['api_user'])
 define('uploads_folder', CONFIG['uploads_folder'])
 define('sns_uploads_folder', CONFIG['sns_uploads_folder'])
-if not CONFIG['use_secret_store']:
-    define('secret', CONFIG['secret'])
-else:
-    from db import load_jwk_store
-    define('secret_store', load_jwk_store(CONFIG))
+define('secret_store', load_jwk_store(CONFIG))
 
 
 class AuthRequestHandler(RequestHandler):
