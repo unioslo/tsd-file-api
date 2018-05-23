@@ -195,11 +195,15 @@ class GenericFormDataHandler(AuthRequestHandler):
                 filebody = self.request.files['file'][i]['body']
                 # add all optional parameters to file writer
                 # this is used for nettskjema specific backend
-                self.write_file(filemode, filename, filebody, pnum,
+                written = self.write_file(filemode, filename, filebody, pnum,
                                 uploads_folder, folder_func, keyid, formid)
+                assert written
+            return True
         except Exception as e:
             logging.error(e)
             logging.error('Could not process files')
+            return False
+
 
     def write_file(self,
                    filemode,
@@ -229,11 +233,11 @@ class GenericFormDataHandler(AuthRequestHandler):
             with open(self.path, filemode) as f:
                 f.write(filebody)
                 os.rename(self.path, self.path_part)
+            return True
         except Exception as e:
             logging.error(e)
             logging.error('Could not write to file')
-            self.set_status(400)
-            self.write({'message': 'could not write file'})
+            return False
 
 
 class FormDataHandler(GenericFormDataHandler):
@@ -261,35 +265,28 @@ class SnsFormDataHandler(GenericFormDataHandler):
 
     """Used to upload nettskjema files to fx dir."""
 
-    def post(self, pnum, keyid, formid):
-        self.write_files('ab+',
+    def handle_data(self, filemode, pnum, keyid, formid):
+        try:
+            assert self.write_files(filemode,
                          pnum,
                          uploads_folder=options.sns_uploads_folder,
                          folder_func=project_sns_dir,
                          keyid=keyid,
                          formid=formid)
-        self.set_status(201)
-        self.write({'message': 'file uploaded'})
+            self.set_status(201)
+            self.write({'message': 'file uploaded'})
+        except Exception:
+            self.set_status(400)
+            self.write({'message': 'could not upload data'})
+
+    def post(self, pnum, keyid, formid):
+        self.handle_data('ab+', pnum, keyid, formid)
 
     def patch(self, pnum, keyid, formid):
-        self.write_files('ab+',
-                         pnum,
-                         uploads_folder=options.sns_uploads_folder,
-                         folder_func=project_sns_dir,
-                         keyid=keyid,
-                         formid=formid)
-        self.set_status(201)
-        self.write({'message': 'file uploaded'})
+        self.handle_data('ab+', pnum, keyid, formid)
 
     def put(self, pnum, keyid, formid):
-        self.write_files('wb+',
-                         pnum,
-                         uploads_folder=options.sns_uploads_folder,
-                         folder_func=project_sns_dir,
-                         keyid=keyid,
-                         formid=formid)
-        self.set_status(201)
-        self.write({'message': 'file uploaded'})
+        self.handle_data('wb+', pnum, keyid, formid)
 
     def head(self, pnum, keyid, formid):
         self.set_status(201)

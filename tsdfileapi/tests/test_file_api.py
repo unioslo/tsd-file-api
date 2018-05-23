@@ -171,6 +171,7 @@ class TestFileApi(unittest.TestCase):
         # endpoints
         cls.upload = cls.base_url + '/files/upload'
         cls.sns_upload = cls.base_url + '/sns/' + cls.config['test_keyid'] + '/' + cls.config['test_formid']
+        cls.upload_sns_wrong = cls.base_url + '/sns/' + 'WRONG' + '/' + cls.config['test_formid']
         cls.list = cls.base_url + '/files/list'
         cls.checksum = cls.base_url + '/files/checksum'
         cls.stream = cls.base_url + '/files/stream'
@@ -367,6 +368,7 @@ class TestFileApi(unittest.TestCase):
         uploaded_file = os.path.normpath(uploads_folder + '/' + newfilename)
         self.assertEqual(md5sum(self.example_csv), md5sum(uploaded_file))
 
+
     def test_F_post_file_multi_part_form_data(self):
         self.t_post_mp(self.uploads_folder, 'uploaded-example.csv', self.upload)
 
@@ -491,6 +493,14 @@ class TestFileApi(unittest.TestCase):
         self.assertEqual(md5sum(self.example_csv), md5sum(uploaded_file1))
         self.assertEqual(md5sum(self.example_csv), md5sum(uploaded_file2))
 
+
+    def test_H4XX_when_no_keydir_exists(self):
+        newfilename = 'new1'
+        target = os.path.normpath(self.sns_uploads_folder + '/' + newfilename)
+        resp1 = self.mp_fd(newfilename, target, self.upload_sns_wrong, 'PUT')
+        resp2 = self.mp_fd(newfilename, target, self.upload_sns_wrong, 'POST')
+        resp3 = self.mp_fd(newfilename, target, self.upload_sns_wrong, 'PATCH')
+        self.assertEqual([resp1.status_code, resp2.status_code, resp3.status_code], [400, 400, 400])
 
 
     # streaming endpoint
@@ -910,6 +920,7 @@ def main():
         'test_H_put_file_multi_part_form_data',
         'test_H1_put_file_multi_part_form_data_sns',
         'test_HA_put_multiple_files_multi_part_form_data',
+        'test_H4XX_when_no_keydir_exists',
         'test_I_post_file_to_streaming_endpoint_no_chunked_encoding_data_binary',
         'test_J_post_stream_file_chunked_transfer_encoding',
         'test_K_put_stream_file_chunked_transfer_encoding',
