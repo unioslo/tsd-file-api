@@ -113,13 +113,14 @@ def project_sns_dir(sns_uploads_folder, pnum, keyid=None, formid=None):
         assert _VALID_PNUM.match(pnum)
         assert _VALID_FORMID.match(formid)
         sns_folder = sns_uploads_folder[pnum]
-        existing_key_id_folder = sns_folder.split('/')[6]
+        # assume folder structure _always_ like /<things>/keyid/formid
+        existing_key_id_folder = sns_folder.split('/')[-2]
         assert existing_key_id_folder == keyid
         folder = sns_folder.replace('FORMID', formid)
         _path = os.path.normpath(folder)
         if not os.path.lexists(_path):
             logging.info('Creating %s', _path)
-            os.mkdir(_path)
+            os.makedirs(_path)
         return _path
     except Exception as e:
         logging.error('Could not resolve specified directory with key ID: %s', keyid)
