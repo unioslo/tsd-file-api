@@ -16,9 +16,9 @@ import os
 import re
 import logging
 
-_VALID_PNUM = re.compile(r'([0-9a-z])')
-_VALID_FORMID = re.compile(r'([0-9])')
-_IS_REALISTIC_PGP_KEY_FINGERPRINT = re.compile(r'([0-9A-Z]){16}')
+_VALID_PNUM = re.compile(r'^[0-9a-z]+$')
+_VALID_FORMID = re.compile(r'^[0-9]+$')
+_IS_REALISTIC_PGP_KEY_FINGERPRINT = re.compile(r'^[0-9A-Z]{16}$')
 
 # from werkzeug/_compat.py#L16
 text_type = unicode
@@ -103,7 +103,7 @@ def project_sns_dir(sns_uploads_folder, pnum, keyid=None, formid=None):
         1) pnum must be alphanumeric
         2) the project must have a /tsd/pXX/data/durable/nettskjema folder already
         3) formid must be numeric
-        3) the provided PGP key id must be realistic
+        4) the provided PGP key id must be realistic
 
     If the keyid/formid path does not exist, it will be created.
 

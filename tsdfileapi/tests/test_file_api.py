@@ -901,6 +901,28 @@ class TestFileApi(unittest.TestCase):
         uploaded_file2 = os.path.normpath(self.uploads_folder_p12 + '/' + newfilename2)
         self.assertEqual(md5sum(self.example_csv), md5sum(uploaded_file2))
 
+    def test_ZB_sns_folder_logic_is_correct(self):
+        # non-existent project
+        self.assertRaises(Exception, project_sns_dir, '/tsd/pXX/data/durable',
+                         'p1000', '255CE5ED50A7558B', '98765')
+        # lowercase in key id
+        self.assertRaises(Exception, project_sns_dir, '/tsd/pXX/data/durable',
+                         'p11', '255cE5ED50A7558B', '98765')
+        # too long but still valid key id
+        self.assertRaises(Exception, project_sns_dir, '/tsd/pXX/data/durable',
+                         'p11', '255CE5ED50A7558BXIJIJ87878', '98765')
+        # non-numeric formid
+        self.assertRaises(Exception, project_sns_dir, '/tsd/pXX/data/durable',
+                         'p11', '255CE5ED50A7558B', '99999-%$%&*')
+        # note: /tsd/p11/data/durable _must_ exist for this test to pass
+        self.assertEqual(project_sns_dir('/tsd/pXX/data/durable', 'p11', '255CE5ED50A7558B', '98765'),
+                         '/tsd/p11/data/durable/nettskjema/255CE5ED50A7558B/98765')
+        try:
+            os.rmdir('/tsd/p11/data/durable/nettskjema/255CE5ED50A7558B/98765')
+            os.rmdir('/tsd/p11/data/durable/nettskjema/255CE5ED50A7558B')
+        except OSError:
+            pass
+
 
 def main():
     runner = unittest.TextTestRunner()
@@ -951,6 +973,7 @@ def main():
         'test_Zh_stream_gz_with_custom_header_decompress_works',
         'test_Zh0_stream_gz_with_iv_and_custom_header_decompress_works',
         'test_ZA_choosing_file_upload_directories_based_on_pnum_works',
+        'test_ZB_sns_folder_logic_is_correct',
         ])))
     map(runner.run, suite)
 
