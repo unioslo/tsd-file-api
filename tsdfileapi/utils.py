@@ -112,7 +112,7 @@ def project_sns_dir(sns_uploads_folder, pnum, keyid=None, formid=None, test=Fals
     path
 
     """
-    base_pattern = '/tsd/pXX/data/durable/nettskjema/keyid/formid'
+    base_pattern = '/tsd/pXX/data/durable/nettskjema-submissions/keyid/formid'
     try:
         assert _VALID_PNUM.match(pnum)
         durable = sns_uploads_folder.replace('pXX', pnum)

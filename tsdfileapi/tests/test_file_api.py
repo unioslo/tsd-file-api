@@ -917,10 +917,10 @@ class TestFileApi(unittest.TestCase):
                          'p11', '255CE5ED50A7558B', '99999-%$%&*')
         # note: /tsd/p11/data/durable _must_ exist for this test to pass
         self.assertEqual(project_sns_dir('/tsd/pXX/data/durable', 'p11', '255CE5ED50A7558B', '98765'),
-                         '/tsd/p11/data/durable/nettskjema/255CE5ED50A7558B/98765')
+                         '/tsd/p11/data/durable/nettskjema-submissions/255CE5ED50A7558B/98765')
         try:
-            os.rmdir('/tsd/p11/data/durable/nettskjema/255CE5ED50A7558B/98765')
-            os.rmdir('/tsd/p11/data/durable/nettskjema/255CE5ED50A7558B')
+            os.rmdir('/tsd/p11/data/durable/nettskjema-submissions/255CE5ED50A7558B/98765')
+            os.rmdir('/tsd/p11/data/durable/nettskjema-submissions/255CE5ED50A7558B')
         except OSError:
             pass
 
