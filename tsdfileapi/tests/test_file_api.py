@@ -166,7 +166,8 @@ class TestFileApi(unittest.TestCase):
         cls.sns_uploads_folder = project_sns_dir(cls.config['sns_uploads_folder'],
                                                  cls.config['test_project'],
                                                  cls.config['test_keyid'],
-                                                 cls.config['test_formid'])
+                                                 cls.config['test_formid'],
+                                                 test=True)
 
         # endpoints
         cls.upload = cls.base_url + '/files/upload'

@@ -84,7 +84,7 @@ def project_import_dir(uploads_folder, pnum, keyid=None, formid=None):
         folder = uploads_folder['default'].replace('pXX', pnum)
     return os.path.normpath(folder)
 
-def project_sns_dir(sns_uploads_folder, pnum, keyid=None, formid=None):
+def project_sns_dir(sns_uploads_folder, pnum, keyid=None, formid=None, test=False):
     """
     Construct a path for sns uploads.
 
@@ -123,6 +123,8 @@ def project_sns_dir(sns_uploads_folder, pnum, keyid=None, formid=None):
         assert _IS_REALISTIC_PGP_KEY_FINGERPRINT.match(keyid)
         folder = base_pattern.replace('pXX', pnum).replace('keyid', keyid).replace('formid', formid)
         _path = os.path.normpath(folder)
+        if test:
+            return _path
         if not os.path.lexists(_path):
             logging.info('Creating %s', _path)
             os.makedirs(_path)
