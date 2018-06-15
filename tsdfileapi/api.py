@@ -67,7 +67,7 @@ define('max_body_size', CONFIG['max_body_size'])
 define('user_authorization', default=CONFIG['user_authorization'])
 define('api_user', CONFIG['api_user'])
 define('uploads_folder', CONFIG['uploads_folder'])
-define('sns_uploads_folder', read_config(CONFIG['sns_uploads_folder_mappings'])['sns_uploads_folder'])
+define('sns_uploads_folder', CONFIG['sns_uploads_folder'])
 define('secret_store', load_jwk_store(CONFIG))
 
 

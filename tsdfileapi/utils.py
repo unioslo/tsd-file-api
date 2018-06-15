@@ -18,6 +18,7 @@ import logging
 
 _VALID_PNUM = re.compile(r'([0-9a-z])')
 _VALID_FORMID = re.compile(r'([0-9])')
+_IS_REALISTIC_PGP_KEY_FINGERPRINT = re.compile(r'([0-9A-Z]){16}')
 
 # from werkzeug/_compat.py#L16
 text_type = unicode
@@ -100,28 +101,33 @@ def project_sns_dir(sns_uploads_folder, pnum, keyid=None, formid=None):
     (and, therefore, data to be written to a file):
 
         1) pnum must be alphanumeric
-        2) formid must be numeric
-        3) the provided PGP key id must match the one TSD has
+        2) the project must have a /tsd/pXX/data/durable/nettskjema folder already
+        3) formid must be numeric
+        3) the provided PGP key id must be realistic
 
-    If the formid folder does not exist, it will be created.
+    If the keyid/formid path does not exist, it will be created.
 
     Returns
     -------
     path
+
     """
+    base_pattern = '/tsd/pXX/data/durable/nettskjema/keyid/formid'
     try:
         assert _VALID_PNUM.match(pnum)
+        durable = sns_uploads_folder.replace('pXX', pnum)
+        if not os.path.lexists(durable):
+            logging.error('durable folder does not exist for %s', pnum)
+            raise Exception
         assert _VALID_FORMID.match(formid)
-        sns_folder = sns_uploads_folder[pnum]
-        # assume folder structure _always_ like /<things>/keyid/formid
-        existing_key_id_folder = sns_folder.split('/')[-2]
-        assert existing_key_id_folder == keyid
-        folder = sns_folder.replace('FORMID', formid)
+        assert _IS_REALISTIC_PGP_KEY_FINGERPRINT.match(keyid)
+        folder = base_pattern.replace('pXX', pnum).replace('keyid', keyid).replace('formid', formid)
         _path = os.path.normpath(folder)
         if not os.path.lexists(_path):
             logging.info('Creating %s', _path)
             os.makedirs(_path)
         return _path
     except Exception as e:
+        logging.error(e)
         logging.error('Could not resolve specified directory with key ID: %s', keyid)
         raise e
