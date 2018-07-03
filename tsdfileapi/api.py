@@ -834,9 +834,17 @@ class PGPJsonToSQLiteHandler(AuthRequestHandler):
             to_user(options.api_user)
 
 
+class HealthCheckHandler(RequestHandler):
+
+    def head(self, pnum):
+        self.set_status(200)
+        self.write({'message': 'healthy'})
+
+
 def main():
     parse_command_line()
     app = Application([
+        ('/(.*)/files/health', HealthCheckHandler),
         ('/(.*)/files/upload_stream', StreamHandler),
         ('/(.*)/files/stream', ProxyHandler),
         ('/(.*)/files/upload', FormDataHandler),
