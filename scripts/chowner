@@ -1,0 +1,53 @@
+#!/bin env python
+
+"""
+Idea: this can be called with sudo as a sub-process by the file-api
+once the file is written.
+
+... write file ...
+... remove .part from file name ...
+subprocess.call(['sudo', 'chowner', 'path', 'username'])
+... return 200 OK.
+
+We'll need to set up sudo with restrictions, and that it works
+without needing a password.
+
+Still think we should roll this out with a custom header,
+and enable it only for p76 at first.
+
+"""
+
+from sys import argv
+import os
+import pwd
+
+def change_owner_and_group(path, username, pnum):
+    # all input can be considered trusted:
+    # path is constructed by file-api
+    # username comes from the token
+    # pnum is validated
+    try:
+        user = pwd.getpwnam(username).pw_uid
+        # the group depends on the access control requirement
+        # and could be configured by the application via an optional header
+        # default should be pXX-member-group
+        group = pnum + '-member-group'
+    except Exception:
+        print 'could not get user info'
+        # not sure if this is then considered a fatal error
+        # guess its ok to leave it owned by the file-api
+        # as long as the failure mode is clearly explained
+        # depends on the requirements though...
+        return False
+    os.chown(path, user, group)
+    return True
+
+def main()
+    path = argv[1]
+    username = argv[2]
+    print 'setting %s owner to: %s' % (path, username)
+    assert change_owner_and_group(path, username)
+    return
+
+if __name__ == '__main__':
+    main()
