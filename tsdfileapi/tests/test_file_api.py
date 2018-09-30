@@ -74,6 +74,7 @@ import random
 import sys
 import time
 import unittest
+import pwd
 from datetime import datetime
 
 import gnupg
@@ -933,6 +934,9 @@ class TestFileApi(unittest.TestCase):
         resp = requests.put(self.stream,
                             data=lazy_file_reader(self.example_gz_aes),
                             headers=headers)
+        intended_owner = pwd.getpwnam(self.test_user).pw_uid
+        effective_owner = os.stat(self.uploads_folder + '/testing-chowner.txt').st_uid
+        self.assertEqual(intended_owner, effective_owner)
 
 
 def main():
