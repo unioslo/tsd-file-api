@@ -21,7 +21,7 @@ import os
 import pwd
 import re
 
-IS_VALID_USERNAME = re.compile(r'p[0-9]-[a-z]')
+IS_VALID_USERNAME = re.compile(r'p+[0-9]+-[a-z]')
 
 def change_owner(path, username):
     """
@@ -37,7 +37,7 @@ def change_owner(path, username):
     os.chown(path, user, group)
     return True
 
-def main()
+def main():
     path = os.path.normpath(argv[1])
     username = argv[2]
     assert os.path.isabs(path)
