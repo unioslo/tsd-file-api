@@ -1,52 +1,48 @@
 #!/bin env python
 
 """
-Idea: this can be called with sudo as a sub-process by the file-api
-once the file is written.
+Called with sudo as a sub-process by the file-api once the file
+is written, to set the file owner to the identity of the authenticated
+user.
 
-... write file ...
-... remove .part from file name ...
-subprocess.call(['sudo', 'chowner', 'path', 'username'])
-... return 200 OK.
+subprocess.call(['sudo', '/bin/chowner', 'path-to-file', 'username'])
 
-We'll need to set up sudo with restrictions, and that it works
-without needing a password.
+Setup
+-----
+visudo -f /etc/sudoers.d/<fileapiuser>
 
-Still think we should roll this out with a custom header,
-and enable it only for p76 at first.
+Defaults:fileapi            !requiretty
+fileapi ALL = (ALL) NOPASSWD: <path/to/executable>
 
 """
 
 from sys import argv
 import os
 import pwd
+import re
 
-def change_owner_and_group(path, username, pnum):
-    # all input can be considered trusted:
-    # path is constructed by file-api
-    # username comes from the token
-    # pnum is validated
+IS_VALID_USERNAME = re.compile(r'p[0-9]-[a-z]')
+
+def change_owner(path, username):
+    """
+    The default group is pXX-member-group.
+    If we want to support user-chosen group ownership
+    then we can enable that here via custom headers, e.g.
+    """
     try:
         user = pwd.getpwnam(username).pw_uid
-        # the group depends on the access control requirement
-        # and could be configured by the application via an optional header
-        # default should be pXX-member-group
-        group = pnum + '-member-group'
+        group = os.stat(path).st_gid
     except Exception:
-        print 'could not get user info'
-        # not sure if this is then considered a fatal error
-        # guess its ok to leave it owned by the file-api
-        # as long as the failure mode is clearly explained
-        # depends on the requirements though...
         return False
     os.chown(path, user, group)
     return True
 
 def main()
-    path = argv[1]
+    path = os.path.normpath(argv[1])
     username = argv[2]
-    print 'setting %s owner to: %s' % (path, username)
-    assert change_owner_and_group(path, username)
+    assert os.path.isabs(path)
+    assert IS_VALID_USERNAME.match(username)
+    assert change_owner(path, username)
     return
 
 if __name__ == '__main__':
