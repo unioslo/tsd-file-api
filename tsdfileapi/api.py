@@ -132,6 +132,7 @@ class AuthRequestHandler(RequestHandler):
                     try:
                         pnum = self.request.uri.split('/')[1]
                         assert _VALID_PNUM.match(pnum)
+                        self.pnum = pnum
                     except AssertionError as e:
                         logging.error(e.message)
                         logging.error('pnum invalid')
@@ -147,6 +148,7 @@ class AuthRequestHandler(RequestHandler):
                 # extract user info from token
                 authnz = verify_json_web_token(auth_header, project_specific_secret,
                                                               roles_allowed, pnum)
+                self.user = authnz['user']
                 if not authnz['status']:
                     self.set_status(401)
                     raise Exception('JWT verification failed')
@@ -528,6 +530,14 @@ class StreamHandler(AuthRequestHandler):
             logging.info('There was no open file to close')
             if options.user_authorization:
                 to_user(options.api_user)
+        # Runnning the chowner with a custom header at first, so we can test it in prod
+        # Can make it the default when happy with its behaviour
+        if 'Pragma' in self.request.headers.keys():
+            # switch path and path_part variables back to their original values
+            # keep local copies in this scope for safety
+            path, path_part = self.path_part, self.path
+            logging.info('changing ownership of %s to %s', path, self.user)
+            subprocess.call(['sudo', '/bin/chowner', path, self.user])
         logging.info("Stream processing finished")
 
     def on_connection_close(self):
@@ -571,6 +581,7 @@ class ProxyHandler(AuthRequestHandler):
                 except AssertionError as e:
                     logging.error('URI does not contain a valid pnum')
                     raise e
+                # adding optional custom headers
                 if 'Content-Type' not in self.request.headers.keys():
                     logging.info('Setting content type to application/octet-stream')
                     content_type = 'application/octet-stream'
@@ -583,6 +594,8 @@ class ProxyHandler(AuthRequestHandler):
                     headers['Aes-Key'] = self.request.headers['Aes-Key']
                 if 'Aes-Iv' in self.request.headers.keys():
                     headers['Aes-Iv'] = self.request.headers['Aes-Iv']
+                if 'Pragma' in self.request.headers.keys():
+                    headers['Pragma'] = self.request.headers['Pragma']
                 self.fetch_future = AsyncHTTPClient().fetch(
                     'http://localhost:%d/%s/files/upload_stream' % (options.port, pnum),
                     method=self.request.method,

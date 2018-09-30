@@ -87,7 +87,7 @@ import gnupg._parsers
 gnupg._parsers.Verify.TRUST_LEVELS["ENCRYPTION_COMPLIANCE_MODE"] = 23
 
 # pylint: disable=relative-import
-from tokens import gen_test_tokens, get_test_token_for_p12
+from tokens import gen_test_tokens, get_test_token_for_p12, gen_test_token_for_user
 from ..db import session_scope, sqlite_init
 from ..utils import project_import_dir, project_sns_dir
 from ..pgp import _import_keys
@@ -161,6 +161,7 @@ class TestFileApi(unittest.TestCase):
         cls.example_csv = os.path.normpath(cls.data_folder + '/example.csv')
         cls.example_codebook = json.loads(
             open(os.path.normpath(cls.data_folder + '/example-ns.json')).read())
+        cls.test_user = cls.config['test_user']
         cls.uploads_folder = project_import_dir(cls.config['uploads_folder'], cls.config['test_project'])
         cls.uploads_folder_p12 = project_import_dir(cls.config['uploads_folder'], 'p12')
         cls.sns_uploads_folder = project_sns_dir(cls.config['sns_uploads_folder'],
@@ -924,6 +925,15 @@ class TestFileApi(unittest.TestCase):
         except OSError:
             pass
 
+    def test_ZC_setting_ownership_based_on_user_works(self):
+        token = gen_test_token_for_user(self.config, self.test_user)
+        headers = {'Pragma': 'set-owner',
+                   'Authorization': 'Bearer ' + token,
+                   'Filename': 'testing-chowner.txt'}
+        resp = requests.put(self.stream,
+                            data=lazy_file_reader(self.example_gz_aes),
+                            headers=headers)
+
 
 def main():
     runner = unittest.TextTestRunner()
@@ -975,6 +985,7 @@ def main():
         'test_Zh0_stream_gz_with_iv_and_custom_header_decompress_works',
         'test_ZA_choosing_file_upload_directories_based_on_pnum_works',
         'test_ZB_sns_folder_logic_is_correct',
+        'test_ZC_setting_ownership_based_on_user_works',
         ])))
     map(runner.run, suite)
 

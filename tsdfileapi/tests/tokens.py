@@ -54,3 +54,8 @@ def get_test_token_for_p12(config):
     store = load_jwk_store(config)
     secret = store['p12']
     return tkn(secret, role='import_user', pnum='p12')
+
+def gen_test_token_for_user(config, user):
+    store = load_jwk_store(config)
+    secret = store['p11']
+    return tkn(secret, role='import_user', pnum='p11', user=user)
