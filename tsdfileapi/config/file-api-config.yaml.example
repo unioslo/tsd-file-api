@@ -31,6 +31,7 @@ data_folder: '/lib/python2.7/site-packages/tsdfileapi/data'
 test_project: 'p11'
 test_keyid: '264CE5ED60A7548B'
 test_formid: '12345'
+test_user: 'p11-blabla' # the user chosen here must exist in the passwd file
 
 # pgp - which key will the API use to decrypt data
 public_key_id: '264CE5ED60A7548B'

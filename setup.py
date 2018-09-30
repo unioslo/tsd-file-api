@@ -4,7 +4,7 @@ from setuptools import setup
 
 setup(
     name='tsd-file-api',
-    version='0.4.4',
+    version='0.5.0',
     description='A REST API for handling files and data streams',
     author='Leon du Toit',
     author_email='l.c.d.toit@usit.uio.no',
@@ -18,5 +18,5 @@ setup(
             'config/file-api.service',
         ]
     },
-    scripts=['scripts/fileapi']
+    scripts=['scripts/fileapi', 'scripts/chowner']
 )
