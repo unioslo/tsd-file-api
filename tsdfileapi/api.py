@@ -593,8 +593,6 @@ class ProxyHandler(AuthRequestHandler):
                     headers['Aes-Key'] = self.request.headers['Aes-Key']
                 if 'Aes-Iv' in self.request.headers.keys():
                     headers['Aes-Iv'] = self.request.headers['Aes-Iv']
-                if 'Pragma' in self.request.headers.keys():
-                    headers['Pragma'] = self.request.headers['Pragma']
                 self.fetch_future = AsyncHTTPClient().fetch(
                     'http://localhost:%d/%s/files/upload_stream' % (options.port, pnum),
                     method=self.request.method,
