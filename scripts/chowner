@@ -20,6 +20,7 @@ from sys import argv
 import os
 import pwd
 import re
+import logging
 
 IS_VALID_USERNAME = re.compile(r'p+[0-9]+-[a-z]')
 
@@ -38,6 +39,7 @@ def change_owner(path, username):
     return True
 
 def main():
+    logging.basicConfig(filename='/tmp/chowner-events.log', level=logging.INFO)
     path = os.path.normpath(argv[1])
     username = argv[2]
     try:
@@ -45,6 +47,7 @@ def main():
         assert IS_VALID_USERNAME.match(username)
         assert change_owner(path, username)
     except AssertionError:
+        logging.error('Could not change %s to owner %s', path, username)
         return False
     return True
 
