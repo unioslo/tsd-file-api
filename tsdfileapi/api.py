@@ -69,6 +69,7 @@ define('api_user', CONFIG['api_user'])
 define('uploads_folder', CONFIG['uploads_folder'])
 define('sns_uploads_folder', CONFIG['sns_uploads_folder'])
 define('secret_store', load_jwk_store(CONFIG))
+define('set_owner', CONFIG['set_owner'])
 
 
 class AuthRequestHandler(RequestHandler):
@@ -530,13 +531,11 @@ class StreamHandler(AuthRequestHandler):
             logging.info('There was no open file to close')
             if options.user_authorization:
                 to_user(options.api_user)
-        # Runnning the chowner with a custom header at first, so we can test it in prod
-        # Can make it the default when happy with its behaviour
-        if 'Pragma' in self.request.headers.keys():
+        if options.set_owner:
             # switch path and path_part variables back to their original values
             # keep local copies in this scope for safety
             path, path_part = self.path_part, self.path
-            logging.info('changing ownership of %s to %s', path, self.user)
+            logging.info('Attempting to change ownership of %s to %s', path, self.user)
             subprocess.call(['sudo', '/bin/chowner', path, self.user])
         logging.info("Stream processing finished")
 
