@@ -40,10 +40,13 @@ def change_owner(path, username):
 def main():
     path = os.path.normpath(argv[1])
     username = argv[2]
-    assert os.path.isabs(path)
-    assert IS_VALID_USERNAME.match(username)
-    assert change_owner(path, username)
-    return
+    try:
+        assert os.path.isabs(path)
+        assert IS_VALID_USERNAME.match(username)
+        assert change_owner(path, username)
+    except AssertionError:
+        return False
+    return True
 
 if __name__ == '__main__':
     main()
