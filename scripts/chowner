@@ -24,6 +24,19 @@ import logging
 
 IS_VALID_USERNAME = re.compile(r'p+[0-9]+-[a-z]')
 
+def pnum_in_path_matches_username(path, username):
+    try:
+        path_pnum = path.split('/')[2]
+        username_pnum = username.split('-')[0]
+    except IndexError:
+        logging.error('malformed path: %s or username: %s', path, username)
+        return False
+    if path_pnum == username_pnum:
+        return True
+    else:
+        logging.error('pnum in path: %s does not match pnum in username: %s', path, username)
+        return False
+
 def change_owner(path, username):
     """
     The default group is pXX-member-group.
@@ -34,17 +47,21 @@ def change_owner(path, username):
         user = pwd.getpwnam(username).pw_uid
         group = os.stat(path).st_gid
     except Exception:
+        logging.error('could not get uid for %s and/or gid for member group', username)
         return False
     os.chown(path, user, group)
     return True
 
 def main():
+    if len(argv) == 1:
+        return
     logging.basicConfig(filename='/tmp/chowner-events.log', level=logging.INFO)
     path = os.path.normpath(argv[1])
     username = argv[2]
     try:
         assert os.path.isabs(path)
         assert IS_VALID_USERNAME.match(username)
+        assert pnum_in_path_matches_username(path, username)
         assert change_owner(path, username)
     except AssertionError:
         logging.error('Could not change %s to owner %s', path, username)
