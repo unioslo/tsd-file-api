@@ -13,6 +13,7 @@ import pwd
 import datetime
 import hashlib
 import subprocess
+import stat
 
 from uuid import uuid4
 from sys import argv
@@ -36,6 +37,12 @@ from db import insert_into, create_table_from_codebook, sqlite_init, \
                _VALID_PNUM, _table_name_from_table_name, TableNameException, \
                load_jwk_store
 from pgp import decrypt_pgp_json, _import_keys
+
+
+# Files are written with these permissions
+# This is necessary to be able to write to already existing files
+# which are owned by users other than the one running the file api process
+RW_RW_RW = stat.S_IREAD | stat.S_IWRITE | stat.S_IRGRP | stat.S_IWGRP | stat.S_IROTH | stat.S_IWOTH
 
 
 def read_config(filename):
@@ -229,10 +236,10 @@ class GenericFormDataHandler(AuthRequestHandler):
                 assert os.path.lexists(self.path_part)
                 assert not os.path.lexists(self.path)
             self.path, self.path_part = self.path_part, self.path
-            # write data, rename when done
             with open(self.path, filemode) as f:
                 f.write(filebody)
                 os.rename(self.path, self.path_part)
+                os.chmod(self.path_part, RW_RW_RW)
             return True
         except Exception as e:
             logging.error(e)
@@ -531,12 +538,18 @@ class StreamHandler(AuthRequestHandler):
             logging.info('There was no open file to close')
             if options.user_authorization:
                 to_user(options.api_user)
-        if options.set_owner:
+        if options.set_owner or 'Pragma' in self.request.headers.keys():
             # switch path and path_part variables back to their original values
             # keep local copies in this scope for safety
             path, path_part = self.path_part, self.path
-            logging.info('Attempting to change ownership of %s to %s', path, self.user)
-            subprocess.call(['sudo', '/bin/chowner', path, self.user])
+            try:
+                if oct(os.stat(path)[stat.ST_MODE])[-3:] != '666':
+                    os.chmod(path, RW_RW_RW)
+                logging.info('Attempting to change ownership of %s to %s', path, self.user)
+                subprocess.call(['sudo', '/bin/chowner', path, self.user])
+            except Exception as e:
+                logging.info('could not change file mode or owner for some reason')
+                logging.info(e)
         logging.info("Stream processing finished")
 
     def on_connection_close(self):
@@ -593,6 +606,8 @@ class ProxyHandler(AuthRequestHandler):
                     headers['Aes-Key'] = self.request.headers['Aes-Key']
                 if 'Aes-Iv' in self.request.headers.keys():
                     headers['Aes-Iv'] = self.request.headers['Aes-Iv']
+                if 'Pragma' in self.request.headers.keys():
+                    headers['Pragma'] = self.request.headers['Pragma']
                 self.fetch_future = AsyncHTTPClient().fetch(
                     'http://localhost:%d/%s/files/upload_stream' % (options.port, pnum),
                     method=self.request.method,
