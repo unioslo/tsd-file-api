@@ -5,7 +5,7 @@ Called with sudo as a sub-process by the file-api once the file
 is written, to set the file owner to the identity of the authenticated
 user.
 
-subprocess.call(['sudo', '/bin/chowner', 'path-to-file', 'username'])
+subprocess.call(['sudo', '/bin/chowner', 'path-to-file', 'username', api_user])
 
 Setup
 -----
@@ -37,14 +37,34 @@ def pnum_in_path_matches_username(path, username):
         logging.error('pnum in path: %s does not match pnum in username: %s', path, username)
         return False
 
-def change_owner(path, username):
+def change_owner(path, username, api_user):
     """
     The default group is pXX-member-group.
     If we want to support user-chosen group ownership
     then we can enable that here via custom headers, e.g.
+
+    The checks in this function mean that this script
+    will only change ownership of file that belong to
+    the api_user, or user within the same project
+    as the username provided in the JWT.
+
     """
     try:
         user = pwd.getpwnam(username).pw_uid
+        current_file_uid = os.stat(path).st_uid
+        current_file_owner = pwd.getpwuid(current_file_uid).pw_name
+        if current_file_owner == username:
+            # already correct owner
+            return True
+        elif current_file_owner == api_user:
+            # we created it, so we can change the ownership
+            pass
+        elif pnum_in_path_matches_username(path, current_file_owner):
+            # same filename, but owned by another project member
+            pass
+        else:
+            logging.error('not allowed to change ownership of %s to %s', path, username)
+            return False
         group = os.stat(path).st_gid
     except Exception:
         logging.error('could not get uid for %s and/or gid for member group', username)
@@ -53,16 +73,17 @@ def change_owner(path, username):
     return True
 
 def main():
-    if len(argv) == 1:
+    if len(argv) < 4:
         return
     logging.basicConfig(filename='/tmp/chowner-events.log', level=logging.INFO)
     path = os.path.normpath(argv[1])
     username = argv[2]
+    api_user = argv[3]
     try:
         assert os.path.isabs(path)
         assert IS_VALID_USERNAME.match(username)
         assert pnum_in_path_matches_username(path, username)
-        assert change_owner(path, username)
+        assert change_owner(path, username, api_user)
     except AssertionError:
         logging.error('Could not change %s to owner %s', path, username)
         return False

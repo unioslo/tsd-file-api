@@ -546,7 +546,7 @@ class StreamHandler(AuthRequestHandler):
                 if oct(os.stat(path)[stat.ST_MODE])[-3:] != '666':
                     os.chmod(path, RW_RW_RW)
                 logging.info('Attempting to change ownership of %s to %s', path, self.user)
-                subprocess.call(['sudo', '/bin/chowner', path, self.user])
+                subprocess.call(['sudo', '/bin/chowner', path, self.user, options.api_user])
             except Exception as e:
                 logging.info('could not change file mode or owner for some reason')
                 logging.info(e)
