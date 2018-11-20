@@ -72,6 +72,15 @@ def change_owner(path, username, api_user):
     os.chown(path, user, group)
     return True
 
+def move_file_to_group_folder(path, group_folder):
+    # get pnum
+    # construct member group name
+    # default to member group
+    # check if group folder exists
+    # if not create, set ownership to file-api:group_folder
+    # move file
+    pass
+
 def main():
     if len(argv) < 4:
         return
@@ -79,10 +88,12 @@ def main():
     path = os.path.normpath(argv[1])
     username = argv[2]
     api_user = argv[3]
+    # get group name
     try:
         assert os.path.isabs(path)
         assert IS_VALID_USERNAME.match(username)
         assert pnum_in_path_matches_username(path, username)
+        # call move_file_to_group_folder
         assert change_owner(path, username, api_user)
     except AssertionError:
         logging.error('Could not change %s to owner %s', path, username)
