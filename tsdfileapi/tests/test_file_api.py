@@ -160,6 +160,7 @@ class TestFileApi(unittest.TestCase):
         cls.base_url = 'http://localhost' + ':' + str(cls.config['port']) + '/' + cls.test_project
         cls.data_folder = cls.config['data_folder']
         cls.example_csv = os.path.normpath(cls.data_folder + '/example.csv')
+        cls.an_empty_file = os.path.normpath(cls.data_folder + '/an-empty-file')
         cls.example_codebook = json.loads(
             open(os.path.normpath(cls.data_folder + '/example-ns.json')).read())
         cls.test_user = cls.config['test_user']
@@ -938,6 +939,14 @@ class TestFileApi(unittest.TestCase):
         effective_owner = os.stat(self.uploads_folder + '/testing-chowner.txt').st_uid
         self.assertEqual(intended_owner, effective_owner)
 
+    def test_ZD_cannot_upload_empty_file_to_sns(self):
+        files = {'file': ('an-empty-file', open(self.an_empty_file))}
+        headers = {'Authorization': 'Bearer ' + IMPORT_TOKENS['VALID']}
+        resp = requests.put(self.sns_upload,
+                            files=files,
+                            headers=headers)
+        self.assertEqual(resp.status_code, 400)
+
 
 def main():
     runner = unittest.TextTestRunner()
@@ -990,6 +999,7 @@ def main():
         'test_ZA_choosing_file_upload_directories_based_on_pnum_works',
         'test_ZB_sns_folder_logic_is_correct',
         'test_ZC_setting_ownership_based_on_user_works',
+        'test_ZD_cannot_upload_empty_file_to_sns',
         ])))
     map(runner.run, suite)
 
