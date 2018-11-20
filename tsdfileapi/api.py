@@ -200,6 +200,9 @@ class GenericFormDataHandler(AuthRequestHandler):
             for i in range(len(self.request.files['file'])):
                 filename = secure_filename(self.request.files['file'][i]['filename'])
                 filebody = self.request.files['file'][i]['body']
+                if len(filebody) == 0:
+                    logging.error('Trying to upload an empty file: %s - not allowed, since nonsensical', filename)
+                    raise Exception('EmptyFileBodyError')
                 # add all optional parameters to file writer
                 # this is used for nettskjema specific backend
                 written = self.write_file(filemode, filename, filebody, pnum,
@@ -258,9 +261,11 @@ class FormDataHandler(GenericFormDataHandler):
             self.set_status(400)
             self.write({'message': 'could not upload data'})
 
+    # TODO: drop this
     def post(self, pnum):
         self.handle_data('ab+', pnum)
 
+    # TODO: drop this
     def patch(self, pnum):
         self.handle_data('ab+', pnum)
 
@@ -289,9 +294,11 @@ class SnsFormDataHandler(GenericFormDataHandler):
             self.set_status(400)
             self.write({'message': 'could not upload data'})
 
+    # TODO: drop this
     def post(self, pnum, keyid, formid):
         self.handle_data('ab+', pnum, keyid, formid)
 
+    # TODO: drop this
     def patch(self, pnum, keyid, formid):
         self.handle_data('ab+', pnum, keyid, formid)
 
@@ -543,6 +550,9 @@ class StreamHandler(AuthRequestHandler):
             # keep local copies in this scope for safety
             path, path_part = self.path_part, self.path
             try:
+                # do not need this anymore once files are moved to group folders
+                # since files that are not moved will be owned by the file-api user
+                # and in that case we can rename and/or overwrite them if necessary
                 if oct(os.stat(path)[stat.ST_MODE])[-3:] != '666':
                     os.chmod(path, RW_RW_RW)
                 logging.info('Attempting to change ownership of %s to %s', path, self.user)
