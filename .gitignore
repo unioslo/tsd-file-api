@@ -8,3 +8,4 @@ test-config.yaml
 build/
 tsd_file_api.egg-info/
 mappings.yaml
+dist/*
