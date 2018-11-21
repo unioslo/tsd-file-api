@@ -22,6 +22,8 @@ import pwd
 import re
 import logging
 import grp
+import shutil
+import glob
 
 IS_VALID_USERNAME = re.compile(r'p+[0-9]+-[a-z]')
 
@@ -37,6 +39,13 @@ def pnum_in_path_matches_username(path, username):
     else:
         logging.error('pnum in path: %s does not match pnum in username: %s', path, username)
         return False
+
+def recursive_chown(path, uid, gid):
+    for item in glob.glob(path + '/*'):
+        if os.path.isdir(item):
+            recursive_chown(os.path.join(path, item), uid, gid)
+        else:
+            os.chown(item, uid, gid)
 
 def change_owner(path, username, api_user, group_name):
     """
@@ -82,9 +91,11 @@ def change_owner(path, username, api_user, group_name):
         logging.error('could not get uid for %s and/or gid for member group', username)
         return False
     os.chown(path, user, group)
+    if os.path.isdir(path):
+        recursive_chown(path, user, group)
     return True
 
-def move_file_to_group_folder(path, group_name, api_user):
+def move_data_to_group_folder(path, group_name, api_user):
     try:
         path_segments = path.split('/')
         filename = path_segments[-1]
@@ -100,7 +111,10 @@ def move_file_to_group_folder(path, group_name, api_user):
             group_id = grp.getgrnam(group_name).gr_gid
             os.chown(group_folder, file_api_user_id, group_id)
         new_file_path = os.path.normpath(group_folder + '/' + filename)
-        os.rename(path, new_file_path)
+        if os.path.isdir(path):
+            shutil.move(path, new_file_path)
+        else:
+            os.rename(path, new_file_path)
         logging.info('successfully moved: %s', path)
         return new_file_path
     except Exception as e:
@@ -117,11 +131,12 @@ def main():
     api_user = argv[3]
     group = argv[4]
     try:
-        # sanitise group names
+        # TODO: sanitise group names
         assert os.path.isabs(path)
         assert IS_VALID_USERNAME.match(username)
+        # TODO: check pnum consistency in path, username, groupname
         assert pnum_in_path_matches_username(path, username)
-        new_file_path = move_file_to_group_folder(path, group, api_user)
+        new_file_path = move_data_to_group_folder(path, group, api_user)
         assert new_file_path
         # if we cannot move it, it is -rw-------
         # and file-api-user:pXX-member-group
