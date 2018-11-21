@@ -546,17 +546,18 @@ class StreamHandler(AuthRequestHandler):
             if options.user_authorization:
                 to_user(options.api_user)
         if options.set_owner or 'Pragma' in self.request.headers.keys():
-            # switch path and path_part variables back to their original values
-            # keep local copies in this scope for safety
-            path, path_part = self.path_part, self.path
             try:
+                # switch path and path_part variables back to their original values
+                # keep local copies in this scope for safety
+                path, path_part = self.path_part, self.path
                 # do not need this anymore once files are moved to group folders
                 # since files that are not moved will be owned by the file-api user
                 # and in that case we can rename and/or overwrite them if necessary
                 if oct(os.stat(path)[stat.ST_MODE])[-3:] != '666':
                     os.chmod(path, RW_RW_RW)
                 logging.info('Attempting to change ownership of %s to %s', path, self.user)
-                subprocess.call(['sudo', '/bin/chowner', path, self.user, options.api_user])
+                group = 'member' # todo: get from user; header, url param?
+                subprocess.call(['sudo', '/bin/chowner', path, self.user, options.api_user, group])
             except Exception as e:
                 logging.info('could not change file mode or owner for some reason')
                 logging.info(e)

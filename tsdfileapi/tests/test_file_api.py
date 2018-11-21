@@ -164,6 +164,7 @@ class TestFileApi(unittest.TestCase):
         cls.example_codebook = json.loads(
             open(os.path.normpath(cls.data_folder + '/example-ns.json')).read())
         cls.test_user = cls.config['test_user']
+        # TODO: add group folder - use config
         cls.uploads_folder = project_import_dir(cls.config['uploads_folder'], cls.config['test_project'])
         cls.uploads_folder_p12 = project_import_dir(cls.config['uploads_folder'], 'p12')
         cls.sns_uploads_folder = project_sns_dir(cls.config['sns_uploads_folder'],

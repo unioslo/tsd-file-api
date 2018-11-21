@@ -21,6 +21,7 @@ import os
 import pwd
 import re
 import logging
+import grp
 
 IS_VALID_USERNAME = re.compile(r'p+[0-9]+-[a-z]')
 
@@ -37,7 +38,7 @@ def pnum_in_path_matches_username(path, username):
         logging.error('pnum in path: %s does not match pnum in username: %s', path, username)
         return False
 
-def change_owner(path, username, api_user):
+def change_owner(path, username, api_user, group_name):
     """
     The default group is pXX-member-group.
     If we want to support user-chosen group ownership
@@ -50,7 +51,14 @@ def change_owner(path, username, api_user):
 
     """
     try:
-        user = pwd.getpwnam(username).pw_uid
+        try:
+            user = pwd.getpwnam(username).pw_uid
+        except Exception:
+            # uploads that do not use 2FA
+            # do not have TSD user info
+            # so the api user will remain the owner
+            # and the member group, the group
+            user = pwd.getpwnam(api_user).pw_uid
         current_file_uid = os.stat(path).st_uid
         current_file_owner = pwd.getpwuid(current_file_uid).pw_name
         if current_file_owner == username:
@@ -65,21 +73,40 @@ def change_owner(path, username, api_user):
         else:
             logging.error('not allowed to change ownership of %s to %s', path, username)
             return False
-        group = os.stat(path).st_gid
-    except Exception:
+        pnum = path.split('/')[2]
+        if group_name == 'member':
+            group_name = pnum + '-member-group'
+        group = grp.getgrnam(group_name).gr_gid
+    except Exception as e:
+        logging.error(e)
         logging.error('could not get uid for %s and/or gid for member group', username)
         return False
     os.chown(path, user, group)
     return True
 
-def move_file_to_group_folder(path, group_folder):
-    # get pnum
-    # construct member group name
-    # default to member group
-    # check if group folder exists
-    # if not create, set ownership to file-api:group_folder
-    # move file
-    pass
+def move_file_to_group_folder(path, group_name, api_user):
+    try:
+        path_segments = path.split('/')
+        filename = path_segments[-1]
+        pnum = path_segments[2]
+        if group_name == 'member':
+            group_name = pnum + '-member-group'
+        new_base_path = path.replace(filename, group_name)
+        group_folder = os.path.normpath(new_base_path)
+        if not os.path.lexists(group_folder):
+            logging.info('creating: %s', group_folder)
+            os.makedirs(group_folder)
+            file_api_user_id = pwd.getpwnam(api_user).pw_uid
+            group_id = grp.getgrnam(group_name).gr_gid
+            os.chown(group_folder, file_api_user_id, group_id)
+        new_file_path = os.path.normpath(group_folder + '/' + filename)
+        os.rename(path, new_file_path)
+        logging.info('successfully moved: %s', path)
+        return new_file_path
+    except Exception as e:
+        logging.error(e)
+        logging.error('could not move file: %s', path)
+        return False
 
 def main():
     if len(argv) < 4:
@@ -88,14 +115,25 @@ def main():
     path = os.path.normpath(argv[1])
     username = argv[2]
     api_user = argv[3]
-    # get group name
+    group = argv[4]
     try:
+        # sanitise group names
         assert os.path.isabs(path)
         assert IS_VALID_USERNAME.match(username)
         assert pnum_in_path_matches_username(path, username)
-        # call move_file_to_group_folder
-        assert change_owner(path, username, api_user)
-    except AssertionError:
+        new_file_path = move_file_to_group_folder(path, group, api_user)
+        assert new_file_path
+        # if we cannot move it, it is -rw-------
+        # and file-api-user:pXX-member-group
+        # do not change ownership or mode
+        # upload considered failed. leaving as is
+        # means the file-api can over-write on a next upload
+        # and mode means no-one can read it, so no access control
+        # is violated. therefore, if we could not move it
+        # we exit without changing ownership
+        assert change_owner(new_file_path, username, api_user, group)
+    except Exception as e:
+        logging.error(e)
         logging.error('Could not change %s to owner %s', path, username)
         return False
     return True
