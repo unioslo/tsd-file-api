@@ -179,10 +179,6 @@ def main():
     user_name = argv[2]
     api_user = argv[3]
     group_name = argv[4]
-    # TODO: remove once gathering input in API is implemented
-    if group_name == 'member':
-        pnum = path.split('/')[2]
-        group_name = pnum + '-member-group'
     try:
         assert os.path.isabs(path)
         assert IS_VALID_USERNAME.match(user_name)

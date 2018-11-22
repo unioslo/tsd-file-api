@@ -351,6 +351,10 @@ class StreamHandler(AuthRequestHandler):
                 except AssertionError as e:
                     logging.error('URI does not contain a valid pnum')
                     raise e
+                try:
+                    self.group_name = url_unescape(self.get_query_argument('group'))
+                except Exception:
+                    self.group_name = pnum + '-member-group'
                 if options.user_authorization:
                     user = self.authnz['user']
                     to_user(user)
@@ -549,8 +553,8 @@ class StreamHandler(AuthRequestHandler):
                 # keep local copies in this scope for safety
                 path, path_part = self.path_part, self.path
                 logging.info('Attempting to change ownership of %s to %s', path, self.user)
-                group = 'member' # TODO: get from user; header, url param?
-                subprocess.call(['sudo', '/usr/local/bin/chowner', path, self.user, options.api_user, group])
+                subprocess.call(['sudo', '/usr/local/bin/chowner', path,
+                                 self.user, options.api_user, self.group_name])
             except Exception as e:
                 logging.info('could not change file mode or owner for some reason')
                 logging.info(e)
@@ -597,6 +601,10 @@ class ProxyHandler(AuthRequestHandler):
                 except AssertionError as e:
                     logging.error('URI does not contain a valid pnum')
                     raise e
+                try:
+                    group_name = url_unescape(self.get_query_argument('group'))
+                except Exception:
+                    group_name = pnum + '-member-group'
                 # adding optional custom headers
                 if 'Content-Type' not in self.request.headers.keys():
                     logging.info('Setting content type to application/octet-stream')
@@ -613,7 +621,7 @@ class ProxyHandler(AuthRequestHandler):
                 if 'Pragma' in self.request.headers.keys():
                     headers['Pragma'] = self.request.headers['Pragma']
                 self.fetch_future = AsyncHTTPClient().fetch(
-                    'http://localhost:%d/%s/files/upload_stream' % (options.port, pnum),
+                    'http://localhost:%d/%s/files/upload_stream?group=%s' % (options.port, pnum, group_name),
                     method=self.request.method,
                     body_producer=body,
                     # for the _entire_ request
