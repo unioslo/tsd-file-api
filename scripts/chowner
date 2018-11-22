@@ -76,6 +76,10 @@ def change_owner(path, username, api_user, group_name):
     api_user: str, user running the file API process
     group_name: str, name of the group permissions to set on the file
 
+    Returns
+    -------
+    boolean
+
     """
     try:
         try:
@@ -107,6 +111,28 @@ def change_owner(path, username, api_user, group_name):
     return True
 
 def move_data_to_group_folder(path, group_name, api_user):
+    """
+    Move uploaded data (files and folders) to group folder.
+
+    Moves data from /tsd/pXX/data/durable/file-api to
+    /tsd/pXX/data/durable/file-api/pXX-group-name.
+
+    The group folder is created if it does not exist, and the
+    ownership is set to file-api-user:pXX-group-name.
+
+    If the data is directory it is moved recursively.
+
+    Parameters
+    ----------
+    path: str, uploaded file or folder
+    group_name: name of the group folder (and permissions)
+    api_user: user running the API process
+
+    Returns
+    -------
+    boolean
+
+    """
     try:
         path_segments = path.split('/')
         filename = path_segments[-1]
