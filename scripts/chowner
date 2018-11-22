@@ -26,6 +26,7 @@ import shutil
 import glob
 
 IS_VALID_USERNAME = re.compile(r'p+[0-9]+-[a-z]')
+IS_VALID_GROUPNAME = re.compile(r'p+[0-9]+-[a-z-]')
 
 def pnum_in_path_matches_username(path, username):
     try:
@@ -127,15 +128,15 @@ def main():
         return
     logging.basicConfig(filename='/tmp/chowner-events.log', level=logging.INFO)
     path = os.path.normpath(argv[1])
-    username = argv[2]
+    user_name = argv[2]
     api_user = argv[3]
-    group = argv[4]
+    group_name = argv[4]
     try:
-        # TODO: sanitise group names
         assert os.path.isabs(path)
-        assert IS_VALID_USERNAME.match(username)
+        assert IS_VALID_USERNAME.match(user_name)
+        assert IS_VALID_GROUPNAME.match(group_name)
         # TODO: check pnum consistency in path, username, groupname
-        assert pnum_in_path_matches_username(path, username)
+        assert pnum_in_path_matches_username(path, user_name)
         new_file_path = move_data_to_group_folder(path, group, api_user)
         assert new_file_path
         # if we cannot move it, it is -rw-------
@@ -146,10 +147,10 @@ def main():
         # and mode means no-one can read it, so no access control
         # is violated. therefore, if we could not move it
         # we exit without changing ownership
-        assert change_owner(new_file_path, username, api_user, group)
+        assert change_owner(new_file_path, user_name, api_user, group_name)
     except Exception as e:
         logging.error(e)
-        logging.error('Could not change %s to owner %s', path, username)
+        logging.error('Could not change %s to owner %s', path, user_name)
         return False
     return True
 
