@@ -40,9 +40,7 @@ from pgp import decrypt_pgp_json, _import_keys
 
 
 # Files are written with these permissions
-# This is necessary to be able to write to already existing files
-# which are owned by users other than the one running the file api process
-RW_RW_RW = stat.S_IREAD | stat.S_IWRITE | stat.S_IRGRP | stat.S_IWGRP | stat.S_IROTH | stat.S_IWOTH
+_RW_RW___ = stat.S_IREAD | stat.S_IWRITE | stat.S_IRGRP | stat.S_IWGRP
 
 
 def read_config(filename):
@@ -242,7 +240,7 @@ class GenericFormDataHandler(AuthRequestHandler):
             with open(self.path, filemode) as f:
                 f.write(filebody)
                 os.rename(self.path, self.path_part)
-                os.chmod(self.path_part, RW_RW_RW)
+                os.chmod(self.path_part, _RW_RW___)
             return True
         except Exception as e:
             logging.error(e)
@@ -550,14 +548,9 @@ class StreamHandler(AuthRequestHandler):
                 # switch path and path_part variables back to their original values
                 # keep local copies in this scope for safety
                 path, path_part = self.path_part, self.path
-                # do not need this anymore once files are moved to group folders
-                # since files that are not moved will be owned by the file-api user
-                # and in that case we can rename and/or overwrite them if necessary
-                if oct(os.stat(path)[stat.ST_MODE])[-3:] != '666':
-                    os.chmod(path, RW_RW_RW)
                 logging.info('Attempting to change ownership of %s to %s', path, self.user)
-                group = 'member' # todo: get from user; header, url param?
-                subprocess.call(['sudo', '/bin/chowner', path, self.user, options.api_user, group])
+                group = 'member' # TODO: get from user; header, url param?
+                subprocess.call(['sudo', '/usr/local/bin/chowner', path, self.user, options.api_user, group])
             except Exception as e:
                 logging.info('could not change file mode or owner for some reason')
                 logging.info(e)
