@@ -184,7 +184,6 @@ def main():
         assert IS_VALID_USERNAME.match(user_name)
         assert IS_VALID_GROUPNAME.match(group_name)
         assert pnum_is_consistent_in_user_input(path, user_name, group_name)
-        logging.info('consistent input')
         new_path = move_data_to_group_folder(path, group_name, api_user)
         assert new_path
         assert change_owner_and_mode(new_path, user_name, api_user, group_name)
