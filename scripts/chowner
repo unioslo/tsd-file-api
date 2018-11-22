@@ -150,6 +150,8 @@ def move_data_to_group_folder(path, group_name, api_user):
             os.chown(group_folder, file_api_user_id, group_id)
         new_path = os.path.normpath(group_folder + '/' + filename)
         if os.path.isdir(path):
+            if os.path.lexists(new_path):
+                shutil.rmtree(new_path)
             shutil.move(path, new_path)
         else:
             os.rename(path, new_path)
