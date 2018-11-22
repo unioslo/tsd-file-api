@@ -1,11 +1,12 @@
 #!/bin env python
 
 """
-Called with sudo as a sub-process by the file-api once the file
-is written, to set the file owner to the identity of the authenticated
-user.
+Called with sudo as a sub-process by the file-api once the data
+is written, to move the data to a group folder and to set the
+permissions (user:group) to the identity of the authenticated user
+and the group.
 
-subprocess.call(['sudo', '/bin/chowner', 'path-to-file', 'username', api_user])
+subprocess.call(['sudo', '/bin/chowner', 'path-to-file', 'username', api_user, group_name])
 
 Setup
 -----
