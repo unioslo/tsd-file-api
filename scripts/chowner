@@ -121,13 +121,13 @@ def move_data_to_group_folder(path, group_name, api_user):
             file_api_user_id = pwd.getpwnam(api_user).pw_uid
             group_id = grp.getgrnam(group_name).gr_gid
             os.chown(group_folder, file_api_user_id, group_id)
-        new_file_path = os.path.normpath(group_folder + '/' + filename)
+        new_path = os.path.normpath(group_folder + '/' + filename)
         if os.path.isdir(path):
-            shutil.move(path, new_file_path)
+            shutil.move(path, new_path)
         else:
-            os.rename(path, new_file_path)
+            os.rename(path, new_path)
         logging.info('successfully moved: %s', path)
-        return new_file_path
+        return new_path
     except Exception as e:
         logging.error(e)
         logging.error('could not move file: %s', path)
@@ -146,8 +146,8 @@ def main():
         assert IS_VALID_USERNAME.match(user_name)
         assert IS_VALID_GROUPNAME.match(group_name)
         assert pnum_is_consistent_in_user_input(path, user_name. group_name)
-        new_file_path = move_data_to_group_folder(path, group, api_user)
-        assert new_file_path
+        new_path = move_data_to_group_folder(path, group, api_user)
+        assert new_path
         # if we cannot move it, it is -rw-------
         # and file-api-user:pXX-member-group
         # do not change ownership or mode
@@ -156,7 +156,7 @@ def main():
         # and mode means no-one can read it, so no access control
         # is violated. therefore, if we could not move it
         # we exit without changing ownership
-        assert change_owner(new_file_path, user_name, api_user, group_name)
+        assert change_owner(new_path, user_name, api_user, group_name)
     except Exception as e:
         logging.error(e)
         logging.error('Could not change %s to owner %s', path, user_name)
