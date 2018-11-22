@@ -28,17 +28,23 @@ import glob
 IS_VALID_USERNAME = re.compile(r'p+[0-9]+-[a-z]')
 IS_VALID_GROUPNAME = re.compile(r'p+[0-9]+-[a-z-]')
 
-def pnum_in_path_matches_username(path, username):
+def pnum_is_consistent_in_user_input(path, user_name, group_name=None):
     try:
         path_pnum = path.split('/')[2]
-        username_pnum = username.split('-')[0]
+        username_pnum = user_name.split('-')[0]
     except IndexError:
-        logging.error('malformed path: %s or username: %s', path, username)
+        logging.error('malformed path: %s or username: %s', path, user_name)
         return False
+    if group_name:
+        groupname_pnum = group_name.split('/')[0]
+        if path_pnum == username_pnum == groupname_pnum:
+            return True
+        else:
+            return False
     if path_pnum == username_pnum:
         return True
     else:
-        logging.error('pnum in path: %s does not match pnum in username: %s', path, username)
+        logging.error('pnum in path: %s does not match pnum in username: %s', path, user_name)
         return False
 
 def recursive_chown(path, uid, gid):
@@ -50,14 +56,20 @@ def recursive_chown(path, uid, gid):
 
 def change_owner(path, username, api_user, group_name):
     """
-    The default group is pXX-member-group.
-    If we want to support user-chosen group ownership
-    then we can enable that here via custom headers, e.g.
+    Change the ownership of a path, recursively.
 
-    The checks in this function mean that this script
-    will only change ownership of file that belong to
-    the api_user, or user within the same project
-    as the username provided in the JWT.
+    This function will only change ownership of files that
+    belongs to the api_user, or users within the same project
+    as the username provided in the JWT. In principle then,
+    this script only changes ownership of files uploaded via
+    the file API.
+
+    Parameters
+    ----------
+    path: str, newly uploaded file created by file API
+    username: str, user claim from JWT
+    api_user: str, user running the file API process
+    group_name: str, name of the group permissions to set on the file
 
     """
     try:
@@ -77,7 +89,7 @@ def change_owner(path, username, api_user, group_name):
         elif current_file_owner == api_user:
             # we created it, so we can change the ownership
             pass
-        elif pnum_in_path_matches_username(path, current_file_owner):
+        elif pnum_is_consistent_in_user_input(path, current_file_owner):
             # same filename, but owned by another project member
             pass
         else:
@@ -135,8 +147,7 @@ def main():
         assert os.path.isabs(path)
         assert IS_VALID_USERNAME.match(user_name)
         assert IS_VALID_GROUPNAME.match(group_name)
-        # TODO: check pnum consistency in path, username, groupname
-        assert pnum_in_path_matches_username(path, user_name)
+        assert pnum_is_consistent_in_user_input(path, user_name. group_name)
         new_file_path = move_data_to_group_folder(path, group, api_user)
         assert new_file_path
         # if we cannot move it, it is -rw-------
