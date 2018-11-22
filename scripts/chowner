@@ -161,6 +161,17 @@ def move_data_to_group_folder(path, group_name, api_user):
         return False
 
 def main():
+    """
+    Validate input from the caller, move data to group folder,
+    set permission on data.
+
+    If we cannot move it, we do not change ownership. The file API
+    writes data as -rw------- and is the owner of the uploaded files.
+    Leaving it as is means the file-api can over-write on a next upload
+    and the file mode means no-one can read it, so no access control is
+    violated. Fail safely.
+
+    """
     if len(argv) < 4:
         return
     logging.basicConfig(filename='/tmp/chowner-events.log', level=logging.INFO)
@@ -175,14 +186,7 @@ def main():
         assert pnum_is_consistent_in_user_input(path, user_name. group_name)
         new_path = move_data_to_group_folder(path, group, api_user)
         assert new_path
-        # if we cannot move it, it is -rw-------
-        # and file-api-user:pXX-member-group
-        # do not change ownership or mode
-        # upload considered failed. leaving as is
-        # means the file-api can over-write on a next upload
-        # and mode means no-one can read it, so no access control
-        # is violated. therefore, if we could not move it
-        # we exit without changing ownership
+        # TODO: change mode from -rw------- to -rw--rw----
         assert change_owner(new_path, user_name, api_user, group_name)
     except Exception as e:
         logging.error(e)
