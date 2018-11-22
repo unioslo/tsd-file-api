@@ -64,6 +64,11 @@ def change_owner(path, username, api_user, group_name):
     this script only changes ownership of files uploaded via
     the file API.
 
+    Uploads performed without 2FA do not have user claims
+    corresponding to TSD identities, so the files will be
+    owned by the file API user, and located in the default
+    pXX-member-group folder.
+
     Parameters
     ----------
     path: str, newly uploaded file created by file API
@@ -76,21 +81,14 @@ def change_owner(path, username, api_user, group_name):
         try:
             user = pwd.getpwnam(username).pw_uid
         except Exception:
-            # uploads that do not use 2FA
-            # do not have TSD user info
-            # so the api user will remain the owner
-            # and the member group, the group
             user = pwd.getpwnam(api_user).pw_uid
         current_file_uid = os.stat(path).st_uid
         current_file_owner = pwd.getpwuid(current_file_uid).pw_name
         if current_file_owner == username:
-            # already correct owner
             return True
         elif current_file_owner == api_user:
-            # we created it, so we can change the ownership
             pass
         elif pnum_is_consistent_in_user_input(path, current_file_owner):
-            # same filename, but owned by another project member
             pass
         else:
             logging.error('not allowed to change ownership of %s to %s', path, username)
