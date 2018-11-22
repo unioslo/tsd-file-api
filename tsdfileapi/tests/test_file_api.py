@@ -164,7 +164,7 @@ class TestFileApi(unittest.TestCase):
         cls.example_codebook = json.loads(
             open(os.path.normpath(cls.data_folder + '/example-ns.json')).read())
         cls.test_user = cls.config['test_user']
-        # TODO: add group folder - use config
+        cls.test_group = cls.config['test_group']
         cls.uploads_folder = project_import_dir(cls.config['uploads_folder'], cls.config['test_project'])
         cls.uploads_folder_p12 = project_import_dir(cls.config['uploads_folder'], 'p12')
         cls.sns_uploads_folder = project_sns_dir(cls.config['sns_uploads_folder'],
@@ -510,38 +510,31 @@ class TestFileApi(unittest.TestCase):
 
     # streaming endpoint
 
-    def test_I_post_file_to_streaming_endpoint_no_chunked_encoding_data_binary(self):
+    def test_I_put_file_to_streaming_endpoint_no_chunked_encoding_data_binary(self):
         newfilename = 'streamed-not-chunked'
+        uploaded_file = os.path.normpath(self.uploads_folder + '/' + self.test_group + '/' + newfilename)
         try:
-            os.remove(os.path.normpath(self.uploads_folder + '/' + newfilename))
+            os.remove(uploaded_file)
         except OSError:
             pass
         headers = {'Authorization': 'Bearer ' + IMPORT_TOKENS['VALID'], 'Filename': newfilename}
-        resp = requests.post(self.stream, data=open(self.example_csv), headers=headers)
+        resp = requests.put(self.stream, data=open(self.example_csv), headers=headers)
         self.assertEqual(resp.status_code, 201)
-        uploaded_file = os.path.normpath(self.uploads_folder + '/' + newfilename)
+
         self.assertEqual(md5sum(self.example_csv), md5sum(uploaded_file))
-
-
-    def test_J_post_stream_file_chunked_transfer_encoding(self):
-        headers = {'Filename': 'streamed-example.csv',
-                   'Authorization': 'Bearer ' + IMPORT_TOKENS['VALID'],
-                   'Expect': '100-Continue'}
-        resp = requests.post(self.stream, data=lazy_file_reader(self.example_csv), headers=headers)
-        self.assertEqual(resp.status_code, 201)
 
 
     def test_K_put_stream_file_chunked_transfer_encoding(self):
         newfilename = 'streamed-put-example.csv'
+        uploaded_file = os.path.normpath(self.uploads_folder + '/' + self.test_group + '/' + newfilename)
         try:
-            os.remove(os.path.normpath(self.uploads_folder + '/' + newfilename))
+            os.remove(uploaded_file)
         except OSError:
             pass
         headers = {'Filename': 'streamed-put-example.csv',
                    'Authorization': 'Bearer ' + IMPORT_TOKENS['VALID'],
                    'Expect': '100-Continue'}
         resp = requests.put(self.stream, data=lazy_file_reader(self.example_csv), headers=headers)
-        uploaded_file = os.path.normpath(self.uploads_folder + '/' + newfilename)
         self.assertEqual(md5sum(self.example_csv), md5sum(uploaded_file))
         resp = requests.put(self.stream, data=lazy_file_reader(self.example_csv), headers=headers)
         self.assertEqual(md5sum(self.example_csv), md5sum(uploaded_file))
@@ -709,9 +702,6 @@ class TestFileApi(unittest.TestCase):
     def test_Za_stream_tar_without_custom_content_type_works(self):
         headers = {'Authorization': 'Bearer ' + IMPORT_TOKENS['VALID'],
                    'Filename': 'example.tar'}
-        resp = requests.post(self.stream, data=lazy_file_reader(self.example_tar),
-                             headers=headers)
-        self.assertEqual(resp.status_code, 201)
         resp1 = requests.put(self.stream, data=lazy_file_reader(self.example_tar),
                              headers=headers)
         self.assertEqual(resp1.status_code, 201)
@@ -719,10 +709,8 @@ class TestFileApi(unittest.TestCase):
 
     def test_Zb_stream_tar_with_custom_content_type_untar_works(self):
         headers = {'Authorization': 'Bearer ' + IMPORT_TOKENS['VALID'],
-                   'Content-Type': 'application/tar'}
-        resp = requests.post(self.stream, data=lazy_file_reader(self.example_tar),
-                             headers=headers)
-        self.assertEqual(resp.status_code, 201)
+                   'Content-Type': 'application/tar',
+                   'Filename': 'totar'}
         resp1 = requests.put(self.stream, data=lazy_file_reader(self.example_tar),
                              headers=headers)
         self.assertEqual(resp1.status_code, 201)
@@ -730,10 +718,8 @@ class TestFileApi(unittest.TestCase):
 
     def test_Zc_stream_tar_gz_with_custom_content_type_untar_works(self):
         headers = {'Authorization': 'Bearer ' + IMPORT_TOKENS['VALID'],
-                   'Content-Type': 'application/tar.gz'}
-        resp = requests.post(self.stream, data=lazy_file_reader(self.example_tar_gz),
-                             headers=headers)
-        self.assertEqual(resp.status_code, 201)
+                   'Content-Type': 'application/tar.gz',
+                   'Filename': 'totar2'}
         resp1 = requests.put(self.stream, data=lazy_file_reader(self.example_tar_gz),
                              headers=headers)
         self.assertEqual(resp1.status_code, 201)
@@ -744,13 +730,10 @@ class TestFileApi(unittest.TestCase):
                    'Content-Type': 'application/aes',
                    'Aes-Key': self.enc_symmetric_secret,
                    'Filename': 'decrypted-aes.csv'}
-        resp = requests.post(self.stream, data=lazy_file_reader(self.example_aes),
-                             headers=headers)
-        self.assertEqual(resp.status_code, 201)
         resp1 = requests.put(self.stream, data=lazy_file_reader(self.example_aes),
                              headers=headers)
         self.assertEqual(resp1.status_code, 201)
-        with open(self.uploads_folder + '/decrypted-aes.csv', 'r') as uploaded_file:
+        with open(self.uploads_folder + '/' + self.test_group + '/decrypted-aes.csv', 'r') as uploaded_file:
            self.assertEqual('x,y\n4,5\n2,1\n', uploaded_file.read())
 
     def test_Zd0_stream_aes_with_iv_and_custom_content_type_decrypt_works(self):
@@ -758,16 +741,12 @@ class TestFileApi(unittest.TestCase):
                    'Content-Type': 'application/aes',
                    'Aes-Key': self.enc_hex_aes_key,
                    'Aes-Iv': self.hex_aes_iv,
-                   'Filename': 'decrypted-aes.csv'}
-        resp = requests.post(self.stream,
-                             data=lazy_file_reader(self.example_aes_with_key_and_iv),
-                             headers=headers)
-        self.assertEqual(resp.status_code, 201)
+                   'Filename': 'decrypted-aes2.csv'}
         resp1 = requests.put(self.stream,
                              data=lazy_file_reader(self.example_aes_with_key_and_iv),
                              headers=headers)
         self.assertEqual(resp1.status_code, 201)
-        with open(self.uploads_folder + '/decrypted-aes.csv', 'r') as uploaded_file:
+        with open(self.uploads_folder + '/' + self.test_group + '/decrypted-aes2.csv', 'r') as uploaded_file:
            self.assertEqual('x,y\n4,5\n2,1\n', uploaded_file.read())
 
     def test_Zd1_stream_binary_aes_with_iv_and_custom_content_type_decrypt_works(self):
@@ -776,24 +755,18 @@ class TestFileApi(unittest.TestCase):
                    'Aes-Key': self.enc_hex_aes_key,
                    'Aes-Iv': self.hex_aes_iv,
                    'Filename': 'decrypted-binary-aes.csv'}
-        resp = requests.post(self.stream,
-                             data=lazy_file_reader(self.example_binary_aes_with_key_and_iv),
-                             headers=headers)
-        self.assertEqual(resp.status_code, 201)
         resp1 = requests.put(self.stream,
                              data=lazy_file_reader(self.example_binary_aes_with_key_and_iv),
                              headers=headers)
         self.assertEqual(resp1.status_code, 201)
-        with open(self.uploads_folder + '/decrypted-binary-aes.csv', 'r') as uploaded_file:
+        with open(self.uploads_folder + '/' + self.test_group + '/decrypted-binary-aes.csv', 'r') as uploaded_file:
            self.assertEqual('x,y\n4,5\n2,1\n', uploaded_file.read())
 
     def test_Ze_stream_tar_aes_with_custom_content_type_decrypt_untar_works(self):
         headers = {'Authorization': 'Bearer ' + IMPORT_TOKENS['VALID'],
                    'Content-Type': 'application/tar.aes',
-                   'Aes-Key': self.enc_symmetric_secret}
-        resp = requests.post(self.stream, data=lazy_file_reader(self.example_tar_aes),
-                             headers=headers)
-        self.assertEqual(resp.status_code, 201)
+                   'Aes-Key': self.enc_symmetric_secret,
+                   'Filename': 'totar3'}
         resp1 = requests.put(self.stream, data=lazy_file_reader(self.example_tar_aes),
                              headers=headers)
         self.assertEqual(resp1.status_code, 201)
@@ -803,10 +776,8 @@ class TestFileApi(unittest.TestCase):
         headers = {'Authorization': 'Bearer ' + IMPORT_TOKENS['VALID'],
                    'Content-Type': 'application/tar.aes',
                    'Aes-Key': self.enc_hex_aes_key,
-                   'Aes-Iv': self.hex_aes_iv}
-        resp = requests.post(self.stream, data=lazy_file_reader(self.example_tar_aes_with_key_and_iv),
-                             headers=headers)
-        self.assertEqual(resp.status_code, 201)
+                   'Aes-Iv': self.hex_aes_iv,
+                   'Filename': 'totar'}
         resp1 = requests.put(self.stream, data=lazy_file_reader(self.example_tar_aes_with_key_and_iv),
                              headers=headers)
         self.assertEqual(resp1.status_code, 201)
@@ -815,10 +786,8 @@ class TestFileApi(unittest.TestCase):
     def test_Zf_stream_tar_aes_with_custom_content_type_decrypt_untar_works(self):
         headers = {'Authorization': 'Bearer ' + IMPORT_TOKENS['VALID'],
                    'Content-Type': 'application/tar.gz.aes',
-                   'Aes-Key': self.enc_symmetric_secret}
-        resp = requests.post(self.stream, data=lazy_file_reader(self.example_tar_gz_aes),
-                             headers=headers)
-        self.assertEqual(resp.status_code, 201)
+                   'Aes-Key': self.enc_symmetric_secret,
+                   'Filename': 'totar4'}
         resp1 = requests.put(self.stream, data=lazy_file_reader(self.example_tar_gz_aes),
                              headers=headers)
         self.assertEqual(resp1.status_code, 201)
@@ -828,10 +797,8 @@ class TestFileApi(unittest.TestCase):
         headers = {'Authorization': 'Bearer ' + IMPORT_TOKENS['VALID'],
                    'Content-Type': 'application/tar.gz.aes',
                    'Aes-Key': self.enc_hex_aes_key,
-                   'Aes-Iv': self.hex_aes_iv}
-        resp = requests.post(self.stream, data=lazy_file_reader(self.example_tar_gz_aes_with_key_and_iv),
-                             headers=headers)
-        self.assertEqual(resp.status_code, 201)
+                   'Aes-Iv': self.hex_aes_iv,
+                   'Filename': 'totar2'}
         resp1 = requests.put(self.stream, data=lazy_file_reader(self.example_tar_gz_aes_with_key_and_iv),
                              headers=headers)
         self.assertEqual(resp1.status_code, 201)
@@ -841,13 +808,10 @@ class TestFileApi(unittest.TestCase):
         headers = {'Authorization': 'Bearer ' + IMPORT_TOKENS['VALID'],
                    'Content-Type': 'application/gz',
                    'Filename': 'ungz1'}
-        resp = requests.post(self.stream, data=lazy_file_reader(self.example_gz),
-                             headers=headers)
-        self.assertEqual(resp.status_code, 201)
         resp1 = requests.put(self.stream, data=lazy_file_reader(self.example_gz),
                              headers=headers)
         self.assertEqual(resp1.status_code, 201)
-        with open(self.uploads_folder + '/ungz1', 'r') as uploaded_file:
+        with open(self.uploads_folder + '/' + self.test_group + '/ungz1', 'r') as uploaded_file:
            self.assertEqual('x,y\n4,5\n2,1\n', uploaded_file.read())
 
 
@@ -856,14 +820,11 @@ class TestFileApi(unittest.TestCase):
                    'Content-Type': 'application/gz.aes',
                    'Filename': 'ungz-aes1',
                    'Aes-Key': self.enc_symmetric_secret}
-        resp = requests.post(self.stream, data=lazy_file_reader(self.example_gz_aes),
-                             headers=headers)
-        self.assertEqual(resp.status_code, 201)
         resp1 = requests.put(self.stream, data=lazy_file_reader(self.example_gz_aes),
                              headers=headers)
         self.assertEqual(resp1.status_code, 201)
         # This ought to work, but does not
-        with open(self.uploads_folder + '/ungz-aes1', 'r') as uploaded_file:
+        with open(self.uploads_folder + '/' + self.test_group + '/ungz-aes1', 'r') as uploaded_file:
             self.assertEqual('x,y\n4,5\n2,1\n', uploaded_file.read())
 
 
@@ -873,9 +834,6 @@ class TestFileApi(unittest.TestCase):
                    'Filename': 'ungz-aes1',
                    'Aes-Key': self.enc_hex_aes_key,
                    'Aes-Iv': self.hex_aes_iv}
-        resp = requests.post(self.stream, data=lazy_file_reader(self.example_gz_aes_with_key_and_iv),
-                             headers=headers)
-        self.assertEqual(resp.status_code, 201)
         resp1 = requests.put(self.stream, data=lazy_file_reader(self.example_gz_aes_with_key_and_iv),
                              headers=headers)
         self.assertEqual(resp1.status_code, 201)
@@ -894,7 +852,7 @@ class TestFileApi(unittest.TestCase):
         self.assertEqual(md5sum(self.example_csv), md5sum(uploaded_file))
         newfilename2 = 'streamed-put-example-p12.csv'
         try:
-            os.remove(os.path.normpath(self.uploads_folder_p12 + '/' + newfilename2))
+            os.remove(os.path.normpath(self.uploads_folder_p12 + '/p12-member-group/' + newfilename2))
         except OSError:
             pass
         headers2 = {'Filename': 'streamed-put-example-p12.csv',
@@ -903,7 +861,7 @@ class TestFileApi(unittest.TestCase):
         resp2 = requests.put('http://localhost:3003/p12/files/stream',
                             data=lazy_file_reader(self.example_csv), headers=headers2)
         self.assertEqual(resp2.status_code, 201)
-        uploaded_file2 = os.path.normpath(self.uploads_folder_p12 + '/' + newfilename2)
+        uploaded_file2 = os.path.normpath(self.uploads_folder_p12 + '/p12-member-group/' + newfilename2)
         self.assertEqual(md5sum(self.example_csv), md5sum(uploaded_file2))
 
     def test_ZB_sns_folder_logic_is_correct(self):
@@ -937,7 +895,7 @@ class TestFileApi(unittest.TestCase):
                             data=lazy_file_reader(self.example_gz_aes),
                             headers=headers)
         intended_owner = pwd.getpwnam(self.test_user).pw_uid
-        effective_owner = os.stat(self.uploads_folder + '/testing-chowner.txt').st_uid
+        effective_owner = os.stat(self.uploads_folder + '/' + self.test_group + '/testing-chowner.txt').st_uid
         self.assertEqual(intended_owner, effective_owner)
 
     def test_ZD_cannot_upload_empty_file_to_sns(self):
@@ -948,6 +906,10 @@ class TestFileApi(unittest.TestCase):
                             headers=headers)
         self.assertEqual(resp.status_code, 400)
 
+    # TODO: add tests for client-side specification of groups
+    # test /stream?group=p11-member-group
+    # test /stream?group=p12-member-group with /p11
+    # test /stream?group=/bin/echo$PATH\&62&^%&#%^###-group with /p11
 
 def main():
     runner = unittest.TextTestRunner()
@@ -968,8 +930,7 @@ def main():
         'test_H1_put_file_multi_part_form_data_sns',
         'test_HA_put_multiple_files_multi_part_form_data',
         'test_H4XX_when_no_keydir_exists',
-        'test_I_post_file_to_streaming_endpoint_no_chunked_encoding_data_binary',
-        'test_J_post_stream_file_chunked_transfer_encoding',
+        'test_I_put_file_to_streaming_endpoint_no_chunked_encoding_data_binary',
         'test_K_put_stream_file_chunked_transfer_encoding',
         'test_L_get_file_list',
         'test_M_get_file_checksum',
@@ -983,7 +944,6 @@ def main():
         'test_X_post_encrypted_data',
         'test_Y_invalid_project_number_rejected',
         'test_Z_token_for_other_project_rejected',
-        # Data pipelines
         'test_Za_stream_tar_without_custom_content_type_works',
         'test_Zb_stream_tar_with_custom_content_type_untar_works',
         'test_Zc_stream_tar_gz_with_custom_content_type_untar_works',
