@@ -14,6 +14,7 @@ import datetime
 import hashlib
 import subprocess
 import stat
+import shutil
 
 from uuid import uuid4
 from sys import argv
@@ -372,10 +373,14 @@ class StreamHandler(AuthRequestHandler):
                         logging.error('trying to write to partial file - killing request')
                         raise Exception
                     if os.path.lexists(self.path):
-                        logging.info('%s already exists, renaming to %s', self.path, self.path_part)
-                        os.rename(self.path, self.path_part)
-                        assert os.path.lexists(self.path_part)
-                        assert not os.path.lexists(self.path)
+                        if os.path.isdir(self.path):
+                            logging.info('directory: %s already exists due to prior upload, removing', self.path)
+                            shutil.rmtree(self.path)
+                        else:
+                            logging.info('%s already exists, renaming to %s', self.path, self.path_part)
+                            os.rename(self.path, self.path_part)
+                            assert os.path.lexists(self.path_part)
+                            assert not os.path.lexists(self.path)
                     self.path, self.path_part = self.path_part, self.path
                     if content_type == 'application/aes':
                         # only decryption, write to file
