@@ -41,7 +41,7 @@ from db import insert_into, create_table_from_codebook, sqlite_init, \
 from pgp import decrypt_pgp_json, _import_keys
 
 
-# Files are written with these permissions
+_RW______ = stat.S_IREAD | stat.S_IWRITE
 _RW_RW___ = stat.S_IREAD | stat.S_IWRITE | stat.S_IRGRP | stat.S_IWGRP
 
 
@@ -558,7 +558,7 @@ class StreamHandler(AuthRequestHandler):
                 # switch path and path_part variables back to their original values
                 # keep local copies in this scope for safety
                 path, path_part = self.path_part, self.path
-                os.chmod(path, _RW_RW___)
+                os.chmod(path, _RW______)
                 logging.info('Attempting to change ownership of %s to %s', path, self.user)
                 subprocess.call(['sudo', '/bin/chowner', path,
                                  self.user, options.api_user, self.group_name])
