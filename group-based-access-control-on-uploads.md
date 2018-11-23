@@ -11,4 +11,4 @@ Now the members of the group in question can read, write, move and delete the da
 
 ## Policy
 
-The default acces policy for uploads is no access. This ensures that if the pipeline fails along the way, unauthorized data access is not inadvertedly granted. Since all uploads are idempotent (can be perfomed many times without modifying the resource), users can redo the upload to fix the error.
+The default access policy for uploads is: no access if something breaks, member group access if nothing is specified. This ensures that if the pipeline fails along the way, unauthorized data access is not inadvertedly granted. Since all uploads are idempotent (can be perfomed many times without modifying the resource), users can redo the upload to fix the error.
