@@ -22,7 +22,7 @@ from collections import OrderedDict
 
 import yaml
 import tornado.queues
-from tornado.escape import json_decode
+from tornado.escape import json_decode, url_unescape
 from tornado import gen
 from tornado.httpclient import AsyncHTTPClient
 from tornado.ioloop import IOLoop
@@ -32,7 +32,8 @@ from tornado.web import Application, RequestHandler, stream_request_body, \
 
 # pylint: disable=relative-import
 from auth import verify_json_web_token
-from utils import secure_filename, project_import_dir, project_sns_dir
+from utils import secure_filename, project_import_dir, project_sns_dir, \
+                  IS_VALID_GROUPNAME
 from db import insert_into, create_table_from_codebook, sqlite_init, \
                create_table_from_generic, _table_name_from_form_id, \
                _VALID_PNUM, _table_name_from_table_name, TableNameException, \
@@ -557,8 +558,9 @@ class StreamHandler(AuthRequestHandler):
                 # switch path and path_part variables back to their original values
                 # keep local copies in this scope for safety
                 path, path_part = self.path_part, self.path
+                os.chmod(path, _RW_RW___)
                 logging.info('Attempting to change ownership of %s to %s', path, self.user)
-                subprocess.call(['sudo', '/usr/local/bin/chowner', path,
+                subprocess.call(['sudo', '/bin/chowner', path,
                                  self.user, options.api_user, self.group_name])
             except Exception as e:
                 logging.info('could not change file mode or owner for some reason')
@@ -608,8 +610,18 @@ class ProxyHandler(AuthRequestHandler):
                     raise e
                 try:
                     group_name = url_unescape(self.get_query_argument('group'))
-                except Exception:
+                except Exception as e:
                     group_name = pnum + '-member-group'
+                try:
+                    assert IS_VALID_GROUPNAME.match(group_name)
+                except AssertionError as e:
+                    logging.error('invalid group name: %s', group_name)
+                    raise e
+                try:
+                    assert pnum == group_name.split('-')[0]
+                except AssertionError as e:
+                    logging.error('pnum in url: %s and group name: %s do not match', self.request.uri, group_name)
+                    raise e
                 # adding optional custom headers
                 if 'Content-Type' not in self.request.headers.keys():
                     logging.info('Setting content type to application/octet-stream')
@@ -642,7 +654,7 @@ class ProxyHandler(AuthRequestHandler):
                 raise e
         except Exception as e:
             self.set_status(401)
-            self.finish({'message': 'Authentication failed'})
+            self.finish({'message': 'Request failed'})
 
     @gen.coroutine
     def body_producer(self, write):

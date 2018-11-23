@@ -906,10 +906,37 @@ class TestFileApi(unittest.TestCase):
                             headers=headers)
         self.assertEqual(resp.status_code, 400)
 
-    # TODO: add tests for client-side specification of groups
-    # test /stream?group=p11-member-group
-    # test /stream?group=p12-member-group with /p11
-    # test /stream?group=/bin/echo$PATH\&62&^%&#%^###-group with /p11
+    # client-side specification of groups
+
+    def test_ZE_stream_works_with_client_specified_group(self):
+        headers = {'Filename': 'streamed-example-with-group-spec.csv',
+                   'Authorization': 'Bearer ' + IMPORT_TOKENS['VALID'],
+                   'Expect': '100-Continue'}
+        url = self.stream + '?group=' + self.test_group
+        resp = requests.post(url,
+                             data=lazy_file_reader(self.example_csv),
+                             headers=headers)
+        self.assertEqual(resp.status_code, 201)
+
+    def test_ZF_stream_does_not_work_with_client_specified_group_wrong_pnum(self):
+        headers = {'Filename': 'streamed-example-with-wrong-group-spec.csv',
+                   'Authorization': 'Bearer ' + IMPORT_TOKENS['VALID'],
+                   'Expect': '100-Continue'}
+        resp = requests.post(self.stream + '?group=' + 'p12-member-group',
+                             data=lazy_file_reader(self.example_csv),
+                             headers=headers)
+        self.assertEqual(resp.status_code, 401)
+
+    def test_ZG_stream_does_not_work_with_client_specified_group_nonsense_input(self):
+        headers = {'Filename': 'streamed-example-with-crazy-group-spec.csv',
+                   'Authorization': 'Bearer ' + IMPORT_TOKENS['VALID'],
+                   'Expect': '100-Continue'}
+        url = self.stream + '?group=/usr/bin/echo $PATH'
+        resp = requests.post(url,
+                             data=lazy_file_reader(self.example_csv),
+                             headers=headers)
+        self.assertEqual(resp.status_code, 401)
+
 
 def main():
     runner = unittest.TextTestRunner()
@@ -961,6 +988,9 @@ def main():
         'test_ZB_sns_folder_logic_is_correct',
         'test_ZC_setting_ownership_based_on_user_works',
         'test_ZD_cannot_upload_empty_file_to_sns',
+        'test_ZE_stream_works_with_client_specified_group',
+        'test_ZF_stream_does_not_work_with_client_specified_group_wrong_pnum',
+        'test_ZG_stream_does_not_work_with_client_specified_group_nonsense_input',
         ])))
     map(runner.run, suite)
 
