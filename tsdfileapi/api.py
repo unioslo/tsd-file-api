@@ -50,13 +50,6 @@ def read_config(filename):
         conf = yaml.load(f)
     return conf
 
-def to_user(username):
-    try:
-        os.setuid(pwd.getpwnam(username).pw_uid)
-        logging.info('Switching to user: %s', username)
-    except OSError:
-        logging.error('Cannot change to user: %s, aborting write', username)
-        raise Exception('API not authorized to change to user')
 
 try:
     CONFIG_FILE = argv[1]
@@ -357,9 +350,6 @@ class StreamHandler(AuthRequestHandler):
                     self.group_name = url_unescape(self.get_query_argument('group'))
                 except Exception:
                     self.group_name = pnum + '-member-group'
-                if options.user_authorization:
-                    user = self.authnz['user']
-                    to_user(user)
                 if self.request.method == 'POST':
                     filemode = 'ab+'
                 elif self.request.method == 'PUT':
@@ -546,13 +536,9 @@ class StreamHandler(AuthRequestHandler):
                 self.target_file.close()
                 os.rename(self.path, self.path_part)
                 logging.info('StreamHandler: Closed file')
-            if options.user_authorization:
-                to_user(options.api_user)
         except AttributeError as e:
             logging.info(e)
             logging.info('There was no open file to close')
-            if options.user_authorization:
-                to_user(options.api_user)
         if options.set_owner:
             try:
                 # switch path and path_part variables back to their original values
@@ -702,13 +688,7 @@ class MetaDataHandler(AuthRequestHandler):
     def get(self, pnum):
         # calls to None are for compatibility with the signature of project_sns_dir
         _dir = project_import_dir(options.uploads_folder, pnum, None, None)
-        if options.user_authorization:
-            user = self.authnz['user']
-            logging.info('Switching to user: %s', user)
-            to_user(user)
         files = os.listdir(_dir)
-        if options.user_authorization:
-            to_user(options.api_user)
         times = map(lambda x:
                     datetime.datetime.fromtimestamp(
                         os.stat(os.path.normpath(_dir + '/' + x)).st_mtime).isoformat(), files)
@@ -740,13 +720,7 @@ class ChecksumHandler(AuthRequestHandler):
         filename = secure_filename(self.get_query_argument('filename'))
         project_dir = project_import_dir(options.uploads_folder, pnum, None, None)
         path = os.path.normpath(project_dir + '/' + filename)
-        if options.user_authorization:
-            user = self.authnz['user']
-            logging.info('Switching to user: %s', user)
-            to_user(user)
         checksum = self.md5sum(path)
-        if options.user_authorization:
-            to_user(options.api_user)
         self.write({'checksum': checksum, 'algorithm': 'md5'})
 
 
@@ -767,10 +741,6 @@ class TableCreatorHandler(AuthRequestHandler):
     def post(self, pnum):
         try:
             data = json_decode(self.request.body)
-            if options.user_authorization:
-                user = self.authnz['user']
-                logging.info('Switching to user: %s', user)
-                to_user(user)
             assert _VALID_PNUM.match(pnum)
             project_dir = project_import_dir(options.uploads_folder, pnum, None, None)
             engine = sqlite_init(project_dir)
@@ -801,9 +771,6 @@ class TableCreatorHandler(AuthRequestHandler):
             self.set_status(400)
             self.finish({'message': m})
 
-    def on_finish(self):
-        if options.user_authorization:
-            to_user(options.api_user)
 
 
 class JsonToSQLiteHandler(AuthRequestHandler):
@@ -823,10 +790,6 @@ class JsonToSQLiteHandler(AuthRequestHandler):
     def post(self, pnum, resource_name):
         try:
             data = json_decode(self.request.body)
-            if options.user_authorization:
-                user = self.authnz['user']
-                logging.info('Switching to user: %s', user)
-                to_user(user)
             assert _VALID_PNUM.match(pnum)
             project_dir = project_import_dir(options.uploads_folder, pnum, None, None)
             engine = sqlite_init(project_dir)
@@ -843,9 +806,6 @@ class JsonToSQLiteHandler(AuthRequestHandler):
             self.set_status(400)
             self.write({'message': e.message})
 
-    def on_finish(self):
-        if options.user_authorization:
-            to_user(options.api_user)
 
 
 class PGPJsonToSQLiteHandler(AuthRequestHandler):
@@ -868,10 +828,6 @@ class PGPJsonToSQLiteHandler(AuthRequestHandler):
             else:
                 table_name = _table_name_from_table_name(str(all_data['table_name']))
             decrypted_data = decrypt_pgp_json(CONFIG, all_data['data'])
-            if options.user_authorization:
-                user = self.authnz['user']
-                logging.info('Switching to user: %s', user)
-                to_user(user)
             assert _VALID_PNUM.match(pnum)
             project_dir = project_import_dir(options.uploads_folder, pnum, None, None)
             engine = sqlite_init(project_dir)
@@ -882,10 +838,6 @@ class PGPJsonToSQLiteHandler(AuthRequestHandler):
             logging.error(e)
             self.set_status(400)
             self.write({'message': e.message})
-
-    def on_finish(self):
-        if options.user_authorization:
-            to_user(options.api_user)
 
 
 class HealthCheckHandler(RequestHandler):
