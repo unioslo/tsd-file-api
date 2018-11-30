@@ -553,7 +553,7 @@ class StreamHandler(AuthRequestHandler):
             logging.info('There was no open file to close')
             if options.user_authorization:
                 to_user(options.api_user)
-        if options.set_owner or 'Pragma' in self.request.headers.keys():
+        if options.set_owner:
             try:
                 # switch path and path_part variables back to their original values
                 # keep local copies in this scope for safety

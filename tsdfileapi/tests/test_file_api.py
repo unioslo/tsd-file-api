@@ -888,8 +888,7 @@ class TestFileApi(unittest.TestCase):
 
     def test_ZC_setting_ownership_based_on_user_works(self):
         token = gen_test_token_for_user(self.config, self.test_user)
-        headers = {'Pragma': 'set-owner',
-                   'Authorization': 'Bearer ' + token,
+        headers = {'Authorization': 'Bearer ' + token,
                    'Filename': 'testing-chowner.txt'}
         resp = requests.put(self.stream,
                             data=lazy_file_reader(self.example_gz_aes),
