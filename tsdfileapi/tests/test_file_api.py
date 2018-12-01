@@ -180,6 +180,7 @@ class TestFileApi(unittest.TestCase):
         cls.list = cls.base_url + '/files/list'
         cls.checksum = cls.base_url + '/files/checksum'
         cls.stream = cls.base_url + '/files/stream'
+        cls.data_stream = cls.base_url + '/data/stream'
         cls.upload_stream = cls.base_url + '/files/upload_stream'
         cls.test_project = cls.test_project
 
@@ -908,29 +909,36 @@ class TestFileApi(unittest.TestCase):
     # client-side specification of groups
 
     def test_ZE_stream_works_with_client_specified_group(self):
-        headers = {'Filename': 'streamed-example-with-group-spec.csv',
-                   'Authorization': 'Bearer ' + IMPORT_TOKENS['VALID'],
+        headers = {'Authorization': 'Bearer ' + IMPORT_TOKENS['VALID'],
                    'Expect': '100-Continue'}
-        url = self.stream + '?group=' + self.test_group
+        url = self.data_stream + '/streamed-example-with-group-spec.csv?group=p11-member-group'
         resp = requests.post(url,
                              data=lazy_file_reader(self.example_csv),
                              headers=headers)
         self.assertEqual(resp.status_code, 201)
 
     def test_ZF_stream_does_not_work_with_client_specified_group_wrong_pnum(self):
-        headers = {'Filename': 'streamed-example-with-wrong-group-spec.csv',
-                   'Authorization': 'Bearer ' + IMPORT_TOKENS['VALID'],
+        headers = {'Authorization': 'Bearer ' + IMPORT_TOKENS['VALID'],
                    'Expect': '100-Continue'}
-        resp = requests.post(self.stream + '?group=' + 'p12-member-group',
+        url = self.data_stream + '/streamed-example-with-group-spec.csv?group=p12-member-group'
+        resp = requests.post(url,
                              data=lazy_file_reader(self.example_csv),
                              headers=headers)
         self.assertEqual(resp.status_code, 401)
 
     def test_ZG_stream_does_not_work_with_client_specified_group_nonsense_input(self):
-        headers = {'Filename': 'streamed-example-with-crazy-group-spec.csv',
-                   'Authorization': 'Bearer ' + IMPORT_TOKENS['VALID'],
+        headers = {'Authorization': 'Bearer ' + IMPORT_TOKENS['VALID'],
                    'Expect': '100-Continue'}
-        url = self.stream + '?group=/usr/bin/echo $PATH'
+        url = self.data_stream + '/streamed-example-with-group-spec.csv?group=%2Fusr%2Fbin%2Fecho%20%24PATH'
+        resp = requests.post(url,
+                             data=lazy_file_reader(self.example_csv),
+                             headers=headers)
+        self.assertEqual(resp.status_code, 401)
+
+    def test_ZH_stream_does_not_work_with_client_specified_group_not_a_member(self):
+        headers = {'Authorization': 'Bearer ' + IMPORT_TOKENS['VALID'],
+                   'Expect': '100-Continue'}
+        url = self.data_stream + '/streamed-example-with-group-spec.csv?group=p11-data-group'
         resp = requests.post(url,
                              data=lazy_file_reader(self.example_csv),
                              headers=headers)
@@ -990,6 +998,7 @@ def main():
         'test_ZE_stream_works_with_client_specified_group',
         'test_ZF_stream_does_not_work_with_client_specified_group_wrong_pnum',
         'test_ZG_stream_does_not_work_with_client_specified_group_nonsense_input',
+        'test_ZH_stream_does_not_work_with_client_specified_group_not_a_member',
         ])))
     map(runner.run, suite)
 

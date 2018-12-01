@@ -21,7 +21,7 @@ def tkn(secret, exp=1, role=None, pnum=None, user=None):
             if not user:
                 user = pnum + '-' + role
             claims = {'role': role, 'exp': exp, 'proj': pnum,
-                      'user': user}
+                      'user': user, 'groups': [pnum + '-member-group']}
         else:
             claims = {'role': role, 'exp': exp}
     else:

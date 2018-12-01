@@ -149,7 +149,8 @@ class AuthRequestHandler(RequestHandler):
                 # extract user info from token
                 authnz = verify_json_web_token(auth_header, project_specific_secret,
                                                               roles_allowed, pnum)
-                self.user = authnz['user']
+                self.claims = authnz['claims']
+                self.user = self.claims['user']
                 if not authnz['status']:
                     self.set_status(401)
                     raise Exception('JWT verification failed')
@@ -572,43 +573,70 @@ class ProxyHandler(AuthRequestHandler):
     def prepare(self):
         """Called after headers have been read."""
         try:
+            # 1. Set up internal variables
             try:
-                valid = self.validate_token(roles_allowed=['import_user', 'export_user', 'admin_user'])
-            except Exception as e:
-                raise e
-            try:
-                self.filename = secure_filename(self.request.headers['Filename'])
-                logging.info('supplied filename: %s', self.filename)
-            except KeyError:
-                self.filename = datetime.datetime.now().isoformat() + '.txt'
-                logging.info("filename not found - setting filename to: %s", self.filename)
-            self.chunks = tornado.queues.Queue(1) # TODO: performace tuning here
-            try:
+                self.chunks = tornado.queues.Queue(1)
                 if self.request.method == 'HEAD':
                     body = None
                 else:
                     body = self.body_producer
+            except Exception as e:
+                logging.error('Could not set up internal async variables')
+                raise e
+            # 2. Authentication and authorization
+            try:
+                authnz_status = self.validate_token(roles_allowed=['import_user', 'export_user', 'admin_user'])
+            except Exception as e:
+                logging.error('Access token invalid')
+                raise e
+            # 3. Validate project number in URI
+            try:
                 pnum = self.request.uri.split('/')[1]
-                try:
-                    assert _VALID_PNUM.match(pnum)
-                except AssertionError as e:
-                    logging.error('URI does not contain a valid pnum')
-                    raise e
+                assert _VALID_PNUM.match(pnum)
+            except AssertionError as e:
+                logging.error('URI does not contain a valid pnum')
+                raise e
+            # 4. Set the filename
+            try:
+                uri = self.request.uri
+                uri_parts = uri.split('/')
+                if '/data/stream' in uri:
+                    self.filename = secure_filename(url_unescape(uri_parts[-1]))
+                else:
+                    # TODO: deprecate this once transitioned to URI scheme
+                    self.filename = secure_filename(self.request.headers['Filename'])
+                logging.info('supplied filename: %s', self.filename)
+            except KeyError:
+                self.filename = datetime.datetime.now().isoformat() + '.txt'
+                logging.info("filename not found - setting filename to: %s", self.filename)
+            # 5. Validate group name
+            try:
+                group_memberships = authnz_status['claims']['groups']
                 try:
                     group_name = url_unescape(self.get_query_argument('group'))
                 except Exception as e:
+                    logging.info('no group specified - choosing default: member-group')
                     group_name = pnum + '-member-group'
-                try:
-                    assert IS_VALID_GROUPNAME.match(group_name)
-                except AssertionError as e:
-                    logging.error('invalid group name: %s', group_name)
-                    raise e
-                try:
-                    assert pnum == group_name.split('-')[0]
-                except AssertionError as e:
-                    logging.error('pnum in url: %s and group name: %s do not match', self.request.uri, group_name)
-                    raise e
-                # adding optional custom headers
+            except Exception as e:
+                logging.error('Could not get group name')
+                raise e
+            try:
+                assert IS_VALID_GROUPNAME.match(group_name)
+            except AssertionError as e:
+                logging.error('invalid group name: %s', group_name)
+                raise e
+            try:
+                assert pnum == group_name.split('-')[0]
+            except AssertionError as e:
+                logging.error('pnum in url: %s and group name: %s do not match', self.request.uri, group_name)
+                raise e
+            try:
+                assert group_name in group_memberships
+            except AssertionError as e:
+               logging.error('user not member of group')
+               raise e
+            # 6. Set headers for internal request
+            try:
                 if 'Content-Type' not in self.request.headers.keys():
                     logging.info('Setting content type to application/octet-stream')
                     content_type = 'application/octet-stream'
@@ -623,6 +651,11 @@ class ProxyHandler(AuthRequestHandler):
                     headers['Aes-Iv'] = self.request.headers['Aes-Iv']
                 if 'Pragma' in self.request.headers.keys():
                     headers['Pragma'] = self.request.headers['Pragma']
+            except Exception as e:
+                logging.error('Could not prepare headers for async request handling')
+                raise e
+            # 7. Do async request to handle incoming data
+            try:
                 self.fetch_future = AsyncHTTPClient().fetch(
                     'http://localhost:%d/%s/files/upload_stream?group=%s' % (options.port, pnum, group_name),
                     method=self.request.method,
@@ -634,7 +667,7 @@ class ProxyHandler(AuthRequestHandler):
                     # in seconds, both
                     request_timeout=12000.0,
                     headers=headers)
-            except (AttributeError, HTTPError, AssertionError) as e:
+            except Exception as e:
                 logging.error('Problem in async client')
                 logging.error(e)
                 raise e
@@ -656,7 +689,7 @@ class ProxyHandler(AuthRequestHandler):
         yield self.chunks.put(chunk)
 
     @gen.coroutine
-    def post(self, pnum):
+    def post(self, pnum, filename=None):
         """Called after entire body has been read."""
         yield self.chunks.put(None)
         # wait for request to finish.
@@ -665,7 +698,7 @@ class ProxyHandler(AuthRequestHandler):
         self.write(response.body)
 
     @gen.coroutine
-    def put(self, pnum):
+    def put(self, pnum, filename=None):
         """Called after entire body has been read."""
         yield self.chunks.put(None)
         # wait for request to finish.
@@ -673,7 +706,7 @@ class ProxyHandler(AuthRequestHandler):
         self.set_status(response.code)
         self.write(response.body)
 
-    def head(self, pnum):
+    def head(self, pnum, filename=None):
         self.set_status(201)
 
 
@@ -853,6 +886,7 @@ def main():
         ('/(.*)/files/health', HealthCheckHandler),
         ('/(.*)/files/upload_stream', StreamHandler),
         ('/(.*)/files/stream', ProxyHandler),
+        ('/(.*)/data/stream/(.*)', ProxyHandler),
         ('/(.*)/files/upload', FormDataHandler),
         ('/(.*)/files/checksum', ChecksumHandler),
         ('/(.*)/files/list', MetaDataHandler),
