@@ -1,8 +1,4 @@
 
-## access control
-
-* get group and filename from URL: /stream/group/filename
-
 ## deprecate
 
 * POST, PATCH
@@ -10,4 +6,14 @@
 * /checksum
 * /list
 * /MetaDataHandler
-* `to_user` implementation
+
+## release
+
+* announce new default behaviour: change in upload directory to /file-api/pXX-member-group
+* deploy tsd-auth-api 0.7.9
+* deploy 0.6.1
+* enhance clients
+* notify 3rd party clients about transition of filename to URL
+* deprecate filename in header, and automatic filename construction
+* implement choosing group in data.tsd.usit.no, tsd-api-client
+* announce group-based access control feature
