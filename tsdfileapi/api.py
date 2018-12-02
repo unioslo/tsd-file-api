@@ -600,7 +600,7 @@ class ProxyHandler(AuthRequestHandler):
             try:
                 uri = self.request.uri
                 uri_parts = uri.split('/')
-                if '/data/stream' in uri:
+                if len(uri_parts) == 5:
                     self.filename = secure_filename(url_unescape(uri_parts[-1]))
                 else:
                     # TODO: deprecate this once transitioned to URI scheme
@@ -886,7 +886,7 @@ def main():
         ('/(.*)/files/health', HealthCheckHandler),
         ('/(.*)/files/upload_stream', StreamHandler),
         ('/(.*)/files/stream', ProxyHandler),
-        ('/(.*)/data/stream/(.*)', ProxyHandler),
+        ('/(.*)/files/stream/(.*)', ProxyHandler),
         ('/(.*)/files/upload', FormDataHandler),
         ('/(.*)/files/checksum', ChecksumHandler),
         ('/(.*)/files/list', MetaDataHandler),
