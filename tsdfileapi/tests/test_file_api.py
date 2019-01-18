@@ -734,7 +734,7 @@ class TestFileApi(unittest.TestCase):
                              headers=headers)
         self.assertEqual(resp1.status_code, 201)
         with open(self.uploads_folder + '/' + self.test_group + '/decrypted-aes.csv', 'r') as uploaded_file:
-           self.assertEqual('x,y\n4,5\n2,1\n', uploaded_file.read())
+            self.assertEqual('x,y\n4,5\n2,1\n', uploaded_file.read())
 
     def test_Zd0_stream_aes_with_iv_and_custom_content_type_decrypt_works(self):
         headers = {'Authorization': 'Bearer ' + IMPORT_TOKENS['VALID'],
@@ -747,7 +747,7 @@ class TestFileApi(unittest.TestCase):
                              headers=headers)
         self.assertEqual(resp1.status_code, 201)
         with open(self.uploads_folder + '/' + self.test_group + '/decrypted-aes2.csv', 'r') as uploaded_file:
-           self.assertEqual('x,y\n4,5\n2,1\n', uploaded_file.read())
+            self.assertEqual('x,y\n4,5\n2,1\n', uploaded_file.read())
 
     def test_Zd1_stream_binary_aes_with_iv_and_custom_content_type_decrypt_works(self):
         headers = {'Authorization': 'Bearer ' + IMPORT_TOKENS['VALID'],
@@ -760,7 +760,7 @@ class TestFileApi(unittest.TestCase):
                              headers=headers)
         self.assertEqual(resp1.status_code, 201)
         with open(self.uploads_folder + '/' + self.test_group + '/decrypted-binary-aes.csv', 'r') as uploaded_file:
-           self.assertEqual('x,y\n4,5\n2,1\n', uploaded_file.read())
+            self.assertEqual('x,y\n4,5\n2,1\n', uploaded_file.read())
 
     def test_Ze_stream_tar_aes_with_custom_content_type_decrypt_untar_works(self):
         headers = {'Authorization': 'Bearer ' + IMPORT_TOKENS['VALID'],
