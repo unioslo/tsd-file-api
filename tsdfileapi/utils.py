@@ -85,7 +85,8 @@ def project_import_dir(uploads_folder, pnum, keyid=None, formid=None):
         folder = uploads_folder['default'].replace('pXX', pnum)
     return os.path.normpath(folder)
 
-def project_sns_dir(sns_uploads_folder, pnum, keyid=None, formid=None, test=False):
+def project_sns_dir(sns_uploads_folder, pnum, keyid=None, formid=None, test=False,
+                    use_hidden_tsd_folder=False):
     """
     Construct a path for sns uploads.
 
@@ -113,7 +114,10 @@ def project_sns_dir(sns_uploads_folder, pnum, keyid=None, formid=None, test=Fals
     path
 
     """
-    base_pattern = '/tsd/pXX/data/durable/nettskjema-submissions/keyid/formid'
+    if not use_hidden_tsd_folder:
+        base_pattern = '/tsd/pXX/data/durable/nettskjema-submissions/keyid/formid'
+    else:
+        base_pattern = '/tsd/pXX/data/durable/nettskjema-submissions/.tsd/keyid/formid'
     try:
         assert _VALID_PNUM.match(pnum)
         durable = sns_uploads_folder.replace('pXX', pnum)

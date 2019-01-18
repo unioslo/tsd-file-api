@@ -366,6 +366,12 @@ class TestFileApi(unittest.TestCase):
         return resp
 
 
+    def check_copied_sns_file_exists(self, filename):
+        file = (self.sns_uploads_folder + '/' + filename)
+        hidden_file = file.replace(self.config['public_key_id'], '.tsd/' + self.config['public_key_id'])
+        self.assertTrue(os.path.lexists(hidden_file))
+
+
     def t_post_mp(self, uploads_folder, newfilename, url):
         target = os.path.normpath(uploads_folder + '/' + newfilename)
         resp = self.mp_fd(newfilename, uploads_folder, url, 'POST')
@@ -379,7 +385,9 @@ class TestFileApi(unittest.TestCase):
 
 
     def test_F1_post_file_multi_part_form_data_sns(self):
-        self.t_post_mp(self.sns_uploads_folder, 'sns-uploaded-example.csv', self.sns_upload)
+        filename = 'sns-uploaded-example.csv'
+        self.t_post_mp(self.sns_uploads_folder, filename, self.sns_upload)
+        self.check_copied_sns_file_exists(filename)
 
 
     def test_FA_post_multiple_files_multi_part_form_data(self):
@@ -427,7 +435,9 @@ class TestFileApi(unittest.TestCase):
 
 
     def test_G1_patch_file_multi_part_form_data_sns(self):
-        self.t_patch_mp(self.sns_uploads_folder, 'sns-uploaded-example-2.csv', self.sns_upload)
+        filename = 'sns-uploaded-example-2.csv'
+        self.t_patch_mp(self.sns_uploads_folder, filename, self.sns_upload)
+        self.check_copied_sns_file_exists(filename)
 
 
     def test_GA_patch_multiple_files_multi_part_form_data(self):
@@ -456,7 +466,6 @@ class TestFileApi(unittest.TestCase):
 
 
     def t_put_mp(self, uploads_folder, newfilename, url):
-        newfilename = 'uploaded-example-3.csv'
         target = os.path.normpath(uploads_folder + '/' + newfilename)
         # remove file from previous round
         self.remove(uploads_folder, newfilename)
@@ -476,7 +485,9 @@ class TestFileApi(unittest.TestCase):
 
 
     def test_H1_put_file_multi_part_form_data_sns(self):
-        self.t_put_mp(self.sns_uploads_folder, 'sns-uploaded-example-3.csv', self.sns_upload)
+        filename = 'sns-uploaded-example-3.csv'
+        self.t_put_mp(self.sns_uploads_folder, filename, self.sns_upload)
+        self.check_copied_sns_file_exists(filename)
 
 
     def test_HA_put_multiple_files_multi_part_form_data(self):

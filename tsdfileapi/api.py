@@ -189,7 +189,8 @@ class GenericFormDataHandler(AuthRequestHandler):
                     uploads_folder=options.uploads_folder,
                     folder_func=project_import_dir,
                     keyid=None,
-                    formid=None):
+                    formid=None,
+                    copy_to_hidden_tsd_subfolder=False):
         try:
             for i in range(len(self.request.files['file'])):
                 filename = secure_filename(self.request.files['file'][i]['filename'])
@@ -200,7 +201,8 @@ class GenericFormDataHandler(AuthRequestHandler):
                 # add all optional parameters to file writer
                 # this is used for nettskjema specific backend
                 written = self.write_file(filemode, filename, filebody, pnum,
-                                uploads_folder, folder_func, keyid, formid)
+                                uploads_folder, folder_func, keyid, formid,
+                                copy_to_hidden_tsd_subfolder)
                 assert written
             return True
         except Exception as e:
@@ -217,9 +219,9 @@ class GenericFormDataHandler(AuthRequestHandler):
                    uploads_folder=options.uploads_folder,
                    folder_func=project_import_dir,
                    keyid=None,
-                   formid=None):
+                   formid=None,
+                   copy_to_hidden_tsd_subfolder=False):
         try:
-            # create the filename
             project_dir = folder_func(uploads_folder, pnum, keyid, formid)
             self.path = os.path.normpath(project_dir + '/' + filename)
             # add the partial file indicator, check existence
@@ -237,6 +239,12 @@ class GenericFormDataHandler(AuthRequestHandler):
                 f.write(filebody)
                 os.rename(self.path, self.path_part)
                 os.chmod(self.path_part, _RW_RW___)
+            if copy_to_hidden_tsd_subfolder:
+                tsd_hidden_folder = folder_func(uploads_folder, pnum, keyid, formid,
+                                                use_hidden_tsd_folder=True)
+                subfolder_path = os.path.normpath(tsd_hidden_folder + '/' + filename)
+                shutil.copy(self.path_part, subfolder_path)
+                os.chmod(subfolder_path, _RW_RW___)
             return True
         except Exception as e:
             logging.error(e)
@@ -281,7 +289,8 @@ class SnsFormDataHandler(GenericFormDataHandler):
                          uploads_folder=options.sns_uploads_folder,
                          folder_func=project_sns_dir,
                          keyid=keyid,
-                         formid=formid)
+                         formid=formid,
+                         copy_to_hidden_tsd_subfolder=True)
             self.set_status(201)
             self.write({'message': 'data uploaded'})
         except Exception:
@@ -311,7 +320,8 @@ class StreamHandler(AuthRequestHandler):
 
     def decrypt_aes_key(self, b64encoded_pgpencrypted_key):
         gpg = _import_keys(CONFIG)
-        decr_aes_key = str(gpg.decrypt(base64.b64decode(b64encoded_pgpencrypted_key))).strip()
+        key = base64.b64decode(b64encoded_pgpencrypted_key)
+        decr_aes_key = str(gpg.decrypt(key)).strip()
         return decr_aes_key
 
     def start_openssl_proc(self, output_file=None, base64=True):
@@ -601,7 +611,9 @@ class ProxyHandler(AuthRequestHandler):
                 uri = self.request.uri
                 uri_parts = uri.split('/')
                 if len(uri_parts) == 5:
-                    self.filename = secure_filename(url_unescape(uri_parts[-1]))
+                    basename = uri_parts[-1]
+                    filename = basename.split('?')[0]
+                    self.filename = secure_filename(url_unescape(filename))
                 else:
                     # TODO: deprecate this once transitioned to URI scheme
                     self.filename = secure_filename(self.request.headers['Filename'])
@@ -638,7 +650,6 @@ class ProxyHandler(AuthRequestHandler):
             # 6. Set headers for internal request
             try:
                 if 'Content-Type' not in self.request.headers.keys():
-                    logging.info('Setting content type to application/octet-stream')
                     content_type = 'application/octet-stream'
                 elif 'Content-Type' in self.request.headers.keys():
                     content_type = self.request.headers['Content-Type']
