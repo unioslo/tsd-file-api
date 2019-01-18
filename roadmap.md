@@ -9,8 +9,8 @@
 
 ## release
 
-* announce new default behaviour: change in upload directory to /file-api/pXX-member-group
 * deploy tsd-auth-api 0.7.9
+* announce new default behaviour: change in upload directory to /file-api/pXX-member-group
 * deploy 0.6.1
 * enhance clients
 * notify 3rd party clients about transition of filename to URL
