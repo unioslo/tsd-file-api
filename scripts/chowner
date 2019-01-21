@@ -117,8 +117,8 @@ def move_data_to_group_folder(path, group_name, api_user):
     """
     Move uploaded data (files and folders) to group folder.
 
-    Moves data from /tsd/pXX/data/durable/file-api to
-    /tsd/pXX/data/durable/file-api/pXX-group-name.
+    Moves data from /tsd/pXX/data/durable/file-import to
+    /tsd/pXX/data/durable/file-import/pXX-group-name.
 
     The group folder is created if it does not exist, and the
     ownership is set to file-api-user:pXX-group-name.
