@@ -681,7 +681,7 @@ class TestFileApi(unittest.TestCase):
     def test_Y_invalid_project_number_rejected(self):
         data = {'submission_id':11, 'age':193}
         headers = {'Authorization': 'Bearer ' + IMPORT_TOKENS['VALID']}
-        resp = requests.post('http://localhost:3003/p12-2193-1349213*&^/storage/form_63332',
+        resp = requests.post('http://localhost:' + str(self.config['port']) + '/p12-2193-1349213*&^/storage/form_63332',
                              data=json.dumps(data), headers=headers)
         self.assertEqual(resp.status_code, 401)
 
@@ -857,7 +857,8 @@ class TestFileApi(unittest.TestCase):
             pass
         headers = {'Authorization': 'Bearer ' + P12_TOKEN}
         files = {'file': (newfilename, open(self.example_csv))}
-        resp1 = requests.post('http://localhost:3003/p12/files/upload', files=files, headers=headers)
+        # remove hard-coded port from this, and similar tests
+        resp1 = requests.post('http://localhost:' + str(self.config['port']) + '/p12/files/upload', files=files, headers=headers)
         self.assertEqual(resp1.status_code, 201)
         uploaded_file = os.path.normpath(self.uploads_folder_p12 + '/' + newfilename)
         self.assertEqual(md5sum(self.example_csv), md5sum(uploaded_file))
@@ -869,7 +870,7 @@ class TestFileApi(unittest.TestCase):
         headers2 = {'Filename': 'streamed-put-example-p12.csv',
                    'Authorization': 'Bearer ' + P12_TOKEN,
                    'Expect': '100-Continue'}
-        resp2 = requests.put('http://localhost:3003/p12/files/stream',
+        resp2 = requests.put('http://localhost:' + str(self.config['port']) + '/p12/files/stream',
                             data=lazy_file_reader(self.example_csv), headers=headers2)
         self.assertEqual(resp2.status_code, 201)
         uploaded_file2 = os.path.normpath(self.uploads_folder_p12 + '/p12-member-group/' + newfilename2)

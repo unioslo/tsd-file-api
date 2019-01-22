@@ -70,6 +70,7 @@ define('uploads_folder', CONFIG['uploads_folder'])
 define('sns_uploads_folder', CONFIG['sns_uploads_folder'])
 define('secret_store', load_jwk_store(CONFIG))
 define('set_owner', CONFIG['set_owner'])
+define('chowner_path', CONFIG['chowner_path'])
 
 
 class AuthRequestHandler(RequestHandler):
@@ -557,7 +558,7 @@ class StreamHandler(AuthRequestHandler):
                 path, path_part = self.path_part, self.path
                 os.chmod(path, _RW______)
                 logging.info('Attempting to change ownership of %s to %s', path, self.user)
-                subprocess.call(['sudo', '/bin/chowner', path,
+                subprocess.call(['sudo', options.chowner_path, path,
                                  self.user, options.api_user, self.group_name])
             except Exception as e:
                 logging.info('could not change file mode or owner for some reason')

@@ -4,7 +4,7 @@ from setuptools import setup
 
 setup(
     name='tsd-file-api',
-    version='0.7.0',
+    version='0.7.1',
     description='A REST API for handling files and data streams',
     author='Leon du Toit',
     author_email='l.c.d.toit@usit.uio.no',
@@ -13,6 +13,7 @@ setup(
     package_data={
         'tsdfileapi': [
             'tests/*.py',
+            'tests/*.pem'
             'data/*',
             'config/file-api-config.yaml.example',
             'config/file-api.service',
