@@ -13,7 +13,7 @@ setup(
     package_data={
         'tsdfileapi': [
             'tests/*.py',
-            'tests/*.pem'
+            'tests/*.pem',
             'data/*',
             'config/file-api-config.yaml.example',
             'config/file-api.service',
