@@ -121,7 +121,9 @@ def move_data_to_group_folder(path, group_name, api_user):
     /tsd/pXX/data/durable/file-import/pXX-group-name.
 
     The group folder is created if it does not exist, and the
-    ownership is set to file-api-user:pXX-group-name.
+    ownership is set to file-api-user:pXX-group-name. Users
+    can delete from the group folder, or move files away from
+    there, but not from the file-import folder - we own that.
 
     If the data is directory it is moved recursively.
 
@@ -136,6 +138,7 @@ def move_data_to_group_folder(path, group_name, api_user):
     boolean
 
     """
+    mode = stat.S_ISGID | stat.S_IRWXU | stat.S_IRWXG | stat.S_IROTH
     try:
         path_segments = path.split('/')
         filename = path_segments[-1]
@@ -148,6 +151,11 @@ def move_data_to_group_folder(path, group_name, api_user):
             file_api_user_id = pwd.getpwnam(api_user).pw_uid
             group_id = grp.getgrnam(group_name).gr_gid
             os.chown(group_folder, file_api_user_id, group_id)
+            os.chmod(group_folder, mode)
+        # TODO:
+        # run this for a while to fix existing folders
+        # then remove since it is redundant in the long run
+        os.chmod(group_folder, mode)
         new_path = os.path.normpath(group_folder + '/' + filename)
         if os.path.isdir(path):
             if os.path.lexists(new_path):
