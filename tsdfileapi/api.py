@@ -244,8 +244,13 @@ class GenericFormDataHandler(AuthRequestHandler):
                 tsd_hidden_folder = folder_func(uploads_folder, pnum, keyid, formid,
                                                 use_hidden_tsd_folder=True)
                 subfolder_path = os.path.normpath(tsd_hidden_folder + '/' + filename)
-                shutil.copy(self.path_part, subfolder_path)
-                os.chmod(subfolder_path, _RW_RW___)
+                try:
+                    shutil.copy(self.path_part, subfolder_path)
+                    os.chmod(subfolder_path, _RW_RW___)
+                except Exception as e:
+                    logging.error(e)
+                    logging.error('Could not copy file %s to .tsd folder', self.path_part)
+                    return False
             return True
         except Exception as e:
             logging.error(e)
