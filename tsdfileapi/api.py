@@ -727,27 +727,6 @@ class ProxyHandler(AuthRequestHandler):
         self.set_status(201)
 
 
-class MetaDataHandler(AuthRequestHandler):
-
-    def prepare(self):
-        try:
-            self.authnz = self.validate_token(roles_allowed=['import_user', 'export_user', 'admin_user'])
-        except Exception as e:
-            self.finish({'message': 'Authorization failed'})
-
-    def get(self, pnum):
-        # calls to None are for compatibility with the signature of project_sns_dir
-        _dir = project_import_dir(options.uploads_folder, pnum, None, None)
-        files = os.listdir(_dir)
-        times = map(lambda x:
-                    datetime.datetime.fromtimestamp(
-                        os.stat(os.path.normpath(_dir + '/' + x)).st_mtime).isoformat(), files)
-        file_info = OrderedDict()
-        for i in zip(files, times):
-            file_info[i[0]] = i[1]
-        self.write(file_info)
-
-
 class TableCreatorHandler(AuthRequestHandler):
 
     """
@@ -879,7 +858,6 @@ def main():
         ('/(.*)/files/stream', ProxyHandler),
         ('/(.*)/files/stream/(.*)', ProxyHandler),
         ('/(.*)/files/upload', FormDataHandler),
-        ('/(.*)/files/list', MetaDataHandler),
         # this has to present the same interface as
         # the postgrest API in terms of endpoints
         # storage backends should be transparent

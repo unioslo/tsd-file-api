@@ -177,7 +177,6 @@ class TestFileApi(unittest.TestCase):
         cls.upload = cls.base_url + '/files/upload'
         cls.sns_upload = cls.base_url + '/sns/' + cls.config['test_keyid'] + '/' + cls.config['test_formid']
         cls.upload_sns_wrong = cls.base_url + '/sns/' + 'WRONG' + '/' + cls.config['test_formid']
-        cls.list = cls.base_url + '/files/list'
         cls.stream = cls.base_url + '/files/stream'
         cls.upload_stream = cls.base_url + '/files/upload_stream'
         cls.test_project = cls.test_project
@@ -240,7 +239,8 @@ class TestFileApi(unittest.TestCase):
     # Import Auth
     #------------
 
-    def check_endpoints(self, headers, files):
+    def check_endpoints(self, headers):
+        files = {'file': ('example.csv', open(self.example_csv))}
         for url in [self.upload, self.stream, self.upload_stream, self.upload]:
             resp = requests.put(url, headers=headers, files=files)
             self.assertEqual(resp.status_code, 401)
@@ -252,42 +252,27 @@ class TestFileApi(unittest.TestCase):
 
     def test_A_mangled_valid_token_rejected(self):
         headers = {'Authorization': 'Bearer ' + IMPORT_TOKENS['MANGLED_VALID']}
-        files = {'file': ('example.csv', open(self.example_csv))}
-        resp = requests.get(self.list, headers=headers)
-        self.assertEqual(resp.status_code, 401)
-        self.check_endpoints(headers, files)
+        self.check_endpoints(headers)
 
 
     def test_B_invalid_signature_rejected(self):
         headers = {'Authorization': 'Bearer ' + IMPORT_TOKENS['INVALID_SIGNATURE']}
-        files = {'file': ('example.csv', open(self.example_csv))}
-        resp1 = requests.get(self.list, headers=headers)
-        self.assertEqual(resp1.status_code, 401)
-        self.check_endpoints(headers, files)
+        self.check_endpoints(headers)
 
 
     def test_C_token_with_wrong_role_rejected(self):
         headers = {'Authorization': 'Bearer ' + IMPORT_TOKENS['WRONG_ROLE']}
-        files = {'file': ('example.csv', open(self.example_csv))}
-        resp1 = requests.get(self.list, headers=headers)
-        self.assertEqual(resp1.status_code, 401)
-        self.check_endpoints(headers, files)
+        self.check_endpoints(headers)
 
 
     def test_D_timed_out_token_rejected(self):
         headers = {'Authorization': 'Bearer ' + IMPORT_TOKENS['TIMED_OUT']}
-        files = {'file': ('example.csv', open(self.example_csv))}
-        resp1 = requests.get(self.list, headers=headers)
-        self.assertEqual(resp1.status_code, 401)
-        self.check_endpoints(headers, files)
+        self.check_endpoints(headers)
 
 
     def test_E_unauthenticated_request_rejected(self):
         headers = {}
-        files = {'file': ('example.csv', open(self.example_csv))}
-        resp1 = requests.get(self.list, headers=headers)
-        self.assertEqual(resp1.status_code, 401)
-        self.check_endpoints(headers, files)
+        self.check_endpoints(headers)
 
 
     # uploading files and streams
@@ -504,16 +489,6 @@ class TestFileApi(unittest.TestCase):
         resp = requests.put(self.stream, data=lazy_file_reader(self.example_csv), headers=headers)
         self.assertEqual(md5sum(self.example_csv), md5sum(uploaded_file))
         self.assertEqual(resp.status_code, 201)
-
-    # Metadata
-    #---------
-
-
-    def test_L_get_file_list(self):
-        headers = {'Authorization': 'Bearer ' + IMPORT_TOKENS['VALID']}
-        resp = requests.get(self.list, headers=headers)
-        data = json.loads(resp.text)
-        self.assertTrue('uploaded-example.csv' in data.keys())
 
 
     # Informational
@@ -921,7 +896,6 @@ def main():
         'test_H4XX_when_no_keydir_exists',
         'test_I_put_file_to_streaming_endpoint_no_chunked_encoding_data_binary',
         'test_K_put_stream_file_chunked_transfer_encoding',
-        'test_L_get_file_list',
         'test_N_head_on_uploads_fails_when_it_should',
         'test_O_head_on_uploads_succeeds_when_conditions_are_met',
         'test_S_create_table',
