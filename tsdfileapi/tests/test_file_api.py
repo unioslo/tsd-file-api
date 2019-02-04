@@ -178,7 +178,6 @@ class TestFileApi(unittest.TestCase):
         cls.sns_upload = cls.base_url + '/sns/' + cls.config['test_keyid'] + '/' + cls.config['test_formid']
         cls.upload_sns_wrong = cls.base_url + '/sns/' + 'WRONG' + '/' + cls.config['test_formid']
         cls.list = cls.base_url + '/files/list'
-        cls.checksum = cls.base_url + '/files/checksum'
         cls.stream = cls.base_url + '/files/stream'
         cls.upload_stream = cls.base_url + '/files/upload_stream'
         cls.test_project = cls.test_project
@@ -241,23 +240,22 @@ class TestFileApi(unittest.TestCase):
     # Import Auth
     #------------
 
+    def check_endpoints(self, headers, files):
+        for url in [self.upload, self.stream, self.upload_stream, self.upload]:
+            resp = requests.put(url, headers=headers, files=files)
+            self.assertEqual(resp.status_code, 401)
+            resp = requests.post(url, headers=headers, files=files)
+            self.assertEqual(resp.status_code, 401)
+            resp = requests.patch(url, headers=headers, files=files)
+            self.assertEqual(resp.status_code, 401)
+
+
     def test_A_mangled_valid_token_rejected(self):
         headers = {'Authorization': 'Bearer ' + IMPORT_TOKENS['MANGLED_VALID']}
         files = {'file': ('example.csv', open(self.example_csv))}
-        resp1 = requests.get(self.list, headers=headers)
-        self.assertEqual(resp1.status_code, 401)
-        resp2 = requests.get(self.checksum, headers=headers)
-        self.assertEqual(resp2.status_code, 401)
-        resp3 = requests.post(self.upload, headers=headers, files=files)
-        self.assertEqual(resp3.status_code, 401)
-        resp4 = requests.post(self.stream, headers=headers, files=files)
-        self.assertEqual(resp4.status_code, 401)
-        resp5 = requests.post(self.upload_stream, headers=headers, files=files)
-        self.assertEqual(resp5.status_code, 401)
-        resp6 = requests.patch(self.upload, headers=headers, files=files)
-        self.assertEqual(resp6.status_code, 401)
-        resp7 = requests.put(self.upload, headers=headers, files=files)
-        self.assertEqual(resp7.status_code, 401)
+        resp = requests.get(self.list, headers=headers)
+        self.assertEqual(resp.status_code, 401)
+        self.check_endpoints(headers, files)
 
 
     def test_B_invalid_signature_rejected(self):
@@ -265,18 +263,7 @@ class TestFileApi(unittest.TestCase):
         files = {'file': ('example.csv', open(self.example_csv))}
         resp1 = requests.get(self.list, headers=headers)
         self.assertEqual(resp1.status_code, 401)
-        resp2 = requests.get(self.checksum, headers=headers)
-        self.assertEqual(resp2.status_code, 401)
-        resp3 = requests.post(self.upload, headers=headers, files=files)
-        self.assertEqual(resp3.status_code, 401)
-        resp4 = requests.post(self.stream, headers=headers, files=files)
-        self.assertEqual(resp4.status_code, 401)
-        resp5 = requests.post(self.upload_stream, headers=headers, files=files)
-        self.assertEqual(resp5.status_code, 401)
-        resp6 = requests.patch(self.upload, headers=headers, files=files)
-        self.assertEqual(resp6.status_code, 401)
-        resp7 = requests.put(self.upload, headers=headers, files=files)
-        self.assertEqual(resp7.status_code, 401)
+        self.check_endpoints(headers, files)
 
 
     def test_C_token_with_wrong_role_rejected(self):
@@ -284,18 +271,7 @@ class TestFileApi(unittest.TestCase):
         files = {'file': ('example.csv', open(self.example_csv))}
         resp1 = requests.get(self.list, headers=headers)
         self.assertEqual(resp1.status_code, 401)
-        resp2 = requests.get(self.checksum, headers=headers)
-        self.assertEqual(resp2.status_code, 401)
-        resp3 = requests.post(self.upload, headers=headers, files=files)
-        self.assertEqual(resp3.status_code, 401)
-        resp4 = requests.post(self.stream, headers=headers, files=files)
-        self.assertEqual(resp4.status_code, 401)
-        resp5 = requests.post(self.upload_stream, headers=headers, files=files)
-        self.assertEqual(resp5.status_code, 401)
-        resp6 = requests.patch(self.upload, headers=headers, files=files)
-        self.assertEqual(resp6.status_code, 401)
-        resp7 = requests.put(self.upload, headers=headers, files=files)
-        self.assertEqual(resp7.status_code, 401)
+        self.check_endpoints(headers, files)
 
 
     def test_D_timed_out_token_rejected(self):
@@ -303,18 +279,7 @@ class TestFileApi(unittest.TestCase):
         files = {'file': ('example.csv', open(self.example_csv))}
         resp1 = requests.get(self.list, headers=headers)
         self.assertEqual(resp1.status_code, 401)
-        resp2 = requests.get(self.checksum, headers=headers)
-        self.assertEqual(resp2.status_code, 401)
-        resp3 = requests.post(self.upload, headers=headers, files=files)
-        self.assertEqual(resp3.status_code, 401)
-        resp4 = requests.post(self.stream, headers=headers, files=files)
-        self.assertEqual(resp4.status_code, 401)
-        resp5 = requests.post(self.upload_stream, headers=headers, files=files)
-        self.assertEqual(resp5.status_code, 401)
-        resp6 = requests.patch(self.upload, headers=headers, files=files)
-        self.assertEqual(resp6.status_code, 401)
-        resp7 = requests.put(self.upload, headers=headers, files=files)
-        self.assertEqual(resp7.status_code, 401)
+        self.check_endpoints(headers, files)
 
 
     def test_E_unauthenticated_request_rejected(self):
@@ -322,18 +287,7 @@ class TestFileApi(unittest.TestCase):
         files = {'file': ('example.csv', open(self.example_csv))}
         resp1 = requests.get(self.list, headers=headers)
         self.assertEqual(resp1.status_code, 401)
-        resp2 = requests.get(self.checksum, headers=headers)
-        self.assertEqual(resp2.status_code, 401)
-        resp3 = requests.post(self.upload, headers=headers, files=files)
-        self.assertEqual(resp3.status_code, 401)
-        resp4 = requests.post(self.stream, headers=headers, files=files)
-        self.assertEqual(resp4.status_code, 401)
-        resp5 = requests.post(self.upload_stream, headers=headers, files=files)
-        self.assertEqual(resp5.status_code, 401)
-        resp6 = requests.patch(self.upload, headers=headers, files=files)
-        self.assertEqual(resp6.status_code, 401)
-        resp7 = requests.put(self.upload, headers=headers, files=files)
-        self.assertEqual(resp7.status_code, 401)
+        self.check_endpoints(headers, files)
 
 
     # uploading files and streams
@@ -561,16 +515,6 @@ class TestFileApi(unittest.TestCase):
         data = json.loads(resp.text)
         self.assertTrue('uploaded-example.csv' in data.keys())
 
-
-    def test_M_get_file_checksum(self):
-        src = os.path.normpath(self.uploads_folder + '/' + 'uploaded-example.csv')
-        headers = {'Authorization': 'Bearer ' + IMPORT_TOKENS['VALID']}
-        resp = requests.get(self.base_url + '/files/checksum?filename=uploaded-example.csv&algorithm=md5',
-                            headers=headers)
-        data = json.loads(resp.text)
-        self.assertEqual(resp.status_code, 200)
-        self.assertEqual(data['checksum'], md5sum(src))
-        self.assertEqual(data['algorithm'], 'md5')
 
     # Informational
     #--------------
@@ -978,7 +922,6 @@ def main():
         'test_I_put_file_to_streaming_endpoint_no_chunked_encoding_data_binary',
         'test_K_put_stream_file_chunked_transfer_encoding',
         'test_L_get_file_list',
-        'test_M_get_file_checksum',
         'test_N_head_on_uploads_fails_when_it_should',
         'test_O_head_on_uploads_succeeds_when_conditions_are_met',
         'test_S_create_table',

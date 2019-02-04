@@ -748,32 +748,6 @@ class MetaDataHandler(AuthRequestHandler):
         self.write(file_info)
 
 
-class ChecksumHandler(AuthRequestHandler):
-
-    # TODO: consider removing
-
-    def md5sum(self, filename, blocksize=65536):
-        hash = hashlib.md5()
-        with open(filename, "rb") as f:
-            for block in iter(lambda: f.read(blocksize), b""):
-                hash.update(block)
-        return hash.hexdigest()
-
-    def prepare(self):
-        try:
-            self.authnz = self.validate_token(roles_allowed=['import_user', 'export_user', 'admin_user'])
-        except Exception as e:
-            self.finish({'message': 'Authorization failed'})
-
-    def get(self, pnum):
-        # Consider: http://www.tornadoweb.org/en/stable/escape.html#tornado.escape.url_unescape
-        filename = secure_filename(self.get_query_argument('filename'))
-        project_dir = project_import_dir(options.uploads_folder, pnum, None, None)
-        path = os.path.normpath(project_dir + '/' + filename)
-        checksum = self.md5sum(path)
-        self.write({'checksum': checksum, 'algorithm': 'md5'})
-
-
 class TableCreatorHandler(AuthRequestHandler):
 
     """
@@ -905,7 +879,6 @@ def main():
         ('/(.*)/files/stream', ProxyHandler),
         ('/(.*)/files/stream/(.*)', ProxyHandler),
         ('/(.*)/files/upload', FormDataHandler),
-        ('/(.*)/files/checksum', ChecksumHandler),
         ('/(.*)/files/list', MetaDataHandler),
         # this has to present the same interface as
         # the postgrest API in terms of endpoints
