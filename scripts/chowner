@@ -151,7 +151,7 @@ def move_data_to_group_folder(path, group_name, api_user):
             file_api_user_id = pwd.getpwnam(api_user).pw_uid
             group_id = grp.getgrnam(group_name).gr_gid
             os.chown(group_folder, file_api_user_id, group_id)
-            os.chmod(group_folder, mode) # only need this after ceration
+            os.chmod(group_folder, mode) # only need this after creation
         new_path = os.path.normpath(group_folder + '/' + filename)
         if os.path.isdir(path):
             if os.path.lexists(new_path):
