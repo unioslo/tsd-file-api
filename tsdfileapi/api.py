@@ -636,8 +636,11 @@ class ProxyHandler(AuthRequestHandler):
                     logging.info('no group specified - choosing default: member-group')
                     group_name = pnum + '-member-group'
             except Exception as e:
-                logging.error('Could not get group name')
-                raise e
+                logging.info('Could not get group info from JWT - choosing default: member-group')
+                # this happens with basic auth, anonymous end-users
+                # then we only allow upload the member group
+                group_name = pnum + '-member-group'
+                group_memberships = [group_name]
             try:
                 assert IS_VALID_GROUPNAME.match(group_name)
             except AssertionError as e:
