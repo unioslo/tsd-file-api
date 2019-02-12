@@ -41,13 +41,16 @@ def gen_test_tokens(config):
     store = load_jwk_store(config)
     secret = store[proj]
     wrong = store['p01']
+    user = config['test_user']
     return {
         'VALID': tkn(secret, role='import_user', pnum=proj),
         'MANGLED_VALID': tkn(secret, role='import_user', pnum=proj)[:-1],
         'INVALID_SIGNATURE': tkn(wrong, role='import_user', pnum=proj),
         'WRONG_ROLE': tkn(secret, role='wrong_user', pnum=proj),
         'TIMED_OUT': tkn(secret, exp=-1, role='import_user', pnum=proj),
-        'WRONG_PROJECT': tkn(wrong, exp=-1, role='import_user', pnum='p01')
+        'WRONG_PROJECT': tkn(wrong, exp=-1, role='import_user', pnum='p01'),
+        'EXPORT': tkn(secret, role='export_user', pnum=proj, user=user),
+        'ADMIN': tkn(secret, role='admin_user', pnum=proj, user=user)
     }
 
 def get_test_token_for_p12(config):

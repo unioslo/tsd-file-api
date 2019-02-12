@@ -33,7 +33,7 @@ from tornado.web import Application, RequestHandler, stream_request_body, \
 # pylint: disable=relative-import
 from auth import verify_json_web_token
 from utils import secure_filename, project_import_dir, project_sns_dir, \
-                  IS_VALID_GROUPNAME
+                  IS_VALID_GROUPNAME, check_filename
 from db import insert_into, create_table_from_codebook, sqlite_init, \
                create_table_from_generic, _table_name_from_form_id, \
                _VALID_PNUM, _table_name_from_table_name, TableNameException, \
@@ -116,15 +116,15 @@ class AuthRequestHandler(RequestHandler):
             try:
                 auth_header = self.request.headers['Authorization']
             except (KeyError, UnboundLocalError) as e:
-                logging.error(e)
-                logging.error('Missing authorization header')
+                self.message = 'Missing authorization header'
+                logging.error(self.message)
                 self.set_status(400)
                 raise Exception('Authorization not possible: missing header')
             try:
                 self.jwt = auth_header.split(' ')[1]
             except IndexError as e:
-                logging.error(e)
-                logging.error('Malformed authorization header')
+                self.message = 'Malformed authorization header'
+                logging.error(self.message)
                 self.set_status(400)
                 raise Exception('Authorization not possible: malformed header')
             try:
@@ -147,7 +147,6 @@ class AuthRequestHandler(RequestHandler):
                 self.set_status(500)
                 raise Exception('Authorization not possible: server error')
             try:
-                # extract user info from token
                 authnz = verify_json_web_token(auth_header, project_specific_secret,
                                                               roles_allowed, pnum)
                 self.claims = authnz['claims']
@@ -158,6 +157,7 @@ class AuthRequestHandler(RequestHandler):
                 elif authnz['status']:
                     return authnz
             except Exception as e:
+                self.message = authnz['reason']
                 logging.error(e)
                 self.set_status(401)
                 raise Exception('Authorization failed')
@@ -165,6 +165,91 @@ class AuthRequestHandler(RequestHandler):
             if not self.status:
                 self.set_status(401)
             raise Exception
+
+
+class FileStreamerHandler(AuthRequestHandler):
+
+    """List the export directory, serve files from it."""
+
+    CHUNK_SIZE = CONFIG['export_chunk_size']
+
+    def list_files(self, path):
+        files = os.listdir(path)
+        if len(files) > CONFIG['export_max_num_list']:
+            self.set_status(400)
+            self.message = 'too many files, create a zip archive'
+            raise Exception
+        times = map(lambda x:
+            datetime.datetime.fromtimestamp(
+                os.stat(os.path.normpath(path + '/' + x)).st_mtime).isoformat(), files)
+        file_info = []
+        for i in zip(files, times):
+            href = '%s/%s' % (self.request.uri, i[0])
+            file_info.append({'filename': i[0], 'modified_date': i[1], 'href': href})
+        logging.info('%s listed %s', self.user, path)
+        self.write({'files': file_info})
+
+
+    @tornado.web.asynchronous
+    @tornado.gen.engine
+    def get(self, pnum, filename=None):
+        self.message = 'Unknown error, please contact TSD'
+        try:
+            try:
+                self.authnz = self.validate_token(roles_allowed=['export_user', 'admin_user'])
+                self.user = self.authnz['claims']['user']
+            except Exception:
+                if not self.message:
+                    self.message = 'Not authorized to export data'
+                self.set_status(401)
+                raise Exception
+            assert _VALID_PNUM.match(pnum)
+            self.path = CONFIG['export_path'].replace('pXX', pnum)
+            if not filename:
+                self.list_files(self.path)
+                return
+            try:
+                secured_filename = check_filename(url_unescape(filename))
+            except Exception as e:
+                logging.error(e)
+                logging.error('%s tried to access files in sub-directories', self.user)
+                self.set_status(403)
+                self.message = 'Not allowed to access files in sub-directories, create a zip archive'
+                raise Exception
+            self.filepath = '%s/%s' % (self.path, secured_filename)
+            if not os.path.lexists(self.filepath):
+                logging.error('%s tried to access a file that does not exist', self.user)
+                self.set_status(404)
+                self.message = 'File does not exist'
+                raise Exception
+            self.set_header('Content-Type', 'application/octet-stream')
+            size = os.path.getsize(self.path)
+            if size > CONFIG['export_max_size']:
+                logging.error('%s tried to export a file exceeding the maximum size limit', self.user)
+                maxsize = CONFIG['export_max_size'] / 1024 /1024 / 1024
+                self.message = 'File size exceeds maximum allowed: %d Gigabyte, create a zip archive, or use the s3 API' % maxsize
+                raise Exception
+            if size < self.CHUNK_SIZE:
+                self.CHUNK_SIZE = size
+            self.flush()
+            fd = open(self.filepath, "rb")
+            data = fd.read(self.CHUNK_SIZE)
+            # optional streaming encryption here
+            while data:
+                self.write(data)
+                yield tornado.gen.Task(self.flush)
+                data = fd.read(self.CHUNK_SIZE)
+            fd.close()
+            logging.info('%s exported %s ', self.user, self.filepath)
+        except Exception as e:
+            logging.error(self.message)
+            self.write({'message': self.message})
+        finally:
+            try:
+                fd.close()
+            except (OSError, UnboundLocalError) as e:
+                pass
+            self.finish()
 
 
 class GenericFormDataHandler(AuthRequestHandler):
@@ -870,6 +955,8 @@ def main():
         ('/(.*)/storage/(.*)', JsonToSQLiteHandler),
         # e.g. /p11/sns/94F0E05DB5093C71/54162
         ('/(.*)/sns/(.*)/(.*)', SnsFormDataHandler),
+        ('/(.*)/files/export', FileStreamerHandler),
+        ('/(.*)/files/export/(.*)', FileStreamerHandler),
     ], debug=options.debug)
     app.listen(options.port, max_body_size=options.max_body_size)
     IOLoop.instance().start()

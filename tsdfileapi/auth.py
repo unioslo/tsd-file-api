@@ -41,7 +41,7 @@ def verify_json_web_token(auth_header, secret, roles_allowed, pnum):
     dict {message, status, user}
 
     """
-    failure_message = {'message': 'Access forbidden', 'status': False}
+    failure_message = {'message': 'Access forbidden', 'status': False, 'reason': None}
     try:
         raw_token = auth_header.split(' ')[1]
         k = {'k': secret, 'kty': 'oct'}
@@ -57,8 +57,8 @@ def verify_json_web_token(auth_header, secret, roles_allowed, pnum):
         logging.error('Invalid JWT signature')
         return failure_message
     except Exception as e:
-        logging.error(e)
-        logging.error('JWT expired')
+        logging.error(e.message)
+        failure_message['reason'] = e.message
         return failure_message
     if claims['proj'] != pnum:
         # this _should_ be impossible

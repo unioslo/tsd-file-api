@@ -62,6 +62,22 @@ def secure_filename(filename):
     return filename
 
 
+def check_filename(filename):
+    """A version which does not change the name, but throws an exception instead."""
+    if isinstance(filename, text_type):
+        from unicodedata import normalize
+        filename = normalize('NFKD', filename).encode('ascii', 'ignore')
+        #if not PY2:
+        #    filename = filename.decode('ascii')
+    for sep in os.path.sep, os.path.altsep:
+        if sep:
+            if sep in filename or _filename_ascii_strip_re.search(filename):
+                logging.error('illegal filename provided: %s', filename)
+                raise Exception('file name not allowed')
+    return filename
+
+
+
 def project_import_dir(uploads_folder, pnum, keyid=None, formid=None):
     """
     Create a project specific path based on config and a project number.

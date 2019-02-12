@@ -179,11 +179,12 @@ class TestFileApi(unittest.TestCase):
         cls.upload_sns_wrong = cls.base_url + '/sns/' + 'WRONG' + '/' + cls.config['test_formid']
         cls.stream = cls.base_url + '/files/stream'
         cls.upload_stream = cls.base_url + '/files/upload_stream'
+        cls.export = cls.base_url + '/files/export'
         cls.test_project = cls.test_project
 
         # auth tokens
-        global IMPORT_TOKENS
-        IMPORT_TOKENS = gen_test_tokens(cls.config)
+        global TEST_TOKENS
+        TEST_TOKENS = gen_test_tokens(cls.config)
         global P12_TOKEN
         P12_TOKEN = get_test_token_for_p12(cls.config)
 
@@ -251,22 +252,22 @@ class TestFileApi(unittest.TestCase):
 
 
     def test_A_mangled_valid_token_rejected(self):
-        headers = {'Authorization': 'Bearer ' + IMPORT_TOKENS['MANGLED_VALID']}
+        headers = {'Authorization': 'Bearer ' + TEST_TOKENS['MANGLED_VALID']}
         self.check_endpoints(headers)
 
 
     def test_B_invalid_signature_rejected(self):
-        headers = {'Authorization': 'Bearer ' + IMPORT_TOKENS['INVALID_SIGNATURE']}
+        headers = {'Authorization': 'Bearer ' + TEST_TOKENS['INVALID_SIGNATURE']}
         self.check_endpoints(headers)
 
 
     def test_C_token_with_wrong_role_rejected(self):
-        headers = {'Authorization': 'Bearer ' + IMPORT_TOKENS['WRONG_ROLE']}
+        headers = {'Authorization': 'Bearer ' + TEST_TOKENS['WRONG_ROLE']}
         self.check_endpoints(headers)
 
 
     def test_D_timed_out_token_rejected(self):
-        headers = {'Authorization': 'Bearer ' + IMPORT_TOKENS['TIMED_OUT']}
+        headers = {'Authorization': 'Bearer ' + TEST_TOKENS['TIMED_OUT']}
         self.check_endpoints(headers)
 
 
@@ -289,7 +290,7 @@ class TestFileApi(unittest.TestCase):
 
 
     def mp_fd(self, newfilename, target_uploads_folder, url, method):
-        headers = {'Authorization': 'Bearer ' + IMPORT_TOKENS['VALID']}
+        headers = {'Authorization': 'Bearer ' + TEST_TOKENS['VALID']}
         f = open(self.example_csv)
         files = {'file': (newfilename, f)}
         if method == 'POST':
@@ -339,7 +340,7 @@ class TestFileApi(unittest.TestCase):
             pass
         files = [('file', (newfilename1, open(self.example_csv, 'rb'), 'text/html')),
                  ('file', (newfilename2, open(self.example_csv, 'rb'), 'text/html'))]
-        headers = {'Authorization': 'Bearer ' + IMPORT_TOKENS['VALID']}
+        headers = {'Authorization': 'Bearer ' + TEST_TOKENS['VALID']}
         resp = requests.post(self.upload, files=files, headers=headers)
         self.assertEqual(resp.status_code, 201)
         uploaded_file1 = os.path.normpath(self.uploads_folder + '/' + newfilename1)
@@ -389,7 +390,7 @@ class TestFileApi(unittest.TestCase):
             pass
         files = [('file', (newfilename1, open(self.example_csv, 'rb'), 'text/html')),
                  ('file', (newfilename2, open(self.example_csv, 'rb'), 'text/html'))]
-        headers = {'Authorization': 'Bearer ' + IMPORT_TOKENS['VALID']}
+        headers = {'Authorization': 'Bearer ' + TEST_TOKENS['VALID']}
         resp = requests.post(self.upload, files=files, headers=headers)
         self.assertEqual(resp.status_code, 201)
         uploaded_file1 = os.path.normpath(self.uploads_folder + '/' + newfilename1)
@@ -434,7 +435,7 @@ class TestFileApi(unittest.TestCase):
         newfilename2 = 'n6'
         files = [('file', (newfilename1, open(self.example_csv, 'rb'), 'text/html')),
                  ('file', (newfilename2, open(self.example_csv, 'rb'), 'text/html'))]
-        headers = {'Authorization': 'Bearer ' + IMPORT_TOKENS['VALID']}
+        headers = {'Authorization': 'Bearer ' + TEST_TOKENS['VALID']}
         resp = requests.put(self.upload, files=files, headers=headers)
         self.assertEqual(resp.status_code, 201)
         uploaded_file1 = os.path.normpath(self.uploads_folder + '/' + newfilename1)
@@ -467,7 +468,7 @@ class TestFileApi(unittest.TestCase):
             os.remove(uploaded_file)
         except OSError:
             pass
-        headers = {'Authorization': 'Bearer ' + IMPORT_TOKENS['VALID'], 'Filename': newfilename}
+        headers = {'Authorization': 'Bearer ' + TEST_TOKENS['VALID'], 'Filename': newfilename}
         resp = requests.put(self.stream, data=open(self.example_csv), headers=headers)
         self.assertEqual(resp.status_code, 201)
 
@@ -482,7 +483,7 @@ class TestFileApi(unittest.TestCase):
         except OSError:
             pass
         headers = {'Filename': 'streamed-put-example.csv',
-                   'Authorization': 'Bearer ' + IMPORT_TOKENS['VALID'],
+                   'Authorization': 'Bearer ' + TEST_TOKENS['VALID'],
                    'Expect': '100-Continue'}
         resp = requests.put(self.stream, data=lazy_file_reader(self.example_csv), headers=headers)
         self.assertEqual(md5sum(self.example_csv), md5sum(uploaded_file))
@@ -497,14 +498,14 @@ class TestFileApi(unittest.TestCase):
     def test_N_head_on_uploads_fails_when_it_should(self):
         resp1 = requests.head(self.upload)
         resp2 = requests.head(self.upload,
-                              headers={'Authorization': 'Bearer ' + IMPORT_TOKENS['VALID']})
+                              headers={'Authorization': 'Bearer ' + TEST_TOKENS['VALID']})
         self.assertEqual(resp1.status_code, 401)
         self.assertEqual(resp2.status_code, 400)
 
 
     def test_O_head_on_uploads_succeeds_when_conditions_are_met(self):
         files = {'file': ('example.csv', open(self.example_csv))}
-        headers = {'Authorization': 'Bearer ' + IMPORT_TOKENS['VALID']}
+        headers = {'Authorization': 'Bearer ' + TEST_TOKENS['VALID']}
         resp = requests.head(self.upload, headers=headers, files=files)
         self.assertEqual(resp.status_code, 201)
 
@@ -533,7 +534,7 @@ class TestFileApi(unittest.TestCase):
 
     def test_S_create_table(self):
         table_def = self.example_codebook
-        headers = {'Authorization': 'Bearer ' + IMPORT_TOKENS['VALID']}
+        headers = {'Authorization': 'Bearer ' + TEST_TOKENS['VALID']}
         resp = requests.post(self.base_url + '/storage/rpc/create_table',
                              data=json.dumps(table_def), headers=headers)
         self.assertEqual(resp.status_code, 201)
@@ -541,7 +542,7 @@ class TestFileApi(unittest.TestCase):
 
     def test_T_create_table_is_idempotent(self):
         table_def = self.example_codebook
-        headers = {'Authorization': 'Bearer ' + IMPORT_TOKENS['VALID']}
+        headers = {'Authorization': 'Bearer ' + TEST_TOKENS['VALID']}
         resp = requests.post(self.base_url + '/storage/rpc/create_table',
                              data=json.dumps(table_def), headers=headers)
         self.assertEqual(resp.status_code, 201)
@@ -552,7 +553,7 @@ class TestFileApi(unittest.TestCase):
         table_def['definition']['pages'][0]['elements'].append({
             'elementType': 'QUESTION',
             'questions': [{'externalQuestionId': 'var3'}]})
-        headers = {'Authorization': 'Bearer ' + IMPORT_TOKENS['VALID']}
+        headers = {'Authorization': 'Bearer ' + TEST_TOKENS['VALID']}
         resp = requests.post(self.base_url + '/storage/rpc/create_table',
                              data=json.dumps(table_def), headers=headers)
         self.assertEqual(resp.status_code, 201)
@@ -562,7 +563,7 @@ class TestFileApi(unittest.TestCase):
         data = {'submission_id':1, 'age':93}
         bulk_data = [{'submission_id':4, 'var1':'something', 'var2':'nothing'},
                      {'submission_id':3, 'var1':'sensitive', 'var2': 'kablamo'}]
-        headers = {'Authorization': 'Bearer ' + IMPORT_TOKENS['VALID']}
+        headers = {'Authorization': 'Bearer ' + TEST_TOKENS['VALID']}
         resp1 = requests.post(self.base_url + '/storage/form_63332',
                               data=json.dumps(data), headers=headers)
         resp2 = requests.post(self.base_url + '/storage/form_63332',
@@ -576,7 +577,7 @@ class TestFileApi(unittest.TestCase):
                      'columns': [{'name': 'x', 'type': 'int', 'constraints': {'not_null': True}},
                                  {'name': 'y', 'type': 'text'}]}
         data = {'type': 'generic', 'definition': table_def}
-        headers = {'Authorization': 'Bearer ' + IMPORT_TOKENS['VALID']}
+        headers = {'Authorization': 'Bearer ' + TEST_TOKENS['VALID']}
         resp = requests.post(self.base_url + '/storage/rpc/create_table',
                              data=json.dumps(data), headers=headers)
         self.assertEqual(resp.status_code, 201)
@@ -585,7 +586,7 @@ class TestFileApi(unittest.TestCase):
     def test_X_post_encrypted_data(self):
         encrypted_data_ns = build_payload(self.config, 'ns')
         encrypted_data_gen = build_payload(self.config, 'generic')
-        headers = {'Authorization': 'Bearer ' + IMPORT_TOKENS['VALID']}
+        headers = {'Authorization': 'Bearer ' + TEST_TOKENS['VALID']}
         resp1 = requests.post(self.base_url + '/storage/encrypted_data',
                              data=json.dumps(encrypted_data_ns), headers=headers)
         resp2 = requests.post(self.base_url + '/storage/encrypted_data',
@@ -599,7 +600,7 @@ class TestFileApi(unittest.TestCase):
 
     def test_Y_invalid_project_number_rejected(self):
         data = {'submission_id':11, 'age':193}
-        headers = {'Authorization': 'Bearer ' + IMPORT_TOKENS['VALID']}
+        headers = {'Authorization': 'Bearer ' + TEST_TOKENS['VALID']}
         resp = requests.post('http://localhost:' + str(self.config['port']) + '/p12-2193-1349213*&^/storage/form_63332',
                              data=json.dumps(data), headers=headers)
         self.assertEqual(resp.status_code, 401)
@@ -607,7 +608,7 @@ class TestFileApi(unittest.TestCase):
 
     def test_Z_token_for_other_project_rejected(self):
         data = {'submission_id':11, 'age':193}
-        headers = {'Authorization': 'Bearer ' + IMPORT_TOKENS['WRONG_PROJECT']}
+        headers = {'Authorization': 'Bearer ' + TEST_TOKENS['WRONG_PROJECT']}
         resp = requests.post(self.base_url + '/storage/form_63332',
                              data=json.dumps(data), headers=headers)
         self.assertEqual(resp.status_code, 401)
@@ -630,7 +631,7 @@ class TestFileApi(unittest.TestCase):
     # gz.aes        -> decrypt, uncompress
 
     def test_Za_stream_tar_without_custom_content_type_works(self):
-        headers = {'Authorization': 'Bearer ' + IMPORT_TOKENS['VALID'],
+        headers = {'Authorization': 'Bearer ' + TEST_TOKENS['VALID'],
                    'Filename': 'example.tar'}
         resp1 = requests.put(self.stream, data=lazy_file_reader(self.example_tar),
                              headers=headers)
@@ -638,7 +639,7 @@ class TestFileApi(unittest.TestCase):
         # checksum comparison
 
     def test_Zb_stream_tar_with_custom_content_type_untar_works(self):
-        headers = {'Authorization': 'Bearer ' + IMPORT_TOKENS['VALID'],
+        headers = {'Authorization': 'Bearer ' + TEST_TOKENS['VALID'],
                    'Content-Type': 'application/tar',
                    'Filename': 'totar'}
         resp1 = requests.put(self.stream, data=lazy_file_reader(self.example_tar),
@@ -647,7 +648,7 @@ class TestFileApi(unittest.TestCase):
         # check contents
 
     def test_Zc_stream_tar_gz_with_custom_content_type_untar_works(self):
-        headers = {'Authorization': 'Bearer ' + IMPORT_TOKENS['VALID'],
+        headers = {'Authorization': 'Bearer ' + TEST_TOKENS['VALID'],
                    'Content-Type': 'application/tar.gz',
                    'Filename': 'totar2'}
         resp1 = requests.put(self.stream, data=lazy_file_reader(self.example_tar_gz),
@@ -656,7 +657,7 @@ class TestFileApi(unittest.TestCase):
         # check contents
 
     def test_Zd_stream_aes_with_custom_content_type_decrypt_works(self):
-        headers = {'Authorization': 'Bearer ' + IMPORT_TOKENS['VALID'],
+        headers = {'Authorization': 'Bearer ' + TEST_TOKENS['VALID'],
                    'Content-Type': 'application/aes',
                    'Aes-Key': self.enc_symmetric_secret,
                    'Filename': 'decrypted-aes.csv'}
@@ -667,7 +668,7 @@ class TestFileApi(unittest.TestCase):
             self.assertEqual('x,y\n4,5\n2,1\n', uploaded_file.read())
 
     def test_Zd0_stream_aes_with_iv_and_custom_content_type_decrypt_works(self):
-        headers = {'Authorization': 'Bearer ' + IMPORT_TOKENS['VALID'],
+        headers = {'Authorization': 'Bearer ' + TEST_TOKENS['VALID'],
                    'Content-Type': 'application/aes',
                    'Aes-Key': self.enc_hex_aes_key,
                    'Aes-Iv': self.hex_aes_iv,
@@ -680,7 +681,7 @@ class TestFileApi(unittest.TestCase):
             self.assertEqual('x,y\n4,5\n2,1\n', uploaded_file.read())
 
     def test_Zd1_stream_binary_aes_with_iv_and_custom_content_type_decrypt_works(self):
-        headers = {'Authorization': 'Bearer ' + IMPORT_TOKENS['VALID'],
+        headers = {'Authorization': 'Bearer ' + TEST_TOKENS['VALID'],
                    'Content-Type': 'application/aes-octet-stream',
                    'Aes-Key': self.enc_hex_aes_key,
                    'Aes-Iv': self.hex_aes_iv,
@@ -693,7 +694,7 @@ class TestFileApi(unittest.TestCase):
             self.assertEqual('x,y\n4,5\n2,1\n', uploaded_file.read())
 
     def test_Ze_stream_tar_aes_with_custom_content_type_decrypt_untar_works(self):
-        headers = {'Authorization': 'Bearer ' + IMPORT_TOKENS['VALID'],
+        headers = {'Authorization': 'Bearer ' + TEST_TOKENS['VALID'],
                    'Content-Type': 'application/tar.aes',
                    'Aes-Key': self.enc_symmetric_secret,
                    'Filename': 'totar3'}
@@ -703,7 +704,7 @@ class TestFileApi(unittest.TestCase):
         # check contents
 
     def test_Ze0_stream_tar_aes_with_iv_and_custom_content_type_decrypt_untar_works(self):
-        headers = {'Authorization': 'Bearer ' + IMPORT_TOKENS['VALID'],
+        headers = {'Authorization': 'Bearer ' + TEST_TOKENS['VALID'],
                    'Content-Type': 'application/tar.aes',
                    'Aes-Key': self.enc_hex_aes_key,
                    'Aes-Iv': self.hex_aes_iv,
@@ -714,7 +715,7 @@ class TestFileApi(unittest.TestCase):
         # check contents
 
     def test_Zf_stream_tar_aes_with_custom_content_type_decrypt_untar_works(self):
-        headers = {'Authorization': 'Bearer ' + IMPORT_TOKENS['VALID'],
+        headers = {'Authorization': 'Bearer ' + TEST_TOKENS['VALID'],
                    'Content-Type': 'application/tar.gz.aes',
                    'Aes-Key': self.enc_symmetric_secret,
                    'Filename': 'totar4'}
@@ -724,7 +725,7 @@ class TestFileApi(unittest.TestCase):
         # check contents
 
     def test_Zf0_stream_tar_aes_with_iv_and_custom_content_type_decrypt_untar_works(self):
-        headers = {'Authorization': 'Bearer ' + IMPORT_TOKENS['VALID'],
+        headers = {'Authorization': 'Bearer ' + TEST_TOKENS['VALID'],
                    'Content-Type': 'application/tar.gz.aes',
                    'Aes-Key': self.enc_hex_aes_key,
                    'Aes-Iv': self.hex_aes_iv,
@@ -735,7 +736,7 @@ class TestFileApi(unittest.TestCase):
         # check contents
 
     def test_Zg_stream_gz_with_custom_header_decompress_works(self):
-        headers = {'Authorization': 'Bearer ' + IMPORT_TOKENS['VALID'],
+        headers = {'Authorization': 'Bearer ' + TEST_TOKENS['VALID'],
                    'Content-Type': 'application/gz',
                    'Filename': 'ungz1'}
         resp1 = requests.put(self.stream, data=lazy_file_reader(self.example_gz),
@@ -746,7 +747,7 @@ class TestFileApi(unittest.TestCase):
 
 
     def test_Zh_stream_gz_with_custom_header_decompress_works(self):
-        headers = {'Authorization': 'Bearer ' + IMPORT_TOKENS['VALID'],
+        headers = {'Authorization': 'Bearer ' + TEST_TOKENS['VALID'],
                    'Content-Type': 'application/gz.aes',
                    'Filename': 'ungz-aes1',
                    'Aes-Key': self.enc_symmetric_secret}
@@ -759,7 +760,7 @@ class TestFileApi(unittest.TestCase):
 
 
     def test_Zh0_stream_gz_with_iv_and_custom_header_decompress_works(self):
-        headers = {'Authorization': 'Bearer ' + IMPORT_TOKENS['VALID'],
+        headers = {'Authorization': 'Bearer ' + TEST_TOKENS['VALID'],
                    'Content-Type': 'application/gz.aes',
                    'Filename': 'ungz-aes1',
                    'Aes-Key': self.enc_hex_aes_key,
@@ -830,7 +831,7 @@ class TestFileApi(unittest.TestCase):
 
     def test_ZD_cannot_upload_empty_file_to_sns(self):
         files = {'file': ('an-empty-file', open(self.an_empty_file))}
-        headers = {'Authorization': 'Bearer ' + IMPORT_TOKENS['VALID']}
+        headers = {'Authorization': 'Bearer ' + TEST_TOKENS['VALID']}
         resp = requests.put(self.sns_upload,
                             files=files,
                             headers=headers)
@@ -839,7 +840,7 @@ class TestFileApi(unittest.TestCase):
     # client-side specification of groups
 
     def test_ZE_stream_works_with_client_specified_group(self):
-        headers = {'Authorization': 'Bearer ' + IMPORT_TOKENS['VALID'],
+        headers = {'Authorization': 'Bearer ' + TEST_TOKENS['VALID'],
                    'Expect': '100-Continue'}
         url = self.stream + '/streamed-example-with-group-spec.csv?group=p11-member-group'
         resp = requests.post(url,
@@ -848,7 +849,7 @@ class TestFileApi(unittest.TestCase):
         self.assertEqual(resp.status_code, 201)
 
     def test_ZF_stream_does_not_work_with_client_specified_group_wrong_pnum(self):
-        headers = {'Authorization': 'Bearer ' + IMPORT_TOKENS['VALID'],
+        headers = {'Authorization': 'Bearer ' + TEST_TOKENS['VALID'],
                    'Expect': '100-Continue'}
         url = self.stream + '/streamed-example-with-group-spec.csv?group=p12-member-group'
         resp = requests.post(url,
@@ -857,7 +858,7 @@ class TestFileApi(unittest.TestCase):
         self.assertEqual(resp.status_code, 401)
 
     def test_ZG_stream_does_not_work_with_client_specified_group_nonsense_input(self):
-        headers = {'Authorization': 'Bearer ' + IMPORT_TOKENS['VALID'],
+        headers = {'Authorization': 'Bearer ' + TEST_TOKENS['VALID'],
                    'Expect': '100-Continue'}
         url = self.stream + '/streamed-example-with-group-spec.csv?group=%2Fusr%2Fbin%2Fecho%20%24PATH'
         resp = requests.post(url,
@@ -866,13 +867,51 @@ class TestFileApi(unittest.TestCase):
         self.assertEqual(resp.status_code, 401)
 
     def test_ZH_stream_does_not_work_with_client_specified_group_not_a_member(self):
-        headers = {'Authorization': 'Bearer ' + IMPORT_TOKENS['VALID'],
+        headers = {'Authorization': 'Bearer ' + TEST_TOKENS['VALID'],
                    'Expect': '100-Continue'}
         url = self.stream + '/streamed-example-with-group-spec.csv?group=p11-data-group'
         resp = requests.post(url,
                              data=lazy_file_reader(self.example_csv),
                              headers=headers)
         self.assertEqual(resp.status_code, 401)
+
+    # export
+
+    def test_ZI_export_endpoints_require_auth(self):
+        import_token = TEST_TOKENS['VALID']
+        resp = requests.get(self.export)
+        self.assertEqual(resp.status_code, 401)
+        resp = requests.get(self.export + '/file1')
+        self.assertEqual(resp.status_code, 401)
+        resp = requests.get(self.export,
+                            headers={'Authorization': 'Bearer ' + import_token})
+        self.assertEqual(resp.status_code, 401)
+        resp = requests.get(self.export + '/file1',
+                            headers={'Authorization': 'Bearer ' + import_token})
+        self.assertEqual(resp.status_code, 401)
+
+
+    def test_ZJ_export_file_restrictions_enforced(self):
+        headers={'Authorization': 'Bearer ' + TEST_TOKENS['EXPORT']}
+        for name in ['/bin/bash -c', '!#/bin/bash', '~!@#$%^&*()-+', '../../../p01/data/durable']:
+            resp = requests.get(self.export + '/' + name, headers=headers)
+            self.assertEqual(resp.status_code, 403)
+
+
+    def test_ZK_export_list_dir_works(self):
+        headers = {'Authorization': 'Bearer ' + TEST_TOKENS['EXPORT']}
+        resp = requests.get(self.export, headers=headers)
+        data = json.loads(resp.text)
+        self.assertEqual(resp.status_code, 200)
+        self.assertTrue(len(data['files']), 2)
+        self.assertTrue(len(data['files'][0].keys()), 3)
+
+
+    def test_ZL_export_file_works(self):
+        headers = {'Authorization': 'Bearer ' + TEST_TOKENS['ADMIN']}
+        resp = requests.get(self.export + '/file1', headers=headers)
+        self.assertEqual(resp.text, u'some data\n')
+        self.assertEqual(resp.status_code, 200)
 
 
 def main():
@@ -927,6 +966,11 @@ def main():
         'test_ZF_stream_does_not_work_with_client_specified_group_wrong_pnum',
         'test_ZG_stream_does_not_work_with_client_specified_group_nonsense_input',
         'test_ZH_stream_does_not_work_with_client_specified_group_not_a_member',
+        # export
+        'test_ZI_export_endpoints_require_auth',
+        'test_ZJ_export_file_restrictions_enforced',
+        'test_ZK_export_list_dir_works',
+        'test_ZL_export_file_works',
         ])))
     map(runner.run, suite)
 
