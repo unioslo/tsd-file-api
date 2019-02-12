@@ -21,6 +21,7 @@ from sys import argv
 from collections import OrderedDict
 
 import yaml
+import magic
 import tornado.queues
 from tornado.escape import json_decode, url_unescape
 from tornado import gen
@@ -169,9 +170,24 @@ class AuthRequestHandler(RequestHandler):
 
 class FileStreamerHandler(AuthRequestHandler):
 
-    """List the export directory, serve files from it."""
+    """List the export directory, or serve files from it."""
 
     CHUNK_SIZE = CONFIG['export_chunk_size']
+
+
+    def enforce_export_policy(self, policy_config, filename):
+        if not policy_config['enabled']:
+            logging.info('Export policy is configured to be ignored')
+            return
+        with magic.Magic(flags=magic.MAGIC_MIME_TYPE) as m:
+            mime_type = m.id_filename(filename)
+        if mime_type in policy_config['allowed_mime_types']:
+            return
+        else:
+            self.message = 'not allowed to export file with MIME type: %s' % mime_type
+            logging.error(self.message)
+            raise Exception
+
 
     def list_files(self, path):
         files = os.listdir(path)
@@ -179,13 +195,29 @@ class FileStreamerHandler(AuthRequestHandler):
             self.set_status(400)
             self.message = 'too many files, create a zip archive'
             raise Exception
-        times = map(lambda x:
-            datetime.datetime.fromtimestamp(
-                os.stat(os.path.normpath(path + '/' + x)).st_mtime).isoformat(), files)
+        times = []
+        exportable = []
+        for file in files:
+            filepath = os.path.normpath(path + '/' + file)
+            latest = os.stat(filepath).st_mtime
+            date_time = str(datetime.datetime.fromtimestamp(latest).isoformat())
+            times.append(date_time)
+            with magic.Magic(flags=magic.MAGIC_MIME_TYPE) as m:
+                mime_type = m.id_filename(filepath)
+            if not CONFIG['export_policy']['enabled']:
+                exportable.append(True)
+            elif CONFIG['export_policy']['enabled']:
+                if mime_type in CONFIG['export_policy']['allowed_mime_types']:
+                    exportable.append(True)
+                else:
+                    exportable.append(False)
         file_info = []
-        for i in zip(files, times):
-            href = '%s/%s' % (self.request.uri, i[0])
-            file_info.append({'filename': i[0], 'modified_date': i[1], 'href': href})
+        for f, t, e  in zip(files, times, exportable):
+            href = '%s/%s' % (self.request.uri, f)
+            file_info.append({'filename': f,
+                              'modified_date': t,
+                              'href': href,
+                              'exportable': e})
         logging.info('%s listed %s', self.user, path)
         self.write({'files': file_info})
 
@@ -222,19 +254,19 @@ class FileStreamerHandler(AuthRequestHandler):
                 self.set_status(404)
                 self.message = 'File does not exist'
                 raise Exception
-            self.set_header('Content-Type', 'application/octet-stream')
+            self.enforce_export_policy(CONFIG['export_policy'], self.filepath)
             size = os.path.getsize(self.path)
             if size > CONFIG['export_max_size']:
                 logging.error('%s tried to export a file exceeding the maximum size limit', self.user)
-                maxsize = CONFIG['export_max_size'] / 1024 /1024 / 1024
+                maxsize = CONFIG['export_max_size'] / 1024 / 1024 / 1024
                 self.message = 'File size exceeds maximum allowed: %d Gigabyte, create a zip archive, or use the s3 API' % maxsize
                 raise Exception
             if size < self.CHUNK_SIZE:
                 self.CHUNK_SIZE = size
+            self.set_header('Content-Type', 'application/octet-stream')
             self.flush()
             fd = open(self.filepath, "rb")
             data = fd.read(self.CHUNK_SIZE)
-            # optional streaming encryption here
             while data:
                 self.write(data)
                 yield tornado.gen.Task(self.flush)
