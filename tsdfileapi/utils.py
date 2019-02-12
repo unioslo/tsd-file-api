@@ -70,10 +70,12 @@ def check_filename(filename):
         #if not PY2:
         #    filename = filename.decode('ascii')
     for sep in os.path.sep, os.path.altsep:
-        if sep:
-            if sep in filename or _filename_ascii_strip_re.search(filename):
-                logging.error('illegal filename provided: %s', filename)
-                raise Exception('file name not allowed')
+        if _filename_ascii_strip_re.search(filename):
+            logging.error('illegal filename provided: %s', filename)
+            raise Exception('file name not allowed')
+        if sep and sep in filename:
+            logging.error('illegal filename provided: %s', filename)
+            raise Exception('file name not allowed')
     return filename
 
 
