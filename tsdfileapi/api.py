@@ -178,15 +178,15 @@ class FileStreamerHandler(AuthRequestHandler):
     def enforce_export_policy(self, policy_config, filename):
         if not policy_config['enabled']:
             logging.info('Export policy is configured to be ignored')
-            return
+            return True
         with magic.Magic(flags=magic.MAGIC_MIME_TYPE) as m:
             mime_type = m.id_filename(filename)
         if mime_type in policy_config['allowed_mime_types']:
-            return
+            return True
         else:
             self.message = 'not allowed to export file with MIME type: %s' % mime_type
             logging.error(self.message)
-            raise Exception
+            return False
 
 
     def list_files(self, path):
@@ -202,15 +202,8 @@ class FileStreamerHandler(AuthRequestHandler):
             latest = os.stat(filepath).st_mtime
             date_time = str(datetime.datetime.fromtimestamp(latest).isoformat())
             times.append(date_time)
-            with magic.Magic(flags=magic.MAGIC_MIME_TYPE) as m:
-                mime_type = m.id_filename(filepath)
-            if not CONFIG['export_policy']['enabled']:
-                exportable.append(True)
-            elif CONFIG['export_policy']['enabled']:
-                if mime_type in CONFIG['export_policy']['allowed_mime_types']:
-                    exportable.append(True)
-                else:
-                    exportable.append(False)
+            status = self.enforce_export_policy(CONFIG['export_policy'], filepath)
+            exportable.append(status)
         file_info = []
         for f, t, e  in zip(files, times, exportable):
             href = '%s/%s' % (self.request.uri, f)
@@ -254,7 +247,7 @@ class FileStreamerHandler(AuthRequestHandler):
                 self.set_status(404)
                 self.message = 'File does not exist'
                 raise Exception
-            self.enforce_export_policy(CONFIG['export_policy'], self.filepath)
+            assert self.enforce_export_policy(CONFIG['export_policy'], self.filepath)
             size = os.path.getsize(self.path)
             if size > CONFIG['export_max_size']:
                 logging.error('%s tried to export a file exceeding the maximum size limit', self.user)
