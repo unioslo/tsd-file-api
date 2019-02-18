@@ -185,7 +185,7 @@ class FileStreamerHandler(AuthRequestHandler):
             logging.info('Export policy is configured to be ignored')
             return True, None
         try:
-            check_filename(filename)
+            check_filename(os.path.basename(filename))
         except Exception as e:
             logging.error(e)
             logging.error('Illegal export filename: %s', filename)
