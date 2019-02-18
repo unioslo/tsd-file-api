@@ -176,17 +176,28 @@ class FileStreamerHandler(AuthRequestHandler):
 
 
     def enforce_export_policy(self, policy_config, filename):
+        """
+        Checks that file names and MIME types conform
+        to specified polices. If successful, returns True, <mime-type>,
+        returns False, None otherwise, logging the error.
+        """
         if not policy_config['enabled']:
             logging.info('Export policy is configured to be ignored')
-            return True
+            return True, None
+        try:
+            check_filename(filename)
+        except Exception as e:
+            logging.error(e)
+            logging.error('Illegal export filename: %s', filename)
+            return False, None
         with magic.Magic(flags=magic.MAGIC_MIME_TYPE) as m:
             mime_type = m.id_filename(filename)
         if mime_type in policy_config['allowed_mime_types']:
-            return True
+            return True, mime_type
         else:
             self.message = 'not allowed to export file with MIME type: %s' % mime_type
             logging.error(self.message)
-            return False
+            return False, None
 
 
     def list_files(self, path):
@@ -202,10 +213,10 @@ class FileStreamerHandler(AuthRequestHandler):
             latest = os.stat(filepath).st_mtime
             date_time = str(datetime.datetime.fromtimestamp(latest).isoformat())
             times.append(date_time)
-            status = self.enforce_export_policy(CONFIG['export_policy'], filepath)
+            status, _ = self.enforce_export_policy(CONFIG['export_policy'], filepath)
             exportable.append(status)
         file_info = []
-        for f, t, e  in zip(files, times, exportable):
+        for f, t, e in zip(files, times, exportable):
             href = '%s/%s' % (self.request.uri, f)
             file_info.append({'filename': f,
                               'modified_date': t,
@@ -247,7 +258,8 @@ class FileStreamerHandler(AuthRequestHandler):
                 self.set_status(404)
                 self.message = 'File does not exist'
                 raise Exception
-            assert self.enforce_export_policy(CONFIG['export_policy'], self.filepath)
+            status, mime_type = self.enforce_export_policy(CONFIG['export_policy'], self.filepath)
+            assert status
             size = os.path.getsize(self.path)
             if size > CONFIG['export_max_size']:
                 logging.error('%s tried to export a file exceeding the maximum size limit', self.user)
@@ -256,7 +268,7 @@ class FileStreamerHandler(AuthRequestHandler):
                 raise Exception
             if size < self.CHUNK_SIZE:
                 self.CHUNK_SIZE = size
-            self.set_header('Content-Type', 'application/octet-stream')
+            self.set_header('Content-Type', mime_type)
             self.flush()
             fd = open(self.filepath, "rb")
             data = fd.read(self.CHUNK_SIZE)
@@ -265,7 +277,7 @@ class FileStreamerHandler(AuthRequestHandler):
                 yield tornado.gen.Task(self.flush)
                 data = fd.read(self.CHUNK_SIZE)
             fd.close()
-            logging.info('%s exported %s ', self.user, self.filepath)
+            logging.info('user: %s, exported file: %s , with MIME type: %s', self.user, self.filepath, mime_type)
         except Exception as e:
             logging.error(self.message)
             self.write({'message': self.message})
