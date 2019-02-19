@@ -23,7 +23,7 @@ Vagrant.configure(2) do |config|
     sudo gem install --no-ri --no-rdoc fpm
     sudo rm /vagrant/tsd-file-api-venv-1.0-1.x86_64.rpm
     sudo rm /vagrant/python-tsd-file-api-*
-    sudo fpm --verbose -s virtualenv -p /vagrant -t rpm --name tsd-file-api-venv --prefix /opt/tsd-file-api-venv/virtualenv /vagrant/requirements.txt
+    sudo fpm --verbose -v 1.2 -s virtualenv -p /vagrant -t rpm --name tsd-file-api-venv --prefix /opt/tsd-file-api-venv/virtualenv /vagrant/requirements.txt
     sudo fpm -s python -p /vagrant -t rpm /vagrant/setup.py
   SHELL
 
