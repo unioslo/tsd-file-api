@@ -181,15 +181,15 @@ class FileStreamerHandler(AuthRequestHandler):
         to specified polices. If successful, returns True, <mime-type>,
         returns False, None otherwise, logging the error.
         """
-        if not policy_config['enabled']:
-            logging.info('Export policy is configured to be ignored')
-            return True, None
         try:
             check_filename(os.path.basename(filename))
         except Exception as e:
             logging.error(e)
             logging.error('Illegal export filename: %s', filename)
             return False, None
+        if not policy_config['enabled']:
+            logging.info('Export policy is configured to be ignored')
+            return True, None
         with magic.Magic(flags=magic.MAGIC_MIME_TYPE) as m:
             mime_type = m.id_filename(filename)
         if mime_type in policy_config['allowed_mime_types']:
@@ -258,6 +258,9 @@ class FileStreamerHandler(AuthRequestHandler):
                 self.set_status(404)
                 self.message = 'File does not exist'
                 raise Exception
+            # ensure the process user can read the file
+            # given the folder permissions, still only the pXX-export-group can read
+            subprocess.call(['sudo', '/usr/bin/chmod', 'go+r', self.filepath])
             status, mime_type = self.enforce_export_policy(CONFIG['export_policy'], self.filepath)
             assert status
             size = os.path.getsize(self.path)
