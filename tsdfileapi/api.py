@@ -177,30 +177,64 @@ class FileStreamerHandler(AuthRequestHandler):
 
     def enforce_export_policy(self, policy_config, filename):
         """
-        Checks that file names and MIME types conform
-        to specified polices. If successful, returns True, <mime-type>,
-        returns False, None otherwise, logging the error.
+        Check file to ensure it meets the requirements of the export policy
+
+        Explanation
+        -----------
+        1. checks that file name follows conventions
+        2. checks that MIME types conform to allowed types
+        3. make the file readible for the process user
+        4. file size does not exceed max allowed for export
+
+        Returns
+        -------
+        (bool, <str,None>, <int,None>),
+        (is_conformant, mime-type, size)
+
         """
         try:
             check_filename(os.path.basename(filename))
         except Exception as e:
             logging.error(e)
-            logging.error('Illegal export filename: %s', filename)
-            return False, None
+            self.message = 'Illegal export filename: %s' % filename
+            logging.error(self.message)
+            return False, None, None
         if not policy_config['enabled']:
             logging.info('Export policy is configured to be ignored')
-            return True, None
+            return True, None, None
+        subprocess.call(['sudo', 'chmod', 'go+r', filename])
+        size = os.path.getsize(self.path)
+        if size > CONFIG['export_max_size']:
+            logging.error('%s tried to export a file exceeding the maximum size limit', self.user)
+            maxsize = CONFIG['export_max_size'] / 1024 / 1024 / 1024
+            self.message = 'File size exceeds maximum allowed: %d Gigabyte, create a zip archive, or use the s3 API' % maxsize
+            return False, None, None
         with magic.Magic(flags=magic.MAGIC_MIME_TYPE) as m:
             mime_type = m.id_filename(filename)
         if mime_type in policy_config['allowed_mime_types']:
-            return True, mime_type
+            return True, mime_type, size
         else:
             self.message = 'not allowed to export file with MIME type: %s' % mime_type
             logging.error(self.message)
-            return False, None
+            return False, None, None
 
 
     def list_files(self, path):
+        """
+        Lists files in the export directory.
+
+        Returns
+        -------
+        dict,
+        {
+            'filename': <name>,
+            'modified_date': <mtime>,
+            'href': <url reference to resource>,
+            'exportable': <bool, indication of whether file is exportible>,
+            'reason': <str, explanation of exporable>
+        }
+
+        """
         files = os.listdir(path)
         if len(files) > CONFIG['export_max_num_list']:
             self.set_status(400)
@@ -208,20 +242,32 @@ class FileStreamerHandler(AuthRequestHandler):
             raise Exception
         times = []
         exportable = []
+        reasons = []
         for file in files:
             filepath = os.path.normpath(path + '/' + file)
             latest = os.stat(filepath).st_mtime
             date_time = str(datetime.datetime.fromtimestamp(latest).isoformat())
             times.append(date_time)
-            status, _ = self.enforce_export_policy(CONFIG['export_policy'], filepath)
+            try:
+                status, _, _ = self.enforce_export_policy(CONFIG['export_policy'], filepath)
+                if status:
+                    reason = None
+                else:
+                    reason = self.message
+            except Exception as e:
+                logging.error(e)
+                logging.error('could not enforce export policy when listing dir')
+                raise Exception
             exportable.append(status)
+            reasons.append(reason)
         file_info = []
-        for f, t, e in zip(files, times, exportable):
+        for f, t, e, r in zip(files, times, exportable, reasons):
             href = '%s/%s' % (self.request.uri, f)
             file_info.append({'filename': f,
                               'modified_date': t,
                               'href': href,
-                              'exportable': e})
+                              'exportable': e,
+                              'reason': r})
         logging.info('%s listed %s', self.user, path)
         self.write({'files': file_info})
 
@@ -229,6 +275,25 @@ class FileStreamerHandler(AuthRequestHandler):
     @tornado.web.asynchronous
     @tornado.gen.engine
     def get(self, pnum, filename=None):
+        """
+        List the export dir, or serve a file, asynchronously.
+
+        1. check token claims
+        2. check the pnum
+
+        If listing the dir:
+
+        3. run the list_files method
+
+        If serving a file:
+
+        3. check the filename
+        4. check that file exists
+        5. enforce the export policy
+        6. set the mime type
+        7. serve the file
+
+        """
         self.message = 'Unknown error, please contact TSD'
         try:
             try:
@@ -258,19 +323,8 @@ class FileStreamerHandler(AuthRequestHandler):
                 self.set_status(404)
                 self.message = 'File does not exist'
                 raise Exception
-            # ensure the process user can read the file
-            # given the folder permissions, still only the pXX-export-group can read
-            subprocess.call(['sudo', '/usr/bin/chmod', 'go+r', self.filepath])
-            status, mime_type = self.enforce_export_policy(CONFIG['export_policy'], self.filepath)
+            status, mime_type, size = self.enforce_export_policy(CONFIG['export_policy'], self.filepath)
             assert status
-            size = os.path.getsize(self.path)
-            if size > CONFIG['export_max_size']:
-                logging.error('%s tried to export a file exceeding the maximum size limit', self.user)
-                maxsize = CONFIG['export_max_size'] / 1024 / 1024 / 1024
-                self.message = 'File size exceeds maximum allowed: %d Gigabyte, create a zip archive, or use the s3 API' % maxsize
-                raise Exception
-            if size < self.CHUNK_SIZE:
-                self.CHUNK_SIZE = size
             self.set_header('Content-Type', mime_type)
             self.flush()
             fd = open(self.filepath, "rb")
