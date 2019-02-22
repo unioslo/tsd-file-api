@@ -179,12 +179,11 @@ class FileStreamerHandler(AuthRequestHandler):
         """
         Check file to ensure it meets the requirements of the export policy
 
-        Explanation
-        -----------
-        1. checks that file name follows conventions
-        2. checks that MIME types conform to allowed types
-        3. make the file readible for the process user
-        4. file size does not exceed max allowed for export
+        Checks
+        ------
+        1. file name follows conventions
+        2. file size does not exceed max allowed for export
+        3. checks that MIME types conform to allowed types, if policy enabled
 
         Returns
         -------
@@ -199,24 +198,23 @@ class FileStreamerHandler(AuthRequestHandler):
             self.message = 'Illegal export filename: %s' % filename
             logging.error(self.message)
             return False, None, None
-        if not policy_config['enabled']:
-            logging.info('Export policy is configured to be ignored')
-            return True, None, None
         subprocess.call(['sudo', 'chmod', 'go+r', filename])
+        with magic.Magic(flags=magic.MAGIC_MIME_TYPE) as m:
+            mime_type = m.id_filename(filename)
         size = os.path.getsize(self.path)
         if size > CONFIG['export_max_size']:
             logging.error('%s tried to export a file exceeding the maximum size limit', self.user)
             maxsize = CONFIG['export_max_size'] / 1024 / 1024 / 1024
             self.message = 'File size exceeds maximum allowed: %d Gigabyte, create a zip archive, or use the s3 API' % maxsize
-            return False, None, None
-        with magic.Magic(flags=magic.MAGIC_MIME_TYPE) as m:
-            mime_type = m.id_filename(filename)
+            return False, mime_type, size
+        if not policy_config['enabled']:
+            return True, mime_type, size
         if mime_type in policy_config['allowed_mime_types']:
             return True, mime_type, size
         else:
             self.message = 'not allowed to export file with MIME type: %s' % mime_type
             logging.error(self.message)
-            return False, None, None
+            return False, mime_type, size
 
 
     def list_files(self, path):
