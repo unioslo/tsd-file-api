@@ -15,6 +15,7 @@ import hashlib
 import subprocess
 import stat
 import shutil
+import fileinput
 
 from uuid import uuid4
 from sys import argv
@@ -528,14 +529,19 @@ class StreamHandler(AuthRequestHandler):
         else:
             return ['-pass', 'pass:%s' % decr_aes_key]
 
-    def merge_resumables(self, last_chunk_filename):
-        # remove .end
-        # merge
-        # move file to ../
-        # remove uuid dir
-        # return new path
-        # call chowner
-        return 'the-new-filename'
+    def merge_resumables(self, project_dir, last_chunk_filename, upload_id):
+        merged_filename = last_chunk_filename.replace(upload_id + '/', '').replace('.chunk.end', '')
+        out = os.path.normpath(project_dir + '/' + merged_filename)
+        chunked_files = os.listdir(project_dir + '/' + upload_id)
+        chunks = map(lambda x: '%s/%s/%s' % (project_dir, upload_id, x), chunked_files)
+        chunks.sort()
+        with open(out, 'wb') as fout:
+            fin = fileinput.input(chunks)
+            for line in fin:
+                fout.write(line)
+            fin.close()
+        # TODO: remove uuid dir
+        return out
 
     @gen.coroutine
     def prepare(self):
@@ -564,6 +570,7 @@ class StreamHandler(AuthRequestHandler):
                     filemode = 'wb+'
                 try:
                     self.call_chowner = True
+                    self.merged_file = False
                     content_type = self.request.headers['Content-Type']
                     project_dir = project_import_dir(options.uploads_folder, pnum, None, None)
                     # TODO: get this from URL instead
@@ -582,7 +589,8 @@ class StreamHandler(AuthRequestHandler):
                             self.upload_id = upload_id
                             self.call_chowner = True
                             filename = self.upload_id + '/' + filename
-                            filename = self.merge_resumables(filename)
+                            self.merged_file = self.merge_resumables(project_dir, filename, self.upload_id)
+                            self.target_file = None
                         elif chunk_num == 1:
                             logging.info('------> starting resumable')
                             self.chunk_num = 1
@@ -661,8 +669,9 @@ class StreamHandler(AuthRequestHandler):
                     else:
                         # write data to file, as-is
                         self.custom_content_type = None
-                        logging.info('opening file: %s', self.path)
-                        self.target_file = open(self.path, filemode)
+                        if not self.merged_file:
+                            logging.info('opening file: %s', self.path)
+                            self.target_file = open(self.path, filemode)
                 except KeyError:
                     logging.info('No content-type - do not know what to do with data')
             except Exception as e:
@@ -764,11 +773,14 @@ class StreamHandler(AuthRequestHandler):
         self.write({'message': 'data streamed'})
 
     def patch(self, pnum):
-        self.target_file.close()
-        os.rename(self.path, self.path_part)
-        logging.info('StreamHandler: closed file')
+        if not self.merged_file:
+            self.target_file.close()
+            os.rename(self.path, self.path_part)
+            logging.info('StreamHandler: closed file')
+            filename = os.path.basename(self.path_part).split('.chunk')[0]
+        else:
+            filename = os.path.basename(self.merged_file)
         self.set_status(201)
-        filename = os.path.basename(self.path_part).split('.chunk')[0]
         self.write({'filename': filename, 'id': self.upload_id, 'max_chunk': self.chunk_num})
 
     def head(self, pnum):
@@ -782,13 +794,15 @@ class StreamHandler(AuthRequestHandler):
                 os.rename(self.path, self.path_part)
                 logging.info('StreamHandler: Closed file')
         except AttributeError as e:
-            logging.info(e)
-            logging.info('There was no open file to close')
+            pass
         if options.set_owner and self.call_chowner:
             try:
                 # switch path and path_part variables back to their original values
                 # keep local copies in this scope for safety
-                path, path_part = self.path_part, self.path
+                if not self.merged_file:
+                    path, path_part = self.path_part, self.path
+                else:
+                    path = self.merged_file
                 os.chmod(path, _RW______)
                 logging.info('Attempting to change ownership of %s to %s', path, self.user)
                 subprocess.call(['sudo', options.chowner_path, path,

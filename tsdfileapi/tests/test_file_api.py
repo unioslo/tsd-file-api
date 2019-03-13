@@ -840,6 +840,7 @@ class TestFileApi(unittest.TestCase):
     # client-side specification of groups
 
     def test_ZE_stream_works_with_client_specified_group(self):
+        print TEST_TOKENS['VALID']
         headers = {'Authorization': 'Bearer ' + TEST_TOKENS['VALID'],
                    'Expect': '100-Continue'}
         url = self.stream + '/streamed-example-with-group-spec.csv?group=p11-member-group'
