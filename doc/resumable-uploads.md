@@ -17,7 +17,7 @@ The client, having chunked the file, starts by initiating a PATCH, uploading the
 ```txt
 PATCH /files/resumable/filename?chunk=<num>
 
-{filename: str, max_chunk: int, chunk_size: int, id: uuid}
+{filename: str, max_chunk: int, id: uuid}
 ```
 
 Using the UUID returned by the server in the response, the client can continue sending succesive chunks, in sequence:
@@ -25,7 +25,7 @@ Using the UUID returned by the server in the response, the client can continue s
 ```txt
 PATCH /files/resumable/filename?chunk=<num>&id=<UUID>
 
-{filename: str, max_chunk: int, chunk_size: int, id: uuid}
+{filename: str, max_chunk: int, id: uuid}
 ```
 
 
@@ -56,12 +56,12 @@ The client then proceeds as follows:
 ```txt
 PATCH /files/resumable/filename?chunk=<num>?id=<UUID>
 
-{filename: str, max_chunk: int, chunk_size: int, id: uuid}
+{filename: str, max_chunk: int, id: uuid}
 ```
 
 ## 3. Completing an upload
 
-To finish the upload the client must explicitly indicate that the current chunk marks the `end` of the sequence:
+To finish the upload the client must explicitly indicate that the upload is finished by sending an empty request as such:
 
 ```txt
 PATCH /files/resumable/filename?chunk=end?id=<UUID>?group=<group-name>
