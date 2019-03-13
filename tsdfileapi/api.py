@@ -495,6 +495,10 @@ class SnsFormDataHandler(GenericFormDataHandler):
         self.set_status(201)
 
 
+class ResumablesListHandler(AuthRequestHandler):
+    pass
+
+
 @stream_request_body
 class StreamHandler(AuthRequestHandler):
 
@@ -524,6 +528,14 @@ class StreamHandler(AuthRequestHandler):
         else:
             return ['-pass', 'pass:%s' % decr_aes_key]
 
+    def merge_resumables(self, last_chunk_filename):
+        # remove .end
+        # merge
+        # move file to ../
+        # remove uuid dir
+        # return new path
+        # call chowner
+        return 'the-new-filename'
 
     @gen.coroutine
     def prepare(self):
@@ -546,12 +558,44 @@ class StreamHandler(AuthRequestHandler):
                     self.group_name = pnum + '-member-group'
                 if self.request.method == 'POST':
                     filemode = 'ab+'
-                elif self.request.method == 'PUT':
+                elif self.request.method == 'PUT' or self.request.method == 'PATCH':
+                    # even for PATCH, files writes are idempotent
+                    # because we use that for resumable uploads
                     filemode = 'wb+'
                 try:
+                    self.call_chowner = True
                     content_type = self.request.headers['Content-Type']
                     project_dir = project_import_dir(options.uploads_folder, pnum, None, None)
+                    # TODO: get this from URL instead
+                    # build it ourselves in /stream handler
                     filename = secure_filename(self.request.headers['Filename'])
+                    if self.request.method == 'PATCH':
+                        logging.info('handling resumable upload: %s', self.request.uri)
+                        chunk_num = url_unescape(self.get_query_argument('chunk'))
+                        upload_id = url_unescape(self.get_query_argument('id'))
+                        filename = filename + '.chunk.' + chunk_num
+                        if chunk_num != 'end':
+                            chunk_num = int(chunk_num)
+                        if chunk_num == 'end':
+                            logging.info('------> ending resumable')
+                            self.chunk_num = 'end'
+                            self.upload_id = upload_id
+                            self.call_chowner = True
+                            filename = self.upload_id + '/' + filename
+                            filename = self.merge_resumables(filename)
+                        elif chunk_num == 1:
+                            logging.info('------> starting resumable')
+                            self.chunk_num = 1
+                            self.upload_id = str(uuid4())
+                            self.call_chowner = False
+                            filename = self.upload_id + '/' + filename
+                            os.makedirs(project_dir + '/' + self.upload_id)
+                        elif chunk_num > 1:
+                            logging.info('------> continuing resumable')
+                            self.chunk_num = chunk_num
+                            self.upload_id = upload_id
+                            self.call_chowner = False
+                            filename = self.upload_id + '/' + filename
                     self.path = os.path.normpath(project_dir + '/' + filename)
                     self.path_part = self.path + '.' + str(uuid4()) + '.part'
                     if os.path.lexists(self.path_part):
@@ -638,7 +682,6 @@ class StreamHandler(AuthRequestHandler):
     def data_received(self, chunk):
         # could use this to rate limit the client if needed
         # yield gen.Task(IOLoop.current().call_later, options.server_delay)
-        #logging.info('StreamHandler.data_received(%d bytes: %r)', len(chunk), chunk[:9])
         try:
             if not self.custom_content_type:
                 self.target_file.write(chunk)
@@ -720,6 +763,14 @@ class StreamHandler(AuthRequestHandler):
         self.set_status(201)
         self.write({'message': 'data streamed'})
 
+    def patch(self, pnum):
+        self.target_file.close()
+        os.rename(self.path, self.path_part)
+        logging.info('StreamHandler: closed file')
+        self.set_status(201)
+        filename = os.path.basename(self.path_part).split('.chunk')[0]
+        self.write({'filename': filename, 'id': self.upload_id, 'max_chunk': self.chunk_num})
+
     def head(self, pnum):
         self.set_status(201)
 
@@ -733,7 +784,7 @@ class StreamHandler(AuthRequestHandler):
         except AttributeError as e:
             logging.info(e)
             logging.info('There was no open file to close')
-        if options.set_owner:
+        if options.set_owner and self.call_chowner:
             try:
                 # switch path and path_part variables back to their original values
                 # keep local copies in this scope for safety
@@ -851,10 +902,19 @@ class ProxyHandler(AuthRequestHandler):
             except Exception as e:
                 logging.error('Could not prepare headers for async request handling')
                 raise e
-            # 7. Do async request to handle incoming data
+            # 7. Build URL
+            try:
+                upload_id, chunk_num = None, None
+                chunk_num = url_unescape(self.get_query_argument('chunk'))
+                upload_id = url_unescape(self.get_query_argument('id'))
+            except Exception:
+                pass
+            params = '?group=%s&chunk=%s&id=%s' % (group_name, chunk_num, upload_id)
+            internal_url = 'http://localhost:%d/%s/files/upload_stream%s' % (options.port, pnum, params)
+            # 8. Do async request to handle incoming data
             try:
                 self.fetch_future = AsyncHTTPClient().fetch(
-                    'http://localhost:%d/%s/files/upload_stream?group=%s' % (options.port, pnum, group_name),
+                    internal_url,
                     method=self.request.method,
                     body_producer=body,
                     # for the _entire_ request
@@ -882,7 +942,6 @@ class ProxyHandler(AuthRequestHandler):
 
     @gen.coroutine
     def data_received(self, chunk):
-        #logging.info('ProxyHandler.data_received(%d bytes: %r)', len(chunk), chunk[:9])
         yield self.chunks.put(chunk)
 
     @gen.coroutine
@@ -896,6 +955,15 @@ class ProxyHandler(AuthRequestHandler):
 
     @gen.coroutine
     def put(self, pnum, filename=None):
+        """Called after entire body has been read."""
+        yield self.chunks.put(None)
+        # wait for request to finish.
+        response = yield self.fetch_future
+        self.set_status(response.code)
+        self.write(response.body)
+
+    @gen.coroutine
+    def patch(self, pnum, filename=None):
         """Called after entire body has been read."""
         yield self.chunks.put(None)
         # wait for request to finish.
