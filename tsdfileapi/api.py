@@ -260,6 +260,7 @@ class FileStreamerHandler(AuthRequestHandler):
             exportable.append(status)
             reasons.append(reason)
         file_info = []
+        # TODO: add file size
         for f, t, e, r in zip(files, times, exportable, reasons):
             href = '%s/%s' % (self.request.uri, f)
             file_info.append({'filename': f,
@@ -325,6 +326,8 @@ class FileStreamerHandler(AuthRequestHandler):
             status, mime_type, size = self.enforce_export_policy(CONFIG['export_policy'], self.filepath)
             assert status
             self.set_header('Content-Type', mime_type)
+            # TODO: send the file size
+            #self.set_header('Content-Length', size)
             self.flush()
             fd = open(self.filepath, "rb")
             data = fd.read(self.CHUNK_SIZE)
@@ -504,13 +507,20 @@ class ResumablesListHandler(AuthRequestHandler):
 class StreamHandler(AuthRequestHandler):
 
     #pylint: disable=line-too-long
-    # Future: http://www.tornadoweb.org/en/stable/util.html?highlight=gzip#tornado.util.GzipDecompressor
+
+    """
+    Handles internal requests made from ProxyHandler.
+    Does request data processing, file management, and writes data to disk.
+    Calls the chowner to set ownership and rights.
+
+    """
 
     def decrypt_aes_key(self, b64encoded_pgpencrypted_key):
         gpg = _import_keys(CONFIG)
         key = base64.b64decode(b64encoded_pgpencrypted_key)
         decr_aes_key = str(gpg.decrypt(key)).strip()
         return decr_aes_key
+
 
     def start_openssl_proc(self, output_file=None, base64=True):
         cmd = ['openssl', 'enc', '-aes-256-cbc', '-d'] + self.aes_decryption_args_from_headers()
@@ -522,12 +532,63 @@ class StreamHandler(AuthRequestHandler):
                                 stdin=subprocess.PIPE,
                                 stdout=subprocess.PIPE if output_file is None else None)
 
+
     def aes_decryption_args_from_headers(self):
         decr_aes_key = self.decrypt_aes_key(self.request.headers['Aes-Key'])
         if "Aes-Iv" in self.request.headers:
             return ['-iv', self.request.headers["Aes-Iv"], '-K', decr_aes_key]
         else:
             return ['-pass', 'pass:%s' % decr_aes_key]
+
+
+    def handle_aes(self, content_type):
+        self.custom_content_type = content_type
+        self.proc = self.start_openssl_proc(output_file=self.path)
+
+
+    def handle_aes_octet_stream(self, content_type):
+        self.custom_content_type = content_type
+        self.proc = self.start_openssl_proc(output_file=self.path, base64=False)
+
+
+    def handle_tar(self, content_type, project_dir):
+        if 'gz' in content_type:
+            tarflags = '-xzf'
+        else:
+            tarflags = '-xf'
+        self.custom_content_type = content_type
+        self.proc = subprocess.Popen(['tar', '-C', project_dir, tarflags, '-'],
+                                      stdin=subprocess.PIPE)
+
+
+    def handle_tar_aes(self, content_type, project_dir):
+        if 'gz' in content_type:
+            tarflags = '-xzf'
+        else:
+            tarflags = '-xf'
+        self.custom_content_type = content_type
+        self.openssl_proc = self.start_openssl_proc()
+        logging.info('started openssl process')
+        self.tar_proc = subprocess.Popen(['tar', '-C', project_dir, tarflags, '-'],
+                                 stdin=self.openssl_proc.stdout)
+
+
+    def handle_gz(self, content_type, filemode):
+        self.custom_content_type = content_type
+        self.target_file = open(self.path, filemode)
+        self.gunzip_proc = subprocess.Popen(['gunzip', '-c', '-'],
+                                             stdin=subprocess.PIPE,
+                                             stdout=self.target_file)
+
+
+    def handle_gz_aes(self, content_type, filemode):
+        self.custom_content_type = content_type
+        self.target_file = open(self.path, filemode)
+        self.openssl_proc = self.start_openssl_proc()
+        self.gunzip_proc = subprocess.Popen(['gunzip', '-c', '-'],
+                                             stdin=self.openssl_proc.stdout,
+                                             stdout=self.target_file)
+
 
     def merge_resumables(self, project_dir, last_chunk_filename, upload_id):
         merged_filename = last_chunk_filename.replace(upload_id + '/', '').replace('.chunk.end', '')
@@ -543,9 +604,12 @@ class StreamHandler(AuthRequestHandler):
         # TODO: remove uuid dir
         return out
 
+
     @gen.coroutine
     def prepare(self):
         try:
+            self.call_chowner = True
+            self.merged_file = False
             try:
                 self.authnz = self.validate_token(roles_allowed=['import_user', 'export_user', 'admin_user'])
             except Exception as e:
@@ -569,8 +633,6 @@ class StreamHandler(AuthRequestHandler):
                     # because we use that for resumable uploads
                     filemode = 'wb+'
                 try:
-                    self.call_chowner = True
-                    self.merged_file = False
                     content_type = self.request.headers['Content-Type']
                     project_dir = project_import_dir(options.uploads_folder, pnum, None, None)
                     # TODO: get this from URL instead
@@ -620,57 +682,22 @@ class StreamHandler(AuthRequestHandler):
                             assert not os.path.lexists(self.path)
                     self.path, self.path_part = self.path_part, self.path
                     if content_type == 'application/aes':
-                        # only decryption, write to file
-                        self.custom_content_type = content_type
-                        self.proc = self.start_openssl_proc(output_file=self.path)
+                        self.handle_aes(content_type)
                     elif content_type == 'application/aes-octet-stream':
-                        # AES binary data, treat like application/aes but do not attempt base64 decoding
-                        self.custom_content_type = 'application/aes'
-                        self.proc = self.start_openssl_proc(output_file=self.path, base64=False)
+                        # getting errors here sometimes (locally)
+                        self.handle_aes_octet_stream(content_type)
                     elif content_type in ['application/tar', 'application/tar.gz']:
-                        # tar command creates the dir, no filename to use, no file to open
-                        if 'gz' in content_type:
-                            tarflags = '-xzf'
-                        else:
-                            tarflags = '-xf'
-                        self.custom_content_type = content_type
-                        self.proc = subprocess.Popen(['tar', '-C', project_dir, tarflags, '-'],
-                                                 stdin=subprocess.PIPE)
-                        logging.info('unpacking tarball')
+                        self.handle_tar(content_type, project_dir)
                     elif content_type in ['application/tar.aes', 'application/tar.gz.aes']:
-                        # tar command creates the dir, no filename to use, no file to open
-                        if 'gz' in content_type:
-                            tarflags = '-xzf'
-                        else:
-                            tarflags = '-xf'
-                        self.custom_content_type = content_type
-                        self.openssl_proc = self.start_openssl_proc()
-                        logging.info('started openssl process')
-                        self.tar_proc = subprocess.Popen(['tar', '-C', project_dir, tarflags, '-'],
-                                                 stdin=self.openssl_proc.stdout)
-                        logging.info('started tar process')
+                        self.handle_tar_aes(content_type, project_dir)
                     elif content_type == 'application/gz':
-                        self.custom_content_type = content_type
-                        logging.info('opening file: %s', self.path)
-                        self.target_file = open(self.path, filemode)
-                        self.gunzip_proc = subprocess.Popen(['gunzip', '-c', '-'],
-                                                             stdin=subprocess.PIPE,
-                                                             stdout=self.target_file)
-                        logging.info('started gunzip process')
+                        self.handle_gz(content_type, filemode)
                     elif content_type == 'application/gz.aes':
                         # seeing a non-determnistic failure here sometimes...
-                        self.custom_content_type = content_type
-                        logging.info('opening file: %s', self.path)
-                        self.target_file = open(self.path, filemode)
-                        self.openssl_proc = self.start_openssl_proc()
-                        self.gunzip_proc = subprocess.Popen(['gunzip', '-c', '-'],
-                                                             stdin=self.openssl_proc.stdout,
-                                                             stdout=self.target_file)
+                        self.handle_gz_aes(content_type, filemode)
                     else:
-                        # write data to file, as-is
                         self.custom_content_type = None
                         if not self.merged_file:
-                            logging.info('opening file: %s', self.path)
                             self.target_file = open(self.path, filemode)
                 except KeyError:
                     logging.info('No content-type - do not know what to do with data')
