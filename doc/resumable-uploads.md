@@ -6,8 +6,8 @@ Note: resume is implemented _per file_.
 ## HTTP Methods
 
 ```txt
-GET /files/resumable
-PATCH /files/resumable/file?chunk=<chunknum,end>&id=<UUID>&group=<group-name>
+GET /files/resumables/filename
+PATCH /files/stream/file?chunk=<chunknum,end>&id=<UUID>&group=<group-name>
 ```
 
 ## 1. Starting a new resumable upload
@@ -31,16 +31,12 @@ PATCH /files/resumable/filename?chunk=<num>&id=<UUID>
 
 ## 2. Resuming prior uploads
 
-The client can optionally make a GET request to get a list of uploads which are available to resume:
+The client can optionally make a GET request to get information necessary to resume a file upload:
 
 ```txt
-GET /files/resumable
+GET /files/resumables/myfile
 
-{
-    resumables: [
-        {filename: str, max_chunk: int, chunk_size: int, id: uuid}
-    ]
-}
+{filename: str, max_chunk: int, chunk_size: int, id: uuid}
 ```
 
 Each resumable upload has:

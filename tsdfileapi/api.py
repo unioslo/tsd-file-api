@@ -35,7 +35,7 @@ from tornado.web import Application, RequestHandler, stream_request_body, \
 # pylint: disable=relative-import
 from auth import verify_json_web_token
 from utils import secure_filename, project_import_dir, project_sns_dir, \
-                  IS_VALID_GROUPNAME, check_filename
+                  IS_VALID_GROUPNAME, check_filename, _IS_VALID_UUID
 from db import insert_into, create_table_from_codebook, sqlite_init, \
                create_table_from_generic, _table_name_from_form_id, \
                _VALID_PNUM, _table_name_from_table_name, TableNameException, \
@@ -500,7 +500,145 @@ class SnsFormDataHandler(GenericFormDataHandler):
 
 
 class ResumablesListHandler(AuthRequestHandler):
-    pass
+
+    """
+    List information necessary to resume an upload
+
+    Implementation
+    --------------
+    To continue a resumable upload which has stopped, clients
+    must get information about data stored by the server. This
+    class provides a GET method, which returns the relevant
+    information to the client, for a given file.
+
+    This information is:
+
+    - filename
+    - sequence number of last chunk
+    - chunk size
+    - upload id
+
+    If there are multiple resumable uploads that could be
+    associated with a given filename, the most recent one
+    will be chosen. This is to simplify server-side logic.
+
+    If a match has been found, based on the filename, the
+    server will try to ensure that the chunk size is consistent
+    across the chunks it currently has. It does this because it
+    is possible that the latest chunk might be incomplete. If it
+    cannot to determine a consistent size, then no resumable
+    is reported for the file.
+
+    """
+
+    def resumables_cmp(self, a, b):
+        a_time = a[0]
+        b_time = b[0]
+        if a_time > b_time:
+            return -1
+        elif a_time < b_time:
+            return 1
+        else:
+            return 1
+
+
+    def find_nth_chunk(self, project_dir, upload_id, filename, n):
+        n = n - 1 # chunk numbers start at 1, but keep 0-based for the signaure
+        current_resumable = '%s/%s' % (project_dir, upload_id)
+        files = os.listdir(current_resumable)
+        files.sort()
+        return files[n]
+
+
+    def find_relevant_resumable_dir(self, project_dir, filename):
+        potential_resumables = os.listdir(project_dir)
+        candidates = []
+        for pr in potential_resumables:
+            current_pr = '%s/%s' % (project_dir, pr)
+            if _IS_VALID_UUID.match(pr):
+                candidates.append((os.stat(current_pr).st_mtime, pr))
+        candidates.sort(self.resumables_cmp)
+        relevant = None
+        for cand in candidates:
+            upload_id = cand[1]
+            first_chunk = self.find_nth_chunk(project_dir, upload_id, filename, 1)
+            if filename in first_chunk:
+                relevant = cand[1]
+                break
+        return relevant
+
+
+    def get_resumable_chunk_info(self, resumable_dir):
+        # try to inspect at least 3 of the last chunks in the sequence
+        # returns size in bytes, and the latest consistent chunk sequence number
+        def bytes(chunk):
+            size = os.stat(chunk).st_size
+            return size
+        def check3(chunks):
+            size1 = bytes(chunks[0])
+            size2 = bytes(chunks[1])
+            size3 = bytes(chunks[2])
+            if size1 == size2 == size3:
+                return size3, 3
+            elif size2 == size1:
+                return size2, 2
+            else:
+                return size1, 1
+        size, max_chunk = None, None
+        chunks = [ '%s/%s' % (resumable_dir, i) for i in os.listdir(resumable_dir) ]
+        chunks.sort()
+        if len(chunks) == 1:
+            return bytes(chunks[0]), 1
+        elif len(chunks) == 2:
+            size1 = bytes(chunks[0])
+            size2 = bytes(chunks[1])
+            if size2 == size1:
+                return size2, 2
+            else:
+                return size1, 1
+        elif len(chunks) == 3:
+            return check3(chunks)
+        elif len(chunks) > 3:
+            sample = chunks[-3:]
+            logging.info(sample)
+            return check3(sample)
+
+
+    def get_resumable_info(self, project_dir, filename):
+        relevant_dir = self.find_relevant_resumable_dir(project_dir, filename)
+        if not relevant_dir:
+            raise Exception('No resumable found for: %s', filename)
+        resumable_dir = '%s/%s' % (project_dir, relevant_dir)
+        chunk_size, max_chunk = self.get_resumable_chunk_info(resumable_dir)
+        info = {'filename': filename, 'id': relevant_dir,
+                'chunk_size': chunk_size, 'max_chunk': max_chunk}
+        return info
+
+
+    def get(self, pnum, filename):
+        self.message = {'filename': filename, 'id': None, 'chunk_size': None, 'max_chunk': None}
+        try:
+
+            try:
+                self.authnz = self.validate_token(roles_allowed=['import_user', 'export_user', 'admin_user'])
+            except Exception as e:
+                logging.error('Not authorized to list resumable')
+                self.message = {'message': 'Not authorized'}
+                raise Exception('Not authorized')
+            try:
+                assert _VALID_PNUM.match(pnum)
+                project_dir = project_import_dir(options.uploads_folder, pnum, None, None)
+                secured_filename = check_filename(url_unescape(filename))
+            except Exception:
+                logging.error('not able to check for resumable due to bad input')
+                raise Exception
+            info = self.get_resumable_info(project_dir, secured_filename)
+            self.set_status(200)
+            self.write(info)
+        except Exception as e:
+            logging.error(e)
+            self.set_status(400)
+            self.write(self.message)
 
 
 @stream_request_body
@@ -714,6 +852,7 @@ class StreamHandler(AuthRequestHandler):
             logging.error('stream handler failed')
             self.finish({'message': 'no stream processing will happen'})
 
+
     @gen.coroutine
     def data_received(self, chunk):
         # could use this to rate limit the client if needed
@@ -747,6 +886,7 @@ class StreamHandler(AuthRequestHandler):
             os.rename(self.path, self.path_part)
             self.send_error("something went wrong")
 
+
     # TODO: check for errors
     def post(self, pnum):
         if not self.custom_content_type:
@@ -772,6 +912,7 @@ class StreamHandler(AuthRequestHandler):
             os.rename(self.path, self.path_part)
         self.set_status(201)
         self.write({'message': 'data streamed'})
+
 
     # TODO: check for errors
     def put(self, pnum):
@@ -799,6 +940,7 @@ class StreamHandler(AuthRequestHandler):
         self.set_status(201)
         self.write({'message': 'data streamed'})
 
+
     def patch(self, pnum):
         if not self.merged_file:
             self.target_file.close()
@@ -810,8 +952,10 @@ class StreamHandler(AuthRequestHandler):
         self.set_status(201)
         self.write({'filename': filename, 'id': self.upload_id, 'max_chunk': self.chunk_num})
 
+
     def head(self, pnum):
         self.set_status(201)
+
 
     def on_finish(self):
         """Called after each request. Clean up any open files if an error occurred."""
@@ -838,6 +982,7 @@ class StreamHandler(AuthRequestHandler):
                 logging.info('could not change file mode or owner for some reason')
                 logging.info(e)
         logging.info("Stream processing finished")
+
 
     def on_connection_close(self):
         """Called when clients close the connection. Clean up any open files."""
@@ -1158,6 +1303,7 @@ def main():
         ('/(.*)/sns/(.*)/(.*)', SnsFormDataHandler),
         ('/(.*)/files/export', FileStreamerHandler),
         ('/(.*)/files/export/(.*)', FileStreamerHandler),
+        ('/(.*)/files/resumables/(.*)', ResumablesListHandler)
     ], debug=options.debug)
     app.listen(options.port, max_body_size=options.max_body_size)
     IOLoop.instance().start()
