@@ -593,7 +593,8 @@ class StreamHandler(AuthRequestHandler):
     def merge_resumables(self, project_dir, last_chunk_filename, upload_id):
         merged_filename = last_chunk_filename.replace(upload_id + '/', '').replace('.chunk.end', '')
         out = os.path.normpath(project_dir + '/' + merged_filename)
-        chunked_files = os.listdir(project_dir + '/' + upload_id)
+        chunks_dir = project_dir + '/' + upload_id
+        chunked_files = os.listdir(chunks_dir)
         chunks = map(lambda x: '%s/%s/%s' % (project_dir, upload_id, x), chunked_files)
         chunks.sort()
         with open(out, 'wb') as fout:
@@ -601,7 +602,7 @@ class StreamHandler(AuthRequestHandler):
             for line in fin:
                 fout.write(line)
             fin.close()
-        # TODO: remove uuid dir
+        shutil.rmtree(chunks_dir)
         return out
 
 
@@ -639,7 +640,6 @@ class StreamHandler(AuthRequestHandler):
                     # build it ourselves in /stream handler
                     filename = secure_filename(self.request.headers['Filename'])
                     if self.request.method == 'PATCH':
-                        logging.info('handling resumable upload: %s', self.request.uri)
                         chunk_num = url_unescape(self.get_query_argument('chunk'))
                         upload_id = url_unescape(self.get_query_argument('id'))
                         filename = filename + '.chunk.' + chunk_num
