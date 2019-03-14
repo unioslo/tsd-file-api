@@ -35,7 +35,8 @@ from tornado.web import Application, RequestHandler, stream_request_body, \
 # pylint: disable=relative-import
 from auth import verify_json_web_token
 from utils import secure_filename, project_import_dir, project_sns_dir, \
-                  IS_VALID_GROUPNAME, check_filename, _IS_VALID_UUID
+                  IS_VALID_GROUPNAME, check_filename, _IS_VALID_UUID, \
+                  md5sum
 from db import insert_into, create_table_from_codebook, sqlite_init, \
                create_table_from_generic, _table_name_from_form_id, \
                _VALID_PNUM, _table_name_from_table_name, TableNameException, \
@@ -517,6 +518,7 @@ class ResumablesListHandler(AuthRequestHandler):
     - sequence number of last chunk
     - chunk size
     - upload id
+    - mdsum of the last chunk
 
     If there are multiple resumable uploads that could be
     associated with a given filename, the most recent one
@@ -569,8 +571,18 @@ class ResumablesListHandler(AuthRequestHandler):
 
 
     def get_resumable_chunk_info(self, resumable_dir):
-        # try to inspect at least 3 of the last chunks in the sequence
-        # returns size in bytes, and the latest consistent chunk sequence number
+        """
+        Try to inspect at least 3 of the last chunks in the sequence.
+
+        Returns
+        -------
+        tuple, (size, chunknum, md5sum, previous_offset, next_offset)
+
+        """
+        def info(chunk, size, n):
+            previous_offset = n * size - size
+            next_offset = n * size
+            return size, n, md5sum(chunk), previous_offset, next_offset
         def bytes(chunk):
             size = os.stat(chunk).st_size
             return size
@@ -579,23 +591,23 @@ class ResumablesListHandler(AuthRequestHandler):
             size2 = bytes(chunks[1])
             size3 = bytes(chunks[2])
             if size1 == size2 == size3:
-                return size3, n
+                return info(chunks[2], size3, n)
             elif size2 == size1:
-                return size2, 2
+                return info(chunks[1], size2, n - 1)
             else:
-                return size1, 1
-        size, max_chunk = None, None
+                return info(chunks[0], size1, n - 2)
         chunks = [ '%s/%s' % (resumable_dir, i) for i in os.listdir(resumable_dir) ]
         chunks.sort()
         if len(chunks) == 1:
-            return bytes(chunks[0]), 1
+            size1 = bytes(chunks[0])
+            return info(chunks[0], size1, 1)
         elif len(chunks) == 2:
             size1 = bytes(chunks[0])
             size2 = bytes(chunks[1])
             if size2 == size1:
-                return size2, 2
+                return info(chunks[1], size2, 2)
             else:
-                return size1, 1
+                return info(chunks[0], size1, 1)
         elif len(chunks) == 3:
             return check_n(chunks, 3)
         elif len(chunks) > 3:
@@ -604,16 +616,15 @@ class ResumablesListHandler(AuthRequestHandler):
 
 
     def get_resumable_info(self, project_dir, filename):
-        ## TODO: add md5 of chunk
-        ## client should check that it matches
-        ## if not, should start a new resumable
         relevant_dir = self.find_relevant_resumable_dir(project_dir, filename)
         if not relevant_dir:
             raise Exception('No resumable found for: %s', filename)
         resumable_dir = '%s/%s' % (project_dir, relevant_dir)
-        chunk_size, max_chunk = self.get_resumable_chunk_info(resumable_dir)
+        chunk_size, max_chunk, md5sum, previous_offset, next_offset = self.get_resumable_chunk_info(resumable_dir)
         info = {'filename': filename, 'id': relevant_dir,
-                'chunk_size': chunk_size, 'max_chunk': max_chunk}
+                'chunk_size': chunk_size, 'max_chunk': max_chunk,
+                'md5sum': md5sum, 'previous_offset': previous_offset,
+                'next_offset': next_offset}
         return info
 
 

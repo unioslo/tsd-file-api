@@ -65,7 +65,6 @@ https://github.com/kennethreitz/requests/issues/713
 # pylint: disable=invalid-name
 
 import base64
-import hashlib
 import httplib
 import json
 import logging
@@ -90,7 +89,7 @@ gnupg._parsers.Verify.TRUST_LEVELS["ENCRYPTION_COMPLIANCE_MODE"] = 23
 # pylint: disable=relative-import
 from tokens import gen_test_tokens, get_test_token_for_p12, gen_test_token_for_user
 from ..db import session_scope, sqlite_init
-from ..utils import project_import_dir, project_sns_dir
+from ..utils import project_import_dir, project_sns_dir, md5sum
 from ..pgp import _import_keys
 
 
@@ -102,14 +101,6 @@ def lazy_file_reader(filename):
                 break
             else:
                 yield line
-
-
-def md5sum(filename, blocksize=65536):
-    _hash = hashlib.md5()
-    with open(filename, "rb") as f:
-        for block in iter(lambda: f.read(blocksize), b""):
-            _hash.update(block)
-    return _hash.hexdigest()
 
 
 def build_payload(config, dtype):

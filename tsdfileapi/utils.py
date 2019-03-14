@@ -15,6 +15,8 @@
 import os
 import re
 import logging
+import hashlib
+
 
 _VALID_PNUM = re.compile(r'^[0-9a-z]+$')
 _VALID_FORMID = re.compile(r'^[0-9]+$')
@@ -157,3 +159,11 @@ def project_sns_dir(sns_uploads_folder, pnum, keyid=None, formid=None, test=Fals
         logging.error(e)
         logging.error('Could not resolve specified directory with key ID: %s', keyid)
         raise e
+
+
+def md5sum(filename, blocksize=65536):
+    _hash = hashlib.md5()
+    with open(filename, "rb") as f:
+        for block in iter(lambda: f.read(blocksize), b""):
+            _hash.update(block)
+    return _hash.hexdigest()
