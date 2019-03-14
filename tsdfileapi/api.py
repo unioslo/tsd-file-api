@@ -574,12 +574,12 @@ class ResumablesListHandler(AuthRequestHandler):
         def bytes(chunk):
             size = os.stat(chunk).st_size
             return size
-        def check3(chunks):
+        def check_n(chunks, n):
             size1 = bytes(chunks[0])
             size2 = bytes(chunks[1])
             size3 = bytes(chunks[2])
             if size1 == size2 == size3:
-                return size3, 3
+                return size3, n
             elif size2 == size1:
                 return size2, 2
             else:
@@ -597,14 +597,16 @@ class ResumablesListHandler(AuthRequestHandler):
             else:
                 return size1, 1
         elif len(chunks) == 3:
-            return check3(chunks)
+            return check_n(chunks, 3)
         elif len(chunks) > 3:
             sample = chunks[-3:]
-            logging.info(sample)
-            return check3(sample)
+            return check_n(sample, len(chunks))
 
 
     def get_resumable_info(self, project_dir, filename):
+        ## TODO: add md5 of chunk
+        ## client should check that it matches
+        ## if not, should start a new resumable
         relevant_dir = self.find_relevant_resumable_dir(project_dir, filename)
         if not relevant_dir:
             raise Exception('No resumable found for: %s', filename)
