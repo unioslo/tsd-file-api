@@ -610,6 +610,11 @@ class ResumablesListHandler(AuthRequestHandler):
         If no upload_id is provided, e.g. when the upload_id is lost, then
         the server will try to find a match, based on the filename, returning
         the most recent entry.
+
+        Returns
+        -------
+        str, upload_id (name of the directory)
+
         """
         potential_resumables = os.listdir(project_dir)
         if not upload_id:
@@ -628,7 +633,10 @@ class ResumablesListHandler(AuthRequestHandler):
                     relevant = cand[1]
                     break
         else:
-            pass # find the exact dir
+            for pr in potential_resumables:
+                current_pr = '%s/%s' % (project_dir, pr)
+                if _IS_VALID_UUID.match(pr) and str(upload_id) == str(pr):
+                    relevant = pr
         return relevant
 
 
