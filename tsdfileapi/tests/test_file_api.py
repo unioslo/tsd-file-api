@@ -917,7 +917,7 @@ class TestFileApi(unittest.TestCase):
     # resumable uploads
 
 
-    def create_simulated_resumable_in_upload_dir(self, filepath, filename, chunksize):
+    def create_simulated_resumable_in_upload_dir(self, filepath, filename, chunksize, bad_data=False):
         resume_dir = self.uploads_folder + '/' + self.test_upload_id
         try:
             os.makedirs(resume_dir)
@@ -926,7 +926,10 @@ class TestFileApi(unittest.TestCase):
         chunk1 = ''.join([resume_dir, '/', filename, '.chunk.1'])
         with open(chunk1, 'wb') as fout:
             with open(filepath, 'r') as fin:
-                chunk_data = fin.read(chunksize)
+                if not bad_data:
+                    chunk_data = fin.read(chunksize)
+                else:
+                    chunk_data = 'wrong'
                 fout.write(chunk_data)
 
 
@@ -942,33 +945,41 @@ class TestFileApi(unittest.TestCase):
         self.assertEqual(resp['filename'], filename)
 
 
-    def test_ZN_resume_works_with_upload_id_match(self):
+    def do_resume(self, by_id=False, verify=False, bad_data=False):
         token = TEST_TOKENS['VALID']
         chunksize = 5
         filename = os.path.basename(self.resume_file2)
-        self.create_simulated_resumable_in_upload_dir(self.resume_file2, filename, chunksize)
+        self.create_simulated_resumable_in_upload_dir(self.resume_file2, filename,
+                                                      chunksize, bad_data)
         url = '%s/%s' % (self.resumables, filename)
+        if by_id:
+            upload_id = self.test_upload_id
+        else:
+            upload_id = None
         resp = fileapi.initiate_resumable('', self.test_project, self.resume_file2,
                                           token, chunksize=5, new=False, group=None,
-                                          verify=True, dev_url=url,
-                                          upload_id=self.test_upload_id)
-        self.assertEqual(resp['max_chunk'], u'end')
-        self.assertTrue(resp['id'] is not None)
-        self.assertEqual(resp['filename'], filename)
+                                          verify=verify, upload_id=upload_id, dev_url=url)
+        if bad_data:
+            self.assertEqual(resp, None)
+        else:
+            self.assertEqual(resp['max_chunk'], u'end')
+            self.assertTrue(resp['id'] is not None)
+            self.assertEqual(resp['filename'], filename)
         try:
             shutil.rmtree(self.uploads_folder + '/' + self.test_upload_id)
         except OSError:
             pass
 
+    def test_ZN_resume_works_with_upload_id_match(self):
+        self.do_resume(by_id=True, verify=True)
+
 
     def test_ZO_resume_works_with_filename_match(self):
-        token = TEST_TOKENS['VALID']
-        pass
+        self.do_resume(by_id=False, verify=True)
 
 
     def test_ZP_resume_start_new_upload_if_md5_mismatch(self):
-        token = TEST_TOKENS['VALID']
-        pass
+        self.do_resume(by_id=False, verify=True, bad_data=True)
 
 
 def main():
