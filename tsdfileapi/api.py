@@ -765,7 +765,7 @@ class StreamHandler(AuthRequestHandler):
 
 
     def handle_aes_octet_stream(self, content_type):
-        self.custom_content_type = content_type
+        self.custom_content_type = 'application/aes'
         self.proc = self.start_openssl_proc(output_file=self.path, base64=False)
 
 
