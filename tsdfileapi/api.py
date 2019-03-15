@@ -243,13 +243,14 @@ class FileStreamerHandler(AuthRequestHandler):
         times = []
         exportable = []
         reasons = []
+        sizes = []
         for file in files:
             filepath = os.path.normpath(path + '/' + file)
             latest = os.stat(filepath).st_mtime
             date_time = str(datetime.datetime.fromtimestamp(latest).isoformat())
             times.append(date_time)
             try:
-                status, _, _ = self.enforce_export_policy(CONFIG['export_policy'], filepath)
+                status, _, size = self.enforce_export_policy(CONFIG['export_policy'], filepath)
                 if status:
                     reason = None
                 else:
@@ -260,11 +261,12 @@ class FileStreamerHandler(AuthRequestHandler):
                 raise Exception
             exportable.append(status)
             reasons.append(reason)
+            sizes.append(size)
         file_info = []
-        # TODO: add file size
-        for f, t, e, r in zip(files, times, exportable, reasons):
+        for f, t, e, r, s in zip(files, times, exportable, reasons, sizes):
             href = '%s/%s' % (self.request.uri, f)
             file_info.append({'filename': f,
+                              'size': s,
                               'modified_date': t,
                               'href': href,
                               'exportable': e,
@@ -503,14 +505,15 @@ class SnsFormDataHandler(GenericFormDataHandler):
 class ResumablesListHandler(AuthRequestHandler):
 
     """
-    List information necessary to resume an upload
+    List information necessary to resume an upload.
 
     Implementation
     --------------
     To continue a resumable upload which has stopped, clients
-    must get information about data stored by the server. This
-    class provides a GET method, which returns the relevant
-    information to the client, for a given file.
+    can get information about data stored by the server.
+
+    This class provides a GET method, which returns the relevant
+    information to the client, for a given upload_id, and/or file.
 
     This information is:
 
@@ -520,16 +523,65 @@ class ResumablesListHandler(AuthRequestHandler):
     - upload id
     - mdsum of the last chunk
 
-    If there are multiple resumable uploads that could be
-    associated with a given filename, the most recent one
-    will be chosen. This is to simplify server-side logic.
+    There are two possible scenarios: 1) the client knows the upload_id
+    associated with the file which needs to be resumed, or 2) the client
+    only knows the name of the file which needs to be resumed.
 
-    If a match has been found, based on the filename, the
-    server will try to ensure that the chunk size is consistent
-    across the chunks it currently has. It does this because it
-    is possible that the latest chunk might be incomplete. If it
-    cannot to determine a consistent size, then no resumable
-    is reported for the file.
+    Scenario 1
+    ----------
+    In scenario #1, the upload_id is provided, and the server returns
+    the information.
+
+    Scenario 2
+    ----------
+    In scenario #2, the server will look at all potential resumables,
+    and try to find a match based on the filename. If there are multiple
+    resumable uploads that could be associated with a given filename,
+    the most recent one will be chosen.
+
+    If a match has been found, the server will try to ensure that
+    the chunk size is consistent across the chunks it currently has,
+    by comparing the sizes of the last three chunks in the sequence
+    (if there are at least 3).  It does this because it is possible
+    that the latest chunk might be incomplete. If it cannot to determine
+    a consistent size, then no resumable is reported for the file.
+
+    Note: this match is probabilistic, but likely to be correct.
+    The likelihood depends on the behaviour of project members.
+    The only scenario under which the wrong match will be generated is
+    as follows.
+
+    A resumable upload is started, by person A containing with filename
+    data.txt. The upload is stopped for some reason, and the client/person
+    forgets the upload_id. In the meantime person B (belonging to the same
+    TSD project) starts another resumable upload, with different data,
+    but the file is also named data.txt. This upload is also stopped,
+    and the client/person loses the upload_id.
+
+    Now before person B can resume their upload, person A comes along
+    and tries to resume the upload of their own data.txt. The server
+    will not be able to find the correct match without the upload_id,
+    so the wrong information will be returned. This likelihood is
+    estimated to be very low.
+
+    Mitigation of possible errors
+    -----------------------------
+    To mitigate the likelihood of the client mistakenly acting on the wrong
+    resumable information, the server generates the md5 digest of the last
+    chunk in the sequence, and returns this to the client. The client can
+    then regenerate the chunk locally, compute its own digest, and compare
+    it with the one sent by the server.
+
+    There is yet another possibility of mistake here: if two different files
+    with the same name generate the same md5 digest in their last chunk on
+    the server. But that would also require that person 's and person B's
+    uploads stopped at the point where the two files happen to be the same
+    and that their chunk sizes would at that point lead to the same md5. This
+    seems extremely unlikely.
+
+    In conclusion, the extremely paranoid client implementor can simply require
+    the upload_id for resume, if they deem the md5 verification alone is not good
+    enough.
 
     """
 
@@ -552,21 +604,31 @@ class ResumablesListHandler(AuthRequestHandler):
         return files[n]
 
 
-    def find_relevant_resumable_dir(self, project_dir, filename):
+    def find_relevant_resumable_dir(self, project_dir, filename, upload_id):
+        """
+        If the client provides an upload_id, then the exact folder is returned.
+        If no upload_id is provided, e.g. when the upload_id is lost, then
+        the server will try to find a match, based on the filename, returning
+        the most recent entry.
+        """
         potential_resumables = os.listdir(project_dir)
-        candidates = []
-        for pr in potential_resumables:
-            current_pr = '%s/%s' % (project_dir, pr)
-            if _IS_VALID_UUID.match(pr):
-                candidates.append((os.stat(current_pr).st_mtime, pr))
-        candidates.sort(self.resumables_cmp)
-        relevant = None
-        for cand in candidates:
-            upload_id = cand[1]
-            first_chunk = self.find_nth_chunk(project_dir, upload_id, filename, 1)
-            if filename in first_chunk:
-                relevant = cand[1]
-                break
+        if not upload_id:
+            logging.info('Trying to find a matching resumable for %s', filename)
+            candidates = []
+            for pr in potential_resumables:
+                current_pr = '%s/%s' % (project_dir, pr)
+                if _IS_VALID_UUID.match(pr):
+                    candidates.append((os.stat(current_pr).st_mtime, pr))
+            candidates.sort(self.resumables_cmp)
+            relevant = None
+            for cand in candidates:
+                upload_id = cand[1]
+                first_chunk = self.find_nth_chunk(project_dir, upload_id, filename, 1)
+                if filename in first_chunk:
+                    relevant = cand[1]
+                    break
+        else:
+            pass # find the exact dir
         return relevant
 
 
@@ -615,8 +677,8 @@ class ResumablesListHandler(AuthRequestHandler):
             return check_n(sample, len(chunks))
 
 
-    def get_resumable_info(self, project_dir, filename):
-        relevant_dir = self.find_relevant_resumable_dir(project_dir, filename)
+    def get_resumable_info(self, project_dir, filename, upload_id):
+        relevant_dir = self.find_relevant_resumable_dir(project_dir, filename, upload_id)
         if not relevant_dir:
             raise Exception('No resumable found for: %s', filename)
         resumable_dir = '%s/%s' % (project_dir, relevant_dir)
@@ -630,6 +692,7 @@ class ResumablesListHandler(AuthRequestHandler):
 
     def get(self, pnum, filename):
         self.message = {'filename': filename, 'id': None, 'chunk_size': None, 'max_chunk': None}
+        upload_id = None
         try:
 
             try:
@@ -645,7 +708,11 @@ class ResumablesListHandler(AuthRequestHandler):
             except Exception:
                 logging.error('not able to check for resumable due to bad input')
                 raise Exception
-            info = self.get_resumable_info(project_dir, secured_filename)
+            try:
+                upload_id = url_unescape(self.get_query_argument('id'))
+            except Exception:
+                pass
+            info = self.get_resumable_info(project_dir, secured_filename, upload_id)
             self.set_status(200)
             self.write(info)
         except Exception as e:
