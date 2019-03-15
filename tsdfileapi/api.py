@@ -644,6 +644,12 @@ class ResumablesListHandler(AuthRequestHandler):
         def info(chunk, size, n):
             previous_offset = n * size - size
             next_offset = n * size
+            try:
+                chunk_num_in_filename = int(chunk.split('.')[-1])
+                assert chunk_num_in_filename == n
+                assert '.part' not in chunk
+            except AssertionError:
+                raise Exception('Inconsistency between chunk filename, and computed relevant chunk')
             return size, n, md5sum(chunk), previous_offset, next_offset
         def bytes(chunk):
             size = os.stat(chunk).st_size
@@ -864,7 +870,6 @@ class StreamHandler(AuthRequestHandler):
                         if chunk_num != 'end':
                             chunk_num = int(chunk_num)
                         if chunk_num == 'end':
-                            logging.info('------> ending resumable')
                             self.chunk_num = 'end'
                             self.upload_id = upload_id
                             self.call_chowner = True
@@ -872,14 +877,12 @@ class StreamHandler(AuthRequestHandler):
                             self.merged_file = self.merge_resumables(project_dir, filename, self.upload_id)
                             self.target_file = None
                         elif chunk_num == 1:
-                            logging.info('------> starting resumable')
                             self.chunk_num = 1
                             self.upload_id = str(uuid4())
                             self.call_chowner = False
                             filename = self.upload_id + '/' + filename
                             os.makedirs(project_dir + '/' + self.upload_id)
                         elif chunk_num > 1:
-                            logging.info('------> continuing resumable')
                             self.chunk_num = chunk_num
                             self.upload_id = upload_id
                             self.call_chowner = False
@@ -902,7 +905,6 @@ class StreamHandler(AuthRequestHandler):
                     if content_type == 'application/aes':
                         self.handle_aes(content_type)
                     elif content_type == 'application/aes-octet-stream':
-                        # getting errors here sometimes (locally)
                         self.handle_aes_octet_stream(content_type)
                     elif content_type in ['application/tar', 'application/tar.gz']:
                         self.handle_tar(content_type, project_dir)
@@ -972,7 +974,6 @@ class StreamHandler(AuthRequestHandler):
         if not self.custom_content_type:
             self.target_file.close()
             os.rename(self.path, self.path_part)
-            logging.info('StreamHandler: closed file')
         elif self.custom_content_type in ['application/tar', 'application/tar.gz',
                                           'application/aes']:
             out, err = self.proc.communicate()
@@ -999,7 +1000,6 @@ class StreamHandler(AuthRequestHandler):
         if not self.custom_content_type:
             self.target_file.close()
             os.rename(self.path, self.path_part)
-            logging.info('StreamHandler: closed file')
         elif self.custom_content_type in ['application/tar', 'application/tar.gz',
                                           'application/aes']:
             out, err = self.proc.communicate()
@@ -1025,7 +1025,6 @@ class StreamHandler(AuthRequestHandler):
         if not self.merged_file:
             self.target_file.close()
             os.rename(self.path, self.path_part)
-            logging.info('StreamHandler: closed file')
             filename = os.path.basename(self.path_part).split('.chunk')[0]
         else:
             filename = os.path.basename(self.merged_file)
@@ -1043,7 +1042,6 @@ class StreamHandler(AuthRequestHandler):
             if not self.target_file.closed:
                 self.target_file.close()
                 os.rename(self.path, self.path_part)
-                logging.info('StreamHandler: Closed file')
         except AttributeError as e:
             pass
         if options.set_owner and self.call_chowner:
@@ -1061,7 +1059,6 @@ class StreamHandler(AuthRequestHandler):
             except Exception as e:
                 logging.info('could not change file mode or owner for some reason')
                 logging.info(e)
-        logging.info("Stream processing finished")
 
 
     def on_connection_close(self):
@@ -1117,7 +1114,6 @@ class ProxyHandler(AuthRequestHandler):
                 else:
                     # TODO: deprecate this once transitioned to URI scheme
                     self.filename = secure_filename(self.request.headers['Filename'])
-                logging.info('supplied filename: %s', self.filename)
             except KeyError:
                 self.filename = datetime.datetime.now().isoformat() + '.txt'
                 logging.info("filename not found - setting filename to: %s", self.filename)
