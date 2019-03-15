@@ -708,7 +708,6 @@ class ResumablesListHandler(AuthRequestHandler):
         self.message = {'filename': filename, 'id': None, 'chunk_size': None, 'max_chunk': None}
         upload_id = None
         try:
-
             try:
                 self.authnz = self.validate_token(roles_allowed=['import_user', 'export_user', 'admin_user'])
             except Exception as e:

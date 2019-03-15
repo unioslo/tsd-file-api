@@ -74,12 +74,15 @@ import sys
 import time
 import unittest
 import pwd
+import uuid
+import shutil
 from datetime import datetime
 
 import gnupg
 import requests
 import yaml
 from sqlalchemy.exc import OperationalError
+from tsdapiclient import fileapi
 
 # monkey patch to avoid random error message
 # https://github.com/isislovecruft/python-gnupg/issues/207
@@ -171,6 +174,7 @@ class TestFileApi(unittest.TestCase):
         cls.stream = cls.base_url + '/files/stream'
         cls.upload_stream = cls.base_url + '/files/upload_stream'
         cls.export = cls.base_url + '/files/export'
+        cls.resumables = cls.base_url + '/files/resumables'
         cls.test_project = cls.test_project
 
         # auth tokens
@@ -199,6 +203,11 @@ class TestFileApi(unittest.TestCase):
         cls.example_gz_aes_with_key_and_iv = os.path.normpath(cls.data_folder + '/example.csv.gz.aes-with-key-and-iv')
         # openssl enc -aes-256-cbc -iv ${hex_aes_iv} -K ${hex_aes_key}
         cls.example_binary_aes_with_key_and_iv = os.path.normpath(cls.data_folder + '/example.csv.binary-aes-with-key-and-iv')
+        # resumables
+        cls.resume_file1 = os.path.normpath(cls.data_folder + '/resume-file1')
+        cls.resume_file2 = os.path.normpath(cls.data_folder + '/resume-file2')
+        cls.test_upload_id = '96c68dad-8dc5-4076-9569-92394001d42a'
+
 
     @classmethod
     def tearDownClass(cls):
@@ -831,7 +840,6 @@ class TestFileApi(unittest.TestCase):
     # client-side specification of groups
 
     def test_ZE_stream_works_with_client_specified_group(self):
-        print TEST_TOKENS['VALID']
         headers = {'Authorization': 'Bearer ' + TEST_TOKENS['VALID'],
                    'Expect': '100-Continue'}
         url = self.stream + '/streamed-example-with-group-spec.csv?group=p11-member-group'
@@ -906,15 +914,74 @@ class TestFileApi(unittest.TestCase):
         self.assertEqual(resp.status_code, 200)
 
 
+    # resumable uploads
+
+
+    def create_simulated_resumable_in_upload_dir(self, filepath, filename, chunksize):
+        resume_dir = self.uploads_folder + '/' + self.test_upload_id
+        try:
+            os.makedirs(resume_dir)
+        except OSError:
+            pass # it already exists, we do not care
+        chunk1 = ''.join([resume_dir, '/', filename, '.chunk.1'])
+        with open(chunk1, 'wb') as fout:
+            with open(filepath, 'r') as fin:
+                chunk_data = fin.read(chunksize)
+                fout.write(chunk_data)
+
+
+    def test_ZM_resume_new_upload_works_is_idempotent(self):
+        token = TEST_TOKENS['VALID']
+        filename = os.path.basename(self.resume_file1)
+        url = '%s/%s' % (self.stream, filename)
+        resp = fileapi.initiate_resumable('', self.test_project, self.resume_file1,
+                                          token, chunksize=5, new=True, group=None,
+                                          verify=False, dev_url=url)
+        self.assertEqual(resp['max_chunk'], u'end')
+        self.assertTrue(resp['id'] is not None)
+        self.assertEqual(resp['filename'], filename)
+
+
+    def test_ZN_resume_works_with_upload_id_match(self):
+        token = TEST_TOKENS['VALID']
+        chunksize = 5
+        filename = os.path.basename(self.resume_file2)
+        self.create_simulated_resumable_in_upload_dir(self.resume_file2, filename, chunksize)
+        url = '%s/%s' % (self.resumables, filename)
+        resp = fileapi.initiate_resumable('', self.test_project, self.resume_file2,
+                                          token, chunksize=5, new=False, group=None,
+                                          verify=True, dev_url=url,
+                                          upload_id=self.test_upload_id)
+        self.assertEqual(resp['max_chunk'], u'end')
+        self.assertTrue(resp['id'] is not None)
+        self.assertEqual(resp['filename'], filename)
+        try:
+            shutil.rmtree(self.uploads_folder + '/' + self.test_upload_id)
+        except OSError:
+            pass
+
+
+    def test_ZO_resume_works_with_filename_match(self):
+        token = TEST_TOKENS['VALID']
+        pass
+
+
+    def test_ZP_resume_start_new_upload_if_md5_mismatch(self):
+        token = TEST_TOKENS['VALID']
+        pass
+
+
 def main():
     runner = unittest.TextTestRunner()
     suite = []
     suite.append(unittest.TestSuite(map(TestFileApi, [
+        # authz
         'test_A_mangled_valid_token_rejected',
         'test_B_invalid_signature_rejected',
         'test_C_token_with_wrong_role_rejected',
         'test_D_timed_out_token_rejected',
         'test_E_unauthenticated_request_rejected',
+        # form-data
         'test_F_post_file_multi_part_form_data',
         'test_F1_post_file_multi_part_form_data_sns',
         'test_FA_post_multiple_files_multi_part_form_data',
@@ -924,19 +991,25 @@ def main():
         'test_H_put_file_multi_part_form_data',
         'test_H1_put_file_multi_part_form_data_sns',
         'test_HA_put_multiple_files_multi_part_form_data',
+        # sns
         'test_H4XX_when_no_keydir_exists',
+        # streaming
         'test_I_put_file_to_streaming_endpoint_no_chunked_encoding_data_binary',
         'test_K_put_stream_file_chunked_transfer_encoding',
+        # head
         'test_N_head_on_uploads_fails_when_it_should',
         'test_O_head_on_uploads_succeeds_when_conditions_are_met',
+        # sqlite backend
         'test_S_create_table',
         'test_T_create_table_is_idempotent',
         'test_U_add_column_codebook',
         'test_V_post_data',
         'test_W_create_table_generic',
         'test_X_post_encrypted_data',
+        # pnum logic
         'test_Y_invalid_project_number_rejected',
         'test_Z_token_for_other_project_rejected',
+        # custom data processing
         'test_Za_stream_tar_without_custom_content_type_works',
         'test_Zb_stream_tar_with_custom_content_type_untar_works',
         'test_Zc_stream_tar_gz_with_custom_content_type_untar_works',
@@ -950,10 +1023,12 @@ def main():
         'test_Zg_stream_gz_with_custom_header_decompress_works',
         'test_Zh_stream_gz_with_custom_header_decompress_works',
         'test_Zh0_stream_gz_with_iv_and_custom_header_decompress_works',
+        # upload dirs
         'test_ZA_choosing_file_upload_directories_based_on_pnum_works',
         'test_ZB_sns_folder_logic_is_correct',
         'test_ZC_setting_ownership_based_on_user_works',
         'test_ZD_cannot_upload_empty_file_to_sns',
+        # groups
         'test_ZE_stream_works_with_client_specified_group',
         'test_ZF_stream_does_not_work_with_client_specified_group_wrong_pnum',
         'test_ZG_stream_does_not_work_with_client_specified_group_nonsense_input',
@@ -963,6 +1038,11 @@ def main():
         'test_ZJ_export_file_restrictions_enforced',
         'test_ZK_export_list_dir_works',
         'test_ZL_export_file_works',
+        # resume
+        'test_ZM_resume_new_upload_works_is_idempotent',
+        'test_ZN_resume_works_with_upload_id_match',
+        'test_ZO_resume_works_with_filename_match',
+        'test_ZP_resume_start_new_upload_if_md5_mismatch',
         ])))
     map(runner.run, suite)
 
