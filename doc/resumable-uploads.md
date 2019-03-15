@@ -44,8 +44,11 @@ Each resumable upload has:
 - a chunk number
 - a chunk size
 - a UUID
+- previous offset (number of bytes sent so far minus the last chunk size)
+- next offset (number of bytes sent so far)
+- chunk md5
 
-The combination of the filename and UUID allow the client to resume an upload of a specific file for a specific prior request. The chunk size and number allow the client to seek locally in the file before sending more chunks to the server, avoiding sending the same data more than once.
+The combination of the filename and UUID allow the client to resume an upload of a specific file for a specific prior request. The chunk size and number allow the client to seek locally in the file before sending more chunks to the server, avoiding sending the same data more than once. The md5 digest of the latest chunk, combined with the offset information allow clients to verify chunk integrity.
 
 The client then proceeds as follows:
 
@@ -83,8 +86,8 @@ Once the client has sent the final chunk in the sequence, the server will merge 
 
 ### Clients
 
-Client are expected to split files into chunks, and upload each one as a separate request, _in order_. Since the server will return information about chunk size, and the last chunk sequence number, the client does not have to keep state if and when a resumable file upload fails.
+Client are expected to split files into chunks, and upload each one as a separate request, _in order_. Since the server will return information about chunks, the client does not have to keep state if and when a resumable file upload fails, but it can if it wants to, since each request return enough information to resume the upload in the event of failure.
 
-If a resumable upload fails, the client can, before initiating a new resumable request for a file, ask the server whether there is a resumable for the given file. If so, it will recieve the chunk size and sequence numner, and the UUID which identifies the upload. Using this, the given file upload can be resumed. The client chunks the file, seeks to the relevant part, and continues the upload.
+If a resumable upload fails and the client has lost track of the upload id, the client can, before initiating a new resumable request for a file, ask the server whether there is a resumable for the given file. If so, it will recieve the chunk size and sequence numner, and the UUID which identifies the upload. Using this, the given file upload can be resumed. The client chunks the file, seeks to the relevant part, and continues the upload.
 
 When uploading the last chunk, the client must explicitly indicate that it is the last part of the sequence.
