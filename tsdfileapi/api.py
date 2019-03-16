@@ -859,7 +859,7 @@ class StreamHandler(AuthRequestHandler):
 
         """
         merged_filename = last_chunk_filename.replace(upload_id + '/', '').replace('.chunk.end', '')
-        out = os.path.normpath(project_dir + '/' + merged_filename)
+        out = os.path.normpath(project_dir + '/' + merged_filename + '.' + upload_id)
         chunks_dir = project_dir + '/' + upload_id
         chunked_files = os.listdir(chunks_dir)
         chunks = map(lambda x: '%s/%s/%s' % (project_dir, upload_id, x), chunked_files)
@@ -868,8 +868,10 @@ class StreamHandler(AuthRequestHandler):
             for chunk in chunks:
                 with open(chunk, 'rb') as fin:
                     shutil.copyfileobj(fin, fout)
+        final = out.replace('.' + upload_id, '')
+        os.rename(out, final)
         shutil.rmtree(chunks_dir)
-        return out
+        return final
 
 
     @gen.coroutine
