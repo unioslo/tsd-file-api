@@ -36,7 +36,7 @@ from tornado.web import Application, RequestHandler, stream_request_body, \
 from auth import verify_json_web_token
 from utils import secure_filename, project_import_dir, project_sns_dir, \
                   IS_VALID_GROUPNAME, check_filename, _IS_VALID_UUID, \
-                  md5sum
+                  md5sum, natural_keys
 from db import insert_into, create_table_from_codebook, sqlite_init, \
                create_table_from_generic, _table_name_from_form_id, \
                _VALID_PNUM, _table_name_from_table_name, TableNameException, \
@@ -600,7 +600,7 @@ class ResumablesListHandler(AuthRequestHandler):
         n = n - 1 # chunk numbers start at 1, but keep 0-based for the signaure
         current_resumable = '%s/%s' % (project_dir, upload_id)
         files = os.listdir(current_resumable)
-        files.sort()
+        files.sort(key=natural_keys)
         return files[n]
 
 
@@ -673,7 +673,7 @@ class ResumablesListHandler(AuthRequestHandler):
             else:
                 return info(chunks[0], size1, n - 2)
         chunks = [ '%s/%s' % (resumable_dir, i) for i in os.listdir(resumable_dir) ]
-        chunks.sort()
+        chunks.sort(key=natural_keys)
         if len(chunks) == 1:
             size1 = bytes(chunks[0])
             return info(chunks[0], size1, 1)
@@ -745,6 +745,8 @@ class StreamHandler(AuthRequestHandler):
     Calls the chowner to set ownership and rights.
 
     """
+
+
 
     def decrypt_aes_key(self, b64encoded_pgpencrypted_key):
         gpg = _import_keys(CONFIG)
@@ -854,8 +856,8 @@ class StreamHandler(AuthRequestHandler):
         function if an incremental merge fails, which tells the client to try
         again, and keep server-side data consistent.
 
-        Either way, both non-inplace, and inplace methods have the same memory
-        footprint, so the tradeoff here is to use more disk to get better reliability.
+        Either way, both methods have the same memory footprint,
+        so the tradeoff here is to use more disk to get better reliability.
 
         """
         merged_filename = last_chunk_filename.replace(upload_id + '/', '').replace('.chunk.end', '')
@@ -863,16 +865,18 @@ class StreamHandler(AuthRequestHandler):
         chunks_dir = project_dir + '/' + upload_id
         chunked_files = os.listdir(chunks_dir)
         chunks = map(lambda x: '%s/%s/%s' % (project_dir, upload_id, x), chunked_files)
-        chunks.sort()
+        chunks.sort(key=natural_keys)
         with open(out, 'wb') as fout:
             for chunk in chunks:
                 with open(chunk, 'rb') as fin:
+                    logging.info('merging: %s', chunk)
                     shutil.copyfileobj(fin, fout)
+                logging.info('deleting: %s', chunk)
+                os.remove(chunk) # this means merging cannot be retried
         final = out.replace('.' + upload_id, '')
         os.rename(out, final)
         shutil.rmtree(chunks_dir)
         return final
-
 
     @gen.coroutine
     def prepare(self):

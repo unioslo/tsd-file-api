@@ -936,7 +936,7 @@ class TestFileApi(unittest.TestCase):
                 fout.write(chunk_data)
 
 
-    def start_new_resumable(self, filepath, chunksize=1):
+    def start_new_resumable(self, filepath, chunksize=1, large_file=False):
         token = TEST_TOKENS['VALID']
         filename = os.path.basename(filepath)
         url = '%s/%s' % (self.stream, filename)
@@ -946,8 +946,9 @@ class TestFileApi(unittest.TestCase):
         self.assertEqual(resp['max_chunk'], u'end')
         self.assertTrue(resp['id'] is not None)
         self.assertEqual(resp['filename'], filename)
-        self.assertEqual(md5sum(filepath),
-            md5sum(self.uploads_folder + '/' + self.test_group + '/' + filename))
+        if not large_file:
+            self.assertEqual(md5sum(filepath),
+                md5sum(self.uploads_folder + '/' + self.test_group + '/' + filename))
 
 
     def test_ZM_resume_new_upload_works_is_idempotent(self):
@@ -994,8 +995,8 @@ class TestFileApi(unittest.TestCase):
 
 
     def test_ZQ_large_file_resume(self):
-        _100mb = 1000*1000*500 # for 50gb file
-        self.start_new_resumable(self.large_file, chunksize=_100mb)
+        _100mb = 1000*1000*50 # for 1gb file
+        self.start_new_resumable(self.large_file, chunksize=_100mb, large_file=True)
 
 
 def main():
