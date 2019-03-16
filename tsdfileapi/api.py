@@ -822,6 +822,52 @@ class StreamHandler(AuthRequestHandler):
 
 
     def merge_resumables(self, project_dir, last_chunk_filename, upload_id):
+        """
+        Merge chunks into one file.
+
+        There is a subtle trade-off between disk-usage efficiency
+        and resumable upload reliability. If we do not perform inplace
+        merging, then there will be a moment where the uploaded file
+        occupies twice its final size on disk. For large files this
+        may have a significant impact on disk quotas. The advantage of
+        this is, however, that if the last request in the sequence fails
+        while the merge is taking place, we still have all the chunked
+        data. If the client needed to restart the final merge instruction
+        then we would simply restart the merge from chunk1, and over-write
+        whatever had been accumulated before. The over-write semantics
+        guarantees that the merged file will be correct.
+
+        On the other hand it is possible to perform an inplace merge, in
+        which chunks are removed from disk, as they are being merged into
+        the final file. In the scenario where the request drops while the
+        merge is taking place, preserving the ability to restart the merge
+        and end up with correct data is more difficult. The reason it is
+        more difficult is that the request might fail in the middle of reading
+        and writing a chunk to the merged file. So that partially merged
+        chunk would remain on disk, in its entirety when the request fails.
+        One could then try to accumulate the merged file in append-mode,
+        to be able to restart the merge, as it were, but to do that
+        correctly in this regard, we should not start reading the last chunk
+        from line 1, but from the exact point where the cursor was in the file
+        when the merge request failed. And doing this requires more book-keeping,
+        and seems more error prone.
+
+        A non-error prone implementation of inplace merging would require
+        dropping fileinput in favour of our own version, in which we read one
+        chunk file in its entirety, appended it to the merged file, and
+        deleted the chunked file only after being sure the previous write
+        has successfully completed. This might be memory inefficient if
+        clients produce large chunks. And even then there would still be
+        the chance of the server process crashing after writing the chunked
+        file, but before deleting it, leaving the server in an inconsistent
+        state, without the ability to report the inconsistency to the client.
+
+        Either way, both non-inplace, and inplace methods have the same memory
+        footprint if implemented with fileinput, since chunks are read and
+        written line-by-line, so the tradeoff here is to use more disk to
+        get better reliability.
+
+        """
         merged_filename = last_chunk_filename.replace(upload_id + '/', '').replace('.chunk.end', '')
         out = os.path.normpath(project_dir + '/' + merged_filename)
         chunks_dir = project_dir + '/' + upload_id
@@ -829,7 +875,7 @@ class StreamHandler(AuthRequestHandler):
         chunks = map(lambda x: '%s/%s/%s' % (project_dir, upload_id, x), chunked_files)
         chunks.sort()
         with open(out, 'wb') as fout:
-            fin = fileinput.input(chunks)
+            fin = fileinput.input(chunks, inplace=0)
             for line in fin:
                 fout.write(line)
             fin.close()
