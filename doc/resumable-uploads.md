@@ -79,7 +79,6 @@ When a new resumable request is made, the server generates a new UUID, and creat
     /filename.txt.chunk.1
     /filename.txt.chunk.2
     /filename.txt.chunk.3
-    /filename.txt.chunk.end
 ```
 
 Once the client has sent the final chunk in the sequence, the server will merge the chunks, move the merged file to its final destination, remove the chunks, their accumulating directory, and respond to the client that the upload is complete.
