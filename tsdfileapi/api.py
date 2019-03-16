@@ -650,15 +650,14 @@ class ResumablesListHandler(AuthRequestHandler):
 
         """
         def info(chunk, size, n):
-            previous_offset = n * size - size
-            next_offset = n * size
+            chunk_num = int(chunk.split('.')[-1])
+            previous_offset = chunk_num * size - size
+            next_offset = chunk_num * size
             try:
-                chunk_num_in_filename = int(chunk.split('.')[-1])
-                assert chunk_num_in_filename == n
                 assert '.part' not in chunk
             except AssertionError:
                 raise Exception('Inconsistency between chunk filename, and computed relevant chunk')
-            return size, n, md5sum(chunk), previous_offset, next_offset
+            return size, chunk_num, md5sum(chunk), previous_offset, next_offset
         def bytes(chunk):
             size = os.stat(chunk).st_size
             return size
