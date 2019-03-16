@@ -927,13 +927,17 @@ class TestFileApi(unittest.TestCase):
         except OSError:
             pass # it already exists, we do not care
         chunk1 = ''.join([resume_dir, '/', filename, '.chunk.1'])
-        with open(chunk1, 'wb') as fout:
-            with open(filepath, 'r') as fin:
+        merged_file = ''.join([self.uploads_folder, '/', filename, '.', self.test_upload_id])
+        with open(filepath, 'r') as fin:
+            with open(chunk1, 'wb') as fout1:
                 if not bad_data:
                     chunk_data = fin.read(chunksize)
                 else:
                     chunk_data = 'wrong'
-                fout.write(chunk_data)
+                fout1.write(chunk_data) # the uploaded chunk
+            with open(merged_file, 'wb') as fout2:
+                fout2.write(chunk_data) # the merged chunk
+
 
 
     def start_new_resumable(self, filepath, chunksize=1, large_file=False):
@@ -955,19 +959,19 @@ class TestFileApi(unittest.TestCase):
         self.start_new_resumable(self.resume_file1, chunksize=5)
 
 
-    def do_resume(self, by_id=False, verify=False, bad_data=False):
+    def do_resume(self, filepath, chunksize=None, by_id=False, verify=False, bad_data=False, md5=True, large=False):
         token = TEST_TOKENS['VALID']
-        chunksize = 5
-        filename = os.path.basename(self.resume_file2)
-        self.create_simulated_resumable_in_upload_dir(self.resume_file2, filename,
-                                                      chunksize, bad_data)
+        filename = os.path.basename(filepath)
+        if not large:
+            self.create_simulated_resumable_in_upload_dir(filepath, filename,
+                                                          chunksize, bad_data)
         url = '%s/%s' % (self.resumables, filename)
         if by_id:
             upload_id = self.test_upload_id
         else:
             upload_id = None
-        resp = fileapi.initiate_resumable('', self.test_project, self.resume_file2,
-                                          token, chunksize=5, new=False, group=None,
+        resp = fileapi.initiate_resumable('', self.test_project, filepath,
+                                          token, chunksize=chunksize, new=False, group=None,
                                           verify=verify, upload_id=upload_id, dev_url=url)
         if bad_data:
             self.assertEqual(resp, None)
@@ -975,28 +979,29 @@ class TestFileApi(unittest.TestCase):
             self.assertEqual(resp['max_chunk'], u'end')
             self.assertTrue(resp['id'] is not None)
             self.assertEqual(resp['filename'], filename)
-            self.assertEqual(md5sum(self.resume_file2),
-                md5sum(self.uploads_folder + '/' + self.test_group + '/' + filename))
+            if md5:
+                self.assertEqual(md5sum(filepath),
+                    md5sum(self.uploads_folder + '/' + self.test_group + '/' + filename))
         try:
             shutil.rmtree(self.uploads_folder + '/' + self.test_upload_id)
         except OSError:
             pass
 
     def test_ZN_resume_works_with_upload_id_match(self):
-        self.do_resume(by_id=True, verify=True)
+        self.do_resume(self.resume_file2, chunksize=5, by_id=True, verify=True)
 
 
     def test_ZO_resume_works_with_filename_match(self):
-        self.do_resume(by_id=False, verify=True)
+        self.do_resume(self.resume_file2, chunksize=5, by_id=False, verify=True)
 
 
     def test_ZP_resume_start_new_upload_if_md5_mismatch(self):
-        self.do_resume(by_id=False, verify=True, bad_data=True)
+        self.do_resume(self.resume_file2, chunksize=5, by_id=False, verify=True, bad_data=True)
 
 
-    def test_ZQ_large_file_resume(self):
-        _100mb = 1000*1000*50 # for 1gb file
-        self.start_new_resumable(self.large_file, chunksize=_100mb, large_file=True)
+    def test_ZQ_large_start_file_resume(self):
+        cs = 1000*1000*200 # for 10gb file
+        self.do_resume(self.large_file, chunksize=cs, by_id=False, verify=True, md5=False, large=True)
 
 
 def main():
@@ -1071,7 +1076,7 @@ def main():
         'test_ZN_resume_works_with_upload_id_match',
         'test_ZO_resume_works_with_filename_match',
         'test_ZP_resume_start_new_upload_if_md5_mismatch',
-        #'test_ZQ_large_file_resume',
+        'test_ZQ_large_start_file_resume',
         ])))
     map(runner.run, suite)
 

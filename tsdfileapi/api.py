@@ -825,58 +825,58 @@ class StreamHandler(AuthRequestHandler):
 
     def merge_resumables(self, project_dir, last_chunk_filename, upload_id):
         """
-        Merge chunks into one file.
+        Merge chunks into one file, _in order_.
 
-        There is a subtle trade-off between disk-usage efficiency
-        and resumable upload reliability. If we do not perform incremental
-        merging, then there will be a moment where the uploaded file
-        occupies twice its final size on disk. For large files this
-        may have a significant impact on disk quotas. The advantage of
-        this is, however, that if the last request in the sequence fails
-        while the merge is taking place, we still have all the chunked
-        data. If the client needed to restart the final merge instruction
-        then we would simply restart the merge from chunk1, and over-write
-        whatever had been accumulated before. The over-write semantics
-        guarantees that the merged file will be correct, and it is simple
-        to implement.
+        Sequence
+        --------
+        1. Check that the chunk is not partial
+        2. If last request
+            - remove any remaining chunks, and the working directory
+            - continue to the chowner: move file, set permissions
+        3. If new chunk
+            - append it to the merge file
+            - remove chunks older than 5 requests back in the sequence
+              to avoid using lots of disk space for very large files
+        4. If a merge fails
+            - remove the chunk
+            - reset the file to its prior size
+            - end the request
 
-        On the other hand it is possible to perform an incremental merge, in
-        which chunks are removed from disk, as they are being merged into
-        the final file. In the scenario where the request drops while the
-        merge is taking place, preserving the ability to restart the merge
-        and end up with correct data is more difficult. The reason it is
-        more difficult is that the request might fail in the middle of reading
-        and writing a chunk to the merged file. So that partially merged
-        chunk would remain on disk, in its entirety when the request fails.
-        One could then try to accumulate the merged file in append-mode,
-        to be able to restart the merge, as it were, but to do that
-        correctly in this regard, we should not start reading the last chunk
-        from line 1, but from the exact point where the cursor was in the file
-        when the merge request failed. To do this correctly we need a rollback
-        function if an incremental merge fails, which tells the client to try
-        again, and keep server-side data consistent.
-
-        Either way, both methods have the same memory footprint,
-        so the tradeoff here is to use more disk to get better reliability.
+        Note
+        ----
+        This will produce bizarre files if clients send chunks out of order,
+        which rules out multi-threaded senders. That can be supported by delaying
+        the merge until the final request. Until a feature request arrives,
+        it remain unimplemented.
 
         """
-        merged_filename = last_chunk_filename.replace(upload_id + '/', '').replace('.chunk.end', '')
-        out = os.path.normpath(project_dir + '/' + merged_filename + '.' + upload_id)
-        chunks_dir = project_dir + '/' + upload_id
-        chunked_files = os.listdir(chunks_dir)
-        chunks = map(lambda x: '%s/%s/%s' % (project_dir, upload_id, x), chunked_files)
-        chunks.sort(key=natural_keys)
-        with open(out, 'wb') as fout:
-            for chunk in chunks:
-                with open(chunk, 'rb') as fin:
-                    logging.info('merging: %s', chunk)
-                    shutil.copyfileobj(fin, fout)
-                logging.info('deleting: %s', chunk)
-                os.remove(chunk) # this means merging cannot be retried
+        assert '.part' not in last_chunk_filename
+        filename = os.path.basename(last_chunk_filename.split('.chunk')[0])
+        out = os.path.normpath(project_dir + '/' + filename + '.' + upload_id)
         final = out.replace('.' + upload_id, '')
-        os.rename(out, final)
-        shutil.rmtree(chunks_dir)
+        chunks_dir = project_dir + '/' + upload_id
+        if '.chunk.end' in last_chunk_filename:
+            logging.info('deleting: %s', chunks_dir)
+            os.rename(out, final)
+            shutil.rmtree(chunks_dir)
+        else:
+            chunk_num = int(last_chunk_filename.split('.chunk.')[-1])
+            chunk = chunks_dir + '/' + last_chunk_filename
+            with open(out, 'ab') as fout:
+                with open(chunk, 'rb') as fin:
+                    try:
+                        size_before_merge = os.stat(out).st_size
+                        shutil.copyfileobj(fin, fout)
+                    except Exception:
+                        os.remove(chunk)
+                        out.truncate(size_before_merge)
+                        raise Exception('could not merge %s', chunk)
+                if chunk_num >= 5:
+                    target_chunk_num = chunk_num - 4
+                    old_chunk = chunk.replace('.chunk.' + str(chunk_num), '.chunk.' + str(target_chunk_num))
+                    os.remove(old_chunk)
         return final
+
 
     @gen.coroutine
     def prepare(self):
@@ -908,6 +908,7 @@ class StreamHandler(AuthRequestHandler):
                 try:
                     content_type = self.request.headers['Content-Type']
                     project_dir = project_import_dir(options.uploads_folder, pnum, None, None)
+                    self.project_dir = project_dir
                     # TODO: get this from URL instead
                     # build it ourselves in /stream handler
                     filename = secure_filename(self.request.headers['Filename'])
@@ -1074,6 +1075,7 @@ class StreamHandler(AuthRequestHandler):
             self.target_file.close()
             os.rename(self.path, self.path_part)
             filename = os.path.basename(self.path_part).split('.chunk')[0]
+            self.merge_resumables(self.project_dir, os.path.basename(self.path_part), self.upload_id)
         else:
             filename = os.path.basename(self.merged_file)
         self.set_status(201)
