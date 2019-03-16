@@ -207,6 +207,9 @@ class TestFileApi(unittest.TestCase):
         cls.resume_file1 = os.path.normpath(cls.data_folder + '/resume-file1')
         cls.resume_file2 = os.path.normpath(cls.data_folder + '/resume-file2')
         cls.test_upload_id = '96c68dad-8dc5-4076-9569-92394001d42a'
+        # TODO: make this configurable
+        # do not dist with package
+        cls.large_file = os.path.normpath(cls.data_folder + '/large-file')
 
 
     @classmethod
@@ -933,16 +936,20 @@ class TestFileApi(unittest.TestCase):
                 fout.write(chunk_data)
 
 
-    def test_ZM_resume_new_upload_works_is_idempotent(self):
+    def start_new_resumable(self, filepath, chunksize=1):
         token = TEST_TOKENS['VALID']
-        filename = os.path.basename(self.resume_file1)
+        filename = os.path.basename(filepath)
         url = '%s/%s' % (self.stream, filename)
-        resp = fileapi.initiate_resumable('', self.test_project, self.resume_file1,
-                                          token, chunksize=5, new=True, group=None,
+        resp = fileapi.initiate_resumable('', self.test_project, filepath,
+                                          token, chunksize=chunksize, new=True, group=None,
                                           verify=False, dev_url=url)
         self.assertEqual(resp['max_chunk'], u'end')
         self.assertTrue(resp['id'] is not None)
         self.assertEqual(resp['filename'], filename)
+
+
+    def test_ZM_resume_new_upload_works_is_idempotent(self):
+        self.start_new_resumable(self.resume_file1, chunksize=5)
 
 
     def do_resume(self, by_id=False, verify=False, bad_data=False):
@@ -980,6 +987,11 @@ class TestFileApi(unittest.TestCase):
 
     def test_ZP_resume_start_new_upload_if_md5_mismatch(self):
         self.do_resume(by_id=False, verify=True, bad_data=True)
+
+
+    def test_ZQ_large_file_resume(self):
+        _100mb = 1000*1000*500 # for 50gb file
+        self.start_new_resumable(self.large_file, chunksize=_100mb)
 
 
 def main():
@@ -1054,6 +1066,7 @@ def main():
         'test_ZN_resume_works_with_upload_id_match',
         'test_ZO_resume_works_with_filename_match',
         'test_ZP_resume_start_new_upload_if_md5_mismatch',
+        #'test_ZQ_large_file_resume',
         ])))
     map(runner.run, suite)
 
