@@ -6,7 +6,7 @@ Note: resume is implemented _per file_.
 ## HTTP Methods
 
 ```txt
-GET /files/resumables/filename
+GET /files/resumables/filename?id=<UUID>
 PATCH /files/stream/file?chunk=<chunknum,end>&id=<UUID>&group=<group-name>
 ```
 
@@ -34,7 +34,7 @@ PATCH /files/resumable/filename?chunk=<num>&id=<UUID>
 The client can optionally make a GET request to get information necessary to resume a file upload:
 
 ```txt
-GET /files/resumables/myfile
+GET /files/resumables/myfile?id=<UUID>
 
 {filename: str, max_chunk: int, chunk_size: int, id: uuid}
 ```
