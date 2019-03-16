@@ -946,6 +946,8 @@ class TestFileApi(unittest.TestCase):
         self.assertEqual(resp['max_chunk'], u'end')
         self.assertTrue(resp['id'] is not None)
         self.assertEqual(resp['filename'], filename)
+        self.assertEqual(md5sum(filepath),
+            md5sum(self.uploads_folder + '/' + self.test_group + '/' + filename))
 
 
     def test_ZM_resume_new_upload_works_is_idempotent(self):
@@ -972,6 +974,8 @@ class TestFileApi(unittest.TestCase):
             self.assertEqual(resp['max_chunk'], u'end')
             self.assertTrue(resp['id'] is not None)
             self.assertEqual(resp['filename'], filename)
+            self.assertEqual(md5sum(self.resume_file2),
+                md5sum(self.uploads_folder + '/' + self.test_group + '/' + filename))
         try:
             shutil.rmtree(self.uploads_folder + '/' + self.test_upload_id)
         except OSError:
