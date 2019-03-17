@@ -643,59 +643,38 @@ class ResumablesListHandler(AuthRequestHandler):
 
     def get_resumable_chunk_info(self, resumable_dir):
         """
-        Try to inspect at least 3 of the last chunks in the sequence.
+        If the latest chunk is smaller then the previous ones, then
+        it _must_ be the very last chunk in the sequence.
 
         Returns
         -------
         tuple, (size, chunknum, md5sum, previous_offset, next_offset)
 
         """
-        def info(chunk, size, n):
-            chunk_num = int(chunk.split('.')[-1])
-            # stat the merged file to get offsets
-            # compate with chunk-based computations
-            # if last chunk < rest: other calc
-            previous_offset = chunk_num * size - size
-            next_offset = chunk_num * size
-            try:
-                assert '.part' not in chunk
-            except AssertionError:
-                raise Exception('Inconsistency between chunk filename, and computed relevant chunk')
-            return size, chunk_num, md5sum(chunk), previous_offset, next_offset
+        def info(chunks):
+            num = int(chunks[-1].split('.')[-1])
+            latest_size = bytes(chunks[-1])
+            if len(chunks) > 1:
+                previous_size = bytes(chunks[-2])
+                if latest_size < previous_size:
+                    logging.info('client is resuming after last chunk has been uploaded')
+                    size = previous_size
+                else:
+                    size = latest_size
+            else:
+                size = latest_size
+            previous_offset = size * (num - 1)
+            next_offset = previous_offset + latest_size
+            # stat the merged file, compare with next_offset
+            return size, num, md5sum(chunks[-1]), previous_offset, next_offset
         def bytes(chunk):
             size = os.stat(chunk).st_size
             return size
-        def check_n(chunks, n):
-            size1 = bytes(chunks[0])
-            size2 = bytes(chunks[1])
-            size3 = bytes(chunks[2])
-            # refactor this: last chunk most prob smaller
-            if size1 == size2 == size3:
-                return info(chunks[2], size3, n)
-            # refactor this: last chunk most prob smaller
-            elif size2 == size1:
-                return info(chunks[1], size2, n - 1)
-            else:
-                return info(chunks[0], size1, n - 2)
-        chunks = [ '%s/%s' % (resumable_dir, i) for i in os.listdir(resumable_dir) ]
-        chunks.sort(key=natural_keys)
-        # determine chunk_size
-        if len(chunks) == 1:
-            size1 = bytes(chunks[0])
-            return info(chunks[0], size1, 1)
-        elif len(chunks) == 2:
-            size1 = bytes(chunks[0])
-            size2 = bytes(chunks[1])
-            # refactor this: last chunk most prob smaller
-            if size2 == size1:
-                return info(chunks[1], size2, 2)
-            else:
-                return info(chunks[0], size1, 1)
-        elif len(chunks) == 3:
-            return check_n(chunks, 3)
-        elif len(chunks) > 3:
-            sample = chunks[-3:]
-            return check_n(sample, len(chunks))
+        # may contain partial files, due to failed requests
+        all_chunks = [ '%s/%s' % (resumable_dir, i) for i in os.listdir(resumable_dir) ]
+        all_chunks.sort(key=natural_keys)
+        chunks = [ c for c in all_chunks if '.part' not in c ]
+        return info(chunks)
 
 
     def get_resumable_info(self, project_dir, filename, upload_id):
@@ -932,8 +911,6 @@ class StreamHandler(AuthRequestHandler):
         else:
             chunk_num = int(last_chunk_filename.split('.chunk.')[-1])
             chunk = chunks_dir + '/' + last_chunk_filename
-            # enforce sequence?
-            # compute current chunk name from previous chunkm, compare
             with open(out, 'ab') as fout:
                 with open(chunk, 'rb') as fin:
                     try:
