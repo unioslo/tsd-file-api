@@ -601,7 +601,8 @@ class ResumablesListHandler(AuthRequestHandler):
         current_resumable = '%s/%s' % (project_dir, upload_id)
         files = os.listdir(current_resumable)
         files.sort(key=natural_keys)
-        return files[n]
+        completed_chunks = [ f for f in files if '.part' not in f ]
+        return completed_chunks[n]
 
 
     def find_relevant_resumable_dir(self, project_dir, filename, upload_id):
@@ -651,6 +652,9 @@ class ResumablesListHandler(AuthRequestHandler):
         """
         def info(chunk, size, n):
             chunk_num = int(chunk.split('.')[-1])
+            # stat the merged file to get offsets
+            # compate with chunk-based computations
+            # if last chunk < rest: other calc
             previous_offset = chunk_num * size - size
             next_offset = chunk_num * size
             try:
@@ -665,20 +669,24 @@ class ResumablesListHandler(AuthRequestHandler):
             size1 = bytes(chunks[0])
             size2 = bytes(chunks[1])
             size3 = bytes(chunks[2])
+            # refactor this: last chunk most prob smaller
             if size1 == size2 == size3:
                 return info(chunks[2], size3, n)
+            # refactor this: last chunk most prob smaller
             elif size2 == size1:
                 return info(chunks[1], size2, n - 1)
             else:
                 return info(chunks[0], size1, n - 2)
         chunks = [ '%s/%s' % (resumable_dir, i) for i in os.listdir(resumable_dir) ]
         chunks.sort(key=natural_keys)
+        # determine chunk_size
         if len(chunks) == 1:
             size1 = bytes(chunks[0])
             return info(chunks[0], size1, 1)
         elif len(chunks) == 2:
             size1 = bytes(chunks[0])
             size2 = bytes(chunks[1])
+            # refactor this: last chunk most prob smaller
             if size2 == size1:
                 return info(chunks[1], size2, 2)
             else:
@@ -861,6 +869,8 @@ class StreamHandler(AuthRequestHandler):
         else:
             chunk_num = int(last_chunk_filename.split('.chunk.')[-1])
             chunk = chunks_dir + '/' + last_chunk_filename
+            # enforce sequence?
+            # compute current chunk name from previous chunkm, compare
             with open(out, 'ab') as fout:
                 with open(chunk, 'rb') as fin:
                     try:
@@ -935,6 +945,12 @@ class StreamHandler(AuthRequestHandler):
                             self.upload_id = upload_id
                             self.call_chowner = False
                             filename = self.upload_id + '/' + filename
+                            chunks_on_disk = os.listdir(project_dir + '/' + self.upload_id)
+                            chunks_on_disk.sort(key=natural_keys)
+                            full_chunks_on_disk = [ c for c in chunks_on_disk if '.part' not in c ]
+                            previous_chunk_num = int(full_chunks_on_disk[-1].split('.chunk.')[-1])
+                            if chunk_num <= previous_chunk_num:
+                                raise Exception('uploading the same chunk more than once not allowed')
                     self.path = os.path.normpath(project_dir + '/' + filename)
                     self.path_part = self.path + '.' + str(uuid4()) + '.part'
                     if os.path.lexists(self.path_part):
