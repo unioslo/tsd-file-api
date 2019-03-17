@@ -830,6 +830,69 @@ class StreamHandler(AuthRequestHandler):
                                              stdout=self.target_file)
 
 
+    def handle_resumable_request(self, project_dir, filename):
+        """
+        There are three types of requests for resumables, which are
+        handled in the following ways:
+
+        1. First chunk
+            - the chowner is disabled
+            - a new upload id is generated
+            - a new working directory is created
+            - data_received is called, writing the file
+            - merge_resumables is called by the exiting patch method
+
+        2. Rest of the chunks
+            - the chowner is disabled
+            - a check is performed to disallow uploading already-stored chunks
+            - data_received is called, writing the file
+            - merge_resumables is called by the exiting patch method
+
+        3. End request
+            - the chowner is enabled
+            - merge_resumables is called, branching into the cleanup code
+
+        In all cases the function returns:
+        upload_id/filename.extention.chunk.num
+
+        """
+        def refuse_upload_if_chunk_already_on_disk(project_dir, upload_id):
+            chunks_on_disk = os.listdir(project_dir + '/' + upload_id)
+            chunks_on_disk.sort(key=natural_keys)
+            full_chunks_on_disk = [ c for c in chunks_on_disk if '.part' not in c ]
+            previous_chunk_num = int(full_chunks_on_disk[-1].split('.chunk.')[-1])
+            if chunk_num <= previous_chunk_num:
+                # TODO: send correct info to the client
+                raise Exception('uploading the same chunk more than once not allowed')
+        chunk_num = url_unescape(self.get_query_argument('chunk'))
+        upload_id = url_unescape(self.get_query_argument('id'))
+        chunk_filename = filename + '.chunk.' + chunk_num
+        if chunk_num != 'end':
+            chunk_num = int(chunk_num)
+        if chunk_num == 'end':
+            self.chunk_num = 'end'
+            self.upload_id = upload_id
+            self.call_chowner = True
+            filename = self.upload_id + '/' + chunk_filename
+            self.merged_file = self.merge_resumables(project_dir, filename, self.upload_id)
+            self.target_file = None
+            return filename
+        elif chunk_num == 1:
+            self.chunk_num = 1
+            self.upload_id = str(uuid4())
+            self.call_chowner = False
+            filename = self.upload_id + '/' + chunk_filename
+            os.makedirs(project_dir + '/' + self.upload_id)
+            return filename
+        elif chunk_num > 1:
+            self.chunk_num = chunk_num
+            self.upload_id = upload_id
+            self.call_chowner = False
+            filename = self.upload_id + '/' + chunk_filename
+            refuse_upload_if_chunk_already_on_disk(project_dir, self.upload_id)
+            return filename
+
+
     def merge_resumables(self, project_dir, last_chunk_filename, upload_id):
         """
         Merge chunks into one file, _in order_.
@@ -922,35 +985,9 @@ class StreamHandler(AuthRequestHandler):
                     # build it ourselves in /stream handler
                     filename = secure_filename(self.request.headers['Filename'])
                     if self.request.method == 'PATCH':
-                        chunk_num = url_unescape(self.get_query_argument('chunk'))
-                        upload_id = url_unescape(self.get_query_argument('id'))
-                        filename = filename + '.chunk.' + chunk_num
-                        if chunk_num != 'end':
-                            chunk_num = int(chunk_num)
-                        if chunk_num == 'end':
-                            self.chunk_num = 'end'
-                            self.upload_id = upload_id
-                            self.call_chowner = True
-                            filename = self.upload_id + '/' + filename
-                            self.merged_file = self.merge_resumables(project_dir, filename, self.upload_id)
-                            self.target_file = None
-                        elif chunk_num == 1:
-                            self.chunk_num = 1
-                            self.upload_id = str(uuid4())
-                            self.call_chowner = False
-                            filename = self.upload_id + '/' + filename
-                            os.makedirs(project_dir + '/' + self.upload_id)
-                        elif chunk_num > 1:
-                            self.chunk_num = chunk_num
-                            self.upload_id = upload_id
-                            self.call_chowner = False
-                            filename = self.upload_id + '/' + filename
-                            chunks_on_disk = os.listdir(project_dir + '/' + self.upload_id)
-                            chunks_on_disk.sort(key=natural_keys)
-                            full_chunks_on_disk = [ c for c in chunks_on_disk if '.part' not in c ]
-                            previous_chunk_num = int(full_chunks_on_disk[-1].split('.chunk.')[-1])
-                            if chunk_num <= previous_chunk_num:
-                                raise Exception('uploading the same chunk more than once not allowed')
+                        filename = self.handle_resumable_request(project_dir, filename)
+                    # prepare the partial file name for incoming data
+                    # ensure we do not write to active file
                     self.path = os.path.normpath(project_dir + '/' + filename)
                     self.path_part = self.path + '.' + str(uuid4()) + '.part'
                     if os.path.lexists(self.path_part):
