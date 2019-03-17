@@ -641,10 +641,9 @@ class ResumablesListHandler(AuthRequestHandler):
         return relevant
 
 
-    def get_resumable_chunk_info(self, resumable_dir):
+    def get_resumable_chunk_info(self, resumable_dir, project_dir):
         """
-        If the latest chunk is smaller then the previous ones, then
-        it _must_ be the very last chunk in the sequence.
+        Get information needed to resume an upload.
 
         Returns
         -------
@@ -662,10 +661,19 @@ class ResumablesListHandler(AuthRequestHandler):
                 else:
                     size = latest_size
             else:
-                size = latest_size
+                size = latest_size # only 1 chunk so far
             previous_offset = size * (num - 1)
             next_offset = previous_offset + latest_size
-            # stat the merged file, compare with next_offset
+            filename = os.path.basename(chunks[-1].split('.chunk')[0])
+            upload_id = os.path.basename(resumable_dir)
+            merged_file = os.path.normpath(project_dir + '/' + filename + '.' + upload_id)
+            try:
+                # check that the size of the merge file
+                # matches what we calculate from the
+                # chunks that are currently on disk
+                assert bytes(merged_file) == next_offset
+            except AssertionError:
+                raise Exception('chunk merge has gone wrong - unknown server-side data consistency, cannot resume upload')
             return size, num, md5sum(chunks[-1]), previous_offset, next_offset
         def bytes(chunk):
             size = os.stat(chunk).st_size
@@ -682,7 +690,8 @@ class ResumablesListHandler(AuthRequestHandler):
         if not relevant_dir:
             raise Exception('No resumable found for: %s', filename)
         resumable_dir = '%s/%s' % (project_dir, relevant_dir)
-        chunk_size, max_chunk, md5sum, previous_offset, next_offset = self.get_resumable_chunk_info(resumable_dir)
+        chunk_size, max_chunk, md5sum, \
+        previous_offset, next_offset = self.get_resumable_chunk_info(resumable_dir, project_dir)
         info = {'filename': filename, 'id': relevant_dir,
                 'chunk_size': chunk_size, 'max_chunk': max_chunk,
                 'md5sum': md5sum, 'previous_offset': previous_offset,
