@@ -1036,8 +1036,6 @@ class TestFileApi(unittest.TestCase):
         self.assertEqual(resp.status_code, 200)
 
 
-    # resume edge cases
-
     def test_ZS_recovering_inconsistent_data_allows_resume_from_previous_chunk(self):
         token = TEST_TOKENS['VALID']
         filepath = self.resume_file2
@@ -1048,6 +1046,13 @@ class TestFileApi(unittest.TestCase):
         upload_id = self.test_upload_id
         url = '%s/%s?id=%s' % (self.resumables, filename, upload_id)
         self.do_resume(self.resume_file2, chunksize=5, by_id=True, verify=True, truncate=True)
+
+
+    def test_ZT_list_all_resumables(self):
+        token = TEST_TOKENS['VALID']
+        resp = requests.get(self.resumables, headers={'Authorization': 'Bearer ' + token})
+        data = json.loads(resp.text)
+        self.assertEqual(resp.status_code, 200)
 
 
     # resume _after_ last chunk already on disk
@@ -1131,6 +1136,7 @@ def main():
         #'test_ZQ_large_start_file_resume',
         'test_ZR_cancel_resumable',
         'test_ZS_recovering_inconsistent_data_allows_resume_from_previous_chunk',
+        'test_ZT_list_all_resumables',
         ])))
     map(runner.run, suite)
 

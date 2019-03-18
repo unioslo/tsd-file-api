@@ -641,6 +641,23 @@ class ResumablesHandler(AuthRequestHandler):
         return relevant
 
 
+    def list_all_resumables(self, project_dir):
+        potential_resumables = os.listdir(project_dir)
+        resumables = []
+        info = []
+        for pr in potential_resumables:
+            current_pr = '%s/%s' % (project_dir, pr)
+            if _IS_VALID_UUID.match(pr):
+                logging.info(current_pr)
+                chunk_size, max_chunk, md5sum, \
+                    previous_offset, next_offset = self.get_resumable_chunk_info(current_pr, project_dir)
+                if chunk_size:
+                    info.append({'chunk_size': chunk_size, 'max_chunk': max_chunk,
+                                 'md5sum': md5sum, 'previous_offset': previous_offset,
+                                 'next_offset': next_offset, 'id': pr})
+        return {'resumables': info}
+
+
     def repair_inconsistent_resumable(self, merged_file, chunks, merged_file_size,
                                       sum_chunks_size, previous_chunk_size):
         """
@@ -724,7 +741,7 @@ class ResumablesHandler(AuthRequestHandler):
                     return info(chunks)
                 except Exception as e:
                     logging.error(e)
-                    raise Exception('cannot resume upload - server-side data is inconsistent')
+                    return None, None, None, None, None
             return size, num, md5sum(chunks[-1]), previous_offset, next_offset
         def bytes(chunk):
             size = os.stat(chunk).st_size
@@ -742,7 +759,7 @@ class ResumablesHandler(AuthRequestHandler):
             raise Exception('No resumable found for: %s', filename)
         resumable_dir = '%s/%s' % (project_dir, relevant_dir)
         chunk_size, max_chunk, md5sum, \
-        previous_offset, next_offset = self.get_resumable_chunk_info(resumable_dir, project_dir)
+            previous_offset, next_offset = self.get_resumable_chunk_info(resumable_dir, project_dir)
         info = {'filename': filename, 'id': relevant_dir,
                 'chunk_size': chunk_size, 'max_chunk': max_chunk,
                 'md5sum': md5sum, 'previous_offset': previous_offset,
@@ -750,7 +767,7 @@ class ResumablesHandler(AuthRequestHandler):
         return info
 
 
-    def get(self, pnum, filename):
+    def get(self, pnum, filename=None):
         self.message = {'filename': filename, 'id': None, 'chunk_size': None, 'max_chunk': None}
         upload_id = None
         try:
@@ -763,7 +780,8 @@ class ResumablesHandler(AuthRequestHandler):
             try:
                 assert _VALID_PNUM.match(pnum)
                 project_dir = project_import_dir(options.uploads_folder, pnum, None, None)
-                secured_filename = check_filename(url_unescape(filename))
+                if filename:
+                    secured_filename = check_filename(url_unescape(filename))
             except Exception:
                 logging.error('not able to check for resumable due to bad input')
                 raise Exception
@@ -771,7 +789,10 @@ class ResumablesHandler(AuthRequestHandler):
                 upload_id = url_unescape(self.get_query_argument('id'))
             except Exception:
                 pass
-            info = self.get_resumable_info(project_dir, secured_filename, upload_id)
+            if not filename:
+                info = self.list_all_resumables(project_dir)
+            else:
+                info = self.get_resumable_info(project_dir, secured_filename, upload_id)
             self.set_status(200)
             self.write(info)
         except Exception as e:
@@ -1583,7 +1604,8 @@ def main():
         ('/(.*)/sns/(.*)/(.*)', SnsFormDataHandler),
         ('/(.*)/files/export', FileStreamerHandler),
         ('/(.*)/files/export/(.*)', FileStreamerHandler),
-        ('/(.*)/files/resumables/(.*)', ResumablesHandler)
+        ('/(.*)/files/resumables', ResumablesHandler),
+        ('/(.*)/files/resumables/(.*)', ResumablesHandler),
     ], debug=options.debug)
     app.listen(options.port, max_body_size=options.max_body_size)
     IOLoop.instance().start()
