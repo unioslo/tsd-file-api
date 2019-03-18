@@ -6,6 +6,8 @@ Note: resume is implemented _per file_.
 ## HTTP Methods
 
 ```txt
+GET /files/resumables
+GET /files/resumables/filename
 GET /files/resumables/filename?id=<UUID>
 PATCH /files/stream/file?chunk=<chunknum,end>&id=<UUID>&group=<group-name>
 ```
@@ -31,13 +33,33 @@ PATCH /files/resumable/filename?chunk=<num>&id=<UUID>
 
 ## 2. Resuming prior uploads
 
-The client can optionally make a GET request to get information necessary to resume a file upload:
+GET requests provide information necessary to resume a file upload.
+
+Firstly, to list all resumables for the authenticated user:
+
+```txt
+GET /files/resumables
+
+{resumables: [{filename: str, max_chunk: int, chunk_size: int, id: uuid}, {}]}
+```
+
+Secondly, all resumables for the authenticated user, matching a given filename:
+
+```txt
+GET /files/resumables/myfile
+
+[resumables: [{filename: str, max_chunk: int, chunk_size: int, id: uuid}, {...}]}
+```
+
+And lastly, the information for a speific upload:
 
 ```txt
 GET /files/resumables/myfile?id=<UUID>
 
 {filename: str, max_chunk: int, chunk_size: int, id: uuid}
 ```
+
+In this way, the GET endpoints provide the client a way to either discover previous uploads which can be resumed, or to get direct information.
 
 Each resumable upload has:
 - a filename
