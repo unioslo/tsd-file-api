@@ -1004,6 +1004,29 @@ class TestFileApi(unittest.TestCase):
         self.do_resume(self.large_file, chunksize=cs, by_id=False, verify=True, md5=False, large=True)
 
 
+    def test_ZR_cancel_resumable(self):
+        token = TEST_TOKENS['VALID']
+        filepath = self.resume_file2
+        filename = os.path.basename(filepath)
+        chunksize = 5
+        bad_data = False
+        upload_id = self.test_upload_id
+        url = '%s/%s?id=%s' % (self.resumables, filename, upload_id)
+        self.create_simulated_resumable_in_upload_dir(filepath, filename,
+                                                      chunksize, bad_data)
+        # TODO: use client once implemented
+        resp = requests.delete(url, headers={'Authorization': 'Bearer ' + token})
+        self.assertEqual(resp.status_code, 200)
+
+
+    # resume edge cases
+
+    # resume _after_ last chunk already on disk
+    # trying to upload the same chunk twice
+    # trying to upload next_chunk + 1
+    # resume with final chunk smaller than previous
+
+
 def main():
     runner = unittest.TextTestRunner()
     suite = []
@@ -1076,7 +1099,8 @@ def main():
         'test_ZN_resume_works_with_upload_id_match',
         'test_ZO_resume_works_with_filename_match',
         'test_ZP_resume_start_new_upload_if_md5_mismatch',
-        'test_ZQ_large_start_file_resume',
+       # 'test_ZQ_large_start_file_resume',
+       'test_ZR_cancel_resumable',
         ])))
     map(runner.run, suite)
 

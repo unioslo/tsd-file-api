@@ -502,7 +502,7 @@ class SnsFormDataHandler(GenericFormDataHandler):
         self.set_status(201)
 
 
-class ResumablesListHandler(AuthRequestHandler):
+class ResumablesHandler(AuthRequestHandler):
 
     """
     List information necessary to resume an upload.
@@ -724,6 +724,47 @@ class ResumablesListHandler(AuthRequestHandler):
             info = self.get_resumable_info(project_dir, secured_filename, upload_id)
             self.set_status(200)
             self.write(info)
+        except Exception as e:
+            logging.error(e)
+            self.set_status(400)
+            self.write(self.message)
+
+
+    def delete_resumable(self, project_dir, filename, upload_id):
+        try:
+            relevant_dir = project_dir + '/' + upload_id
+            relevant_merged_file = project_dir + '/' + filename + '.' + upload_id
+            shutil.rmtree(relevant_dir)
+            os.remove(relevant_merged_file)
+            return True
+        except Exception:
+            logging.error('could not complete resumable deletion')
+            return False
+
+
+    def delete(self, pnum, filename):
+        self.message = {'message': 'cannot delete resumable'}
+        try:
+            try:
+                self.authnz = self.validate_token(roles_allowed=['import_user', 'export_user', 'admin_user'])
+            except Exception as e:
+                logging.error('Not authorized to list resumable')
+                self.message = {'message': 'Not authorized'}
+                raise Exception('Not authorized')
+            try:
+                assert _VALID_PNUM.match(pnum)
+                project_dir = project_import_dir(options.uploads_folder, pnum, None, None)
+                secured_filename = check_filename(url_unescape(filename))
+            except Exception:
+                logging.error('not able to check for resumable due to bad input')
+                raise Exception
+            try:
+                upload_id = url_unescape(self.get_query_argument('id'))
+            except Exception:
+                raise Exception('upload id required to delete resumable')
+            assert self.delete_resumable(project_dir, filename, upload_id)
+            self.set_status(200)
+            self.write({'message': 'resumable deleted'})
         except Exception as e:
             logging.error(e)
             self.set_status(400)
@@ -1490,7 +1531,7 @@ def main():
         ('/(.*)/sns/(.*)/(.*)', SnsFormDataHandler),
         ('/(.*)/files/export', FileStreamerHandler),
         ('/(.*)/files/export/(.*)', FileStreamerHandler),
-        ('/(.*)/files/resumables/(.*)', ResumablesListHandler)
+        ('/(.*)/files/resumables/(.*)', ResumablesHandler)
     ], debug=options.debug)
     app.listen(options.port, max_body_size=options.max_body_size)
     IOLoop.instance().start()
