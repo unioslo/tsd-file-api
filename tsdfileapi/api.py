@@ -641,9 +641,51 @@ class ResumablesHandler(AuthRequestHandler):
         return relevant
 
 
+    def repair_inconsistent_resumable(self, merged_file, chunks, merged_file_size,
+                                      sum_chunks_size, previous_chunk_size):
+        """
+        If the server process crashed after a chunk was uploaded,
+        but while a merge was taking place, it is likey that
+        the merged file will be smaller than the sum of the chunks.
+
+        In that case, we try to trucate the merged file to the previous_offset
+        and remove the last chunk, recursively. This ensures that we have
+        consistent data and can resume the upload again. We try this until there
+        are no more chunks left to use.
+
+        """
+        logging.info('current merged file size: %d, current sum of chunks size %d', merged_file_size, sum_chunks_size)
+        if merged_file_size == sum_chunks_size:
+            logging.info('server-side data consistent')
+            return chunks
+        if len(chunks) == 0:
+            return False
+        else:
+            chunk = chunks[-1]
+        try:
+            target_size = sum_chunks_size - previous_chunk_size
+            logging.info('truncating %s to %d', merged_file, target_size)
+            with open(merged_file, 'ab') as f:
+                f.truncate(target_size)
+            logging.info('removing chunk: %s', chunk)
+            os.remove(chunk)
+            chunks = chunks[:-1]
+            num = int(chunks[-1].split('.')[-1])
+            new_sum_chunks_size = num * previous_chunk_size
+            new_merged_file_size = os.stat(merged_file).st_size
+            return self.repair_inconsistent_resumable(merged_file, chunks, new_merged_file_size,
+                                                      new_sum_chunks_size, previous_chunk_size)
+        except (Exception, OSError) as e:
+            logging.error(e)
+            raise Exception('could not repair data')
+
+
     def get_resumable_chunk_info(self, resumable_dir, project_dir):
         """
         Get information needed to resume an upload.
+        If the server-side data is inconsistent, then
+        we try to fix it by successively dropping the last
+        chunk and truncating the merged file.
 
         Returns
         -------
@@ -661,6 +703,7 @@ class ResumablesHandler(AuthRequestHandler):
                 else:
                     size = latest_size
             else:
+                logging.info('only 1 chunk found')
                 size = latest_size # only 1 chunk so far
             previous_offset = size * (num - 1)
             next_offset = previous_offset + latest_size
@@ -673,8 +716,15 @@ class ResumablesHandler(AuthRequestHandler):
                 # chunks that are currently on disk
                 assert bytes(merged_file) == next_offset
             except AssertionError:
-                # try to repair
-                raise Exception('chunk merge has gone wrong - unknown server-side data consistency, cannot resume upload')
+                try:
+                    logging.info('trying to repair inconsistent data')
+                    previous_chunk_size = os.stat(chunks[-2]).st_size # since chunks[-1] is the problematic one
+                    chunks = self.repair_inconsistent_resumable(merged_file, chunks, bytes(merged_file),
+                                                                next_offset, previous_chunk_size)
+                    return info(chunks)
+                except Exception as e:
+                    logging.error(e)
+                    raise Exception('cannot resume upload - server-side data is inconsistent')
             return size, num, md5sum(chunks[-1]), previous_offset, next_offset
         def bytes(chunk):
             size = os.stat(chunk).st_size
@@ -961,19 +1011,21 @@ class StreamHandler(AuthRequestHandler):
         else:
             chunk_num = int(last_chunk_filename.split('.chunk.')[-1])
             chunk = chunks_dir + '/' + last_chunk_filename
-            with open(out, 'ab') as fout:
-                with open(chunk, 'rb') as fin:
-                    try:
+            try:
+                with open(out, 'ab') as fout:
+                    with open(chunk, 'rb') as fin:
                         size_before_merge = os.stat(out).st_size
                         shutil.copyfileobj(fin, fout)
-                    except Exception:
-                        os.remove(chunk)
-                        out.truncate(size_before_merge)
-                        raise Exception('could not merge %s', chunk)
-                if chunk_num >= 5:
-                    target_chunk_num = chunk_num - 4
-                    old_chunk = chunk.replace('.chunk.' + str(chunk_num), '.chunk.' + str(target_chunk_num))
-                    os.remove(old_chunk)
+            except Exception as e:
+                logging.error(e)
+                os.remove(chunk)
+                with open(out, 'ab') as fout:
+                    fout.truncate(size_before_merge)
+                raise Exception('could not merge %s', chunk)
+            if chunk_num >= 5:
+                target_chunk_num = chunk_num - 4
+                old_chunk = chunk.replace('.chunk.' + str(chunk_num), '.chunk.' + str(target_chunk_num))
+                os.remove(old_chunk)
         return final
 
 
