@@ -673,6 +673,7 @@ class ResumablesListHandler(AuthRequestHandler):
                 # chunks that are currently on disk
                 assert bytes(merged_file) == next_offset
             except AssertionError:
+                # try to repair
                 raise Exception('chunk merge has gone wrong - unknown server-side data consistency, cannot resume upload')
             return size, num, md5sum(chunks[-1]), previous_offset, next_offset
         def bytes(chunk):
@@ -844,14 +845,13 @@ class StreamHandler(AuthRequestHandler):
         upload_id/filename.extention.chunk.num
 
         """
-        def refuse_upload_if_chunk_already_on_disk(project_dir, upload_id):
+        def refuse_upload_if_not_in_sequential_order(project_dir, upload_id):
             chunks_on_disk = os.listdir(project_dir + '/' + upload_id)
             chunks_on_disk.sort(key=natural_keys)
             full_chunks_on_disk = [ c for c in chunks_on_disk if '.part' not in c ]
             previous_chunk_num = int(full_chunks_on_disk[-1].split('.chunk.')[-1])
-            if chunk_num <= previous_chunk_num:
-                # TODO: send correct info to the client
-                raise Exception('uploading the same chunk more than once not allowed')
+            if chunk_num <= previous_chunk_num or (chunk_num - previous_chunk_num) >= 2:
+                raise Exception('chunks must be uploaded in sequential order')
         chunk_num = url_unescape(self.get_query_argument('chunk'))
         upload_id = url_unescape(self.get_query_argument('id'))
         chunk_filename = filename + '.chunk.' + chunk_num
@@ -877,7 +877,7 @@ class StreamHandler(AuthRequestHandler):
             self.upload_id = upload_id
             self.call_chowner = False
             filename = self.upload_id + '/' + chunk_filename
-            refuse_upload_if_chunk_already_on_disk(project_dir, self.upload_id)
+            refuse_upload_if_not_in_sequential_order(project_dir, self.upload_id)
             return filename
 
 
