@@ -10,6 +10,7 @@ GET /files/resumables
 GET /files/resumables/filename
 GET /files/resumables/filename?id=<UUID>
 PATCH /files/stream/file?chunk=<chunknum,end>&id=<UUID>&group=<group-name>
+DELETE /files/resumables/filename?id=<UUID>
 ```
 
 ## 1. Starting a new resumable upload
@@ -89,6 +90,14 @@ PATCH /files/resumable/filename?chunk=end?id=<UUID>?group=<group-name>
 ```
 
 This will tell the server to assemble the final file. Setting the group is optional as normal.
+
+## 4. Cancelling an upload
+
+To avoid wasting disk space, partially completed uploads which were not resumed to completion, and abandoned, can be removed as such:
+
+```txt
+DELETE /files/resumables/filename?id=<UUID>
+```
 
 ## Implementation
 

@@ -938,6 +938,18 @@ class StreamHandler(AuthRequestHandler):
 
     @gen.coroutine
     def prepare(self):
+        """
+        This sets up state for the part of the request handler which writes data to disk.
+
+        - authorization
+        - input validation
+        - file write mode
+        - content-type processing
+        - filename construction
+        - calling request-specific handlers
+        - ending requests which do not meet criteria
+
+        """
         try:
             self.call_chowner = True
             self.merged_file = False
@@ -1125,7 +1137,15 @@ class StreamHandler(AuthRequestHandler):
 
 
     def on_finish(self):
-        """Called after each request. Clean up any open files if an error occurred."""
+        """
+        Called after each request at the very end before closing the connection.
+
+        - clean up any open files if an error occurred
+        - call the chowner
+            - to set permissions, and mode
+            - move the file to the project import area
+
+        """
         try:
             if not self.target_file.closed:
                 self.target_file.close()
@@ -1150,7 +1170,10 @@ class StreamHandler(AuthRequestHandler):
 
 
     def on_connection_close(self):
-        """Called when clients close the connection. Clean up any open files."""
+        """
+        Called when clients close the connection. Clean up any open files.
+
+        """
         try:
             if not self.target_file.closed:
                 self.target_file.close()
