@@ -952,6 +952,7 @@ class TestFileApi(unittest.TestCase):
         upload_id = self.start_new_resumable(filepath, chunksize=cs, stop_at=1)
         token = TEST_TOKENS['VALID']
         url = '%s/%s' % (self.resumables, filename)
+        print '---> going to resume from chunk 2:'
         resp = fileapi.initiate_resumable(proj, self.test_project, filepath,
                                           token, chunksize=cs, new=False, group=None,
                                           verify=True, upload_id=upload_id, dev_url=url)
@@ -969,6 +970,7 @@ class TestFileApi(unittest.TestCase):
         upload_id = self.start_new_resumable(filepath, chunksize=cs, stop_at=1)
         token = TEST_TOKENS['VALID']
         url = '%s/%s' % (self.resumables, filename)
+        print '---> going to resume from chunk 2:'
         resp = fileapi.initiate_resumable(proj, self.test_project, filepath,
                                           token, chunksize=cs, new=False, group=None,
                                           verify=True, upload_id=None, dev_url=url)
@@ -992,6 +994,7 @@ class TestFileApi(unittest.TestCase):
             f.write('ffff\n')
         token = TEST_TOKENS['VALID']
         url = '%s/%s' % (self.resumables, filename)
+        print '---> resume should fail:'
         # now this _should_ start a new upload due to md5 mismatch
         resp = fileapi.initiate_resumable(proj, self.test_project, filepath,
                                           token, chunksize=cs, new=False, group=None,
@@ -1037,6 +1040,7 @@ class TestFileApi(unittest.TestCase):
         with open(merged_file, 'ab') as f:
             f.truncate(cs + (cs/2))
         # this should trigger data recovery, and restart the resumable at chunk1
+        print '---> going to resume from chunk 2, after data recovery:'
         resp = fileapi.initiate_resumable(proj, self.test_project, filepath,
                                           token, chunksize=cs, new=False, group=None,
                                           verify=True, upload_id=upload_id, dev_url=url)
@@ -1077,6 +1081,7 @@ class TestFileApi(unittest.TestCase):
         upload_id1 = self.start_new_resumable(filepath, chunksize=3, stop_at=1)
         url = '%s/%s' % (self.resumables, filename)
         token = TEST_TOKENS['VALID']
+        print '---> going to resume from chunk 2, with a new chunk size:'
         resp = fileapi.initiate_resumable('', self.test_project, filepath,
                                           token, chunksize=4, new=False, group=None,
                                           verify=True, dev_url=url, upload_id=upload_id1)
