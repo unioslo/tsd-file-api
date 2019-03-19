@@ -920,32 +920,6 @@ class TestFileApi(unittest.TestCase):
     # resumable uploads
 
 
-    def create_simulated_resumable_in_upload_dir(self, filepath, filename, chunksize,
-                                                 bad_data=False, truncate=False):
-        resume_dir = self.uploads_folder + '/' + self.test_upload_id
-        try:
-            os.makedirs(resume_dir)
-        except OSError:
-            pass # it already exists, we do not care
-        chunk1 = ''.join([resume_dir, '/', filename, '.chunk.1'])
-        chunk2 = ''.join([resume_dir, '/', filename, '.chunk.2'])
-        merged_file = ''.join([self.uploads_folder, '/', filename, '.', self.test_upload_id])
-        if not truncate:
-            self.start_new_resumable(filepath, chunksize=chunksize, stop_at=1)
-        elif truncate:
-            with open(filepath, 'r') as fin:
-                chunk_data1 = fin.read(chunksize)
-                with open(chunk1, 'wb') as fout1:
-                    fout1.write(chunk_data1)
-                chunk_data2 = fin.read(chunksize)
-                with open(chunk2, 'wb') as fout2:
-                    fout2.write(chunk_data2)
-                with open(merged_file, 'ab') as fout3:
-                    fout3.write(chunk_data1)
-                    fout3.write(chunk_data2)
-                    fout3.truncate(chunksize + (chunksize/2))
-
-
     def start_new_resumable(self, filepath, chunksize=1, large_file=False, stop_at=None):
         token = TEST_TOKENS['VALID']
         filename = os.path.basename(filepath)
@@ -966,36 +940,6 @@ class TestFileApi(unittest.TestCase):
     def test_ZM_resume_new_upload_works_is_idempotent(self):
         self.start_new_resumable(self.resume_file1, chunksize=5)
 
-
-    def do_resume(self, filepath, chunksize=None, by_id=False, verify=False, bad_data=False,
-                  md5=True, large=False, truncate=False):
-        filename = os.path.basename(filepath)
-        token = TEST_TOKENS['VALID']
-        if not large:
-            self.create_simulated_resumable_in_upload_dir(filepath, filename,
-                                                          chunksize, bad_data, truncate)
-        url = '%s/%s' % (self.resumables, filename)
-        if by_id:
-            upload_id = self.test_upload_id
-        else:
-            upload_id = None
-        resp = fileapi.initiate_resumable('', self.test_project, filepath,
-                                          token, chunksize=chunksize, new=False, group=None,
-                                          verify=verify, upload_id=upload_id, dev_url=url)
-        if bad_data:
-            self.assertEqual(resp, None)
-        else:
-            self.assertEqual(resp['max_chunk'], u'end')
-            self.assertTrue(resp['id'] is not None)
-            self.assertEqual(resp['filename'], filename)
-            if md5:
-                self.assertEqual(md5sum(filepath),
-                    md5sum(self.uploads_folder + '/' + self.test_group + '/' + filename))
-        try:
-            shutil.rmtree(self.uploads_folder + '/' + self.test_upload_id)
-            os.remove(self.uploads_folder + filename + '.' + self.test_upload_id)
-        except OSError:
-            pass
 
     def test_ZN_resume_works_with_upload_id_match(self):
         cs = 5
@@ -1065,15 +1009,20 @@ class TestFileApi(unittest.TestCase):
 
 
     def test_ZS_recovering_inconsistent_data_allows_resume_from_previous_chunk(self):
+        proj = ''
         token = TEST_TOKENS['VALID']
         filepath = self.resume_file2
         filename = os.path.basename(filepath)
-        chunksize = 5
-        bad_data = False
-        truncate = True
-        upload_id = self.test_upload_id
-        url = '%s/%s?id=%s' % (self.resumables, filename, upload_id)
-        self.do_resume(self.resume_file2, chunksize=5, by_id=True, verify=True, truncate=True)
+        cs = 5
+        upload_id = self.start_new_resumable(filepath, chunksize=cs, stop_at=2)
+        url = '%s/%s' % (self.resumables, filename)
+        merged_file = self.uploads_folder + '/' + filename + '.' + upload_id
+        with open(merged_file, 'ab') as f:
+            f.truncate(cs + (cs/2))
+        # this should trigger data recovery, and restart the resumable at chunk1
+        resp = fileapi.initiate_resumable(proj, self.test_project, filepath,
+                                          token, chunksize=cs, new=False, group=None,
+                                          verify=True, upload_id=upload_id, dev_url=url)
 
 
     def test_ZT_list_all_resumables(self):
@@ -1164,7 +1113,7 @@ def main():
         'test_ZP_resume_do_not_upload_if_md5_mismatch',
         #'test_ZQ_large_start_file_resume',
         #'test_ZR_cancel_resumable',
-        #'test_ZS_recovering_inconsistent_data_allows_resume_from_previous_chunk',
+        'test_ZS_recovering_inconsistent_data_allows_resume_from_previous_chunk',
         #'test_ZT_list_all_resumables',
         ])))
     map(runner.run, suite)
