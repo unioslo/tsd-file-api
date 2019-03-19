@@ -1001,11 +1001,16 @@ class TestFileApi(unittest.TestCase):
 
 
     def test_ZR_cancel_resumable(self):
+        cs = 5
+        proj = ''
+        filepath = self.resume_file2
+        filename = os.path.basename(filepath)
+        upload_id = self.start_new_resumable(filepath, chunksize=cs, stop_at=1)
         token = TEST_TOKENS['VALID']
-        #upload_id = self.start_new_resumable(self.resume_file1, chunksize=5, stop_at=2)
-        #print upload_id
-        #resp = requests.delete(url, headers={'Authorization': 'Bearer ' + token})
-        #self.assertEqual(resp.status_code, 200)
+        # TODO: use client once implemented
+        url = '%s/%s?id=%s' % (self.resumables, filename, upload_id)
+        resp = requests.delete(url, headers={'Authorization': 'Bearer ' + token})
+        self.assertEqual(resp.status_code, 200)
 
 
     def test_ZS_recovering_inconsistent_data_allows_resume_from_previous_chunk(self):
@@ -1112,7 +1117,7 @@ def main():
         'test_ZO_resume_works_with_filename_match',
         'test_ZP_resume_do_not_upload_if_md5_mismatch',
         #'test_ZQ_large_start_file_resume',
-        #'test_ZR_cancel_resumable',
+        'test_ZR_cancel_resumable',
         'test_ZS_recovering_inconsistent_data_allows_resume_from_previous_chunk',
         #'test_ZT_list_all_resumables',
         ])))
