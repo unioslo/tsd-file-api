@@ -41,7 +41,19 @@ Firstly, to list all resumables for the authenticated user:
 ```txt
 GET /files/resumables
 
-{resumables: [{filename: str, max_chunk: int, chunk_size: int, id: uuid}, {}]}
+{
+    resumables: [
+        {
+            filename: str,
+            max_chunk: int,
+            chunk_size: int,
+            id: uuid,
+            pevious_offset: int,
+            next_offset: <int,'end'>,
+            md5sum: str
+        }
+    ]
+}
 ```
 
 Secondly, all resumables for the authenticated user, matching a given filename:
@@ -49,7 +61,7 @@ Secondly, all resumables for the authenticated user, matching a given filename:
 ```txt
 GET /files/resumables/myfile
 
-[resumables: [{filename: str, max_chunk: int, chunk_size: int, id: uuid}, {...}]}
+[resumables: [{...}, {...}]}
 ```
 
 And lastly, the information for a speific upload:
@@ -57,7 +69,15 @@ And lastly, the information for a speific upload:
 ```txt
 GET /files/resumables/myfile?id=<UUID>
 
-{filename: str, max_chunk: int, chunk_size: int, id: uuid}
+{
+    filename: str,
+    max_chunk: int,
+    chunk_size: int,
+    id: uuid,
+    pevious_offset: int,
+    next_offset: <int,'end'>,
+    md5sum: str
+}
 ```
 
 In this way, the GET endpoints provide the client a way to either discover previous uploads which can be resumed, or to get direct information.
@@ -68,12 +88,14 @@ Each resumable upload has:
 - a chunk size
 - a UUID
 - previous offset (number of bytes sent so far minus the last chunk size)
-- next offset (number of bytes sent so far)
+- next offset (number of bytes sent so far, or an instruction to 'end' the sequence)
 - chunk md5
 
 The combination of the filename and UUID allow the client to resume an upload of a specific file for a specific prior request. The chunk size and number allow the client to seek locally in the file before sending more chunks to the server, avoiding sending the same data more than once. The md5 digest of the latest chunk, combined with the offset information allow clients to verify chunk integrity.
 
-The client then proceeds as follows:
+The server will attempt to repair any data inconsistencies which may have arised due to server crashes or filesystem issues. If it cannot get the resumable data back into a consistent state, the `next_offset` field will be set to `end`. Client are recommended to either end the upload, or delete it.
+
+Assuming data is consistent, the client then proceeds as follows:
 
 ```txt
 PATCH /files/resumable/filename?chunk=<num>?id=<UUID>

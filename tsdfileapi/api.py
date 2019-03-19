@@ -622,7 +622,10 @@ class ResumablesHandler(AuthRequestHandler):
             if _IS_VALID_UUID.match(pr):
                 try:
                     chunk_size, max_chunk, md5sum, \
-                        previous_offset, next_offset = self.get_resumable_chunk_info(current_pr, project_dir)
+                        previous_offset, next_offset, \
+                        warning, recommendation = self.get_resumable_chunk_info(current_pr, project_dir)
+                    if recommendation == 'end':
+                        next_offset = 'end'
                 except (OSError, Exception):
                     pass
                 if chunk_size:
@@ -690,7 +693,7 @@ class ResumablesHandler(AuthRequestHandler):
         tuple, (size, chunknum, md5sum, previous_offset, next_offset)
 
         """
-        def info(chunks):
+        def info(chunks, recommendation=None, warning=None):
             num = int(chunks[-1].split('.')[-1])
             latest_size = bytes(chunks[-1])
             upload_id = os.path.basename(resumable_dir)
@@ -706,14 +709,14 @@ class ResumablesHandler(AuthRequestHandler):
             except AssertionError:
                 try:
                     logging.info('trying to repair inconsistent data')
-                    chunks, recommendation, warning = self.repair_inconsistent_resumable(merged_file,
+                    chunks, wanring, recommendation = self.repair_inconsistent_resumable(merged_file,
                                                                             chunks, bytes(merged_file),
                                                                             next_offset)
                     return info(chunks)
                 except Exception as e:
                     logging.error(e)
                     return None, None, None, None, None
-            return latest_size, num, md5sum(chunks[-1]), previous_offset, next_offset
+            return latest_size, num, md5sum(chunks[-1]), previous_offset, next_offset, recommendation, warning
         def bytes(chunk):
             size = os.stat(chunk).st_size
             return size
@@ -730,11 +733,14 @@ class ResumablesHandler(AuthRequestHandler):
             raise Exception('No resumable found for: %s', filename)
         resumable_dir = '%s/%s' % (project_dir, relevant_dir)
         chunk_size, max_chunk, md5sum, \
-            previous_offset, next_offset = self.get_resumable_chunk_info(resumable_dir, project_dir)
+            previous_offset, next_offset, \
+            warning, recommendation = self.get_resumable_chunk_info(resumable_dir, project_dir)
+        if recommendation == 'end':
+            next_offset = 'end'
         info = {'filename': filename, 'id': relevant_dir,
                 'chunk_size': chunk_size, 'max_chunk': max_chunk,
                 'md5sum': md5sum, 'previous_offset': previous_offset,
-                'next_offset': next_offset}
+                'next_offset': next_offset, 'warning': warning}
         return info
 
 
