@@ -993,6 +993,8 @@ class TestFileApi(unittest.TestCase):
                                           token, chunksize=cs, new=False, group=None,
                                           verify=True, upload_id=upload_id, dev_url=url)
         self.assertEqual(resp, None)
+        rdb = sqlite_init(self.uploads_folder, '.resumables-p11-import_user.db')
+        resumable_db_remove_completed_for_user(rdb, upload_id, 'p11-import_user')
 
 
     def test_ZQ_large_start_file_resume(self):
@@ -1059,6 +1061,9 @@ class TestFileApi(unittest.TestCase):
             shutil.rmtree(uploaded_folder2)
             os.remove(merged_file1)
             os.remove(merged_file2)
+            rdb = sqlite_init(self.uploads_folder, '.resumables-p11-import_user.db')
+            resumable_db_remove_completed_for_user(rdb, upload_id1, 'p11-import_user')
+            resumable_db_remove_completed_for_user(rdb, upload_id2, 'p11-import_user')
         except OSError:
             pass
 
