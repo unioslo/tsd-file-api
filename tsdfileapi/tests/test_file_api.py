@@ -1029,8 +1029,26 @@ class TestFileApi(unittest.TestCase):
         self.assertEqual(resp['filename'], filename)
 
 
-    def test_ZP_resume_start_new_upload_if_md5_mismatch(self):
-        self.do_resume(self.resume_file2, chunksize=5, by_id=False, verify=True, bad_data=True)
+    def test_ZP_resume_do_not_upload_if_md5_mismatch(self):
+        cs = 5
+        proj = ''
+        filepath = self.resume_file2
+        filename = os.path.basename(filepath)
+        upload_id = self.start_new_resumable(filepath, chunksize=cs, stop_at=1)
+        uploaded_chunk = self.uploads_folder + '/' + upload_id + '/' + filename + '.chunk.1'
+        merged_file = self.uploads_folder + '/' + filename + '.' + upload_id
+        # manipulate the data to force an md5 mismatch
+        with open(uploaded_chunk, 'wb+') as f:
+            f.write('ffff\n')
+        with open(merged_file, 'wb+') as f:
+            f.write('ffff\n')
+        token = TEST_TOKENS['VALID']
+        url = '%s/%s' % (self.resumables, filename)
+        # now this _should_ start a new upload due to md5 mismatch
+        resp = fileapi.initiate_resumable(proj, self.test_project, filepath,
+                                          token, chunksize=cs, new=False, group=None,
+                                          verify=True, upload_id=upload_id, dev_url=url)
+        self.assertEqual(resp, None)
 
 
     def test_ZQ_large_start_file_resume(self):
@@ -1143,7 +1161,7 @@ def main():
         'test_ZM_resume_new_upload_works_is_idempotent',
         'test_ZN_resume_works_with_upload_id_match',
         'test_ZO_resume_works_with_filename_match',
-        #'test_ZP_resume_start_new_upload_if_md5_mismatch',
+        'test_ZP_resume_do_not_upload_if_md5_mismatch',
         #'test_ZQ_large_start_file_resume',
         #'test_ZR_cancel_resumable',
         #'test_ZS_recovering_inconsistent_data_allows_resume_from_previous_chunk',

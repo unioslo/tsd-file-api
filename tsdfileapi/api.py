@@ -40,7 +40,10 @@ from utils import secure_filename, project_import_dir, project_sns_dir, \
 from db import insert_into, create_table_from_codebook, sqlite_init, \
                create_table_from_generic, _table_name_from_form_id, \
                _VALID_PNUM, _table_name_from_table_name, TableNameException, \
-               load_jwk_store
+               load_jwk_store, resumable_db_insert_new_for_user, \
+               resumable_db_remove_completed_for_user, \
+               resumable_db_get_all_resumable_ids_for_user, \
+               resumable_db_upload_belongs_to_user
 from pgp import decrypt_pgp_json, _import_keys
 
 
@@ -505,7 +508,7 @@ class SnsFormDataHandler(GenericFormDataHandler):
 class ResumablesHandler(AuthRequestHandler):
 
     """
-    List information necessary to resume an upload.
+    Manage resumables, report information.
 
     Implementation
     --------------
@@ -522,6 +525,8 @@ class ResumablesHandler(AuthRequestHandler):
     - chunk size
     - upload id
     - mdsum of the last chunk
+    - previos offset in bytes
+    - next offset in bytes (total size of merged file)
 
     There are two possible scenarios: 1) the client knows the upload_id
     associated with the file which needs to be resumed, or 2) the client
@@ -535,53 +540,11 @@ class ResumablesHandler(AuthRequestHandler):
     Scenario 2
     ----------
     In scenario #2, the server will look at all potential resumables,
-    and try to find a match based on the filename. If there are multiple
-    resumable uploads that could be associated with a given filename,
-    the most recent one will be chosen.
-
-    If a match has been found, the server will try to ensure that
-    the chunk size is consistent across the chunks it currently has,
-    by comparing the sizes of the last three chunks in the sequence
-    (if there are at least 3).  It does this because it is possible
-    that the latest chunk might be incomplete. If it cannot to determine
-    a consistent size, then no resumable is reported for the file.
-
-    Note: this match is probabilistic, but likely to be correct.
-    The likelihood depends on the behaviour of project members.
-    The only scenario under which the wrong match will be generated is
-    as follows.
-
-    A resumable upload is started, by person A containing with filename
-    data.txt. The upload is stopped for some reason, and the client/person
-    forgets the upload_id. In the meantime person B (belonging to the same
-    TSD project) starts another resumable upload, with different data,
-    but the file is also named data.txt. This upload is also stopped,
-    and the client/person loses the upload_id.
-
-    Now before person B can resume their upload, person A comes along
-    and tries to resume the upload of their own data.txt. The server
-    will not be able to find the correct match without the upload_id,
-    so the wrong information will be returned. This likelihood is
-    estimated to be very low.
-
-    Mitigation of possible errors
-    -----------------------------
-    To mitigate the likelihood of the client mistakenly acting on the wrong
-    resumable information, the server generates the md5 digest of the last
-    chunk in the sequence, and returns this to the client. The client can
-    then regenerate the chunk locally, compute its own digest, and compare
-    it with the one sent by the server.
-
-    There is yet another possibility of mistake here: if two different files
-    with the same name generate the same md5 digest in their last chunk on
-    the server. But that would also require that person 's and person B's
-    uploads stopped at the point where the two files happen to be the same
-    and that their chunk sizes would at that point lead to the same md5. This
-    seems extremely unlikely.
-
-    In conclusion, the extremely paranoid client implementor can simply require
-    the upload_id for resume, if they deem the md5 verification alone is not good
-    enough.
+    and try to find a match based on the filename. All relevant matches
+    to which the authenticated user has access are returned, including
+    information about how much data has been uploaded. The client can
+    then choose to resume the one with the most data, and delete the
+    remaining ones.
 
     """
 
@@ -617,7 +580,10 @@ class ResumablesHandler(AuthRequestHandler):
         str, upload_id (name of the directory)
 
         """
+        relevant = None
         potential_resumables = os.listdir(project_dir)
+        #TODO
+        logging.info(resumable_db_get_all_resumable_ids_for_user(self.rdb, self.user))
         if not upload_id:
             logging.info('Trying to find a matching resumable for %s', filename)
             candidates = []
@@ -626,7 +592,6 @@ class ResumablesHandler(AuthRequestHandler):
                 if _IS_VALID_UUID.match(pr):
                     candidates.append((os.stat(current_pr).st_mtime, pr))
             candidates.sort(self.resumables_cmp)
-            relevant = None
             for cand in candidates:
                 upload_id = cand[1]
                 first_chunk = self.find_nth_chunk(project_dir, upload_id, filename, 1)
@@ -643,6 +608,8 @@ class ResumablesHandler(AuthRequestHandler):
 
     def list_all_resumables(self, project_dir):
         potential_resumables = os.listdir(project_dir)
+        #TODO
+        logging.info(resumable_db_get_all_resumable_ids_for_user(self.rdb, self.user))
         resumables = []
         info = []
         for pr in potential_resumables:
@@ -767,19 +734,24 @@ class ResumablesHandler(AuthRequestHandler):
         return info
 
 
+    def prepare(self):
+        try:
+            self.authnz = self.validate_token(roles_allowed=['import_user', 'export_user', 'admin_user'])
+            pnum = self.request.uri.split('/')[1]
+            assert _VALID_PNUM.match(pnum)
+            self.project_dir = project_import_dir(options.uploads_folder, pnum, None, None)
+            self.rdb = sqlite_init(self.project_dir, name='.resumables-' + self.user + '.db')
+        except Exception as e:
+            logging.error(e)
+            raise e
+
+
+
     def get(self, pnum, filename=None):
         self.message = {'filename': filename, 'id': None, 'chunk_size': None, 'max_chunk': None}
         upload_id = None
         try:
             try:
-                self.authnz = self.validate_token(roles_allowed=['import_user', 'export_user', 'admin_user'])
-            except Exception as e:
-                logging.error('Not authorized to list resumable')
-                self.message = {'message': 'Not authorized'}
-                raise Exception('Not authorized')
-            try:
-                assert _VALID_PNUM.match(pnum)
-                project_dir = project_import_dir(options.uploads_folder, pnum, None, None)
                 if filename:
                     secured_filename = check_filename(url_unescape(filename))
             except Exception:
@@ -790,9 +762,9 @@ class ResumablesHandler(AuthRequestHandler):
             except Exception:
                 pass
             if not filename:
-                info = self.list_all_resumables(project_dir)
+                info = self.list_all_resumables(self.project_dir)
             else:
-                info = self.get_resumable_info(project_dir, secured_filename, upload_id)
+                info = self.get_resumable_info(self.project_dir, secured_filename, upload_id)
             self.set_status(200)
             self.write(info)
         except Exception as e:
@@ -803,12 +775,14 @@ class ResumablesHandler(AuthRequestHandler):
 
     def delete_resumable(self, project_dir, filename, upload_id):
         try:
+            assert resumable_db_upload_belongs_to_user(self.rdb, upload_id, self.user)
             relevant_dir = project_dir + '/' + upload_id
             relevant_merged_file = project_dir + '/' + filename + '.' + upload_id
             shutil.rmtree(relevant_dir)
             os.remove(relevant_merged_file)
             return True
-        except Exception:
+        except Exception as e:
+            logging.error(e)
             logging.error('could not complete resumable deletion')
             return False
 
@@ -817,14 +791,6 @@ class ResumablesHandler(AuthRequestHandler):
         self.message = {'message': 'cannot delete resumable'}
         try:
             try:
-                self.authnz = self.validate_token(roles_allowed=['import_user', 'export_user', 'admin_user'])
-            except Exception as e:
-                logging.error('Not authorized to list resumable')
-                self.message = {'message': 'Not authorized'}
-                raise Exception('Not authorized')
-            try:
-                assert _VALID_PNUM.match(pnum)
-                project_dir = project_import_dir(options.uploads_folder, pnum, None, None)
                 secured_filename = check_filename(url_unescape(filename))
             except Exception:
                 logging.error('not able to check for resumable due to bad input')
@@ -833,7 +799,7 @@ class ResumablesHandler(AuthRequestHandler):
                 upload_id = url_unescape(self.get_query_argument('id'))
             except Exception:
                 raise Exception('upload id required to delete resumable')
-            assert self.delete_resumable(project_dir, filename, upload_id)
+            assert self.delete_resumable(self.project_dir, filename, upload_id)
             self.set_status(200)
             self.write({'message': 'resumable deleted'})
         except Exception as e:
@@ -939,6 +905,7 @@ class StreamHandler(AuthRequestHandler):
         1. First chunk
             - the chowner is disabled
             - a new upload id is generated
+            - the upload id is recorded as beloning to the authenticated user
             - a new working directory is created
             - data_received is called, writing the file
             - merge_resumables is called by the exiting patch method
@@ -983,6 +950,7 @@ class StreamHandler(AuthRequestHandler):
             self.call_chowner = False
             filename = self.upload_id + '/' + chunk_filename
             os.makedirs(project_dir + '/' + self.upload_id)
+            assert resumable_db_insert_new_for_user(self.user_res_db_engine, self.upload_id, self.user)
             return filename
         elif chunk_num > 1:
             self.chunk_num = chunk_num
@@ -1097,6 +1065,7 @@ class StreamHandler(AuthRequestHandler):
                     # build it ourselves in /stream handler
                     filename = secure_filename(self.request.headers['Filename'])
                     if self.request.method == 'PATCH':
+                        self.user_res_db_engine = sqlite_init(project_dir, name='.resumables-' + self.user + '.db')
                         filename = self.handle_resumable_request(project_dir, filename)
                     # prepare the partial file name for incoming data
                     # ensure we do not write to active file
@@ -1278,6 +1247,8 @@ class StreamHandler(AuthRequestHandler):
                 logging.info('Attempting to change ownership of %s to %s', path, self.user)
                 subprocess.call(['sudo', options.chowner_path, path,
                                  self.user, options.api_user, self.group_name])
+                if self.merged_file:
+                    assert resumable_db_remove_completed_for_user(self.user_res_db_engine, self.upload_id, self.user)
             except Exception as e:
                 logging.info('could not change file mode or owner for some reason')
                 logging.info(e)
