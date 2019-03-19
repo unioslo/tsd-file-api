@@ -1014,7 +1014,19 @@ class TestFileApi(unittest.TestCase):
 
 
     def test_ZO_resume_works_with_filename_match(self):
-        self.do_resume(self.resume_file2, chunksize=5, by_id=False, verify=True)
+        cs = 5
+        proj = ''
+        filepath = self.resume_file2
+        filename = os.path.basename(filepath)
+        upload_id = self.start_new_resumable(filepath, chunksize=cs, stop_at=1)
+        token = TEST_TOKENS['VALID']
+        url = '%s/%s' % (self.resumables, filename)
+        resp = fileapi.initiate_resumable(proj, self.test_project, filepath,
+                                          token, chunksize=cs, new=False, group=None,
+                                          verify=True, upload_id=None, dev_url=url)
+        self.assertEqual(resp['max_chunk'], u'end')
+        self.assertTrue(resp['id'] is not None)
+        self.assertEqual(resp['filename'], filename)
 
 
     def test_ZP_resume_start_new_upload_if_md5_mismatch(self):
@@ -1130,7 +1142,7 @@ def main():
         # resume
         'test_ZM_resume_new_upload_works_is_idempotent',
         'test_ZN_resume_works_with_upload_id_match',
-        #'test_ZO_resume_works_with_filename_match',
+        'test_ZO_resume_works_with_filename_match',
         #'test_ZP_resume_start_new_upload_if_md5_mismatch',
         #'test_ZQ_large_start_file_resume',
         #'test_ZR_cancel_resumable',
