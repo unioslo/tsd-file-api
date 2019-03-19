@@ -1040,7 +1040,7 @@ class TestFileApi(unittest.TestCase):
         with open(merged_file, 'ab') as f:
             f.truncate(cs + (cs/2))
         # this should trigger data recovery, and restart the resumable at chunk1
-        print '---> going to resume from chunk 2, after data recovery:'
+        print '---> going to resume from chunk 3, after data recovery:'
         resp = fileapi.initiate_resumable(proj, self.test_project, filepath,
                                           token, chunksize=cs, new=False, group=None,
                                           verify=True, upload_id=upload_id, dev_url=url)
