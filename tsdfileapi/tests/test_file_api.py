@@ -1074,7 +1074,8 @@ class TestFileApi(unittest.TestCase):
     # trying to upload the same chunk twice
     # trying to upload next_chunk + 1
     # access control - can only list own, delete own
-
+    # sending uneven chunks works
+    # can repair data when chunk eneven sizes
 
 
 def main():

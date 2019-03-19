@@ -26,7 +26,7 @@ def resumable_db_pop_chunk(engine, resumable_id, chunk_num):
     with session_scope(engine) as session:
         res = session.execute('delete from "%s" where chunk_num = :chunk_num' % resumable_table,
                               {'chunk_num': chunk_num})
-    return res
+    return True
 
 
 def resumable_db_get_total_size(engine, resumable_id):

@@ -644,7 +644,7 @@ class ResumablesHandler(AuthRequestHandler):
         are no more chunks left to use.
 
         """
-        logging.info('current merged file size: %d, current sum of chunks size %d', merged_file_size, sum_chunks_size)
+        logging.info('current merged file size: %d, current sum of chunks in db %d', merged_file_size, sum_chunks_size)
         if merged_file_size == sum_chunks_size:
             logging.info('server-side data consistent')
             return chunks
@@ -657,15 +657,15 @@ class ResumablesHandler(AuthRequestHandler):
             logging.info('truncating %s to %d', merged_file, target_size)
             with open(merged_file, 'ab') as f:
                 f.truncate(target_size)
-            logging.info('removing chunk: %s', chunk)
+            logging.info('removing chunk from disk: %s', chunk)
             os.remove(chunk)
             upload_id = merged_file.split('.')[-1]
             current_num = int(chunks[-1].split('.')[-1])
             logging.info('popping chunk %d from db in table for %s', current_num, upload_id)
-            resumable_db_pop_chunk(self.rdb, upload_id, current_num)
+            assert resumable_db_pop_chunk(self.rdb, upload_id, current_num)
             chunks = chunks[:-1]
             num = int(chunks[-1].split('.')[-1])
-            new_sum_chunks_size = num * previous_chunk_size
+            new_sum_chunks_size = resumable_db_get_total_size(self.rdb, upload_id)
             new_merged_file_size = os.stat(merged_file).st_size
             return self.repair_inconsistent_resumable(merged_file, chunks, new_merged_file_size,
                                                       new_sum_chunks_size, previous_chunk_size)
@@ -689,18 +689,15 @@ class ResumablesHandler(AuthRequestHandler):
         def info(chunks):
             num = int(chunks[-1].split('.')[-1])
             latest_size = bytes(chunks[-1])
-            size = latest_size
-            previous_offset = size * (num - 1)
-            next_offset = previous_offset + latest_size
-            filename = os.path.basename(chunks[-1].split('.chunk')[0])
             upload_id = os.path.basename(resumable_dir)
-            dbsize = resumable_db_get_total_size(self.rdb, upload_id)
+            next_offset = resumable_db_get_total_size(self.rdb, upload_id)
+            previous_offset = next_offset - latest_size
+            filename = os.path.basename(chunks[-1].split('.chunk')[0])
             merged_file = os.path.normpath(project_dir + '/' + filename + '.' + upload_id)
             try:
                 # check that the size of the merge file
                 # matches what we calculate from the
-                # chunks that are currently on disk
-                logging.info('dbsize: %d, merged_file_size: %d, calc from chunked files: %d', dbsize, bytes(merged_file), next_offset)
+                # chunks recorded in the resumable db
                 assert bytes(merged_file) == next_offset
             except AssertionError:
                 try:
@@ -712,7 +709,7 @@ class ResumablesHandler(AuthRequestHandler):
                 except Exception as e:
                     logging.error(e)
                     return None, None, None, None, None
-            return size, num, md5sum(chunks[-1]), previous_offset, next_offset
+            return latest_size, num, md5sum(chunks[-1]), previous_offset, next_offset
         def bytes(chunk):
             size = os.stat(chunk).st_size
             return size
