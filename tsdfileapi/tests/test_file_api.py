@@ -1011,6 +1011,13 @@ class TestFileApi(unittest.TestCase):
         url = '%s/%s?id=%s' % (self.resumables, filename, upload_id)
         resp = requests.delete(url, headers={'Authorization': 'Bearer ' + token})
         self.assertEqual(resp.status_code, 200)
+        uploaded_folder = self.uploads_folder + '/' + upload_id
+        merged_file = self.uploads_folder + '/' + filename + '.' + upload_id
+        try:
+            shutil.rmtree(uploaded_folder)
+            os.remove(merged_file)
+        except OSError:
+            pass
 
 
     def test_ZS_recovering_inconsistent_data_allows_resume_from_previous_chunk(self):
@@ -1028,13 +1035,33 @@ class TestFileApi(unittest.TestCase):
         resp = fileapi.initiate_resumable(proj, self.test_project, filepath,
                                           token, chunksize=cs, new=False, group=None,
                                           verify=True, upload_id=upload_id, dev_url=url)
+        self.assertEqual(resp['max_chunk'], u'end')
+        self.assertTrue(resp['id'] is not None)
+        self.assertEqual(resp['filename'], filename)
 
 
     def test_ZT_list_all_resumables(self):
+        filepath = self.resume_file2
+        filename = os.path.basename(filepath)
+        cs = 5
+        upload_id1 = self.start_new_resumable(filepath, chunksize=cs, stop_at=2)
+        upload_id2 = self.start_new_resumable(filepath, chunksize=cs, stop_at=3)
         token = TEST_TOKENS['VALID']
         resp = requests.get(self.resumables, headers={'Authorization': 'Bearer ' + token})
         data = json.loads(resp.text)
+        print data
         self.assertEqual(resp.status_code, 200)
+        uploaded_folder1 = self.uploads_folder + '/' + upload_id1
+        uploaded_folder2 = self.uploads_folder + '/' + upload_id2
+        merged_file1 = self.uploads_folder + '/' + filename + '.' + upload_id1
+        merged_file2 = self.uploads_folder + '/' + filename + '.' + upload_id2
+        try:
+            shutil.rmtree(uploaded_folder1)
+            shutil.rmtree(uploaded_folder2)
+            os.remove(merged_file1)
+            os.remove(merged_file2)
+        except OSError:
+            pass
 
 
     # resume _after_ last chunk already on disk
@@ -1119,7 +1146,7 @@ def main():
         #'test_ZQ_large_start_file_resume',
         'test_ZR_cancel_resumable',
         'test_ZS_recovering_inconsistent_data_allows_resume_from_previous_chunk',
-        #'test_ZT_list_all_resumables',
+        'test_ZT_list_all_resumables',
         ])))
     map(runner.run, suite)
 

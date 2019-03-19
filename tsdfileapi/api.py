@@ -581,13 +581,12 @@ class ResumablesHandler(AuthRequestHandler):
 
         """
         relevant = None
-        potential_resumables = os.listdir(project_dir)
-        #TODO
-        logging.info(resumable_db_get_all_resumable_ids_for_user(self.rdb, self.user))
+        potential_resumables = resumable_db_get_all_resumable_ids_for_user(self.rdb, self.user)
         if not upload_id:
             logging.info('Trying to find a matching resumable for %s', filename)
             candidates = []
-            for pr in potential_resumables:
+            for item in potential_resumables:
+                pr = item[0]
                 current_pr = '%s/%s' % (project_dir, pr)
                 if _IS_VALID_UUID.match(pr):
                     candidates.append((os.stat(current_pr).st_mtime, pr))
@@ -599,7 +598,8 @@ class ResumablesHandler(AuthRequestHandler):
                     relevant = cand[1]
                     break
         else:
-            for pr in potential_resumables:
+            for item in potential_resumables:
+                pr = item[0]
                 current_pr = '%s/%s' % (project_dir, pr)
                 if _IS_VALID_UUID.match(pr) and str(upload_id) == str(pr):
                     relevant = pr
@@ -607,17 +607,19 @@ class ResumablesHandler(AuthRequestHandler):
 
 
     def list_all_resumables(self, project_dir):
-        potential_resumables = os.listdir(project_dir)
-        #TODO
-        logging.info(resumable_db_get_all_resumable_ids_for_user(self.rdb, self.user))
+        potential_resumables = resumable_db_get_all_resumable_ids_for_user(self.rdb, self.user)
         resumables = []
         info = []
-        for pr in potential_resumables:
+        for item in potential_resumables:
+            chunk_size = None
+            pr = item[0]
             current_pr = '%s/%s' % (project_dir, pr)
             if _IS_VALID_UUID.match(pr):
-                logging.info(current_pr)
-                chunk_size, max_chunk, md5sum, \
-                    previous_offset, next_offset = self.get_resumable_chunk_info(current_pr, project_dir)
+                try:
+                    chunk_size, max_chunk, md5sum, \
+                        previous_offset, next_offset = self.get_resumable_chunk_info(current_pr, project_dir)
+                except (OSError, Exception):
+                    pass
                 if chunk_size:
                     info.append({'chunk_size': chunk_size, 'max_chunk': max_chunk,
                                  'md5sum': md5sum, 'previous_offset': previous_offset,
