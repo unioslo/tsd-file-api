@@ -1081,13 +1081,44 @@ class TestFileApi(unittest.TestCase):
                                           verify=True, dev_url=url, upload_id=upload_id1)
         self.assertEqual(md5sum(filepath),
                 md5sum(self.uploads_folder + '/' + self.test_group + '/' + filename))
+        uploaded_folder1 = self.uploads_folder + '/' + upload_id1
+        merged_file1 = self.uploads_folder + '/' + filename + '.' + upload_id1
+        try:
+            shutil.rmtree(uploaded_folder1)
+            os.remove(merged_file1)
+            rdb = sqlite_init(self.uploads_folder, '.resumables-p11-import_user.db')
+            resumable_db_remove_completed_for_user(rdb, upload_id1, 'p11-import_user')
+        except OSError:
+            pass
 
-    # can repair data when chunk eneven sizes
-    # resume _after_ last chunk already on disk
-    # chunk sequence order
-    # fail trying to upload the same chunk twice
-    # fail trying to upload next_chunk + 1
-    # access control - can only list own, delete own
+
+    def test_ZV_resume_chunk_order_enforced(self):
+        filepath = self.resume_file2
+        filename = os.path.basename(filepath)
+        upload_id = self.start_new_resumable(filepath, chunksize=3, stop_at=2)
+        url = '%s/%s?id=%s&chunk=2' % (self.stream, filename, upload_id)
+        token = TEST_TOKENS['VALID']
+        resp = requests.patch(url, headers={'Authorization': 'Bearer ' + token},
+                              data='dddd\n')
+        self.assertEqual(resp.status_code, 400)
+        url = '%s/%s?id=%s&chunk=4' % (self.stream, filename, upload_id)
+        resp = requests.patch(url, headers={'Authorization': 'Bearer ' + token},
+                              data='dddd\n')
+        self.assertEqual(resp.status_code, 400)
+        uploaded_folder = self.uploads_folder + '/' + upload_id
+        merged_file = self.uploads_folder + '/' + filename + '.' + upload_id
+        try:
+            shutil.rmtree(uploaded_folder)
+            os.remove(merged_file)
+            rdb = sqlite_init(self.uploads_folder, '.resumables-p11-import_user.db')
+            resumable_db_remove_completed_for_user(rdb, upload_id, 'p11-import_user')
+        except OSError:
+            pass
+
+
+    def test_ZW_resumables_access_control(self):
+        # access control - can only list own, delete own
+        pass
 
 
 def main():
@@ -1167,6 +1198,7 @@ def main():
         'test_ZS_recovering_inconsistent_data_allows_resume_from_previous_chunk',
         'test_ZT_list_all_resumables',
         'test_ZU_sending_uneven_chunks_resume_works',
+        'test_ZV_resume_chunk_order_enforced',
         ])))
     map(runner.run, suite)
 

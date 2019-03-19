@@ -16,6 +16,7 @@ import subprocess
 import stat
 import shutil
 import fileinput
+import json
 
 from uuid import uuid4
 from sys import argv
@@ -931,7 +932,9 @@ class StreamHandler(AuthRequestHandler):
             full_chunks_on_disk = [ c for c in chunks_on_disk if '.part' not in c ]
             previous_chunk_num = int(full_chunks_on_disk[-1].split('.chunk.')[-1])
             if chunk_num <= previous_chunk_num or (chunk_num - previous_chunk_num) >= 2:
+                self.chunk_order_correct = False
                 raise Exception('chunks must be uploaded in sequential order')
+        self.chunk_order_correct = True
         chunk_num = url_unescape(self.get_query_argument('chunk'))
         upload_id = url_unescape(self.get_query_argument('id'))
         chunk_filename = filename + '.chunk.' + chunk_num
@@ -1039,6 +1042,11 @@ class StreamHandler(AuthRequestHandler):
         try:
             self.call_chowner = True
             self.merged_file = False
+            self.target_file = None
+            self.custom_content_type = None
+            self.path = None
+            self.path_part = None
+            self.chunk_order_correct = None
             try:
                 self.authnz = self.validate_token(roles_allowed=['import_user', 'export_user', 'admin_user'])
             except Exception as e:
@@ -1106,19 +1114,23 @@ class StreamHandler(AuthRequestHandler):
                         if not self.merged_file:
                             self.target_file = open(self.path, filemode)
                 except KeyError:
-                    logging.info('No content-type - do not know what to do with data')
+                    raise Exception('No content-type - do not know what to do with data')
             except Exception as e:
                 logging.error(e)
-                logging.error("filename not found")
                 try:
-                    self.target_file.close()
+                    if self.target_file:
+                        self.target_file.close()
                     os.rename(self.path, self.path_part)
                 except AttributeError as e:
                     logging.error(e)
                     logging.error('No file to close after all - so nothing to worry about')
         except Exception as e:
             logging.error('stream handler failed')
-            self.finish({'message': 'no stream processing will happen'})
+            info = 'stream processing failed'
+            if self.chunk_order_correct is False:
+                self.set_status(200)
+                info = 'chunk_order_incorrect'
+            self.finish({'message': info})
 
 
     @gen.coroutine
@@ -1150,7 +1162,8 @@ class StreamHandler(AuthRequestHandler):
         except Exception as e:
             logging.error(e)
             logging.error("something went wrong with stream processing have to close file")
-            self.target_file.close()
+            if self.target_file:
+                self.target_file.close()
             os.rename(self.path, self.path_part)
             self.send_error("something went wrong")
 
@@ -1430,8 +1443,17 @@ class ProxyHandler(AuthRequestHandler):
         yield self.chunks.put(None)
         # wait for request to finish.
         response = yield self.fetch_future
-        self.set_status(response.code)
-        self.write(response.body)
+        code = response.code
+        body = response.body
+        try:
+            resp = json.loads(response.body)
+            if resp['message'] == 'chunk_order_incorrect':
+                code = 400
+                body = resp
+        except Exception:
+            pass
+        self.set_status(code)
+        self.write(body)
 
     def head(self, pnum, filename=None):
         self.set_status(201)
