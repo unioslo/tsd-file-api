@@ -921,8 +921,10 @@ class TestFileApi(unittest.TestCase):
     # resumable uploads
 
 
-    def start_new_resumable(self, filepath, chunksize=1, large_file=False, stop_at=None):
-        token = TEST_TOKENS['VALID']
+    def start_new_resumable(self, filepath, chunksize=1, large_file=False, stop_at=None,
+                            token=None):
+        if not token:
+            token = TEST_TOKENS['VALID']
         filename = os.path.basename(filepath)
         url = '%s/%s' % (self.stream, filename)
         resp = fileapi.initiate_resumable('', self.test_project, filepath,
@@ -1052,7 +1054,6 @@ class TestFileApi(unittest.TestCase):
         token = TEST_TOKENS['VALID']
         resp = requests.get(self.resumables, headers={'Authorization': 'Bearer ' + token})
         data = json.loads(resp.text)
-        print data
         self.assertEqual(resp.status_code, 200)
         uploaded_folder1 = self.uploads_folder + '/' + upload_id1
         uploaded_folder2 = self.uploads_folder + '/' + upload_id2
@@ -1117,9 +1118,34 @@ class TestFileApi(unittest.TestCase):
 
 
     def test_ZW_resumables_access_control(self):
-        # access control - can only list own, delete own
-        pass
-
+        filepath = self.resume_file2
+        filename = os.path.basename(filepath)
+        old_user_token = TEST_TOKENS['VALID']
+        upload_id1 = self.start_new_resumable(filepath, chunksize=3, stop_at=2, token=old_user_token)
+        new_user_token = gen_test_token_for_user(self.config, 'p11-tommy')
+        upload_id2 = self.start_new_resumable(filepath, chunksize=3, stop_at=2, token=new_user_token)
+        # ensure user B cannot list user A's resumable
+        resp = requests.get(self.resumables, headers={'Authorization': 'Bearer ' + new_user_token})
+        data = json.loads(resp.text)
+        for r in  data['resumables']:
+            self.assertTrue(str(r['id']) != str(upload_id1))
+        # ensuere user B cannot delete user A's resumable
+        url = '%s/%s?id=%s' % (self.resumables, filename, upload_id1)
+        resp = requests.delete(url, headers={'Authorization': 'Bearer ' + new_user_token})
+        self.assertEqual(resp.status_code, 400)
+        uploaded_folder1 = self.uploads_folder + '/' + upload_id1
+        merged_file1 = self.uploads_folder + '/' + filename + '.' + upload_id1
+        uploaded_folder2 = self.uploads_folder + '/' + upload_id2
+        merged_file2 = self.uploads_folder + '/' + filename + '.' + upload_id2
+        try:
+            shutil.rmtree(uploaded_folder1)
+            os.remove(merged_file2)
+            rdb = sqlite_init(self.uploads_folder, '.resumables-p11-import_user.db')
+            resumable_db_remove_completed_for_user(rdb, upload_id1, 'p11-import_user')
+            rdb = sqlite_init(self.uploads_folder, '.resumables-p11-tommy.db')
+            resumable_db_remove_completed_for_user(rdb, upload_id2, 'p11-tommy')
+        except OSError:
+            pass
 
 def main():
     runner = unittest.TextTestRunner()
@@ -1199,6 +1225,7 @@ def main():
         'test_ZT_list_all_resumables',
         'test_ZU_sending_uneven_chunks_resume_works',
         'test_ZV_resume_chunk_order_enforced',
+        'test_ZW_resumables_access_control',
         ])))
     map(runner.run, suite)
 
