@@ -1070,12 +1070,13 @@ class TestFileApi(unittest.TestCase):
             pass
 
 
-    # resume _after_ last chunk already on disk
-    # trying to upload the same chunk twice
-    # trying to upload next_chunk + 1
-    # access control - can only list own, delete own
     # sending uneven chunks works
     # can repair data when chunk eneven sizes
+    # resume _after_ last chunk already on disk
+    # chunk sequence order
+    # fail trying to upload the same chunk twice
+    # fail trying to upload next_chunk + 1
+    # access control - can only list own, delete own
 
 
 def main():

@@ -1008,7 +1008,7 @@ class StreamHandler(AuthRequestHandler):
                         size_before_merge = os.stat(out).st_size
                         shutil.copyfileobj(fin, fout)
                 chunk_size = os.stat(chunk).st_size
-                resumable_db_update_with_chunk_info(self.rdb, upload_id, chunk_num, chunk_size)
+                assert resumable_db_update_with_chunk_info(self.rdb, upload_id, chunk_num, chunk_size)
             except Exception as e:
                 logging.error(e)
                 os.remove(chunk)
@@ -1252,8 +1252,7 @@ class StreamHandler(AuthRequestHandler):
                 subprocess.call(['sudo', options.chowner_path, path,
                                  self.user, options.api_user, self.group_name])
                 if self.merged_file:
-                    pass ############################ enable again
-                    #assert resumable_db_remove_completed_for_user(self.rdb, self.upload_id, self.user)
+                    assert resumable_db_remove_completed_for_user(self.rdb, self.upload_id, self.user)
             except Exception as e:
                 logging.info('could not change file mode or owner for some reason')
                 logging.info(e)
