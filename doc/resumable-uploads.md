@@ -77,6 +77,7 @@ GET /files/resumables/myfile?id=<UUID>
     pevious_offset: int,
     next_offset: <int,'end'>,
     md5sum: str
+    warning: str
 }
 ```
 
@@ -90,6 +91,7 @@ Each resumable upload has:
 - previous offset (number of bytes sent so far minus the last chunk size)
 - next offset (number of bytes sent so far, or an instruction to 'end' the sequence)
 - chunk md5
+- a warning message, for if data is inconsistent
 
 The combination of the filename and UUID allow the client to resume an upload of a specific file for a specific prior request. The chunk size and number allow the client to seek locally in the file before sending more chunks to the server, avoiding sending the same data more than once. The md5 digest of the latest chunk, combined with the offset information allow clients to verify chunk integrity.
 
