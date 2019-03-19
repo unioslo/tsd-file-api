@@ -689,7 +689,6 @@ class ResumablesHandler(AuthRequestHandler):
                 else:
                     size = latest_size
             else:
-                logging.info('only 1 chunk found')
                 size = latest_size # only 1 chunk so far
             previous_offset = size * (num - 1)
             next_offset = previous_offset + latest_size
@@ -782,6 +781,7 @@ class ResumablesHandler(AuthRequestHandler):
             relevant_merged_file = project_dir + '/' + filename + '.' + upload_id
             shutil.rmtree(relevant_dir)
             os.remove(relevant_merged_file)
+            assert resumable_db_remove_completed_for_user(self.rdb, upload_id, self.user)
             return True
         except Exception as e:
             logging.error(e)

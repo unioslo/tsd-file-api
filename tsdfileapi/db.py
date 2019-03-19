@@ -108,10 +108,12 @@ def load_jwk_store(config):
 
 
 def resumable_db_insert_new_for_user(engine, resumable_id, user):
+    resumable_table = 'resumable_%s' % resumable_id
     with session_scope(engine) as session:
         session.execute('create table if not exists resumable_uploads(id text)')
         session.execute('insert into resumable_uploads (id) values (:resumable_id)',
                         {'resumable_id': resumable_id})
+        session.execute('create table "%s"(chunk_num int, chunk_size int)' % resumable_table) # want an exception if exists
     return True
 
 
@@ -130,9 +132,11 @@ def resumable_db_get_all_resumable_ids_for_user(engine, user):
 
 
 def resumable_db_remove_completed_for_user(engine, resumable_id, user):
+    resumable_table = 'resumable_%s' % resumable_id
     with session_scope(engine) as session:
         session.execute('delete from resumable_uploads where id = :resumable_id',
                         {'resumable_id': resumable_id})
+        session.execute('drop table "%s"' % resumable_table)
     return True
 
 
