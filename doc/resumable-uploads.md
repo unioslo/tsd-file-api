@@ -50,8 +50,10 @@ GET /files/resumables
             id: uuid,
             pevious_offset: int,
             next_offset: <int,'end'>,
-            md5sum: str
-        }
+            md5sum: str,
+            warning: str
+        },
+        {...}
     ]
 }
 ```
