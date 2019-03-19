@@ -1070,7 +1070,18 @@ class TestFileApi(unittest.TestCase):
             pass
 
 
-    # sending uneven chunks works
+    def test_ZU_sending_uneven_chunks_resume_works(self):
+        filepath = self.resume_file2
+        filename = os.path.basename(filepath)
+        upload_id1 = self.start_new_resumable(filepath, chunksize=3, stop_at=1)
+        url = '%s/%s' % (self.resumables, filename)
+        token = TEST_TOKENS['VALID']
+        resp = fileapi.initiate_resumable('', self.test_project, filepath,
+                                          token, chunksize=4, new=False, group=None,
+                                          verify=True, dev_url=url, upload_id=upload_id1)
+        self.assertEqual(md5sum(filepath),
+                md5sum(self.uploads_folder + '/' + self.test_group + '/' + filename))
+
     # can repair data when chunk eneven sizes
     # resume _after_ last chunk already on disk
     # chunk sequence order
@@ -1155,6 +1166,7 @@ def main():
         'test_ZR_cancel_resumable',
         'test_ZS_recovering_inconsistent_data_allows_resume_from_previous_chunk',
         'test_ZT_list_all_resumables',
+        'test_ZU_sending_uneven_chunks_resume_works',
         ])))
     map(runner.run, suite)
 
