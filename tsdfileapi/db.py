@@ -107,39 +107,6 @@ def load_jwk_store(config):
     return secrets
 
 
-def resumable_db_insert_new_for_user(engine, resumable_id, user):
-    resumable_table = 'resumable_%s' % resumable_id
-    with session_scope(engine) as session:
-        session.execute('create table if not exists resumable_uploads(id text)')
-        session.execute('insert into resumable_uploads (id) values (:resumable_id)',
-                        {'resumable_id': resumable_id})
-        session.execute('create table "%s"(chunk_num int, chunk_size int)' % resumable_table) # want an exception if exists
-    return True
-
-
-def resumable_db_upload_belongs_to_user(engine, resumable_id, user):
-    with session_scope(engine) as session:
-        res = session.execute('select count(1) from resumable_uploads where id = :resumable_id',
-                              {'resumable_id': resumable_id}).fetchone()[0]
-    return True if res > 0 else False
-
-
-
-def resumable_db_get_all_resumable_ids_for_user(engine, user):
-    with session_scope(engine) as session:
-        res = session.execute('select id from resumable_uploads').fetchall()
-    return res # [(id,), (id,)]
-
-
-def resumable_db_remove_completed_for_user(engine, resumable_id, user):
-    resumable_table = 'resumable_%s' % resumable_id
-    with session_scope(engine) as session:
-        session.execute('delete from resumable_uploads where id = :resumable_id',
-                        {'resumable_id': resumable_id})
-        session.execute('drop table "%s"' % resumable_table)
-    return True
-
-
 def _table_name_from_form_id(form_id):
     """Return a secure and legal table name, given a nettskjema form id."""
     try:

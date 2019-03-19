@@ -40,10 +40,14 @@ from utils import secure_filename, project_import_dir, project_sns_dir, \
 from db import insert_into, create_table_from_codebook, sqlite_init, \
                create_table_from_generic, _table_name_from_form_id, \
                _VALID_PNUM, _table_name_from_table_name, TableNameException, \
-               load_jwk_store, resumable_db_insert_new_for_user, \
+               load_jwk_store
+from dbresumable import resumable_db_insert_new_for_user, \
                resumable_db_remove_completed_for_user, \
                resumable_db_get_all_resumable_ids_for_user, \
-               resumable_db_upload_belongs_to_user
+               resumable_db_upload_belongs_to_user, \
+               resumable_db_update_with_chunk_info, \
+               resumable_db_get_total_size, \
+               resumable_db_pop_chunk
 from pgp import decrypt_pgp_json, _import_keys
 
 
@@ -588,7 +592,7 @@ class ResumablesHandler(AuthRequestHandler):
             for item in potential_resumables:
                 pr = item[0]
                 current_pr = '%s/%s' % (project_dir, pr)
-                if _IS_VALID_UUID.match(pr):
+                if _IS_VALID_UUID.match(pr) and os.path.lexists(current_pr):
                     candidates.append((os.stat(current_pr).st_mtime, pr))
             candidates.sort(self.resumables_cmp)
             for cand in candidates:
@@ -655,6 +659,10 @@ class ResumablesHandler(AuthRequestHandler):
                 f.truncate(target_size)
             logging.info('removing chunk: %s', chunk)
             os.remove(chunk)
+            upload_id = merged_file.split('.')[-1]
+            current_num = int(chunks[-1].split('.')[-1])
+            logging.info('popping chunk %d from db in table for %s', current_num, upload_id)
+            resumable_db_pop_chunk(self.rdb, upload_id, current_num)
             chunks = chunks[:-1]
             num = int(chunks[-1].split('.')[-1])
             new_sum_chunks_size = num * previous_chunk_size
@@ -681,24 +689,18 @@ class ResumablesHandler(AuthRequestHandler):
         def info(chunks):
             num = int(chunks[-1].split('.')[-1])
             latest_size = bytes(chunks[-1])
-            if len(chunks) > 1:
-                previous_size = bytes(chunks[-2])
-                if latest_size < previous_size:
-                    logging.info('client is resuming after last chunk has been uploaded')
-                    size = previous_size
-                else:
-                    size = latest_size
-            else:
-                size = latest_size # only 1 chunk so far
+            size = latest_size
             previous_offset = size * (num - 1)
             next_offset = previous_offset + latest_size
             filename = os.path.basename(chunks[-1].split('.chunk')[0])
             upload_id = os.path.basename(resumable_dir)
+            dbsize = resumable_db_get_total_size(self.rdb, upload_id)
             merged_file = os.path.normpath(project_dir + '/' + filename + '.' + upload_id)
             try:
                 # check that the size of the merge file
                 # matches what we calculate from the
                 # chunks that are currently on disk
+                logging.info('dbsize: %d, merged_file_size: %d, calc from chunked files: %d', dbsize, bytes(merged_file), next_offset)
                 assert bytes(merged_file) == next_offset
             except AssertionError:
                 try:
@@ -952,7 +954,7 @@ class StreamHandler(AuthRequestHandler):
             self.call_chowner = False
             filename = self.upload_id + '/' + chunk_filename
             os.makedirs(project_dir + '/' + self.upload_id)
-            assert resumable_db_insert_new_for_user(self.user_res_db_engine, self.upload_id, self.user)
+            assert resumable_db_insert_new_for_user(self.rdb, self.upload_id, self.user)
             return filename
         elif chunk_num > 1:
             self.chunk_num = chunk_num
@@ -977,6 +979,7 @@ class StreamHandler(AuthRequestHandler):
             - append it to the merge file
             - remove chunks older than 5 requests back in the sequence
               to avoid using lots of disk space for very large files
+            - update the resumable's info table
         4. If a merge fails
             - remove the chunk
             - reset the file to its prior size
@@ -1007,6 +1010,8 @@ class StreamHandler(AuthRequestHandler):
                     with open(chunk, 'rb') as fin:
                         size_before_merge = os.stat(out).st_size
                         shutil.copyfileobj(fin, fout)
+                chunk_size = os.stat(chunk).st_size
+                resumable_db_update_with_chunk_info(self.rdb, upload_id, chunk_num, chunk_size)
             except Exception as e:
                 logging.error(e)
                 os.remove(chunk)
@@ -1067,7 +1072,7 @@ class StreamHandler(AuthRequestHandler):
                     # build it ourselves in /stream handler
                     filename = secure_filename(self.request.headers['Filename'])
                     if self.request.method == 'PATCH':
-                        self.user_res_db_engine = sqlite_init(project_dir, name='.resumables-' + self.user + '.db')
+                        self.rdb = sqlite_init(project_dir, name='.resumables-' + self.user + '.db')
                         filename = self.handle_resumable_request(project_dir, filename)
                     # prepare the partial file name for incoming data
                     # ensure we do not write to active file
@@ -1250,7 +1255,8 @@ class StreamHandler(AuthRequestHandler):
                 subprocess.call(['sudo', options.chowner_path, path,
                                  self.user, options.api_user, self.group_name])
                 if self.merged_file:
-                    assert resumable_db_remove_completed_for_user(self.user_res_db_engine, self.upload_id, self.user)
+                    pass ############################ enable again
+                    #assert resumable_db_remove_completed_for_user(self.rdb, self.upload_id, self.user)
             except Exception as e:
                 logging.info('could not change file mode or owner for some reason')
                 logging.info(e)

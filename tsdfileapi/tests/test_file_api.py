@@ -91,7 +91,8 @@ gnupg._parsers.Verify.TRUST_LEVELS["ENCRYPTION_COMPLIANCE_MODE"] = 23
 
 # pylint: disable=relative-import
 from tokens import gen_test_tokens, get_test_token_for_p12, gen_test_token_for_user
-from ..db import session_scope, sqlite_init, resumable_db_remove_completed_for_user
+from ..db import session_scope, sqlite_init
+from ..dbresumable import resumable_db_remove_completed_for_user
 from ..utils import project_import_dir, project_sns_dir, md5sum
 from ..pgp import _import_keys
 
@@ -958,6 +959,7 @@ class TestFileApi(unittest.TestCase):
 
 
     def test_ZO_resume_works_with_filename_match(self):
+        print 'test_ZO_resume_works_with_filename_match'
         cs = 5
         proj = ''
         filepath = self.resume_file2
