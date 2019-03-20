@@ -58,7 +58,7 @@ GET /files/resumables
 }
 ```
 
-Secondly, all resumables for the authenticated user, matching a given filename:
+Secondly, the client can optionally specify a given filename without an upload id, and the server will return the resumable with the most data on the server (if there is more than one):
 
 ```txt
 GET /files/resumables/myfile
@@ -66,7 +66,7 @@ GET /files/resumables/myfile
 [resumables: [{...}, {...}]}
 ```
 
-And lastly, the information for a speific upload:
+And lastly, the information for a speific upload can be requested by including the uplooad id in addition to the filename:
 
 ```txt
 GET /files/resumables/myfile?id=<UUID>
