@@ -7,4 +7,4 @@ gnupg==2.3.1
 sqlalchemy==1.1.0
 psycopg2==2.7.0
 filemagic==1.6
-#https://github.com/unioslo/tsd-api-client TODO specify release here
+https://github.com/unioslo/tsd-api-client/archive/v.1.5.0.tar.gz
