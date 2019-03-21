@@ -271,6 +271,7 @@ class FileStreamerHandler(AuthRequestHandler):
             reasons.append(reason)
             sizes.append(size)
         file_info = []
+        # return mime type, fix size bug
         for f, t, e, r, s in zip(files, times, exportable, reasons, sizes):
             href = '%s/%s' % (self.request.uri, f)
             file_info.append({'filename': f,
@@ -623,7 +624,8 @@ class ResumablesHandler(AuthRequestHandler):
                 try:
                     chunk_size, max_chunk, md5sum, \
                         previous_offset, next_offset, \
-                        warning, recommendation = self.get_resumable_chunk_info(current_pr, project_dir)
+                        warning, recommendation, \
+                        filename = self.get_resumable_chunk_info(current_pr, project_dir)
                     if recommendation == 'end':
                         next_offset = 'end'
                 except (OSError, Exception):
@@ -631,7 +633,8 @@ class ResumablesHandler(AuthRequestHandler):
                 if chunk_size:
                     info.append({'chunk_size': chunk_size, 'max_chunk': max_chunk,
                                  'md5sum': md5sum, 'previous_offset': previous_offset,
-                                 'next_offset': next_offset, 'id': pr})
+                                 'next_offset': next_offset, 'id': pr,
+                                 'filename': filename})
         return {'resumables': info}
 
 
@@ -715,8 +718,10 @@ class ResumablesHandler(AuthRequestHandler):
                     return info(chunks)
                 except Exception as e:
                     logging.error(e)
-                    return None, None, None, None, None
-            return latest_size, num, md5sum(chunks[-1]), previous_offset, next_offset, recommendation, warning
+                    return None, None, None, None, None, None, None, None
+            return latest_size, num, md5sum(chunks[-1]), \
+                   previous_offset, next_offset, recommendation, \
+                   warning, filename
         def bytes(chunk):
             size = os.stat(chunk).st_size
             return size
@@ -734,13 +739,14 @@ class ResumablesHandler(AuthRequestHandler):
         resumable_dir = '%s/%s' % (project_dir, relevant_dir)
         chunk_size, max_chunk, md5sum, \
             previous_offset, next_offset, \
-            warning, recommendation = self.get_resumable_chunk_info(resumable_dir, project_dir)
+            warning, recommendation, filename = self.get_resumable_chunk_info(resumable_dir, project_dir)
         if recommendation == 'end':
             next_offset = 'end'
         info = {'filename': filename, 'id': relevant_dir,
                 'chunk_size': chunk_size, 'max_chunk': max_chunk,
                 'md5sum': md5sum, 'previous_offset': previous_offset,
-                'next_offset': next_offset, 'warning': warning}
+                'next_offset': next_offset, 'warning': warning,
+                'filename': filename}
         return info
 
 

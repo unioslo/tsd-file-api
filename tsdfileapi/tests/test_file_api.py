@@ -973,7 +973,7 @@ class TestFileApi(unittest.TestCase):
         print '---> going to resume from chunk 2:'
         resp = fileapi.initiate_resumable(proj, self.test_project, filepath,
                                           token, chunksize=cs, new=False, group=None,
-                                          verify=True, upload_id=None, dev_url=url)
+                                          verify=True, upload_id=upload_id, dev_url=url)
         self.assertEqual(resp['max_chunk'], u'end')
         self.assertTrue(resp['id'] is not None)
         self.assertEqual(resp['filename'], filename)
