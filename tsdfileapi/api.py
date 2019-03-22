@@ -211,7 +211,7 @@ class FileStreamerHandler(AuthRequestHandler):
         subprocess.call(['sudo', 'chmod', 'go+r', filename])
         with magic.Magic(flags=magic.MAGIC_MIME_TYPE) as m:
             mime_type = m.id_filename(filename)
-        size = os.path.getsize(self.path)
+        size = os.stat(filename).st_size
         if size > CONFIG['export_max_size']:
             logging.error('%s tried to export a file exceeding the maximum size limit', self.user)
             maxsize = CONFIG['export_max_size'] / 1024 / 1024 / 1024
@@ -252,13 +252,14 @@ class FileStreamerHandler(AuthRequestHandler):
         exportable = []
         reasons = []
         sizes = []
+        mimes = []
         for file in files:
             filepath = os.path.normpath(path + '/' + file)
             latest = os.stat(filepath).st_mtime
             date_time = str(datetime.datetime.fromtimestamp(latest).isoformat())
             times.append(date_time)
             try:
-                status, _, size = self.enforce_export_policy(CONFIG['export_policy'], filepath)
+                status, mime_type, size = self.enforce_export_policy(CONFIG['export_policy'], filepath)
                 if status:
                     reason = None
                 else:
@@ -270,16 +271,17 @@ class FileStreamerHandler(AuthRequestHandler):
             exportable.append(status)
             reasons.append(reason)
             sizes.append(size)
+            mimes.append(mime_type)
         file_info = []
-        # return mime type, fix size bug
-        for f, t, e, r, s in zip(files, times, exportable, reasons, sizes):
+        for f, t, e, r, s, m in zip(files, times, exportable, reasons, sizes, mimes):
             href = '%s/%s' % (self.request.uri, f)
             file_info.append({'filename': f,
                               'size': s,
                               'modified_date': t,
                               'href': href,
                               'exportable': e,
-                              'reason': r})
+                              'reason': r,
+                              'mime-type': m})
         logging.info('%s listed %s', self.user, path)
         self.write({'files': file_info})
 
@@ -338,8 +340,8 @@ class FileStreamerHandler(AuthRequestHandler):
             status, mime_type, size = self.enforce_export_policy(CONFIG['export_policy'], self.filepath)
             assert status
             self.set_header('Content-Type', mime_type)
-            # TODO: send the file size
-            #self.set_header('Content-Length', size)
+            # TODO: resumable download handling here - byte ranges
+            self.set_header('Content-Length', size)
             self.flush()
             fd = open(self.filepath, "rb")
             data = fd.read(self.CHUNK_SIZE)
@@ -358,6 +360,10 @@ class FileStreamerHandler(AuthRequestHandler):
             except (OSError, UnboundLocalError) as e:
                 pass
             self.finish()
+
+
+    def head(self, pnum, filename):
+        pass
 
 
 class GenericFormDataHandler(AuthRequestHandler):
