@@ -340,16 +340,53 @@ class FileStreamerHandler(AuthRequestHandler):
             status, mime_type, size = self.enforce_export_policy(CONFIG['export_policy'], self.filepath)
             assert status
             self.set_header('Content-Type', mime_type)
-            # TODO: resumable download handling here - byte ranges
-            self.set_header('Content-Length', size)
-            self.flush()
-            fd = open(self.filepath, "rb")
-            data = fd.read(self.CHUNK_SIZE)
-            while data:
-                self.write(data)
-                yield tornado.gen.Task(self.flush)
+            if 'Range' not in self.request.headers:
+                self.set_header('Content-Length', size)
+                self.flush()
+                fd = open(self.filepath, "rb")
                 data = fd.read(self.CHUNK_SIZE)
-            fd.close()
+                while data:
+                    self.write(data)
+                    yield tornado.gen.Task(self.flush)
+                    data = fd.read(self.CHUNK_SIZE)
+                fd.close()
+            elif 'Range' in self.request.headers:
+                logging.info('specific range requested')
+                byte_range = self.request.headers['Range']
+                logging.info(byte_range)
+                start = int(byte_range.split('=')[-1].split('-')[0])
+                logging.info('start: %d', start)
+                full_file_size = os.stat(self.filepath).st_size
+                try:
+                    end = int(byte_range.split('=')[-1].split('-')[1])
+                except Exception as e:
+                    logging.info(e)
+                    end = full_file_size
+                    logging.info('reading to the end')
+                logging.info('end: %d', end)
+                # TODO: test bounds, return 416 if out of bounds
+                # TODO: maybe If-Range support?
+                self.flush()
+                fd = open(self.filepath, "rb")
+                fd.seek(start)
+                amount = end - start
+                self.set_header('Content-Length', amount)
+                reported_range = 'bytes %d-%d/%d' % (start, end, full_file_size)
+                self.set_header('Content-Range', reported_range)
+                logging.info('total byes to read: %d', amount)
+                logging.info(self._headers)
+                sent = 0
+                if self.CHUNK_SIZE > amount:
+                    self.CHUNK_SIZE = amount / 2
+                data = fd.read(self.CHUNK_SIZE)
+                sent = sent + self.CHUNK_SIZE
+                while data and sent <= amount:
+                    self.write(data)
+                    yield tornado.gen.Task(self.flush)
+                    data = fd.read(self.CHUNK_SIZE)
+                    sent = sent + self.CHUNK_SIZE
+                fd.close()
+                self.set_status(206)
             logging.info('user: %s, exported file: %s , with MIME type: %s', self.user, self.filepath, mime_type)
         except Exception as e:
             logging.error(self.message)
@@ -400,8 +437,9 @@ class FileStreamerHandler(AuthRequestHandler):
             logging.info('user: %s, checked file: %s , with MIME type: %s', self.user, self.filepath, mime_type)
             self.set_header('Content-Length', size)
             self.set_header('Accept-Ranges', 'bytes')
-            self.write(None)
+            self.set_status(200)
         except Exception as e:
+            logging.error(e)
             logging.error(self.message)
             self.write({'message': self.message})
         finally:

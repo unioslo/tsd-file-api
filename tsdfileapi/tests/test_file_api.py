@@ -1154,17 +1154,53 @@ class TestFileApi(unittest.TestCase):
 
 
     # resume export
+    # following spec described here: https://developer.mozilla.org/en-US/docs/Web/HTTP/Range_requests
 
 
-    def test_head_for_export_resume_works(self):
+    def test_ZX_head_for_export_resume_works(self):
         url = self.export + '/file1'
         headers = {'Authorization': 'Bearer ' + TEST_TOKENS['EXPORT']}
         resp1 = requests.head(url, headers=headers)
+        self.assertEqual(resp1.status_code, 200)
         self.assertEqual(resp1.headers['Accept-Ranges'], 'bytes')
         etag1 = resp1.headers['Etag']
         resp2 = requests.head(url, headers=headers)
+        self.assertEqual(resp2.status_code, 200)
         etag2 = resp1.headers['Etag']
         self.assertEqual(etag1, etag2)
+
+
+    def test_ZY_get_specific_range_for_export(self):
+        url = self.export + '/file1'
+        headers = {'Authorization': 'Bearer ' + TEST_TOKENS['EXPORT'],
+                   'Range': 'bytes=0-4'}
+        resp = requests.get(url, headers=headers)
+        print resp.text
+        print resp.headers.keys()
+        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(resp.text, 'some')
+        self.assertEqual(resp.headers['Content-Length'], '4')
+        self.assertEqual(resp.headers['Content-Range'], '0-4/10')
+
+
+    def test_ZZ_get_range_until_end_for_export(self):
+        url = self.export + '/file1'
+        headers = {'Authorization': 'Bearer ' + TEST_TOKENS['EXPORT'],
+                   'Range': 'bytes=3-'}
+        resp = requests.get(url, headers=headers)
+        print resp.text
+
+
+    def test_ZZa_get_specific_range_conditional_on_etag(self):
+        pass
+
+
+    def test_ZZb_get_range_out_of_bounds_returns_correct_error(self):
+        pass
+
+
+    def test_ZZc_requesting_multiple_ranges_not_supported_error(self):
+        pass
 
 
 def main():
@@ -1247,7 +1283,8 @@ def main():
         'test_ZV_resume_chunk_order_enforced',
         'test_ZW_resumables_access_control',
         # resume export
-        'test_head_for_export_resume_works',
+        'test_ZX_head_for_export_resume_works',
+        'test_ZY_get_specific_range_for_export',
         ])))
     map(runner.run, suite)
 
