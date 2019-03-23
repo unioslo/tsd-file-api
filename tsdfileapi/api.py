@@ -363,7 +363,49 @@ class FileStreamerHandler(AuthRequestHandler):
 
 
     def head(self, pnum, filename):
-        pass
+        """
+        Return information about a specific file.
+
+        """
+        self.message = 'Unknown error, please contact TSD'
+        try:
+            try:
+                self.authnz = self.validate_token(roles_allowed=['export_user', 'admin_user'])
+                self.user = self.authnz['claims']['user']
+            except Exception:
+                if not self.message:
+                    self.message = 'Not authorized to export data'
+                self.set_status(401)
+                raise Exception
+            assert _VALID_PNUM.match(pnum)
+            self.path = CONFIG['export_path'].replace('pXX', pnum)
+            if not filename:
+                raise Exception('No info te report')
+            try:
+                secured_filename = check_filename(url_unescape(filename))
+            except Exception as e:
+                logging.error(e)
+                logging.error('%s tried to access files in sub-directories', self.user)
+                self.set_status(403)
+                self.message = 'Not allowed to access files in sub-directories, create a zip archive'
+                raise Exception
+            self.filepath = '%s/%s' % (self.path, secured_filename)
+            if not os.path.lexists(self.filepath):
+                logging.error('%s tried to access a file that does not exist', self.user)
+                self.set_status(404)
+                self.message = 'File does not exist'
+                raise Exception
+            status, mime_type, size = self.enforce_export_policy(CONFIG['export_policy'], self.filepath)
+            assert status
+            logging.info('user: %s, checked file: %s , with MIME type: %s', self.user, self.filepath, mime_type)
+            self.set_header('Content-Length', size)
+            self.set_header('Accept-Ranges', 'bytes')
+            self.write(None)
+        except Exception as e:
+            logging.error(self.message)
+            self.write({'message': self.message})
+        finally:
+            self.finish()
 
 
 class GenericFormDataHandler(AuthRequestHandler):

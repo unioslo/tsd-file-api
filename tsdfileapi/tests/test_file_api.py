@@ -1152,6 +1152,21 @@ class TestFileApi(unittest.TestCase):
         except OSError:
             pass
 
+
+    # resume export
+
+
+    def test_head_for_export_resume_works(self):
+        url = self.export + '/file1'
+        headers = {'Authorization': 'Bearer ' + TEST_TOKENS['EXPORT']}
+        resp1 = requests.head(url, headers=headers)
+        self.assertEqual(resp1.headers['Accept-Ranges'], 'bytes')
+        etag1 = resp1.headers['Etag']
+        resp2 = requests.head(url, headers=headers)
+        etag2 = resp1.headers['Etag']
+        self.assertEqual(etag1, etag2)
+
+
 def main():
     runner = unittest.TextTestRunner()
     suite = []
@@ -1231,6 +1246,8 @@ def main():
         'test_ZU_sending_uneven_chunks_resume_works',
         'test_ZV_resume_chunk_order_enforced',
         'test_ZW_resumables_access_control',
+        # resume export
+        'test_head_for_export_resume_works',
         ])))
     map(runner.run, suite)
 
