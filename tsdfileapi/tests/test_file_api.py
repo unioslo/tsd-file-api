@@ -1189,21 +1189,41 @@ class TestFileApi(unittest.TestCase):
     def test_ZZ_get_range_until_end_for_export(self):
         url = self.export + '/file1'
         headers = {'Authorization': 'Bearer ' + TEST_TOKENS['EXPORT'],
-                   'Range': 'bytes=3-'}
+                   'Range': 'bytes=5-'}
         resp = requests.get(url, headers=headers)
-        print resp.text
+        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(resp.text, 'data')
 
 
     def test_ZZa_get_specific_range_conditional_on_etag(self):
-        pass
+        url = self.export + '/file1'
+        headers = {'Authorization': 'Bearer ' + TEST_TOKENS['EXPORT']}
+        resp1 = requests.head(url, headers=headers)
+        headers = {'Authorization': 'Bearer ' + TEST_TOKENS['EXPORT'],
+                   'Range': 'bytes=5-', 'If-Range': resp1.headers['Etag']}
+        resp2 = requests.get(url, headers=headers)
+        self.assertEqual(resp2.status_code, 200)
+        headers = {'Authorization': 'Bearer ' + TEST_TOKENS['EXPORT'],
+                   'Range': 'bytes=5-', 'If-Range': '0g04d6de2ecd9d1d1895e2086c8785f1'}
+        resp3 = requests.get(url, headers=headers)
+        self.assertEqual(resp3.status_code, 400)
+
 
 
     def test_ZZb_get_range_out_of_bounds_returns_correct_error(self):
-        pass
+        url = self.export + '/file1'
+        headers = {'Authorization': 'Bearer ' + TEST_TOKENS['EXPORT'],
+                   'Range': 'bytes=5-100'}
+        resp = requests.get(url, headers=headers)
+        self.assertEqual(resp.status_code, 416)
 
 
     def test_ZZc_requesting_multiple_ranges_not_supported_error(self):
-        pass
+        url = self.export + '/file1'
+        headers = {'Authorization': 'Bearer ' + TEST_TOKENS['EXPORT'],
+                   'Range': 'bytes=1-4, 5-10'}
+        resp = requests.get(url, headers=headers)
+        self.assertEqual(resp.status_code, 405)
 
 
 def main():
@@ -1288,6 +1308,9 @@ def main():
         # resume export
         'test_ZX_head_for_export_resume_works',
         'test_ZY_get_specific_range_for_export',
+        'test_ZZ_get_range_until_end_for_export',
+        'test_ZZa_get_specific_range_conditional_on_etag',
+        'test_ZZb_get_range_out_of_bounds_returns_correct_error',
         ])))
     map(runner.run, suite)
 

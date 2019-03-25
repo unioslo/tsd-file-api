@@ -286,6 +286,26 @@ class FileStreamerHandler(AuthRequestHandler):
         self.write({'files': file_info})
 
 
+    def compute_etag(self):
+        """
+        If there is a file resource, compute the Etag header.
+        Custom values: md5sum of string value of last modified
+        time of file. Client can get this value before staring
+        a download, and then if they need to resume for some
+        reason, check that the resource has not changed in
+        the meantime. It is also cheap to compute.
+
+        """
+        try:
+            if self.filepath:
+                mtime = os.stat(self.filepath).st_mtime
+                return hashlib.md5(str(mtime)).hexdigest()
+        except AttributeError:
+            return None
+        else:
+            return None
+
+
     @tornado.web.asynchronous
     @tornado.gen.engine
     def get(self, pnum, filename=None):
@@ -352,19 +372,29 @@ class FileStreamerHandler(AuthRequestHandler):
                     data = fd.read(self.CHUNK_SIZE)
                 fd.close()
             elif 'Range' in self.request.headers:
-                logging.info('specific range requested')
+                if 'If-Range' in self.request.headers:
+                    provided_etag = self.request.headers['If-Range']
+                    computed_etag = self.compute_etag()
+                    if provided_etag != computed_etag:
+                        self.message = 'The resource has changed, get everything from the start again'
+                        self.set_status(400)
+                        raise Exception(self.message)
                 byte_range = self.request.headers['Range']
-                start = int(byte_range.split('=')[-1].split('-')[0])
-                full_file_size = os.stat(self.filepath).st_size
+                start_and_end = byte_range.split('=')[-1].split('-')
+                if ',' in start_and_end:
+                    self.set_status(405)
+                    self.message = 'Multipart byte range requests not supported'
+                    raise Exception('self.message')
+                start = int(start_and_end[0])
+                full_file_size = size
                 try:
-                    end = int(byte_range.split('=')[-1].split('-')[1])
+                    end = int(start_and_end[1])
                 except Exception as e:
                     end = full_file_size
                 logging.info('only serving bytes %d to %d', start, end)
                 if end > full_file_size:
                     self.set_status(416)
                     raise Exception('Range request exceeds byte range of resource')
-                # TODO: maybe If-Range support?
                 self.flush()
                 fd = open(self.filepath, "rb")
                 fd.seek(start)
@@ -411,7 +441,7 @@ class FileStreamerHandler(AuthRequestHandler):
             assert _VALID_PNUM.match(pnum)
             self.path = CONFIG['export_path'].replace('pXX', pnum)
             if not filename:
-                raise Exception('No info te report')
+                raise Exception('No info to report')
             try:
                 secured_filename = check_filename(url_unescape(filename))
             except Exception as e:
@@ -610,7 +640,7 @@ class ResumablesHandler(AuthRequestHandler):
     - sequence number of last chunk
     - chunk size
     - upload id
-    - mdsum of the last chunk
+    - md5sum of the last chunk
     - previos offset in bytes
     - next offset in bytes (total size of merged file)
 
