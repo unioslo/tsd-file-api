@@ -379,32 +379,37 @@ class FileStreamerHandler(AuthRequestHandler):
                         self.message = 'The resource has changed, get everything from the start again'
                         self.set_status(400)
                         raise Exception(self.message)
-                byte_range = self.request.headers['Range']
-                start_and_end = byte_range.split('=')[-1].split('-')
+                # clients specify the range in terms of 0-based index numbers
+                # with an inclusive interval: [start, end]
+                client_byte_index_range = self.request.headers['Range']
+                full_file_size = os.stat(self.filepath).st_size
+                start_and_end = client_byte_index_range.split('=')[-1].split('-')
                 if ',' in start_and_end:
                     self.set_status(405)
                     self.message = 'Multipart byte range requests not supported'
                     raise Exception('self.message')
-                start = int(start_and_end[0])
-                full_file_size = size
+                client_start = int(start_and_end[0])
+                cursor_start = client_start
                 try:
-                    end = int(start_and_end[1])
+                    client_end = int(start_and_end[1])
                 except Exception as e:
-                    end = full_file_size
-                logging.info('only serving bytes %d to %d', start, end)
-                if end > full_file_size:
+                    client_end = full_file_size - 1
+                if client_end > full_file_size:
                     self.set_status(416)
                     raise Exception('Range request exceeds byte range of resource')
+                # because clients provide 0-based byte indices
+                # we must add 1 to calculate the desired amount to read
+                bytes_to_read = client_end - client_start + 1
+                self.set_header('Content-Length', bytes_to_read)
                 self.flush()
                 fd = open(self.filepath, "rb")
-                fd.seek(start)
-                amount = end - start
+                fd.seek(cursor_start)
                 sent = 0
-                if self.CHUNK_SIZE > amount:
-                    self.CHUNK_SIZE = amount / 2
+                if self.CHUNK_SIZE > bytes_to_read:
+                    self.CHUNK_SIZE = bytes_to_read
                 data = fd.read(self.CHUNK_SIZE)
                 sent = sent + self.CHUNK_SIZE
-                while data and sent <= amount:
+                while data and sent <= bytes_to_read:
                     self.write(data)
                     yield tornado.gen.Task(self.flush)
                     data = fd.read(self.CHUNK_SIZE)

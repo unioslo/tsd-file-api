@@ -1163,6 +1163,7 @@ class TestFileApi(unittest.TestCase):
         resp1 = requests.head(url, headers=headers)
         self.assertEqual(resp1.status_code, 200)
         self.assertEqual(resp1.headers['Accept-Ranges'], 'bytes')
+        self.assertEqual(resp1.headers['Content-Length'], '10')
         etag1 = resp1.headers['Etag']
         resp2 = requests.head(url, headers=headers)
         self.assertEqual(resp2.status_code, 200)
@@ -1172,27 +1173,32 @@ class TestFileApi(unittest.TestCase):
 
     def test_ZY_get_specific_range_for_export(self):
         url = self.export + '/file1'
+        # 10-byte file, with index range: 0,1,2,3,4,5,6,7,8,9
         headers = {'Authorization': 'Bearer ' + TEST_TOKENS['EXPORT'],
-                   'Range': 'bytes=0-4'}
+                   'Range': 'bytes=0-3'} # the first 4 bytes in the file
         resp = requests.get(url, headers=headers)
+        self.assertEqual(resp.headers['Content-Length'], '4')
         self.assertEqual(resp.status_code, 200)
         self.assertEqual(resp.text, 'some')
-        # Because we send data as Transfer-Encoding: chunked
-        # the bottom two cases do not apply - one can only
-        # send information about the length of the body in
-        # the headers if the body is not chunked, that is
-        # also why the response code is 200 instead of 206
-        #self.assertEqual(resp.headers['Content-Length'], '4')
-        #self.assertEqual(resp.headers['Content-Range'], '0-4/10')
+        headers = {'Authorization': 'Bearer ' + TEST_TOKENS['EXPORT'],
+                   'Range': 'bytes=4-7'} # the next 4 bytes in the file
+        resp = requests.get(url, headers=headers)
+        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(resp.text, ' dat')
+        headers = {'Authorization': 'Bearer ' + TEST_TOKENS['EXPORT'],
+                   'Range': 'bytes=8-9'} # the last 2 bytes in the file
+        resp = requests.get(url, headers=headers)
+        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(resp.text, 'a\n')
 
 
     def test_ZZ_get_range_until_end_for_export(self):
         url = self.export + '/file1'
         headers = {'Authorization': 'Bearer ' + TEST_TOKENS['EXPORT'],
-                   'Range': 'bytes=5-'}
+                   'Range': 'bytes=5-9'} # 0-indexed, so byte 6 to the end
         resp = requests.get(url, headers=headers)
         self.assertEqual(resp.status_code, 200)
-        self.assertEqual(resp.text, 'data')
+        self.assertEqual(resp.text, 'data\n')
 
 
     def test_ZZa_get_specific_range_conditional_on_etag(self):
@@ -1207,7 +1213,6 @@ class TestFileApi(unittest.TestCase):
                    'Range': 'bytes=5-', 'If-Range': '0g04d6de2ecd9d1d1895e2086c8785f1'}
         resp3 = requests.get(url, headers=headers)
         self.assertEqual(resp3.status_code, 400)
-
 
 
     def test_ZZb_get_range_out_of_bounds_returns_correct_error(self):
