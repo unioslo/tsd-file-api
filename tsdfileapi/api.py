@@ -295,6 +295,10 @@ class FileStreamerHandler(AuthRequestHandler):
         reason, check that the resource has not changed in
         the meantime. It is also cheap to compute.
 
+        Note, since this is a strong validator/Etag, nginx will
+        strip it from the headers if it has been configured with
+        gzip compression for HTTP responses.
+
         """
         try:
             if self.filepath:

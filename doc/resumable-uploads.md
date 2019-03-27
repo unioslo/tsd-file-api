@@ -7,7 +7,6 @@ Note: resume is implemented _per file_.
 
 ```txt
 GET /files/resumables
-GET /files/resumables/filename
 GET /files/resumables/filename?id=<UUID>
 PATCH /files/stream/file?chunk=<chunknum,end>&id=<UUID>&group=<group-name>
 DELETE /files/resumables/filename?id=<UUID>
@@ -18,7 +17,7 @@ DELETE /files/resumables/filename?id=<UUID>
 The client, having chunked the file, starts by initiating a PATCH, uploading the first chunk:
 
 ```txt
-PATCH /files/resumable/filename?chunk=<num>
+PATCH /files/stream/filename?chunk=<num>
 
 {filename: str, max_chunk: int, id: uuid}
 ```
@@ -26,7 +25,7 @@ PATCH /files/resumable/filename?chunk=<num>
 Using the UUID returned by the server in the response, the client can continue sending succesive chunks, in sequence:
 
 ```txt
-PATCH /files/resumable/filename?chunk=<num>&id=<UUID>
+PATCH /files/stream/filename?chunk=<num>&id=<UUID>
 
 {filename: str, max_chunk: int, id: uuid}
 ```
@@ -102,7 +101,7 @@ The server will attempt to repair any data inconsistencies which may have arised
 Assuming data is consistent, the client then proceeds as follows:
 
 ```txt
-PATCH /files/resumable/filename?chunk=<num>?id=<UUID>
+PATCH /files/stream/filename?chunk=<num>?id=<UUID>
 
 {filename: str, max_chunk: int, id: uuid}
 ```
@@ -112,7 +111,7 @@ PATCH /files/resumable/filename?chunk=<num>?id=<UUID>
 To finish the upload the client must explicitly indicate that the upload is finished by sending an empty request as such:
 
 ```txt
-PATCH /files/resumable/filename?chunk=end?id=<UUID>?group=<group-name>
+PATCH /files/stream/filename?chunk=end?id=<UUID>?group=<group-name>
 ```
 
 This will tell the server to assemble the final file. Setting the group is optional as normal.
