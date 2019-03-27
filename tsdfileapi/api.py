@@ -1033,12 +1033,23 @@ class StreamHandler(AuthRequestHandler):
                                              stdout=self.target_file)
 
 
+    def refuse_upload_if_not_in_sequential_order(self, project_dir, upload_id, chunk_num):
+        chunks_on_disk = os.listdir(project_dir + '/' + upload_id)
+        chunks_on_disk.sort(key=natural_keys)
+        full_chunks_on_disk = [ c for c in chunks_on_disk if '.part' not in c ]
+        previous_chunk_num = int(full_chunks_on_disk[-1].split('.chunk.')[-1])
+        if chunk_num <= previous_chunk_num or (chunk_num - previous_chunk_num) >= 2:
+            self.chunk_order_correct = False
+            raise Exception('chunks must be uploaded in sequential order')
+
+
     def handle_resumable_request(self, project_dir, filename):
         """
         There are three types of requests for resumables, which are
         handled in the following ways:
 
         1. First chunk
+            - check that the chunk has not already been uploaded
             - the chowner is disabled
             - a new upload id is generated
             - the upload id is recorded as beloning to the authenticated user
@@ -1047,8 +1058,9 @@ class StreamHandler(AuthRequestHandler):
             - merge_resumables is called by the exiting patch method
 
         2. Rest of the chunks
+            - check that the chunk has not already been uploaded
+            - a check is performed to disallow uploading chunks out of order
             - the chowner is disabled
-            - a check is performed to disallow uploading already-stored chunks
             - data_received is called, writing the file
             - merge_resumables is called by the exiting patch method
 
@@ -1060,18 +1072,13 @@ class StreamHandler(AuthRequestHandler):
         upload_id/filename.extention.chunk.num
 
         """
-        def refuse_upload_if_not_in_sequential_order(project_dir, upload_id):
-            chunks_on_disk = os.listdir(project_dir + '/' + upload_id)
-            chunks_on_disk.sort(key=natural_keys)
-            full_chunks_on_disk = [ c for c in chunks_on_disk if '.part' not in c ]
-            previous_chunk_num = int(full_chunks_on_disk[-1].split('.chunk.')[-1])
-            if chunk_num <= previous_chunk_num or (chunk_num - previous_chunk_num) >= 2:
-                self.chunk_order_correct = False
-                raise Exception('chunks must be uploaded in sequential order')
         self.chunk_order_correct = True
         chunk_num = url_unescape(self.get_query_argument('chunk'))
         upload_id = url_unescape(self.get_query_argument('id'))
         chunk_filename = filename + '.chunk.' + chunk_num
+        if os.path.lexists(chunk_filename):
+            message = 'Trying to upload a chunk which has already been uploaded: %s' % chunk_filename
+            raise Exception(message)
         if chunk_num != 'end':
             chunk_num = int(chunk_num)
         if chunk_num == 'end':
@@ -1095,7 +1102,7 @@ class StreamHandler(AuthRequestHandler):
             self.upload_id = upload_id
             self.call_chowner = False
             filename = self.upload_id + '/' + chunk_filename
-            refuse_upload_if_not_in_sequential_order(project_dir, self.upload_id)
+            self.refuse_upload_if_not_in_sequential_order(project_dir, self.upload_id, chunk_num)
             return filename
 
 
@@ -1110,6 +1117,7 @@ class StreamHandler(AuthRequestHandler):
             - remove any remaining chunks, and the working directory
             - continue to the chowner: move file, set permissions
         3. If new chunk
+            - if chunk_num > 1, create a lockfile - link to a unique file (NFS-safe method)
             - append it to the merge file
             - remove chunks older than 5 requests back in the sequence
               to avoid using lots of disk space for very large files
@@ -1118,6 +1126,8 @@ class StreamHandler(AuthRequestHandler):
             - remove the chunk
             - reset the file to its prior size
             - end the request
+        5. Finally
+            - unlink any existing lock
 
         Note
         ----
@@ -1130,6 +1140,7 @@ class StreamHandler(AuthRequestHandler):
         assert '.part' not in last_chunk_filename
         filename = os.path.basename(last_chunk_filename.split('.chunk')[0])
         out = os.path.normpath(project_dir + '/' + filename + '.' + upload_id)
+        out_lock = out + '.lock'
         final = out.replace('.' + upload_id, '')
         chunks_dir = project_dir + '/' + upload_id
         if '.chunk.end' in last_chunk_filename:
@@ -1140,6 +1151,8 @@ class StreamHandler(AuthRequestHandler):
             chunk_num = int(last_chunk_filename.split('.chunk.')[-1])
             chunk = chunks_dir + '/' + last_chunk_filename
             try:
+                if chunk_num > 1:
+                    os.link(out, out_lock)
                 with open(out, 'ab') as fout:
                     with open(chunk, 'rb') as fin:
                         size_before_merge = os.stat(out).st_size
@@ -1148,10 +1161,17 @@ class StreamHandler(AuthRequestHandler):
                 assert resumable_db_update_with_chunk_info(self.rdb, upload_id, chunk_num, chunk_size)
             except Exception as e:
                 logging.error(e)
-                os.remove(chunk)
-                with open(out, 'ab') as fout:
-                    fout.truncate(size_before_merge)
-                raise Exception('could not merge %s', chunk)
+                try:
+                    os.remove(chunk)
+                    with open(out, 'ab') as fout:
+                        fout.truncate(size_before_merge)
+                except (Exception, OSError) as e:
+                    raise Exception('could not merge %s', chunk)
+            finally:
+                try:
+                    os.unlink(out_lock)
+                except OSError:
+                    pass
             if chunk_num >= 5:
                 target_chunk_num = chunk_num - 4
                 old_chunk = chunk.replace('.chunk.' + str(chunk_num), '.chunk.' + str(target_chunk_num))
@@ -1357,9 +1377,15 @@ class StreamHandler(AuthRequestHandler):
     def patch(self, pnum):
         if not self.merged_file:
             self.target_file.close()
-            os.rename(self.path, self.path_part)
-            filename = os.path.basename(self.path_part).split('.chunk')[0]
-            self.merge_resumables(self.project_dir, os.path.basename(self.path_part), self.upload_id)
+            # if the path to which we want to rename the file exists
+            # then we have been writing the same chunk concurrently
+            # from two different processes, so we should not do it
+            if not os.path.lexists(self.path_part):
+                os.rename(self.path, self.path_part)
+                filename = os.path.basename(self.path_part).split('.chunk')[0]
+                self.merge_resumables(self.project_dir, os.path.basename(self.path_part), self.upload_id)
+            else:
+                self.write({'message': 'chunk_order_incorrect'})
         else:
             filename = os.path.basename(self.merged_file)
         self.set_status(201)
