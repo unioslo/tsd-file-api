@@ -48,7 +48,8 @@ from dbresumable import resumable_db_insert_new_for_user, \
                resumable_db_upload_belongs_to_user, \
                resumable_db_update_with_chunk_info, \
                resumable_db_get_total_size, \
-               resumable_db_pop_chunk
+               resumable_db_pop_chunk, \
+               resumable_db_get_group
 from pgp import decrypt_pgp_json, _import_keys
 
 
@@ -859,13 +860,14 @@ class ResumablesHandler(AuthRequestHandler):
         chunk_size, max_chunk, md5sum, \
             previous_offset, next_offset, \
             warning, recommendation, filename = self.get_resumable_chunk_info(resumable_dir, project_dir)
+        group = resumable_db_get_group(self.rdb, upload_id)
         if recommendation == 'end':
             next_offset = 'end'
         info = {'filename': filename, 'id': relevant_dir,
                 'chunk_size': chunk_size, 'max_chunk': max_chunk,
                 'md5sum': md5sum, 'previous_offset': previous_offset,
                 'next_offset': next_offset, 'warning': warning,
-                'filename': filename}
+                'filename': filename, 'group': group}
         return info
 
 
@@ -1075,6 +1077,7 @@ class StreamHandler(AuthRequestHandler):
         self.chunk_order_correct = True
         chunk_num = url_unescape(self.get_query_argument('chunk'))
         upload_id = url_unescape(self.get_query_argument('id'))
+        group = url_unescape(self.get_query_argument('group'))
         chunk_filename = filename + '.chunk.' + chunk_num
         if os.path.lexists(chunk_filename):
             message = 'Trying to upload a chunk which has already been uploaded: %s' % chunk_filename
@@ -1095,7 +1098,7 @@ class StreamHandler(AuthRequestHandler):
             self.call_chowner = False
             filename = self.upload_id + '/' + chunk_filename
             os.makedirs(project_dir + '/' + self.upload_id)
-            assert resumable_db_insert_new_for_user(self.rdb, self.upload_id, self.user)
+            assert resumable_db_insert_new_for_user(self.rdb, self.upload_id, self.user, group)
             return filename
         elif chunk_num > 1:
             self.chunk_num = chunk_num

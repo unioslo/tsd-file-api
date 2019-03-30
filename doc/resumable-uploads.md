@@ -17,7 +17,7 @@ DELETE /files/resumables/filename?id=<UUID>
 The client, having chunked the file, starts by initiating a PATCH, uploading the first chunk:
 
 ```txt
-PATCH /files/stream/filename?chunk=<num>
+PATCH /files/stream/filename?chunk=<num>&group=<group-name>
 
 {filename: str, max_chunk: int, id: uuid}
 ```
@@ -25,7 +25,7 @@ PATCH /files/stream/filename?chunk=<num>
 Using the UUID returned by the server in the response, the client can continue sending succesive chunks, in sequence:
 
 ```txt
-PATCH /files/stream/filename?chunk=<num>&id=<UUID>
+PATCH /files/stream/filename?chunk=<num>&id=<UUID>&group=<group-name>
 
 {filename: str, max_chunk: int, id: uuid}
 ```
@@ -50,7 +50,8 @@ GET /files/resumables
             pevious_offset: int,
             next_offset: <int,'end'>,
             md5sum: str,
-            warning: str
+            warning: str,
+            group: str
         },
         {...}
     ]
@@ -78,7 +79,8 @@ GET /files/resumables/myfile?id=<UUID>
     pevious_offset: int,
     next_offset: <int,'end'>,
     md5sum: str
-    warning: str
+    warning: str,
+    group: str
 }
 ```
 
@@ -93,6 +95,7 @@ Each resumable upload has:
 - next offset (number of bytes sent so far, or an instruction to 'end' the sequence)
 - chunk md5
 - a warning message, for if data is inconsistent
+- the group which will own the upload (can be used for granular access)
 
 The combination of the filename and UUID allow the client to resume an upload of a specific file for a specific prior request. The chunk size and number allow the client to seek locally in the file before sending more chunks to the server, avoiding sending the same data more than once. The md5 digest of the latest chunk, combined with the offset information allow clients to verify chunk integrity.
 
@@ -101,7 +104,7 @@ The server will attempt to repair any data inconsistencies which may have arised
 Assuming data is consistent, the client then proceeds as follows:
 
 ```txt
-PATCH /files/stream/filename?chunk=<num>?id=<UUID>
+PATCH /files/stream/filename?chunk=<num>?id=<UUID>&group=<group-name>
 
 {filename: str, max_chunk: int, id: uuid}
 ```
@@ -111,7 +114,7 @@ PATCH /files/stream/filename?chunk=<num>?id=<UUID>
 To finish the upload the client must explicitly indicate that the upload is finished by sending an empty request as such:
 
 ```txt
-PATCH /files/stream/filename?chunk=end?id=<UUID>?group=<group-name>
+PATCH /files/stream/filename?chunk=end&id=<UUID>&group=<group-name>
 ```
 
 This will tell the server to assemble the final file. Setting the group is optional as normal.
