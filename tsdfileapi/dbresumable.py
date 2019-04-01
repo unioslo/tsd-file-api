@@ -52,8 +52,11 @@ def resumable_db_upload_belongs_to_user(engine, resumable_id, user):
 
 
 def resumable_db_get_all_resumable_ids_for_user(engine, user):
-    with session_scope(engine) as session:
-        res = session.execute('select id from resumable_uploads').fetchall()
+    try:
+        with session_scope(engine) as session:
+            res = session.execute('select id from resumable_uploads').fetchall()
+    except Exception:
+        return []
     return res # [(id,), (id,)]
 
 
