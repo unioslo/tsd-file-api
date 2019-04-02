@@ -751,10 +751,11 @@ class ResumablesHandler(AuthRequestHandler):
                 except (OSError, Exception):
                     pass
                 if chunk_size:
+                    group = resumable_db_get_group(self.rdb, pr)
                     info.append({'chunk_size': chunk_size, 'max_chunk': max_chunk,
                                  'md5sum': md5sum, 'previous_offset': previous_offset,
                                  'next_offset': next_offset, 'id': pr,
-                                 'filename': filename})
+                                 'filename': filename, 'group': group})
         return {'resumables': info}
 
 
