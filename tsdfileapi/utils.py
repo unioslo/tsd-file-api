@@ -12,17 +12,20 @@ _IS_REALISTIC_PGP_KEY_FINGERPRINT = re.compile(r'^[0-9A-Z]{16}$')
 IS_VALID_GROUPNAME = re.compile(r'p+[0-9]+-[a-z-]')
 _IS_VALID_UUID = re.compile(r'([a-f\d0-9-]{32,36})')
 ILLEGAL_CHARS = re.compile(r'^[^A-Za-z0-9_().œøåŒØÅ \-]+$')
-
-text_type = unicode
 _filename_ascii_strip_re = re.compile(r'[^A-Za-z0-9_.-]')
+
+
+class IllegalFilenameException(Exception):
+    message = 'Filename not allowed'
 
 
 def secure_filename(filename):
     assert os.path.basename(filename) == filename
     for sep in os.path.sep, os.path.altsep:
         if sep and sep in filename:
-            raise Exception
-    filename = str(_filename_ascii_strip_re.sub('', '_'.join(filename.split()))).strip('._')
+            raise IllegalFilenameException
+    if ILLEGAL_CHARS.search(filename):
+            raise IllegalFilenameException
     return filename
 
 
@@ -30,9 +33,9 @@ def check_filename(filename):
     assert os.path.basename(filename) == filename
     for sep in os.path.sep, os.path.altsep:
         if sep and sep in filename:
-            raise Exception('file name not allowed')
+            raise IllegalFilenameException
     if ILLEGAL_CHARS.search(filename):
-            raise Exception('file name not allowed')
+            raise IllegalFilenameException
     return filename
 
 
