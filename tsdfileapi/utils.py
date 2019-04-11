@@ -18,8 +18,9 @@ class IllegalFilenameException(Exception):
     message = 'Filename not allowed'
 
 
-def check_filename(filename):
-    # consider: is it worth allowing spaces?
+def check_filename(filename, replace_space=False):
+    if replace_space:
+        filename = filename.replace(' ', '_')
     try:
         assert os.path.basename(filename) == filename
     except Exception:
