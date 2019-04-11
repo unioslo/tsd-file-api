@@ -20,8 +20,8 @@ _filename_ascii_strip_re = re.compile(r'[^A-Za-z0-9_.-]')
 def secure_filename(filename):
     assert os.path.basename(filename) == filename
     for sep in os.path.sep, os.path.altsep:
-        if sep:
-            filename = filename.replace(sep, ' ')
+        if sep and sep in filename:
+            raise Exception
     filename = str(_filename_ascii_strip_re.sub('', '_'.join(filename.split()))).strip('._')
     return filename
 
@@ -35,10 +35,8 @@ def check_filename(filename):
         filename = normalize('NFKD', filename).encode('ascii', 'ignore')
     for sep in os.path.sep, os.path.altsep:
         if _filename_ascii_strip_re.search(filename):
-            logging.error('illegal filename provided: %s', filename)
             raise Exception('file name not allowed')
         if sep and sep in filename:
-            logging.error('illegal filename provided: %s', filename)
             raise Exception('file name not allowed')
     return filename
 
