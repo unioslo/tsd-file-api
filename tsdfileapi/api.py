@@ -35,7 +35,7 @@ from tornado.web import Application, RequestHandler, stream_request_body, \
 
 # pylint: disable=relative-import
 from auth import verify_json_web_token
-from utils import secure_filename, project_import_dir, project_sns_dir, \
+from utils import project_import_dir, project_sns_dir, \
                   IS_VALID_GROUPNAME, check_filename, _IS_VALID_UUID, \
                   md5sum, natural_keys
 from db import insert_into, create_table_from_codebook, sqlite_init, \
@@ -507,7 +507,7 @@ class GenericFormDataHandler(AuthRequestHandler):
                     copy_to_hidden_tsd_subfolder=False):
         try:
             for i in range(len(self.request.files['file'])):
-                filename = secure_filename(self.request.files['file'][i]['filename'])
+                filename = check_filename(self.request.files['file'][i]['filename'])
                 filebody = self.request.files['file'][i]['body']
                 if len(filebody) == 0:
                     logging.error('Trying to upload an empty file: %s - not allowed, since nonsensical', filename)
@@ -1233,7 +1233,7 @@ class StreamHandler(AuthRequestHandler):
                     self.project_dir = project_dir
                     # TODO: get this from URL instead
                     # build it ourselves in /stream handler
-                    filename = secure_filename(self.request.headers['Filename'])
+                    filename = check_filename(self.request.headers['Filename'])
                     if self.request.method == 'PATCH':
                         self.rdb = sqlite_init(project_dir, name='.resumables-' + self.user + '.db')
                         filename = self.handle_resumable_request(project_dir, filename)
@@ -1487,10 +1487,10 @@ class ProxyHandler(AuthRequestHandler):
                 if len(uri_parts) == 5:
                     basename = uri_parts[-1]
                     filename = basename.split('?')[0]
-                    self.filename = secure_filename(url_unescape(filename))
+                    self.filename = check_filename(url_unescape(filename))
                 else:
                     # TODO: deprecate this once transitioned to URI scheme
-                    self.filename = secure_filename(self.request.headers['Filename'])
+                    self.filename = check_filename(self.request.headers['Filename'])
             except KeyError:
                 self.filename = datetime.datetime.now().isoformat() + '.txt'
                 logging.info("filename not found - setting filename to: %s", self.filename)

@@ -14,7 +14,7 @@ from sqlalchemy import create_engine
 from sqlalchemy.exc import OperationalError, IntegrityError, StatementError
 
 # pylint: disable=relative-import
-from utils import secure_filename
+from utils import check_filename
 
 _VALID_ID = re.compile(r'([0-9])')
 _VALID_PNUM = re.compile(r'([0-9a-z])')
@@ -140,7 +140,7 @@ def _statement_from_data(table_name, data):
     All user inputs are sanitised - illegal or dangerous charachers are removed,
     e.g. ';'. If any are fund execution is stopped and the request is rejected.
     The statement is constructed solely on the information contained in the data.
-    The secure_filename function is very strict :)
+    The check_filename function is very strict :)
 
     Potentially dangerous elements are: 1) table name, 2) column name, 3) values.
     1) Table names are constructed in code after sanitisation, not directly.
@@ -164,7 +164,7 @@ def _statement_from_data(table_name, data):
     cols.sort()
     sanitised_cols = []
     for col in cols:
-        sanitised_cols.append(secure_filename(col))
+        sanitised_cols.append(check_filename(col))
     try:
         assert cols == sanitised_cols
     except AssertionError:
@@ -286,7 +286,7 @@ def create_table_from_codebook(definition, form_id, engine):
                 raise e
             for question in questions:
                 colname = question['externalQuestionId']
-                sanitised_colname = secure_filename(colname)
+                sanitised_colname = check_filename(colname)
                 try:
                     assert colname == sanitised_colname
                 except ColumnNameException as e:
@@ -315,7 +315,7 @@ def create_table_from_generic(definition, engine):
 
     """
     try:
-        table_name = secure_filename(definition['table_name'])
+        table_name = check_filename(definition['table_name'])
     except KeyError as e:
         logging.error(e)
         raise TableCreationException
@@ -331,7 +331,7 @@ def create_table_from_generic(definition, engine):
                 raise TableCreationException
             for col in cols:
                 try:
-                    colname = secure_filename(col['name'])
+                    colname = check_filename(col['name'])
                     assert _VALID_COLNAME.match(col['type'])
                     coltype = col['type']
                 except AssertionError as e:
