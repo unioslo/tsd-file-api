@@ -27,19 +27,13 @@ def secure_filename(filename):
 
 
 def check_filename(filename):
-    """A version which does not change the name, but throws an exception instead."""
-    # simple only allow: a-zA-Z0-9 _().[]œøå
     assert os.path.basename(filename) == filename
-    if isinstance(filename, text_type):
-        from unicodedata import normalize
-        filename = normalize('NFKD', filename).encode('ascii', 'ignore')
     for sep in os.path.sep, os.path.altsep:
-        if _filename_ascii_strip_re.search(filename):
-            raise Exception('file name not allowed')
         if sep and sep in filename:
             raise Exception('file name not allowed')
+    if ILLEGAL_CHARS.search(filename):
+            raise Exception('file name not allowed')
     return filename
-
 
 
 def project_import_dir(uploads_folder, pnum, keyid=None, formid=None):
