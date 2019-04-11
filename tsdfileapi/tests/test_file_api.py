@@ -1231,6 +1231,10 @@ class TestFileApi(unittest.TestCase):
         self.assertEqual(resp.status_code, 405)
 
 
+    def test_ZZd_filename_rules(self):
+        pass
+
+
 def main():
     runner = unittest.TextTestRunner()
     suite = []
@@ -1316,6 +1320,7 @@ def main():
         'test_ZZ_get_range_until_end_for_export',
         'test_ZZa_get_specific_range_conditional_on_etag',
         'test_ZZb_get_range_out_of_bounds_returns_correct_error',
+        'test_ZZd_filename_rules',
         ])))
     map(runner.run, suite)
 
