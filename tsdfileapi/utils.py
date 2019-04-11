@@ -11,11 +11,14 @@ _VALID_FORMID = re.compile(r'^[0-9]+$')
 _IS_REALISTIC_PGP_KEY_FINGERPRINT = re.compile(r'^[0-9A-Z]{16}$')
 IS_VALID_GROUPNAME = re.compile(r'p+[0-9]+-[a-z-]')
 _IS_VALID_UUID = re.compile(r'([a-f\d0-9-]{32,36})')
+ILLEGAL_CHARS = re.compile(r'^[^A-Za-z0-9_().œøåŒØÅ \-]+$')
 
 text_type = unicode
 _filename_ascii_strip_re = re.compile(r'[^A-Za-z0-9_.-]')
 
+
 def secure_filename(filename):
+    assert os.path.basename(filename) == filename
     for sep in os.path.sep, os.path.altsep:
         if sep:
             filename = filename.replace(sep, ' ')
@@ -26,12 +29,10 @@ def secure_filename(filename):
 def check_filename(filename):
     """A version which does not change the name, but throws an exception instead."""
     # simple only allow: a-zA-Z0-9 _().[]œøå
-    # basename(filename) == filename
+    assert os.path.basename(filename) == filename
     if isinstance(filename, text_type):
         from unicodedata import normalize
         filename = normalize('NFKD', filename).encode('ascii', 'ignore')
-        #if not PY2:
-        #    filename = filename.decode('ascii')
     for sep in os.path.sep, os.path.altsep:
         if _filename_ascii_strip_re.search(filename):
             logging.error('illegal filename provided: %s', filename)
