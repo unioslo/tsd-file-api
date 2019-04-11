@@ -93,7 +93,7 @@ gnupg._parsers.Verify.TRUST_LEVELS["ENCRYPTION_COMPLIANCE_MODE"] = 23
 from tokens import gen_test_tokens, get_test_token_for_p12, gen_test_token_for_user
 from ..db import session_scope, sqlite_init
 from ..dbresumable import resumable_db_remove_completed_for_user
-from ..utils import project_import_dir, project_sns_dir, md5sum
+from ..utils import project_import_dir, project_sns_dir, md5sum, check_filename, IllegalFilenameException
 from ..pgp import _import_keys
 
 
@@ -1232,6 +1232,34 @@ class TestFileApi(unittest.TestCase):
 
 
     def test_ZZd_filename_rules(self):
+        examples_names = [
+            '~/.pgpass',
+            '/etc/passwd',
+            '/tsd/p01/data/durable/gpg-keys/*',
+            '%8.txt',
+            '../../../.bash_history',
+            '; rm -rf /',
+            'echo $PATH',
+        ]
+        example_chars = '~`§±@#$%^&*+={}[]\\|":;<>?/'
+        good_names = [
+            'Anotherfile.txt',
+            'å-så-søt.exe',
+            'My amazing data.csv',
+            'My amazing data(1).csv',
+            'sær_navn.bat',
+            'Ærlig'
+        ]
+        for name in examples_names:
+            self.assertRaises(IllegalFilenameException, check_filename, name)
+        for char in example_chars:
+            self.assertRaises(IllegalFilenameException, check_filename, char)
+        for name in good_names:
+            out = check_filename(name)
+            self.assertTrue(out, name)
+
+
+    def test_ZZe_filename_rules_with_uploads(self):
         pass
 
 
