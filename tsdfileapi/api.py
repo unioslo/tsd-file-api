@@ -25,7 +25,7 @@ from collections import OrderedDict
 import yaml
 import magic
 import tornado.queues
-from tornado.escape import json_decode, url_unescape
+from tornado.escape import json_decode, url_unescape, url_escape
 from tornado import gen
 from tornado.httpclient import AsyncHTTPClient
 from tornado.ioloop import IOLoop
@@ -1231,9 +1231,8 @@ class StreamHandler(AuthRequestHandler):
                     content_type = self.request.headers['Content-Type']
                     project_dir = project_import_dir(options.uploads_folder, pnum, None, None)
                     self.project_dir = project_dir
-                    # TODO: get this from URL instead
-                    # build it ourselves in /stream handler
-                    filename = check_filename(self.request.headers['Filename'])
+                    uri_filename = self.request.uri.split('?')[0].split('/')[-1]
+                    filename = check_filename(url_unescape(uri_filename))
                     if self.request.method == 'PATCH':
                         self.rdb = sqlite_init(project_dir, name='.resumables-' + self.user + '.db')
                         filename = self.handle_resumable_request(project_dir, filename)
@@ -1327,7 +1326,7 @@ class StreamHandler(AuthRequestHandler):
 
 
     # TODO: check for errors
-    def post(self, pnum):
+    def post(self, pnum, uri_filename=None):
         if not self.custom_content_type:
             self.target_file.close()
             os.rename(self.path, self.path_part)
@@ -1353,7 +1352,7 @@ class StreamHandler(AuthRequestHandler):
 
 
     # TODO: check for errors
-    def put(self, pnum):
+    def put(self, pnum, uri_filename=None):
         if not self.custom_content_type:
             self.target_file.close()
             os.rename(self.path, self.path_part)
@@ -1378,7 +1377,7 @@ class StreamHandler(AuthRequestHandler):
         self.write({'message': 'data streamed'})
 
 
-    def patch(self, pnum):
+    def patch(self, pnum, uri_filename=None):
         if not self.merged_file:
             self.target_file.close()
             # if the path to which we want to rename the file exists
@@ -1396,7 +1395,7 @@ class StreamHandler(AuthRequestHandler):
         self.write({'filename': filename, 'id': self.upload_id, 'max_chunk': self.chunk_num})
 
 
-    def head(self, pnum):
+    def head(self, pnum, uri_filename=None):
         self.set_status(201)
 
 
@@ -1549,7 +1548,8 @@ class ProxyHandler(AuthRequestHandler):
             except Exception:
                 pass
             params = '?group=%s&chunk=%s&id=%s' % (group_name, chunk_num, upload_id)
-            internal_url = 'http://localhost:%d/%s/files/upload_stream%s' % (options.port, pnum, params)
+            filename = url_escape(self.filename)
+            internal_url = 'http://localhost:%d/%s/files/upload_stream/%s%s' % (options.port, pnum, filename, params)
             # 8. Do async request to handle incoming data
             try:
                 self.fetch_future = AsyncHTTPClient().fetch(
@@ -1751,6 +1751,7 @@ def main():
     app = Application([
         ('/(.*)/files/health', HealthCheckHandler),
         ('/(.*)/files/upload_stream', StreamHandler),
+        ('/(.*)/files/upload_stream/(.*)', StreamHandler),
         ('/(.*)/files/stream', ProxyHandler),
         ('/(.*)/files/stream/(.*)', ProxyHandler),
         ('/(.*)/files/upload', FormDataHandler),

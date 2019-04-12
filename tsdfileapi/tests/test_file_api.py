@@ -83,6 +83,7 @@ import requests
 import yaml
 from sqlalchemy.exc import OperationalError
 from tsdapiclient import fileapi
+from tornado.escape import url_escape
 
 # monkey patch to avoid random error message
 # https://github.com/isislovecruft/python-gnupg/issues/207
@@ -207,6 +208,8 @@ class TestFileApi(unittest.TestCase):
         # resumables
         cls.resume_file1 = os.path.normpath(cls.data_folder + '/resume-file1')
         cls.resume_file2 = os.path.normpath(cls.data_folder + '/resume-file2')
+        # filename tests
+        cls.so_sweet = os.path.normpath(cls.data_folder + '/så_søt(1).txt')
         cls.test_upload_id = '96c68dad-8dc5-4076-9569-92394001d42a'
         # TODO: make this configurable
         # do not dist with package
@@ -1232,7 +1235,7 @@ class TestFileApi(unittest.TestCase):
 
 
     def test_ZZd_filename_rules(self):
-        examples_names = [
+        illegal_names = [
             '~/.pgpass',
             '/etc/passwd',
             '/tsd/p01/data/durable/gpg-keys/*',
@@ -1250,7 +1253,7 @@ class TestFileApi(unittest.TestCase):
             'sær_navn.bat',
             'Ærlig'
         ]
-        for name in examples_names:
+        for name in illegal_names:
             self.assertRaises(IllegalFilenameException, check_filename, name)
         for char in example_chars:
             self.assertRaises(IllegalFilenameException, check_filename, char)
@@ -1260,7 +1263,11 @@ class TestFileApi(unittest.TestCase):
 
 
     def test_ZZe_filename_rules_with_uploads(self):
-        pass
+        headers = {'Authorization': 'Bearer ' + TEST_TOKENS['VALID']}
+        resp = requests.put(self.stream + '/' + url_escape('så_søt(1).txt'),
+                            data=lazy_file_reader(self.so_sweet),
+                            headers=headers)
+        self.assertEqual(resp.status_code, 201)
 
 
 def main():
@@ -1349,6 +1356,7 @@ def main():
         'test_ZZa_get_specific_range_conditional_on_etag',
         'test_ZZb_get_range_out_of_bounds_returns_correct_error',
         'test_ZZd_filename_rules',
+        'test_ZZe_filename_rules_with_uploads'
         ])))
     map(runner.run, suite)
 

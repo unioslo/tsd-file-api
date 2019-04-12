@@ -22,11 +22,14 @@ def check_filename(filename):
     try:
         assert os.path.basename(filename) == filename
     except Exception:
+        logging.error('filename not a basename')
         raise IllegalFilenameException
     for sep in os.path.sep, os.path.altsep:
         if sep and sep in filename:
+            logging.error('filename not a basename')
             raise IllegalFilenameException
     if ILLEGAL_CHARS.search(filename):
+            logging.error('filename has illegal characters')
             raise IllegalFilenameException
     return filename
 
