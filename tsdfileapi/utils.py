@@ -11,16 +11,14 @@ _VALID_FORMID = re.compile(r'^[0-9]+$')
 _IS_REALISTIC_PGP_KEY_FINGERPRINT = re.compile(r'^[0-9A-Z]{16}$')
 IS_VALID_GROUPNAME = re.compile(r'p+[0-9]+-[a-z-]')
 _IS_VALID_UUID = re.compile(r'([a-f\d0-9-]{32,36})')
-ILLEGAL_CHARS = re.compile(r'[^A-Za-z0-9_().æøåÆØÅ \-]')
+ILLEGAL_CHARS = re.compile(r'[^A-Za-z0-9_().æøåÆØÅ\-]')
 
 
 class IllegalFilenameException(Exception):
     message = 'Filename not allowed'
 
 
-def check_filename(filename, replace_space=False):
-    if replace_space:
-        filename = filename.replace(' ', '_')
+def check_filename(filename):
     try:
         assert os.path.basename(filename) == filename
     except Exception:

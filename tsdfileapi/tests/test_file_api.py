@@ -1245,8 +1245,8 @@ class TestFileApi(unittest.TestCase):
         good_names = [
             'Anotherfile.txt',
             'å-så-søt.exe',
-            'My amazing data.csv',
-            'My amazing data(1).csv',
+            'My-amazing-data.csv',
+            'My-amazing-data(1).csv',
             'sær_navn.bat',
             'Ærlig'
         ]
