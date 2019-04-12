@@ -19,6 +19,8 @@ class IllegalFilenameException(Exception):
 
 
 def check_filename(filename):
+    if isinstance(filename, unicode):
+        filename = filename.encode('utf-8')
     try:
         assert os.path.basename(filename) == filename
     except Exception:
