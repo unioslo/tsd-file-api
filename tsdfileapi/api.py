@@ -1556,12 +1556,7 @@ class ProxyHandler(AuthRequestHandler):
                     internal_url,
                     method=self.request.method,
                     body_producer=body,
-                    # for the _entire_ request
-                    # will have to adjust this
-                    # there is also connect_timeout
-                    # for the initial connection
-                    # in seconds, both
-                    request_timeout=12000.0,
+                    request_timeout=12000.0, # 3 hours max
                     headers=headers)
             except Exception as e:
                 logging.error('Problem in async client')
