@@ -1750,19 +1750,29 @@ def main():
         ('/(.*)/files/stream', ProxyHandler),
         ('/(.*)/files/stream/(.*)', ProxyHandler),
         ('/(.*)/files/upload', FormDataHandler),
-        # this has to present the same interface as
-        # the postgrest API in terms of endpoints
-        # storage backends should be transparent
         ('/(.*)/storage/rpc/create_table', TableCreatorHandler),
         ('/(.*)/storage/encrypted_data', PGPJsonToSQLiteHandler),
-        # this route should be last - exact route matches first
         ('/(.*)/storage/(.*)', JsonToSQLiteHandler),
-        # e.g. /p11/sns/94F0E05DB5093C71/54162
         ('/(.*)/sns/(.*)/(.*)', SnsFormDataHandler),
         ('/(.*)/files/export', FileStreamerHandler),
         ('/(.*)/files/export/(.*)', FileStreamerHandler),
         ('/(.*)/files/resumables', ResumablesHandler),
         ('/(.*)/files/resumables/(.*)', ResumablesHandler),
+        # with explicit versions - graceful transition in proxy config
+        ('/v1/(.*)/files/health', HealthCheckHandler),
+        ('/v1/(.*)/files/upload_stream', StreamHandler),
+        ('/v1/(.*)/files/upload_stream/(.*)', StreamHandler),
+        ('/v1/(.*)/files/stream', ProxyHandler),
+        ('/v1/(.*)/files/stream/(.*)', ProxyHandler),
+        ('/v1/(.*)/files/upload', FormDataHandler),
+        ('/v1/(.*)/storage/rpc/create_table', TableCreatorHandler),
+        ('/v1/(.*)/storage/encrypted_data', PGPJsonToSQLiteHandler),
+        ('/v1/(.*)/storage/(.*)', JsonToSQLiteHandler),
+        ('/v1/(.*)/sns/(.*)/(.*)', SnsFormDataHandler),
+        ('/v1/(.*)/files/export', FileStreamerHandler),
+        ('/v1/(.*)/files/export/(.*)', FileStreamerHandler),
+        ('/v1/(.*)/files/resumables', ResumablesHandler),
+        ('/v1/(.*)/files/resumables/(.*)', ResumablesHandler),
     ], debug=options.debug)
     app.listen(options.port, max_body_size=options.max_body_size)
     IOLoop.instance().start()
