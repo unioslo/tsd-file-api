@@ -1424,7 +1424,6 @@ class StreamHandler(AuthRequestHandler):
                 else:
                     path = self.merged_file
                 os.chmod(path, _RW______)
-                logging.info('Attempting to change ownership of %s to %s', path, self.user)
                 subprocess.call(['sudo', options.chowner_path, path,
                                  self.user, options.api_user, self.group_name])
                 if self.merged_file:
