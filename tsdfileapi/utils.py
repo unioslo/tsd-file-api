@@ -18,6 +18,14 @@ class IllegalFilenameException(Exception):
     message = 'Filename not allowed'
 
 
+def pnum_from_url(url):
+    if 'v1' in url:
+        idx = 2
+    else:
+        idx = 1
+    return url.split('/')[idx]
+
+
 def check_filename(filename):
     if isinstance(filename, unicode):
         filename = filename.encode('utf-8')

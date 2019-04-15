@@ -37,7 +37,7 @@ from tornado.web import Application, RequestHandler, stream_request_body, \
 from auth import verify_json_web_token
 from utils import project_import_dir, project_sns_dir, \
                   IS_VALID_GROUPNAME, check_filename, _IS_VALID_UUID, \
-                  md5sum, natural_keys
+                  md5sum, natural_keys, pnum_from_url
 from db import insert_into, create_table_from_codebook, sqlite_init, \
                create_table_from_generic, _table_name_from_form_id, \
                _VALID_PNUM, _table_name_from_table_name, TableNameException, \
@@ -144,7 +144,7 @@ class AuthRequestHandler(RequestHandler):
                     project_specific_secret = options.secret
                 else:
                     try:
-                        pnum = self.request.uri.split('/')[1]
+                        pnum = pnum_from_url(self.request.uri)
                         assert _VALID_PNUM.match(pnum)
                         self.pnum = pnum
                     except AssertionError as e:
@@ -875,7 +875,7 @@ class ResumablesHandler(AuthRequestHandler):
     def prepare(self):
         try:
             self.authnz = self.validate_token(roles_allowed=['import_user', 'export_user', 'admin_user'])
-            pnum = self.request.uri.split('/')[1]
+            pnum = pnum_from_url(self.request.uri)
             assert _VALID_PNUM.match(pnum)
             self.project_dir = project_import_dir(options.uploads_folder, pnum, None, None)
             self.rdb = sqlite_init(self.project_dir, name='.resumables-' + self.user + '.db')
@@ -1211,7 +1211,7 @@ class StreamHandler(AuthRequestHandler):
                 logging.error(e)
                 raise Exception
             try:
-                pnum = self.request.uri.split('/')[1]
+                pnum = pnum_from_url(self.request.uri)
                 try:
                     assert _VALID_PNUM.match(pnum)
                 except AssertionError as e:
@@ -1474,7 +1474,7 @@ class ProxyHandler(AuthRequestHandler):
                 raise e
             # 3. Validate project number in URI
             try:
-                pnum = self.request.uri.split('/')[1]
+                pnum = pnum_from_url(self.request.uri)
                 assert _VALID_PNUM.match(pnum)
             except AssertionError as e:
                 logging.error('URI does not contain a valid pnum')
@@ -1483,7 +1483,7 @@ class ProxyHandler(AuthRequestHandler):
             try:
                 uri = self.request.uri
                 uri_parts = uri.split('/')
-                if len(uri_parts) == 5:
+                if len(uri_parts) >= 5:
                     basename = uri_parts[-1]
                     filename = basename.split('?')[0]
                     self.filename = check_filename(url_unescape(filename))
