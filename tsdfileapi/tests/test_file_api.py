@@ -536,48 +536,6 @@ class TestFileApi(unittest.TestCase):
     # make sure alg : none JWT rejected
     # make sure cannot select any other alg
 
-    # JSON data (from nettskjema)
-    #----------------------------
-
-    def test_S_create_table(self):
-        table_def = self.example_codebook
-        headers = {'Authorization': 'Bearer ' + TEST_TOKENS['VALID']}
-        resp = requests.post(self.base_url + '/storage/rpc/create_table',
-                             data=json.dumps(table_def), headers=headers)
-        self.assertEqual(resp.status_code, 201)
-
-
-    def test_T_create_table_is_idempotent(self):
-        table_def = self.example_codebook
-        headers = {'Authorization': 'Bearer ' + TEST_TOKENS['VALID']}
-        resp = requests.post(self.base_url + '/storage/rpc/create_table',
-                             data=json.dumps(table_def), headers=headers)
-        self.assertEqual(resp.status_code, 201)
-
-
-    def test_U_add_column_codebook(self):
-        table_def = self.example_codebook
-        table_def['definition']['pages'][0]['elements'].append({
-            'elementType': 'QUESTION',
-            'questions': [{'externalQuestionId': 'var3'}]})
-        headers = {'Authorization': 'Bearer ' + TEST_TOKENS['VALID']}
-        resp = requests.post(self.base_url + '/storage/rpc/create_table',
-                             data=json.dumps(table_def), headers=headers)
-        self.assertEqual(resp.status_code, 201)
-
-
-    def test_V_post_data(self):
-        data = {'submission_id':1, 'age':93}
-        bulk_data = [{'submission_id':4, 'var1':'something', 'var2':'nothing'},
-                     {'submission_id':3, 'var1':'sensitive', 'var2': 'kablamo'}]
-        headers = {'Authorization': 'Bearer ' + TEST_TOKENS['VALID']}
-        resp1 = requests.post(self.base_url + '/storage/form_63332',
-                              data=json.dumps(data), headers=headers)
-        resp2 = requests.post(self.base_url + '/storage/form_63332',
-                              data=json.dumps(bulk_data), headers=headers)
-        self.assertEqual(resp1.status_code, 201)
-        self.assertEqual(resp2.status_code, 201)
-
 
     def test_W_create_table_generic(self):
         table_def = {'table_name': 'test1',
@@ -588,18 +546,6 @@ class TestFileApi(unittest.TestCase):
         resp = requests.post(self.base_url + '/storage/rpc/create_table',
                              data=json.dumps(data), headers=headers)
         self.assertEqual(resp.status_code, 201)
-
-
-    def test_X_post_encrypted_data(self):
-        encrypted_data_ns = build_payload(self.config, 'ns')
-        encrypted_data_gen = build_payload(self.config, 'generic')
-        headers = {'Authorization': 'Bearer ' + TEST_TOKENS['VALID']}
-        resp1 = requests.post(self.base_url + '/storage/encrypted_data',
-                             data=json.dumps(encrypted_data_ns), headers=headers)
-        resp2 = requests.post(self.base_url + '/storage/encrypted_data',
-                             data=json.dumps(encrypted_data_gen), headers=headers)
-        self.assertEqual(resp1.status_code, 201)
-        self.assertEqual(resp2.status_code, 201)
 
 
     # More Authn+z
@@ -1299,12 +1245,7 @@ def main():
         'test_N_head_on_uploads_fails_when_it_should',
         'test_O_head_on_uploads_succeeds_when_conditions_are_met',
         # sqlite backend
-        'test_S_create_table',
-        'test_T_create_table_is_idempotent',
-        'test_U_add_column_codebook',
-        'test_V_post_data',
         'test_W_create_table_generic',
-        'test_X_post_encrypted_data',
         # pnum logic
         'test_Y_invalid_project_number_rejected',
         'test_Z_token_for_other_project_rejected',

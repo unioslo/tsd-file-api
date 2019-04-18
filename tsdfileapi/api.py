@@ -38,8 +38,7 @@ from auth import verify_json_web_token
 from utils import project_import_dir, project_sns_dir, \
                   IS_VALID_GROUPNAME, check_filename, _IS_VALID_UUID, \
                   md5sum, natural_keys, pnum_from_url
-from db import insert_into, create_table_from_codebook, sqlite_init, \
-               create_table_from_generic, _table_name_from_form_id, \
+from db import insert_into, sqlite_init, create_table_from_generic, \
                _VALID_PNUM, _table_name_from_table_name, TableNameException, \
                load_jwk_store
 from dbresumable import resumable_db_insert_new_for_user, \
@@ -50,7 +49,7 @@ from dbresumable import resumable_db_insert_new_for_user, \
                resumable_db_get_total_size, \
                resumable_db_pop_chunk, \
                resumable_db_get_group
-from pgp import decrypt_pgp_json, _import_keys
+from pgp import _import_keys
 
 
 _RW______ = stat.S_IREAD | stat.S_IWRITE
@@ -1643,14 +1642,7 @@ class TableCreatorHandler(AuthRequestHandler):
                 logging.error(e.message)
                 logging.error('missing table definition type')
                 raise e
-            if _type == 'codebook':
-                definition = data['definition']
-                form_id = data['form_id']
-                def_type = data['type']
-                create_table_from_codebook(definition, form_id, engine)
-                self.set_status(201)
-                self.write({'message': 'table created'})
-            elif _type == 'generic':
+            if _type == 'generic':
                 definition = data['definition']
                 create_table_from_generic(definition, engine)
                 self.set_status(201)
@@ -1700,39 +1692,6 @@ class JsonToSQLiteHandler(AuthRequestHandler):
             self.write({'message': e.message})
 
 
-
-class PGPJsonToSQLiteHandler(AuthRequestHandler):
-
-    """
-    Decrypts JSON data, stores it in sqlite.
-    """
-
-    def prepare(self):
-        try:
-            self.authnz = self.validate_token(roles_allowed=['import_user', 'export_user', 'admin_user'])
-        except Exception as e:
-            self.finish({'message': 'Authorization failed'})
-
-    def post(self, pnum):
-        try:
-            all_data = json_decode(self.request.body)
-            if 'form_id' in all_data.keys():
-                table_name = _table_name_from_form_id(all_data['form_id'])
-            else:
-                table_name = _table_name_from_table_name(str(all_data['table_name']))
-            decrypted_data = decrypt_pgp_json(CONFIG, all_data['data'])
-            assert _VALID_PNUM.match(pnum)
-            project_dir = project_import_dir(options.uploads_folder, pnum, None, None)
-            engine = sqlite_init(project_dir)
-            insert_into(engine, table_name, decrypted_data)
-            self.set_status(201)
-            self.write({'message': 'data stored'})
-        except Exception as e:
-            logging.error(e)
-            self.set_status(400)
-            self.write({'message': e.message})
-
-
 class HealthCheckHandler(RequestHandler):
 
     def head(self, pnum):
@@ -1750,7 +1709,6 @@ def main():
         ('/(.*)/files/stream/(.*)', ProxyHandler),
         ('/(.*)/files/upload', FormDataHandler),
         ('/(.*)/storage/rpc/create_table', TableCreatorHandler),
-        ('/(.*)/storage/encrypted_data', PGPJsonToSQLiteHandler),
         ('/(.*)/storage/(.*)', JsonToSQLiteHandler),
         ('/(.*)/sns/(.*)/(.*)', SnsFormDataHandler),
         ('/(.*)/files/export', FileStreamerHandler),
@@ -1765,7 +1723,6 @@ def main():
         ('/v1/(.*)/files/stream/(.*)', ProxyHandler),
         ('/v1/(.*)/files/upload', FormDataHandler),
         ('/v1/(.*)/storage/rpc/create_table', TableCreatorHandler),
-        ('/v1/(.*)/storage/encrypted_data', PGPJsonToSQLiteHandler),
         ('/v1/(.*)/storage/(.*)', JsonToSQLiteHandler),
         ('/v1/(.*)/sns/(.*)/(.*)', SnsFormDataHandler),
         ('/v1/(.*)/files/export', FileStreamerHandler),

@@ -16,7 +16,7 @@ from sqlalchemy.exc import OperationalError, IntegrityError, StatementError
 # pylint: disable=relative-import
 from utils import check_filename
 
-_VALID_ID = re.compile(r'([0-9])')
+
 _VALID_PNUM = re.compile(r'([0-9a-z])')
 _VALID_COLNAME = re.compile(r'([0-9a-z])')
 _VALID_TABLE_NAME = re.compile(r'([0-9a-z_])')
@@ -28,10 +28,6 @@ class TableNameException(Exception):
 
 class ColumnNameException(Exception):
     message = 'Column name contains illegal characters'
-
-
-class MalformedCodebookException(Exception):
-    message = 'codebook definition cannot be parsed'
 
 
 class TableCreationException(Exception):
@@ -105,21 +101,6 @@ def load_jwk_store(config):
     for row in res:
         secrets[row[0]] = row[1]
     return secrets
-
-
-def _table_name_from_form_id(form_id):
-    """Return a secure and legal table name, given a nettskjema form id."""
-    try:
-        assert isinstance(form_id, int)
-    except AssertionError:
-        logging.error('form id not int')
-        raise TableNameException
-    _id = str(form_id)
-    if _VALID_ID.match(_id):
-        return 'form_' + _id
-    else:
-        logging.error('problem with form id - unknown what the issue is')
-        raise TableNameException
 
 
 def _table_name_from_table_name(table_name):
@@ -220,84 +201,6 @@ def insert_into(engine, table_name, data):
     except (OperationalError, StatementError) as e:
         logging.error(e.message)
         raise InsertException
-
-
-def _sqltype_from_nstype(ns_type):
-    type_map = {
-        'QUESTION': 'text',
-        'QUESTION_MULTILINE': 'text',
-        'RADIO': 'text',
-        'CHECKBOX': 'text',
-        'MATRIX_RADIO': 'text',
-        'MATRIX_CHECKBOX': 'text',
-        'NATIONAL_ID_NUMBER': 'text',
-        'ATTACHMENT': 'text',
-        'NUMBER': 'real',
-        'DATE': 'text',
-        'EMAIL': 'text',
-        'SELECT': 'text'
-    }
-    try:
-        return type_map[ns_type]
-    except KeyError:
-        raise UnsupportedTypeException
-
-
-def create_table_from_codebook(definition, form_id, engine):
-    """
-    Create a new table in SQLite based on a codebook definition.
-    Is idempotent, so sending a definition with new columns will
-    add them to the table. Columns cannot be removed.
-
-    Parameters
-    ----------
-    definition: dict
-    form_id: int
-    engine: sqlite engine
-
-    Returns
-    -------
-    bool
-
-    """
-    try:
-        table_name = _table_name_from_form_id(form_id)
-    except TableNameException as e:
-        logging.error(e.message)
-        raise e
-    with session_scope(engine) as session:
-        try:
-            session.execute('create table if not exists %s(submission_id int primary key)' %
-                            table_name)
-        except Exception as e:
-            logging.error(e.message)
-            raise TableCreationException
-        try:
-            elements = definition['pages'][0]['elements']
-        except KeyError as e:
-            logging.error(e.message)
-            raise MalformedCodebookException
-        for elem in elements:
-            try:
-                dtype = _sqltype_from_nstype(elem['elementType'])
-                questions = elem['questions']
-            except (UnsupportedTypeException, KeyError) as e:
-                logging.error(e.message)
-                raise e
-            for question in questions:
-                colname = question['externalQuestionId']
-                sanitised_colname = check_filename(colname)
-                try:
-                    assert colname == sanitised_colname
-                except ColumnNameException as e:
-                    logging.error(e.message)
-                    raise e
-                try:
-                    session.execute('alter table %s add column %s %s' %
-                                    (table_name, sanitised_colname, dtype))
-                except OperationalError as e:
-                    logging.info('duplicate column - skipping creation')
-    return True
 
 
 def create_table_from_generic(definition, engine):
