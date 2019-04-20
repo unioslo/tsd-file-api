@@ -38,9 +38,7 @@ from auth import verify_json_web_token
 from utils import project_import_dir, project_sns_dir, \
                   IS_VALID_GROUPNAME, check_filename, _IS_VALID_UUID, \
                   md5sum, natural_keys, pnum_from_url
-from db import insert_into, sqlite_init, create_table_from_generic, \
-               _VALID_PNUM, _table_name_from_table_name, TableNameException, \
-               load_jwk_store
+from db import sqlite_insert, sqlite_init, _VALID_PNUM, load_jwk_store
 from dbresumable import resumable_db_insert_new_for_user, \
                resumable_db_remove_completed_for_user, \
                resumable_db_get_all_resumable_ids_for_user, \
@@ -391,7 +389,7 @@ class FileStreamerHandler(AuthRequestHandler):
                 if ',' in start_and_end:
                     self.set_status(405)
                     self.message = 'Multipart byte range requests not supported'
-                    raise Exception('self.message')
+                    raise Exception(self.message)
                 client_start = int(start_and_end[0])
                 cursor_start = client_start
                 try:
@@ -1616,12 +1614,15 @@ class ProxyHandler(AuthRequestHandler):
         self.set_status(201)
 
 
-class TableCreatorHandler(AuthRequestHandler):
+class GenericTableHandler(AuthRequestHandler):
 
     """
-    Creates tables in sqlite.
-    Data inputs are checked to prevent SQL injection.
-    See the db module for more details.
+    GET /v1/pXX/tables/generic
+    GET /v1/pXX/tables/generic/mytable
+    PUT /v1/pXX/tables/generic/mytable
+    PATCH /v1/pXX/tables/generic/mytable
+    DELETE /v1/pXX/tables/generic/mytable
+
     """
 
     def prepare(self):
@@ -1630,66 +1631,38 @@ class TableCreatorHandler(AuthRequestHandler):
         except Exception as e:
             self.finish({'message': 'Authorization failed'})
 
-    def post(self, pnum):
+
+    def get(self, pnum, resource_name=None):
+        # if not resource_name list all tables
+        # else parse query, return data
+        pass
+
+
+    def put(self, pnum, resource_name):
         try:
             data = json_decode(self.request.body)
             assert _VALID_PNUM.match(pnum)
             project_dir = project_import_dir(options.uploads_folder, pnum, None, None)
-            engine = sqlite_init(project_dir)
             try:
-                _type = data['type']
-            except KeyError as e:
-                logging.error(e.message)
-                logging.error('missing table definition type')
-                raise e
-            if _type == 'generic':
-                definition = data['definition']
-                create_table_from_generic(definition, engine)
+                engine = sqlite_init(project_dir)
+                sqlite_insert(engine, resource_name, data)
                 self.set_status(201)
-                self.write({'message': 'table created'})
-        except Exception as e:
-            logging.error(e.message)
-            if e is KeyError:
-                m = 'Check your JSON'
-            else:
-                m = e.message
-            self.set_status(400)
-            self.finish({'message': m})
-
-
-
-class JsonToSQLiteHandler(AuthRequestHandler):
-
-    """
-    Stores JSON data in sqlite.
-    Data inputs are checked to prevent SQL injection.
-    See the db module for more details.
-    """
-
-    def prepare(self):
-        try:
-            self.authnz = self.validate_token(roles_allowed=['import_user', 'export_user', 'admin_user'])
-        except Exception as e:
-            self.finish({'message': 'Authorization failed'})
-
-    def post(self, pnum, resource_name):
-        try:
-            data = json_decode(self.request.body)
-            assert _VALID_PNUM.match(pnum)
-            project_dir = project_import_dir(options.uploads_folder, pnum, None, None)
-            engine = sqlite_init(project_dir)
-            try:
-                valid_resource_name = _table_name_from_table_name(resource_name)
-            except TableNameException as e:
-                logging.error('invalid request resource')
-                raise e
-            insert_into(engine, valid_resource_name, data)
-            self.set_status(201)
-            self.write({'message': 'data stored'})
+                self.write({'message': 'data stored'})
+            except Exception as e:
+                logging.error(e)
+                raise Exception
         except Exception as e:
             logging.error(e)
             self.set_status(400)
             self.write({'message': e.message})
+
+
+    def patch(self, pnum, resource_name):
+        pass
+
+
+    def delete(self, pnum, resource_name):
+        pass
 
 
 class HealthCheckHandler(RequestHandler):
@@ -1708,13 +1681,13 @@ def main():
         ('/(.*)/files/stream', ProxyHandler),
         ('/(.*)/files/stream/(.*)', ProxyHandler),
         ('/(.*)/files/upload', FormDataHandler),
-        ('/(.*)/storage/rpc/create_table', TableCreatorHandler),
-        ('/(.*)/storage/(.*)', JsonToSQLiteHandler),
-        ('/(.*)/sns/(.*)/(.*)', SnsFormDataHandler),
         ('/(.*)/files/export', FileStreamerHandler),
         ('/(.*)/files/export/(.*)', FileStreamerHandler),
         ('/(.*)/files/resumables', ResumablesHandler),
         ('/(.*)/files/resumables/(.*)', ResumablesHandler),
+        ('/(.*)/tables/generic', GenericTableHandler),
+        ('/(.*)/tables/generic/(.*)', GenericTableHandler),
+        ('/(.*)/sns/(.*)/(.*)', SnsFormDataHandler),
         # with explicit versions - graceful transition in proxy config
         ('/v1/(.*)/files/health', HealthCheckHandler),
         ('/v1/(.*)/files/upload_stream', StreamHandler),
@@ -1722,13 +1695,13 @@ def main():
         ('/v1/(.*)/files/stream', ProxyHandler),
         ('/v1/(.*)/files/stream/(.*)', ProxyHandler),
         ('/v1/(.*)/files/upload', FormDataHandler),
-        ('/v1/(.*)/storage/rpc/create_table', TableCreatorHandler),
-        ('/v1/(.*)/storage/(.*)', JsonToSQLiteHandler),
-        ('/v1/(.*)/sns/(.*)/(.*)', SnsFormDataHandler),
         ('/v1/(.*)/files/export', FileStreamerHandler),
         ('/v1/(.*)/files/export/(.*)', FileStreamerHandler),
         ('/v1/(.*)/files/resumables', ResumablesHandler),
         ('/v1/(.*)/files/resumables/(.*)', ResumablesHandler),
+        ('/v1/(.*)/tables/generic', GenericTableHandler),
+        ('/v1/(.*)/tables/generic/(.*)', GenericTableHandler),
+        ('/v1/(.*)/sns/(.*)/(.*)', SnsFormDataHandler),
     ], debug=options.debug)
     app.listen(options.port, max_body_size=options.max_body_size)
     IOLoop.instance().start()

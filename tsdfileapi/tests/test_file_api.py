@@ -239,7 +239,8 @@ class TestFileApi(unittest.TestCase):
                     continue
         sqlite_path = cls.config['uploads_folder'][cls.config['test_project']] + '/api-data.db'
         try:
-            os.remove(sqlite_path)
+            #os.remove(sqlite_path)
+            pass
         except OSError:
             print 'not tables to cleanup'
             return
@@ -537,13 +538,10 @@ class TestFileApi(unittest.TestCase):
     # make sure cannot select any other alg
 
 
-    def test_W_create_table_generic(self):
-        table_def = {'table_name': 'test1',
-                     'columns': [{'name': 'x', 'type': 'int', 'constraints': {'not_null': True}},
-                                 {'name': 'y', 'type': 'text'}]}
-        data = {'type': 'generic', 'definition': table_def}
+    def test_W_create_and_insert_into_generic_table(self):
+        data = [{'key1': 7, 'key2': 'bla'}, {'key1': 99, 'key3': False}]
         headers = {'Authorization': 'Bearer ' + TEST_TOKENS['VALID']}
-        resp = requests.post(self.base_url + '/storage/rpc/create_table',
+        resp = requests.put(self.base_url + '/tables/generic/mytest1',
                              data=json.dumps(data), headers=headers)
         self.assertEqual(resp.status_code, 201)
 
@@ -554,7 +552,7 @@ class TestFileApi(unittest.TestCase):
     def test_Y_invalid_project_number_rejected(self):
         data = {'submission_id':11, 'age':193}
         headers = {'Authorization': 'Bearer ' + TEST_TOKENS['VALID']}
-        resp = requests.post('http://localhost:' + str(self.config['port']) + '/p12-2193-1349213*&^/storage/form_63332',
+        resp = requests.put('http://localhost:' + str(self.config['port']) + '/p12-2193-1349213*&^/tables/generic/form_63332',
                              data=json.dumps(data), headers=headers)
         self.assertEqual(resp.status_code, 401)
 
@@ -562,7 +560,7 @@ class TestFileApi(unittest.TestCase):
     def test_Z_token_for_other_project_rejected(self):
         data = {'submission_id':11, 'age':193}
         headers = {'Authorization': 'Bearer ' + TEST_TOKENS['WRONG_PROJECT']}
-        resp = requests.post(self.base_url + '/storage/form_63332',
+        resp = requests.put(self.base_url + '/tables/generic/form_63332',
                              data=json.dumps(data), headers=headers)
         self.assertEqual(resp.status_code, 401)
 
@@ -1245,7 +1243,7 @@ def main():
         'test_N_head_on_uploads_fails_when_it_should',
         'test_O_head_on_uploads_succeeds_when_conditions_are_met',
         # sqlite backend
-        'test_W_create_table_generic',
+        'test_W_create_and_insert_into_generic_table',
         # pnum logic
         'test_Y_invalid_project_number_rejected',
         'test_Z_token_for_other_project_rejected',

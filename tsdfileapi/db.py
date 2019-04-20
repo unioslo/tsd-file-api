@@ -1,11 +1,11 @@
 
-"""A _simple_ sqlite db backend designed for JSON data, primarily from nettskjema"""
+"""sqlite db backend designed for JSON data."""
 
-# too pedantic regarding docstrings - we can decide in code review
 # pylint: disable=missing-docstring
 
 import logging
 import re
+import json
 from contextlib import contextmanager
 
 from sqlalchemy.pool import QueuePool
@@ -14,16 +14,12 @@ from sqlalchemy import create_engine
 from sqlalchemy.exc import OperationalError, IntegrityError, StatementError
 
 # pylint: disable=relative-import
-from utils import check_filename
+from utils import check_filename, IllegalFilenameException
 
 
 _VALID_PNUM = re.compile(r'([0-9a-z])')
 _VALID_COLNAME = re.compile(r'([0-9a-z])')
 _VALID_TABLE_NAME = re.compile(r'([0-9a-z_])')
-
-
-class TableNameException(Exception):
-    message = 'Illegal character or encoding in table name'
 
 
 class ColumnNameException(Exception):
@@ -32,14 +28,6 @@ class ColumnNameException(Exception):
 
 class TableCreationException(Exception):
     message = 'table cannot be created'
-
-
-class UnsupportedTypeException(Exception):
-    message = 'Nettskjema codebook type not supported'
-
-
-class DbCreationException(Exception):
-    message = 'Cannot create sqlite db for project'
 
 
 class InsertException(Exception):
@@ -59,13 +47,13 @@ def sqlite_init(path, name='api-data.db'):
 
 @contextmanager
 def session_scope(engine):
-    """Provide a transactional scope around a series of operations."""
     Session = sessionmaker(bind=engine)
     session = Session()
     try:
         yield session
         session.commit()
     except (OperationalError, IntegrityError, StatementError) as e:
+        logging.error(e)
         logging.error("Could not commit data")
         logging.error("Rolling back transaction")
         session.rollback()
@@ -103,78 +91,15 @@ def load_jwk_store(config):
     return secrets
 
 
-def _table_name_from_table_name(table_name):
-    """Return a secure and legal table name."""
-    if _VALID_TABLE_NAME.match(table_name):
-        return table_name
-    else:
-        logging.error('problem with form id - unknown what the issue is')
-        raise TableNameException
-
-
-def _statement_from_data(table_name, data):
-    """
-    Construct a safe and correct SQL insert statement from data. Avoids parsing data.
-
-    Security measures
-    -----------------
-    All user inputs are sanitised - illegal or dangerous charachers are removed,
-    e.g. ';'. If any are fund execution is stopped and the request is rejected.
-    The statement is constructed solely on the information contained in the data.
-    The check_filename function is very strict :)
-
-    Potentially dangerous elements are: 1) table name, 2) column name, 3) values.
-    1) Table names are constructed in code after sanitisation, not directly.
-    2) Column names are sanitised individually too.
-    3) Values might contain nonsense data and it is up to the DB to decide.
-
-    Parameters
-    ----------
-    table_name: string
-        This is not direct user input - it is constructed in code, after being sanitised
-    data: dict
-        This input comes from the HTTP client in the request body. JSON is deserialised
-        into a dictionary.
-
-    Returns
-    -------
-    string
-
-    """
-    cols = data.keys()
-    cols.sort()
-    sanitised_cols = []
-    for col in cols:
-        sanitised_cols.append(check_filename(col))
-    try:
-        assert cols == sanitised_cols
-    except AssertionError:
-        raise ColumnNameException
-    columns = ''
-    values = ''
-    for i in range(len(sanitised_cols)):
-        if i < len(sanitised_cols) - 1:
-            columns += '%s, '
-        else:
-            columns += '%s'
-    for i in range(len(sanitised_cols)):
-        if i < len(sanitised_cols) - 1:
-            values += ':%s, '
-        else:
-            values += ':%s'
-    _cols = tuple(sanitised_cols)
-    stmt = 'insert into %s(' % table_name + columns % _cols + ') values (' + values % _cols + ')'
-    return stmt
-
-
-def insert_into(engine, table_name, data):
+def sqlite_insert(engine, table_name, data):
     """
     Inserts data into a table - either one row or in bulk.
+    Create the table if not exists.
 
     Parameters
     ----------
     engine: sqlalchemy engine for sqlite
-    table_name: string
+    uri: string
     data: dict
 
     Returns
@@ -185,15 +110,19 @@ def insert_into(engine, table_name, data):
     dtype = type(data)
     try:
         with session_scope(engine) as session:
+            try:
+                conditionally_create_generic_table(engine, table_name)
+            except TableCreationException:
+                pass # most likely because it already exists, ignore
             if dtype is list:
-                stmt = _statement_from_data(table_name, data[0])
                 for row in data:
-                    session.execute(stmt, row)
+                    session.execute('insert into ' + table_name + ' (data) values (:values)',
+                        {'values': json.dumps(row)})
             elif dtype is dict:
-                stmt = _statement_from_data(table_name, data)
                 # investigate: http://docs.sqlalchemy.org/en/latest/faq/performance.html
                 # Bulk_insert_mappings or use raw sqlite3
-                session.execute(stmt, data)
+                session.execute('insert into ' + table_name + ' (data) values (:values)',
+                        {'values': json.dumps(row)})
         return True
     except IntegrityError as e:
         logging.error(e.message)
@@ -201,16 +130,19 @@ def insert_into(engine, table_name, data):
     except (OperationalError, StatementError) as e:
         logging.error(e.message)
         raise InsertException
+    except Exception as e:
+        logging.error(e)
+        raise Exception('not sure what went wrong - could not insert data')
 
 
-def create_table_from_generic(definition, engine):
+def conditionally_create_generic_table(engine, table_name):
     """
-    Create table in SQLite DB from generic table definition.
+    A generic table has one column named data, with a json type.
 
     Parameters
     ----------
-    definition: dict
     engine: sqlite engine
+    table_name: str, name
 
     Returns
     -------
@@ -218,45 +150,13 @@ def create_table_from_generic(definition, engine):
 
     """
     try:
-        table_name = check_filename(definition['table_name'])
-    except KeyError as e:
+        table_name = check_filename(table_name)
+    except (KeyError, IllegalFilenameException) as e:
         logging.error(e)
         raise TableCreationException
     try:
         with session_scope(engine) as session:
-            session.execute('create table if not exists \
-                %s(submission_ts default (datetime(current_timestamp)))' % table_name)
-            try:
-                cols = definition['columns']
-                assert isinstance(cols, list)
-            except (AssertionError, KeyError) as e:
-                logging.error(e.message)
-                raise TableCreationException
-            for col in cols:
-                try:
-                    colname = check_filename(col['name'])
-                    assert _VALID_COLNAME.match(col['type'])
-                    coltype = col['type']
-                except AssertionError as e:
-                    logging.error(e.message)
-                    raise TableCreationException
-                try:
-                    constraints = col['constraints']
-                except KeyError as e:
-                    constraints = False
-                try:
-                    if not constraints:
-                        session.execute('alter table %s \
-                            add column %s %s' % (table_name, colname, coltype))
-                    if constraints:
-                        if 'primary_key' in constraints.keys():
-                            session.execute('alter table %s add column %s %s primary key' %
-                                            (table_name, colname, coltype))
-                        elif 'not_null' in constraints.keys():
-                            session.execute('alter table %s add column %s %s not null default 0' %
-                                            (table_name, colname, coltype))
-                except OperationalError as e:
-                    logging.info('duplicate column - skipping creation')
+            session.execute('create table if not exists %s (data json unique not null)' % table_name)
     except Exception as e:
         logging.error(e.message)
         raise TableCreationException
