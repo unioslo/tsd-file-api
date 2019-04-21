@@ -554,6 +554,9 @@ class TestFileApi(unittest.TestCase):
         resp2 = requests.get(self.base_url + '/tables/generic/mytest1',
                             headers=headers)
         print resp2.text
+        resp3 = requests.get(self.base_url + '/tables/generic/mytest1?select=key1&key2=eq.bla&order=key1.desc',
+                            headers=headers)
+        print resp3.text
 
 
     # More Authn+z

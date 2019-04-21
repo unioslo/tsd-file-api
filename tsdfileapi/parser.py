@@ -25,7 +25,6 @@ class SqlStatement(object):
     """
 
     def __init__(self, uri):
-        self.column_names = []
         self.operators = {
             'eq': '=',
             'gt': '>',
@@ -49,13 +48,13 @@ class SqlStatement(object):
             table_name = os.path.basename(uri)
             return 'select * from %s' % table_name
         table_name = os.path.basename(uri.split('?')[0])
-        stmt_select = 'select %(columns)s ' % {'columns': self.query_columns}
-        stmt_from = 'from %(table_name)s ' % {'table_name': table_name}
-        stmt_where = 'where %(conditions)s ' % {'conditions': self.query_conditions} if self.query_conditions else ''
-        stmt_order =  'order by %(ordering)s ' % {'ordering': self.query_ordering} if self.query_ordering else None
+        stmt_select ="select %(columns)s " % {'columns': self.query_columns}
+        stmt_from = "from %(table_name)s " % {'table_name': table_name}
+        stmt_where = "where %(conditions)s " % {'conditions': self.query_conditions} if self.query_conditions else ''
+        stmt_order = "order by %(ordering)s " % {'ordering': self.query_ordering} if self.query_ordering else None
         query = stmt_select + stmt_from + stmt_where
         if stmt_order:
-            query = 'select * from (%s)a ' % query + stmt_order
+            query = "select * from (%s)a " % query + stmt_order
         return query
 
 
@@ -68,15 +67,15 @@ class SqlStatement(object):
         for part in parts:
             if 'select' in part:
                 columns = part.split('=')[-1]
+        fmt_str = "json_object(\"%s\", json_extract(data, '$.\"%s\"')) as \"%s\""
         if ',' in columns:
             names = columns.split(',')
             for name in names:
-                self.column_names.append(name)
-                quoted_column = 'json_extract(data, \'$."%s"\') as "%s"' % (name, name)
+                quoted_column = fmt_str % (name, name, name)
                 columns = columns.replace(name, quoted_column)
         else:
             name = columns
-            columns = 'json_extract(data, \'$."%s"\') as "%s"' % (name, name)
+            columns = fmt_str % (name, name, name)
         return columns
 
 
@@ -88,7 +87,7 @@ class SqlStatement(object):
         op = op_and_val.split('.')[0]
         assert op in self.operators.keys()
         val = op_and_val.split('.')[1]
-        col_and_opt_str = 'json_extract(data, \'$."%(col)s"\') %(op)s'
+        col_and_opt_str = "json_extract(data, '$.\"%(col)s\"') %(op)s"
         try:
             int(val)
             val_str = ' %(val)s'

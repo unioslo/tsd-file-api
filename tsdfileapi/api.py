@@ -1644,7 +1644,7 @@ class GenericTableHandler(AuthRequestHandler):
                 self.set_status(200)
                 self.write({'tables': tables})
             else:
-                engine = sqlite_init(project_dir)
+                engine = sqlite_init(project_dir, builtin=True)
                 data = sqlite_get_data(engine, table_name, self.request.uri)
                 self.set_status(200)
                 self.write({'data': data})

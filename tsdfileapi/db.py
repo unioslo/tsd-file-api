@@ -6,6 +6,7 @@
 import logging
 import re
 import json
+import sqlite3
 from contextlib import contextmanager
 
 from sqlalchemy.pool import QueuePool
@@ -39,10 +40,13 @@ class DuplicateRowException(Exception):
     message = 'Duplicate row - submission already stored'
 
 
-def sqlite_init(path, name='api-data.db'):
+def sqlite_init(path, name='api-data.db', builtin=False):
     dbname = name
-    dburl = 'sqlite:///' + path + '/' + dbname
-    engine = create_engine(dburl, poolclass=QueuePool)
+    if not builtin:
+        dburl = 'sqlite:///' + path + '/' + dbname
+        engine = create_engine(dburl, poolclass=QueuePool)
+    else:
+        engine = sqlite3.connect(path + '/' + dbname)
     return engine
 
 
@@ -179,8 +183,14 @@ def sqlite_list_tables(engine):
 
 def sqlite_get_data(engine, table_name, uri):
     sql = SqlStatement(uri)
-    with session_scope(engine) as session:
+    try:
+        session = engine.cursor()
         res = session.execute(sql.query).fetchall()
+    except Exception:
+        raise Exception('Could not fetch data')
+    finally:
+        session.close()
+        engine.close()
     data = []
     for row in res:
         data.append(json.loads(row[0]))
