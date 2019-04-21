@@ -1618,10 +1618,10 @@ class GenericTableHandler(AuthRequestHandler):
 
     """
     GET /v1/pXX/tables/generic
-    GET /v1/pXX/tables/generic/mytable
+    GET /v1/pXX/tables/generic/mytable?query
     PUT /v1/pXX/tables/generic/mytable
-    PATCH /v1/pXX/tables/generic/mytable
-    DELETE /v1/pXX/tables/generic/mytable
+    PATCH /v1/pXX/tables/generic/mytable?query
+    DELETE /v1/pXX/tables/generic/mytable?query
 
     """
 
@@ -1632,20 +1632,38 @@ class GenericTableHandler(AuthRequestHandler):
             self.finish({'message': 'Authorization failed'})
 
 
-    def get(self, pnum, resource_name=None):
-        # if not resource_name list all tables
-        # else parse query, return data
-        pass
+    def get(self, pnum, table_name=None):
+        try:
+            url_query = None
+            if not table_name:
+                engine = sqlite_init(project_dir)
+                tables = sqlite_list_tables(engine)
+                self.set_status(200)
+                self.write({'tables': tables})
+            else:
+                try:
+                    url_query = self.request.uri.split('?')[-1]
+                except Exception:
+                    pass
+                engine = sqlite_init(project_dir)
+                data = sqlite_get_data(engine, table_name, url_query)
+                self.set_status(200)
+                self.write({'data': data})
+        except Exception as e:
+            logging.error(e)
+            self.set_status(400)
+            self.write({'message': e.message})
 
 
-    def put(self, pnum, resource_name):
+    def put(self, pnum, table_name):
         try:
             data = json_decode(self.request.body)
             assert _VALID_PNUM.match(pnum)
+            # todo: change location - hidden from proj, ensure -rw-------
             project_dir = project_import_dir(options.uploads_folder, pnum, None, None)
             try:
                 engine = sqlite_init(project_dir)
-                sqlite_insert(engine, resource_name, data)
+                sqlite_insert(engine, table_name, data)
                 self.set_status(201)
                 self.write({'message': 'data stored'})
             except Exception as e:
@@ -1657,11 +1675,11 @@ class GenericTableHandler(AuthRequestHandler):
             self.write({'message': e.message})
 
 
-    def patch(self, pnum, resource_name):
+    def patch(self, pnum, table_name):
         pass
 
 
-    def delete(self, pnum, resource_name):
+    def delete(self, pnum, table_name):
         pass
 
 

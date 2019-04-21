@@ -161,3 +161,25 @@ def conditionally_create_generic_table(engine, table_name):
         logging.error(e.message)
         raise TableCreationException
     return True
+
+
+def sqlite_list_tables(engine):
+    query = "select name FROM sqlite_master where type = 'table'"
+    with session_scope(engine) as session:
+        res = session.execute(query).fetchall()
+    if not res:
+        return []
+    else:
+        return res
+
+
+def sqlite_get_data(engine, table_name, url_query=None):
+    pass
+
+
+def sqlite_delete_data(engine, table_name, url_query=None):
+    pass
+
+
+def sqlite_drop_table(engine, table_name):
+    pass
