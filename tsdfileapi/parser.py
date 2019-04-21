@@ -4,17 +4,6 @@
 import os
 import logging
 
-OPERATORS = {
-    'eq': '=',
-    'gt': '>',
-    'gte': '>=',
-    'lt': '<',
-    'lte': '<=',
-    'neq': '!=',
-    'like': 'like', # * replaces % in the URI
-    'ilike': 'ilike', # * replaces % in the URI
-    # support not and is - for is not null queries
-}
 
 class SqlStatement(object):
 
@@ -22,7 +11,7 @@ class SqlStatement(object):
     SqlStatement constructs a safe SQL query from a URI query.
     URI queries have the following generic structure:
 
-    /table_name?select=col1,col2&col3=eq.5&order=col1.desc
+    /table_name?select=col1,col2&col3=eq.5&col2=not.is.null&order=col1.desc
 
     The constructor takes the URI, and generates three SQL query parts:
     1) columns, if specified
@@ -35,10 +24,23 @@ class SqlStatement(object):
     """
 
     def __init__(self, uri):
+        self.operators = {
+            'eq': '=',
+            'gt': '>',
+            'gte': '>=',
+            'lt': '<',
+            'lte': '<=',
+            'neq': '!=',
+            'like': 'like', # * replaces % in the URI
+            'ilike': 'ilike', # * replaces % in the URI
+            'not': 'not',
+            'is': 'is'
+        }
         self.columns = self.parse_columns(uri)
         self.conditions = self.parse_row_clauses(uri)
         self.ordering = self.parse_ordering_clause(uri)
         self.query = self.build_sql(uri)
+
 
 
     def build_sql(self, uri):
@@ -75,8 +77,10 @@ class SqlStatement(object):
     def construct_safe_where_clause_part(self, part, num_part):
         op_and_val = part.split('=')[1]
         col = part.split('=')[0]
+        # add support for not - two '.' in that case
+        # if 'not in op_and_val...'
         op = op_and_val.split('.')[0]
-        assert op in OPERATORS.keys()
+        assert op in self.operators.keys()
         val = op_and_val.split('.')[1]
         col_and_opt_str = 'json_extract(data, \'$."%(col)s"\') %(op)s'
         try:
@@ -104,8 +108,8 @@ class SqlStatement(object):
                 conditions += safe_part
                 num_part += 1
         if len(conditions) > 0:
-            for op in OPERATORS.keys():
-                conditions = conditions.replace(op, OPERATORS[op])
+            for op in self.operators.keys():
+                conditions = conditions.replace(op, self.operators[op])
         else:
             conditions = None
         return conditions

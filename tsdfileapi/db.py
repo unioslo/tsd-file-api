@@ -15,6 +15,7 @@ from sqlalchemy.exc import OperationalError, IntegrityError, StatementError
 
 # pylint: disable=relative-import
 from utils import check_filename, IllegalFilenameException
+from parser import SqlStatement
 
 
 _VALID_PNUM = re.compile(r'([0-9a-z])')
