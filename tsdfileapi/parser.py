@@ -1,13 +1,5 @@
 
-"""
-Parse URIs and translate them into SQL.
-
-target:
-select * from (
-    select json_extract(data, '$.key2') from mytest1
-    where json_extract(data, '$.key2') = 'bla')a
-order by bla;
-"""
+"""Parse URIs and translate them into SQL."""
 
 import os
 import logging
@@ -34,13 +26,14 @@ class SqlStatement(object):
         stmt_select = 'select %(columns)s ' % {'columns': columns}
         stmt_from = 'from %(table_name)s ' % {'table_name': table_name}
         stmt_where = 'where %(conditions)s ' % {'conditions': conditions} if conditions else ''
-        stmt_order =  'order by %(ordering)s ' % {'ordering': ordering} if ordering else ''
-        expression = stmt_select + stmt_from + stmt_where + stmt_order
+        stmt_order =  'order by %(ordering)s ' % {'ordering': ordering} if ordering else None
+        expression = stmt_select + stmt_from + stmt_where
+        if stmt_order:
+            expression = 'select * from (%s)a ' % expression + stmt_order
         return expression
 
 
     def parse_column_qualifiers(self, uri_query):
-        # TODO: this has to be modified for json1 columns
         columns = '*'
         parts = uri_query.split('&')
         for part in parts:
@@ -49,33 +42,29 @@ class SqlStatement(object):
         if ',' in columns:
             names = columns.split(',')
             for name in names:
-                quoted_column = '"%s"' % name
+                quoted_column = 'json_extract(data, \'$."%s"\') as "%s"' % (name, name)
                 columns = columns.replace(name, quoted_column)
         else:
-            columns = '"%s"' % columns
+            name = columns
+            columns = 'json_extract(data, \'$."%s"\') as "%s"' % (name, name)
         return columns
 
 
     def construct_safe_condition_part(self, part, num_part):
-        """
-        Condition parts have the following structure: col=op.val
-        This method produces a safe SQL equivalent.
-
-        """
         op_and_val = part.split('=')[1]
         col = part.split('=')[0]
         op = op_and_val.split('.')[0]
         assert op in ROW_TOKENS.keys()
         val = op_and_val.split('.')[1]
+        # need to make sure we have safe values here
         if num_part > 0:
-            safe_part = ' and "%(col)s" %(op)s "%(val)s"' % {'col': col, 'op': op, 'val': val}
+            safe_part = ' and json_extract(data, \'$."%(col)s"\') %(op)s %(val)s' % {'col': col, 'op': op, 'val': val}
         else:
-            safe_part = ' "%(col)s" %(op)s "%(val)s"' % {'col': col, 'op': op, 'val': val}
+            safe_part = ' json_extract(data, \'$."%(col)s"\') %(op)s %(val)s' % {'col': col, 'op': op, 'val': val}
         return safe_part
 
 
     def parse_row_qualifiers(self, uri_query):
-        # TODO: this has to be modified for json1 columns
         conditions = ''
         num_part = 0
         parts = uri_query.split('&')
@@ -93,7 +82,6 @@ class SqlStatement(object):
 
 
     def construct_safe_order_part(self, part):
-        # structure order=age.desc - only support singular
         targets = part.replace('order=', '')
         tokens = targets.split('.')
         col = tokens[0]
@@ -103,8 +91,6 @@ class SqlStatement(object):
 
 
     def parse_ordering_qualifiers(self, uri_query):
-        # wrap the inner query in an outer one, so we can use column names without json manipulation
-        # select * from (inner)a order by ...
         ordering = ''
         parts = uri_query.split('&')
         for part in parts:
