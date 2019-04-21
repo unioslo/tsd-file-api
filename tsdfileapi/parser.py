@@ -4,7 +4,7 @@
 import os
 import logging
 
-ROW_TOKENS = {
+OPERATORS = {
     'eq': '=',
     'gt': '>',
     'gte': '>=',
@@ -13,6 +13,7 @@ ROW_TOKENS = {
     'neq': '!=',
     'like': 'like', # * replaces % in the URI
     'ilike': 'ilike', # * replaces % in the URI
+    # support not and is - for is not null queries
 }
 
 class SqlStatement(object):
@@ -29,7 +30,7 @@ class SqlStatement(object):
     3) ordering of the resultset, if specified
 
     Finally, it combines these three parts into a safe query which
-    can be executed/
+    can be executed.
 
     """
 
@@ -75,7 +76,7 @@ class SqlStatement(object):
         op_and_val = part.split('=')[1]
         col = part.split('=')[0]
         op = op_and_val.split('.')[0]
-        assert op in ROW_TOKENS.keys()
+        assert op in OPERATORS.keys()
         val = op_and_val.split('.')[1]
         col_and_opt_str = 'json_extract(data, \'$."%(col)s"\') %(op)s'
         try:
@@ -103,8 +104,8 @@ class SqlStatement(object):
                 conditions += safe_part
                 num_part += 1
         if len(conditions) > 0:
-            for op in ROW_TOKENS.keys():
-                conditions = conditions.replace(op, ROW_TOKENS[op])
+            for op in OPERATORS.keys():
+                conditions = conditions.replace(op, OPERATORS[op])
         else:
             conditions = None
         return conditions
