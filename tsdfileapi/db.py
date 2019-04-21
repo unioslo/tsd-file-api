@@ -171,14 +171,23 @@ def sqlite_list_tables(engine):
     if not res:
         return []
     else:
-        return res
+        out = []
+        for row in res:
+            out.append(row[0])
+        return out
 
 
-def sqlite_get_data(engine, table_name, url_query=None):
-    pass
+def sqlite_get_data(engine, table_name, uri):
+    sql = SqlStatement(uri)
+    with session_scope(engine) as session:
+        res = session.execute(sql.query).fetchall()
+    data = []
+    for row in res:
+        data.append(json.loads(row[0]))
+    return data
 
 
-def sqlite_delete_data(engine, table_name, url_query=None):
+def sqlite_delete_data(engine, table_name, uri):
     pass
 
 

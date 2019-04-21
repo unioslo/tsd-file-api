@@ -38,7 +38,8 @@ from auth import verify_json_web_token
 from utils import project_import_dir, project_sns_dir, \
                   IS_VALID_GROUPNAME, check_filename, _IS_VALID_UUID, \
                   md5sum, natural_keys, pnum_from_url
-from db import sqlite_insert, sqlite_init, _VALID_PNUM, load_jwk_store
+from db import sqlite_insert, sqlite_init, _VALID_PNUM, load_jwk_store, \
+               sqlite_list_tables, sqlite_get_data
 from dbresumable import resumable_db_insert_new_for_user, \
                resumable_db_remove_completed_for_user, \
                resumable_db_get_all_resumable_ids_for_user, \
@@ -1623,6 +1624,8 @@ class GenericTableHandler(AuthRequestHandler):
     PATCH /v1/pXX/tables/generic/mytable?query
     DELETE /v1/pXX/tables/generic/mytable?query
 
+    TODO: per method authnz, pagination, response format
+
     """
 
     def prepare(self):
@@ -1634,19 +1637,15 @@ class GenericTableHandler(AuthRequestHandler):
 
     def get(self, pnum, table_name=None):
         try:
-            url_query = None
+            project_dir = project_import_dir(options.uploads_folder, pnum, None, None)
             if not table_name:
                 engine = sqlite_init(project_dir)
                 tables = sqlite_list_tables(engine)
                 self.set_status(200)
                 self.write({'tables': tables})
             else:
-                try:
-                    url_query = self.request.uri.split('?')[-1]
-                except Exception:
-                    pass
                 engine = sqlite_init(project_dir)
-                data = sqlite_get_data(engine, table_name, url_query)
+                data = sqlite_get_data(engine, table_name, self.request.uri)
                 self.set_status(200)
                 self.write({'data': data})
         except Exception as e:

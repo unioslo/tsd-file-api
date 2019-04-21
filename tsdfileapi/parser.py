@@ -14,6 +14,7 @@ class SqlStatement(object):
     /table_name?select=col1,col2&col3=eq.5&col2=not.is.null&order=col1.desc
 
     The constructor takes the URI, and generates three SQL query parts:
+
     1) columns, if specified
     2) the elements of the where clause, if present
     3) ordering of the resultset, if specified
@@ -24,6 +25,7 @@ class SqlStatement(object):
     """
 
     def __init__(self, uri):
+        self.column_names = []
         self.operators = {
             'eq': '=',
             'gt': '>',
@@ -36,20 +38,21 @@ class SqlStatement(object):
             'not': 'not',
             'is': 'is'
         }
-        self.columns = self.parse_columns(uri)
-        self.conditions = self.parse_row_clauses(uri)
-        self.ordering = self.parse_ordering_clause(uri)
+        self.query_columns = self.parse_columns(uri)
+        self.query_conditions = self.parse_row_clauses(uri)
+        self.query_ordering = self.parse_ordering_clause(uri)
         self.query = self.build_sql(uri)
 
 
-
     def build_sql(self, uri):
+        if '?' not in uri:
+            table_name = os.path.basename(uri)
+            return 'select * from %s' % table_name
         table_name = os.path.basename(uri.split('?')[0])
-        uri_query = uri.split('?')[-1]
-        stmt_select = 'select %(columns)s ' % {'columns': self.columns}
+        stmt_select = 'select %(columns)s ' % {'columns': self.query_columns}
         stmt_from = 'from %(table_name)s ' % {'table_name': table_name}
-        stmt_where = 'where %(conditions)s ' % {'conditions': self.conditions} if self.conditions else ''
-        stmt_order =  'order by %(ordering)s ' % {'ordering': self.ordering} if self.ordering else None
+        stmt_where = 'where %(conditions)s ' % {'conditions': self.query_conditions} if self.query_conditions else ''
+        stmt_order =  'order by %(ordering)s ' % {'ordering': self.query_ordering} if self.query_ordering else None
         query = stmt_select + stmt_from + stmt_where
         if stmt_order:
             query = 'select * from (%s)a ' % query + stmt_order
@@ -57,6 +60,8 @@ class SqlStatement(object):
 
 
     def parse_columns(self, uri):
+        if '?' not in uri:
+            return '*'
         uri_query = uri.split('?')[-1]
         columns = '*'
         parts = uri_query.split('&')
@@ -66,6 +71,7 @@ class SqlStatement(object):
         if ',' in columns:
             names = columns.split(',')
             for name in names:
+                self.column_names.append(name)
                 quoted_column = 'json_extract(data, \'$."%s"\') as "%s"' % (name, name)
                 columns = columns.replace(name, quoted_column)
         else:
@@ -98,6 +104,8 @@ class SqlStatement(object):
 
 
     def parse_row_clauses(self, uri):
+        if '?' not in uri:
+            return None
         uri_query = uri.split('?')[-1]
         conditions = ''
         num_part = 0
@@ -125,6 +133,8 @@ class SqlStatement(object):
 
 
     def parse_ordering_clause(self, uri):
+        if '?' not in uri:
+            return None
         uri_query = uri.split('?')[-1]
         ordering = ''
         parts = uri_query.split('&')

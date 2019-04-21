@@ -546,6 +546,16 @@ class TestFileApi(unittest.TestCase):
         self.assertEqual(resp.status_code, 201)
 
 
+    def test_X_get_data_from_generic_table(self):
+        headers = {'Authorization': 'Bearer ' + TEST_TOKENS['VALID']}
+        resp1 = requests.get(self.base_url + '/tables/generic',
+                            headers=headers)
+        print resp1.text
+        resp2 = requests.get(self.base_url + '/tables/generic/mytest1',
+                            headers=headers)
+        print resp2.text
+
+
     # More Authn+z
     # ------------
 
@@ -1244,6 +1254,7 @@ def main():
         'test_O_head_on_uploads_succeeds_when_conditions_are_met',
         # sqlite backend
         'test_W_create_and_insert_into_generic_table',
+        'test_X_get_data_from_generic_table',
         # pnum logic
         'test_Y_invalid_project_number_rejected',
         'test_Z_token_for_other_project_rejected',
