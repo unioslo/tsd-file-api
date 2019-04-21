@@ -6,7 +6,13 @@ import logging
 
 ROW_TOKENS = {
     'eq': '=',
-    'gt': '>'
+    'gt': '>',
+    'gte': '>=',
+    'lt': '<',
+    'lte': '<=',
+    'neq': '!=',
+    'like': 'like', # * replaces % in the URI
+    'ilike': 'ilike', # * replaces % in the URI
 }
 
 class SqlStatement(object):
@@ -71,10 +77,18 @@ class SqlStatement(object):
         op = op_and_val.split('.')[0]
         assert op in ROW_TOKENS.keys()
         val = op_and_val.split('.')[1]
+        col_and_opt_str = 'json_extract(data, \'$."%(col)s"\') %(op)s'
+        try:
+            int(val)
+            val_str = ' %(val)s'
+        except ValueError:
+            val_str = ' "%(val)s"'
+            if op == 'like' or op == 'ilike':
+                val = val.replace('*', '%')
+        final = col_and_opt_str + val_str
+        safe_part = final % {'col': col, 'op': op, 'val': val}
         if num_part > 0:
-            safe_part = ' and json_extract(data, \'$."%(col)s"\') %(op)s %(val)s' % {'col': col, 'op': op, 'val': val}
-        else:
-            safe_part = ' json_extract(data, \'$."%(col)s"\') %(op)s %(val)s' % {'col': col, 'op': op, 'val': val}
+            safe_part = ' and ' + safe_part
         return safe_part
 
 
@@ -117,6 +131,6 @@ class SqlStatement(object):
 
 
 if __name__ == '__main__':
-    uri = '/mytable?select=x,y&z=eq.5&y=gt.4&order=x.desc'
+    uri = '/mytable?select=x,y&z=eq.5&y=gt.4&x=like.*5&order=x.desc'
     sql = SqlStatement(uri)
     print sql.query
