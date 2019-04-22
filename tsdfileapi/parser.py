@@ -40,10 +40,10 @@ class SqlStatement(object):
         self.query_columns = self.parse_columns(uri)
         self.query_conditions = self.parse_row_clauses(uri)
         self.query_ordering = self.parse_ordering_clause(uri)
-        self.query = self.build_sql(uri)
+        self.select_query = self.build_select_query(uri)
 
 
-    def build_sql(self, uri):
+    def build_select_query(self, uri):
         if '?' not in uri:
             table_name = os.path.basename(uri)
             return 'select * from %s' % table_name
@@ -154,8 +154,8 @@ class SqlStatement(object):
 if __name__ == '__main__':
     uri1 = '/mytable?select=x,y&z=eq.5&y=gt.45&order=x.desc'
     sql1 = SqlStatement(uri1)
-    print sql1.query
+    print sql1.select_query
     uri2 = '/mytable?x=not.like.*zap&y=not.is.null'
     sql2 = SqlStatement(uri2)
-    print sql2.query
+    print sql2.select_query
 

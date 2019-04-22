@@ -185,7 +185,7 @@ def sqlite_get_data(engine, table_name, uri):
     sql = SqlStatement(uri)
     try:
         session = engine.cursor()
-        res = session.execute(sql.query).fetchall()
+        res = session.execute(sql.select_query).fetchall()
     except Exception:
         raise Exception('Could not fetch data')
     finally:
