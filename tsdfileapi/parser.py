@@ -9,9 +9,16 @@ class SqlStatement(object):
 
     """
     SqlStatement constructs a safe SQL query from a URI query.
-    URI queries have the following generic structure:
+    URI queries have the following generic structures:
 
-    /table_name?select=col1,col2&col3=eq.5&col2=not.is.null&order=col1.desc
+    GET /table_name?select=col1,col2&col3=eq.5&col2=not.is.null&order=col1.desc
+    PATCH /table_name?set=col1.5&col3=eq.5
+    DELETE /table_name?col3=eq.5
+
+    Limitation: currently, reserved tokens are: ',.&' and all URI query terms are
+    reserved words. To allow these to be used in query values, the parser will
+    have to be reimplemented to support quoting values in the URI. The current
+    implementation without such support will, however, satisfy enough queries.
 
     The constructor takes the URI, and generates three SQL query parts:
 
@@ -40,7 +47,10 @@ class SqlStatement(object):
         self.query_columns = self.parse_columns(uri)
         self.query_conditions = self.parse_row_clauses(uri)
         self.query_ordering = self.parse_ordering_clause(uri)
+        self.update_details = self.parse_update_clause(uri)
         self.select_query = self.build_select_query(uri)
+        self.update_query = self.build_update_query(uri)
+        self.delete_query = self.build_delete_query(uri)
 
 
     def build_select_query(self, uri):
@@ -58,6 +68,36 @@ class SqlStatement(object):
         return query
 
 
+    def build_update_query(self, uri):
+        if '?' not in uri:
+            return None
+        table_name = os.path.basename(uri.split('?')[0])
+        stmt_update = "update %(table_name)s " % {'table_name': table_name}
+        stmt_set = "%(update_details)s " % {'update_details': self.update_details} if self.update_details else ''
+        stmt_where = "where %(conditions)s " % {'conditions': self.query_conditions} if self.query_conditions else ''
+        query = stmt_update + stmt_set + stmt_where
+        return query if self.update_details else None
+
+
+    def parse_update_clause(self, uri):
+        update_clause = None
+        if '?' not in uri:
+            return None
+        uri_query = uri.split('?')[-1]
+        parts = uri_query.split('&')
+        set_count = 0
+        for part in parts:
+            # todo: need to get this working inside json values
+            if part.startswith('set'):
+                part = part.replace('=', ' ')
+                update_clause = part.replace('.', '=')
+        return update_clause
+
+
+    def build_delete_query(self, uri):
+        return None
+
+
     def parse_columns(self, uri):
         if '?' not in uri:
             return '*'
@@ -65,7 +105,7 @@ class SqlStatement(object):
         columns = '*'
         parts = uri_query.split('&')
         for part in parts:
-            if 'select' in part:
+            if part.startswith('select'):
                 columns = part.split('=')[-1]
         fmt_str = "json_object(\"%s\", json_extract(data, '$.\"%s\"')) as \"%s\""
         if ',' in columns:
@@ -117,7 +157,7 @@ class SqlStatement(object):
         num_part = 0
         parts = uri_query.split('&')
         for part in parts:
-            if ('select' not in part and 'order' not in part):
+            if (not part.startswith('select') and not part.startswith('order') and not part.startswith('set')):
                 safe_part = self.construct_safe_where_clause_part(part, num_part)
                 conditions += safe_part
                 num_part += 1
@@ -145,17 +185,19 @@ class SqlStatement(object):
         ordering = ''
         parts = uri_query.split('&')
         for part in parts:
-            if 'order' in part:
+            if part.startswith('order'):
                 safe_part = self.construct_safe_order_clause(part)
                 ordering += safe_part
         return ordering if len(ordering) > 0 else None
 
 
 if __name__ == '__main__':
-    uri1 = '/mytable?select=x,y&z=eq.5&y=gt.45&order=x.desc'
-    sql1 = SqlStatement(uri1)
-    print sql1.select_query
-    uri2 = '/mytable?x=not.like.*zap&y=not.is.null'
-    sql2 = SqlStatement(uri2)
-    print sql2.select_query
-
+    uris = ['/mytable?select=x,y&z=eq.5&y=gt.4&order=x.desc',
+            '/mytable?x=not.like.*zap&y=not.is.null',
+            '/table_name?set=x.5,y.6&z=eq.5',
+            '/table_name?set=x.5&z=eq.5',
+            '/table_name?z=eq.5']
+    for uri in uris:
+        sql = SqlStatement(uri)
+        print sql.select_query
+        print sql.update_query

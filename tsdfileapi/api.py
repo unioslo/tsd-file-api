@@ -1624,7 +1624,7 @@ class GenericTableHandler(AuthRequestHandler):
     PATCH /v1/pXX/tables/generic/mytable?query
     DELETE /v1/pXX/tables/generic/mytable?query
 
-    TODO: per method authnz, pagination, response format
+    TODO: per method authnz, pagination, response format, access control
 
     """
 
