@@ -74,20 +74,27 @@ class SqlStatement(object):
                 quoted_column = fmt_str % (name, name, name)
                 columns = columns.replace(name, quoted_column)
         else:
-            name = columns
-            columns = fmt_str % (name, name, name)
+            if columns != '*':
+                name = columns
+                columns = fmt_str % (name, name, name)
         return columns
 
 
     def construct_safe_where_clause_part(self, part, num_part):
         op_and_val = part.split('=')[1]
         col = part.split('=')[0]
-        # add support for not - two '.' in that case
-        # if 'not in op_and_val...'
-        op = op_and_val.split('.')[0]
+        if 'not' in op_and_val:
+            op = op_and_val.split('.')[1]
+            val = op_and_val.split('.')[2]
+            if 'is' in op_and_val:
+                col_and_opt_str = "json_extract(data, '$.\"%(col)s\"') %(op)s not"
+            else:
+                col_and_opt_str = "json_extract(data, '$.\"%(col)s\"') not %(op)s"
+        else:
+            op = op_and_val.split('.')[0]
+            val = op_and_val.split('.')[1]
+            col_and_opt_str = "json_extract(data, '$.\"%(col)s\"') %(op)s"
         assert op in self.operators.keys()
-        val = op_and_val.split('.')[1]
-        col_and_opt_str = "json_extract(data, '$.\"%(col)s\"') %(op)s"
         try:
             int(val)
             val_str = ' %(val)s'
@@ -145,6 +152,10 @@ class SqlStatement(object):
 
 
 if __name__ == '__main__':
-    uri = '/mytable?select=x,y&z=eq.5&y=gt.4&x=like.*5&order=x.desc'
-    sql = SqlStatement(uri)
-    print sql.query
+    uri1 = '/mytable?select=x,y&z=eq.5&y=gt.45&order=x.desc'
+    sql1 = SqlStatement(uri1)
+    print sql1.query
+    uri2 = '/mytable?x=not.like.*zap&y=not.is.null'
+    sql2 = SqlStatement(uri2)
+    print sql2.query
+
