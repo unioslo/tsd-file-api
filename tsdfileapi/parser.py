@@ -103,7 +103,13 @@ class SqlStatement(object):
 
 
     def build_delete_query(self, uri):
-        return None
+        if '?' not in uri:
+            return None
+        table_name = os.path.basename(uri.split('?')[0])
+        stmt_delete = "delete from %(table_name)s " % {'table_name': table_name}
+        stmt_where = "where %(conditions)s " % {'conditions': self.query_conditions} if self.query_conditions else ''
+        query = stmt_delete + stmt_where
+        return query
 
 
     def parse_columns(self, uri):
@@ -209,3 +215,4 @@ if __name__ == '__main__':
         sql = SqlStatement(uri)
         print sql.select_query
         print sql.update_query
+        print sql.delete_query
