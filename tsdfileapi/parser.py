@@ -3,6 +3,7 @@
 
 import os
 import logging
+import json
 
 
 class SqlStatement(object):
@@ -73,7 +74,7 @@ class SqlStatement(object):
             return None
         table_name = os.path.basename(uri.split('?')[0])
         stmt_update = "update %(table_name)s " % {'table_name': table_name}
-        stmt_set = "%(update_details)s " % {'update_details': self.update_details} if self.update_details else ''
+        stmt_set = "set %(update_details)s " % {'update_details': self.update_details} if self.update_details else ''
         stmt_where = "where %(conditions)s " % {'conditions': self.query_conditions} if self.query_conditions else ''
         query = stmt_update + stmt_set + stmt_where
         return query if self.update_details else None
@@ -87,10 +88,17 @@ class SqlStatement(object):
         parts = uri_query.split('&')
         set_count = 0
         for part in parts:
-            # todo: need to get this working inside json values
             if part.startswith('set'):
-                part = part.replace('=', ' ')
-                update_clause = part.replace('.', '=')
+                part = part.replace('set=', '')
+                settings = part.split(',')
+                new_values = {}
+                for setting in settings:
+                    col, val = setting.split('.')
+                    try:
+                        new_values[col] = int(val)
+                    except ValueError:
+                        new_values[col] = val
+                update_clause = "data = json_patch(data, '%s')" % json.dumps(new_values)
         return update_clause
 
 
@@ -194,9 +202,9 @@ class SqlStatement(object):
 if __name__ == '__main__':
     uris = ['/mytable?select=x,y&z=eq.5&y=gt.4&order=x.desc',
             '/mytable?x=not.like.*zap&y=not.is.null',
-            '/table_name?set=x.5,y.6&z=eq.5',
-            '/table_name?set=x.5&z=eq.5',
-            '/table_name?z=eq.5']
+            '/mytable?set=x.5,y.6&z=eq.5',
+            '/mytable?set=x.5&z=eq.5',
+            '/mytable?z=eq.5']
     for uri in uris:
         sql = SqlStatement(uri)
         print sql.select_query
