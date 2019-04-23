@@ -190,6 +190,7 @@ def sqlite_get_data(engine, table_name, uri):
         raise Exception('Could not fetch data')
     finally:
         session.close()
+        engine.rollback()
         engine.close()
     data = []
     for row in res:
@@ -197,9 +198,35 @@ def sqlite_get_data(engine, table_name, uri):
     return data
 
 
+def sqlite_update_data(engine, table_name, uri):
+    sql = SqlStatement(uri)
+    try:
+        session = engine.cursor()
+        session.execute(sql.update_query)
+        engine.commit()
+    except Exception as e:
+        logging.error(sql.update_query)
+        logging.error(e)
+        return False
+    finally:
+        session.close()
+        engine.rollback()
+        engine.close()
+    return True
+
+
 def sqlite_delete_data(engine, table_name, uri):
-    pass
-
-
-def sqlite_drop_table(engine, table_name):
-    pass
+    sql = SqlStatement(uri)
+    try:
+        session = engine.cursor()
+        session.execute(sql.delete_query)
+        engine.commit()
+    except Exception as e:
+        logging.error(sql.delete_query)
+        logging.error(e)
+        return False
+    finally:
+        session.close()
+        engine.rollback()
+        engine.close()
+    return True

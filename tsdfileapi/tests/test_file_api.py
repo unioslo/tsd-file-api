@@ -546,17 +546,27 @@ class TestFileApi(unittest.TestCase):
         self.assertEqual(resp.status_code, 201)
 
 
-    def test_X_get_data_from_generic_table(self):
+    def test_X_use_generic_table(self):
         headers = {'Authorization': 'Bearer ' + TEST_TOKENS['VALID']}
-        resp1 = requests.get(self.base_url + '/tables/generic',
-                            headers=headers)
+        resp1 = requests.get(self.base_url + '/tables/generic', headers=headers)
         print resp1.text
-        resp2 = requests.get(self.base_url + '/tables/generic/mytest1',
-                            headers=headers)
+        resp2 = requests.get(self.base_url + '/tables/generic/mytest1', headers=headers)
         print resp2.text
-        resp3 = requests.get(self.base_url + '/tables/generic/mytest1?select=key1&key2=eq.bla&order=key1.desc',
-                            headers=headers)
+        resp3 = requests.get(self.base_url + '/tables/generic/mytest1?select=key1&key2=eq.bla&order=key1.desc', headers=headers)
         print resp3.text
+        # update a value
+        resp4 = requests.patch(self.base_url + '/tables/generic/mytest1?set=key1.777&key2=eq.bla', headers=headers)
+        print resp4.text
+        resp5 = requests.get(self.base_url + '/tables/generic/mytest1', headers=headers)
+        print resp5.text
+        # delete a row
+        resp6 = requests.delete(self.base_url + '/tables/generic/mytest1?key1=eq.99',headers=headers)
+        print resp6.text
+        resp7 = requests.get(self.base_url + '/tables/generic/mytest1', headers=headers)
+        print resp7.text
+        # delete all
+        resp8 = requests.delete(self.base_url + '/tables/generic/mytest1?key1=not.is.null', headers=headers)
+        print resp8.text
 
 
     # More Authn+z
@@ -1257,7 +1267,7 @@ def main():
         'test_O_head_on_uploads_succeeds_when_conditions_are_met',
         # sqlite backend
         'test_W_create_and_insert_into_generic_table',
-        'test_X_get_data_from_generic_table',
+        'test_X_use_generic_table',
         # pnum logic
         'test_Y_invalid_project_number_rejected',
         'test_Z_token_for_other_project_rejected',

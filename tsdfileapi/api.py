@@ -39,7 +39,8 @@ from utils import project_import_dir, project_sns_dir, \
                   IS_VALID_GROUPNAME, check_filename, _IS_VALID_UUID, \
                   md5sum, natural_keys, pnum_from_url
 from db import sqlite_insert, sqlite_init, _VALID_PNUM, load_jwk_store, \
-               sqlite_list_tables, sqlite_get_data
+               sqlite_list_tables, sqlite_get_data, sqlite_update_data, \
+               sqlite_delete_data
 from dbresumable import resumable_db_insert_new_for_user, \
                resumable_db_remove_completed_for_user, \
                resumable_db_get_all_resumable_ids_for_user, \
@@ -1618,13 +1619,11 @@ class ProxyHandler(AuthRequestHandler):
 class GenericTableHandler(AuthRequestHandler):
 
     """
-    GET /v1/pXX/tables/generic
-    GET /v1/pXX/tables/generic/mytable?query
-    PUT /v1/pXX/tables/generic/mytable
-    PATCH /v1/pXX/tables/generic/mytable?query
-    DELETE /v1/pXX/tables/generic/mytable?query
+    Manage data in generic sqlite backend.
 
-    TODO: per method authnz, pagination, response format, access control
+    TODO: per method authnz, pagination, response format,
+    access control using groups - model? implementation?
+    per table: default member-group, where to do bookkeeping?
 
     """
 
@@ -1675,11 +1674,29 @@ class GenericTableHandler(AuthRequestHandler):
 
 
     def patch(self, pnum, table_name):
-        pass
+        try:
+            project_dir = project_import_dir(options.uploads_folder, pnum, None, None)
+            engine = sqlite_init(project_dir, builtin=True)
+            data = sqlite_update_data(engine, table_name, self.request.uri)
+            self.set_status(200)
+            self.write({'data': data})
+        except Exception as e:
+            logging.error(e)
+            self.set_status(400)
+            self.write({'message': e.message})
 
 
     def delete(self, pnum, table_name):
-        pass
+        try:
+            project_dir = project_import_dir(options.uploads_folder, pnum, None, None)
+            engine = sqlite_init(project_dir, builtin=True)
+            data = sqlite_delete_data(engine, table_name, self.request.uri)
+            self.set_status(200)
+            self.write({'data': data})
+        except Exception as e:
+            logging.error(e)
+            self.set_status(400)
+            self.write({'message': e.message})
 
 
 class HealthCheckHandler(RequestHandler):

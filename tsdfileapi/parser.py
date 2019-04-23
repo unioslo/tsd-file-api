@@ -210,7 +210,7 @@ if __name__ == '__main__':
             '/mytable?x=not.like.*zap&y=not.is.null',
             '/mytable?set=x.5,y.6&z=eq.5',
             '/mytable?set=x.5&z=eq.5',
-            '/mytable?z=eq.5']
+            '/mytable?z=not.is.null']
     for uri in uris:
         sql = SqlStatement(uri)
         print sql.select_query
