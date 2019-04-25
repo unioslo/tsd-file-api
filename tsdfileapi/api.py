@@ -1621,9 +1621,25 @@ class GenericTableHandler(AuthRequestHandler):
     """
     Manage data in generic sqlite backend.
 
-    TODO: per method authnz, pagination, response format,
-    access control using groups - model? implementation?
-    per table: default member-group, where to do bookkeeping?
+    TODO:
+
+    0) Code changes
+        - implement table metadata endpoint
+        - refactor classes
+        - Table creation a separate request
+
+    1) Nettskjema
+        - own URL
+        - own access control config
+        - restrict URL access to their IPs
+
+    2) Generic endpoint for project usage
+
+    3) Response formats
+        - json, default
+        - csv, on request
+
+    For more advanced features, use ntk.
 
     """
 
