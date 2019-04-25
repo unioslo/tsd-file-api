@@ -9,12 +9,14 @@ import json
 class SqlStatement(object):
 
     """
-    SqlStatement constructs a safe SQL query from a URI query.
-    URI queries have the following generic structures:
+    SqlStatement constructs a safe SQL query from a URI query,
+    using the https://www.sqlite.org/json1.html extension.
 
-    GET /table_name?select=col1,col2&col3=eq.5&col2=not.is.null&order=col1.desc
-    PATCH /table_name?set=col1.5&col3=eq.5
-    DELETE /table_name?col3=eq.5
+    URI queries have the following generic structures, e.g.:
+
+        GET /table_name?select=col1,col2&col3=eq.5&col2=not.is.null&order=col1.desc
+        PATCH /table_name?set=col1.5&col3=eq.5
+        DELETE /table_name?col3=eq.5
 
     Limitation: currently, reserved tokens are: ',.&' and all URI query terms are
     reserved words. To allow these to be used in query values, the parser will
