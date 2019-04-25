@@ -1624,25 +1624,13 @@ class GenericTableHandler(AuthRequestHandler):
 
     TODO:
 
-    detect external and internal requests from hostname
-
-    0) Code changes
-        - implement table metadata endpoint
-        - refactor classes
-        - Table creation a separate request
-
     1) Nettskjema
         - own URL
         - own access control config
-        - restrict URL access to their IPs
 
-    2) Generic endpoint for project usage
-
-    3) Response formats
+    2) Response formats
         - json, default
         - csv, on request
-
-    For more advanced features, use ntk.
 
     """
 
@@ -1654,20 +1642,23 @@ class GenericTableHandler(AuthRequestHandler):
             self.location = 'internal'
         else:
             self.location = 'external'
+        if 'metadata' in self.request.uri:
+            self.datatype = 'metadata'
+        else:
+            self.datatype = 'data'
 
 
-    def get(self, pnum, table_name=None): # TODO: add metadata
+    def get(self, pnum, table_name=None):
         try:
             project_dir = project_import_dir(options.uploads_folder, pnum, None, None)
             if not table_name:
-                logging.info('--------')
                 self.authnz = self.validate_token(roles_allowed=self.acl['metadata'][self.location]['GET'])
                 engine = sqlite_init(project_dir)
                 tables = sqlite_list_tables(engine)
                 self.set_status(200)
                 self.write({'tables': tables})
             else:
-                self.authnz = self.validate_token(roles_allowed=self.acl['data'][self.location]['GET'])
+                self.authnz = self.validate_token(roles_allowed=self.acl[self.datatype][self.location]['GET'])
                 engine = sqlite_init(project_dir, builtin=True)
                 data = sqlite_get_data(engine, table_name, self.request.uri)
                 self.set_status(200)
@@ -1678,15 +1669,18 @@ class GenericTableHandler(AuthRequestHandler):
             self.write({'message': e.message})
 
 
-    def put(self, pnum, table_name): # TODO: add metadata
+    def put(self, pnum, table_name):
         try:
-            self.authnz = self.validate_token(roles_allowed=self.acl['data'][self.location]['PUT'])
+            self.authnz = self.validate_token(roles_allowed=self.acl[self.datatype][self.location]['PUT'])
             data = json_decode(self.request.body)
             assert _VALID_PNUM.match(pnum)
             # todo: change location - hidden from proj, ensure -rw-------
             project_dir = project_import_dir(options.uploads_folder, pnum, None, None)
             try:
                 engine = sqlite_init(project_dir)
+                if self.datatype == 'metadata':
+                    table_name = table_name.replace('/', '_')
+                logging.info(table_name)
                 sqlite_insert(engine, table_name, data)
                 self.set_status(201)
                 self.write({'message': 'data stored'})
@@ -1699,11 +1693,13 @@ class GenericTableHandler(AuthRequestHandler):
             self.write({'message': e.message})
 
 
-    def patch(self, pnum, table_name): # TODO: add metadata
+    def patch(self, pnum, table_name):
         try:
-            self.authnz = self.validate_token(roles_allowed=self.acl['data'][self.location]['PATCH'])
+            self.authnz = self.validate_token(roles_allowed=self.acl[self.datatype][self.location]['PATCH'])
             project_dir = project_import_dir(options.uploads_folder, pnum, None, None)
             engine = sqlite_init(project_dir, builtin=True)
+            if self.datatype == 'metadata':
+                    table_name = table_name.replace('/', '_')
             data = sqlite_update_data(engine, table_name, self.request.uri)
             self.set_status(200)
             self.write({'data': data})
@@ -1713,11 +1709,13 @@ class GenericTableHandler(AuthRequestHandler):
             self.write({'message': e.message})
 
 
-    def delete(self, pnum, table_name): # TODO: add metadata
+    def delete(self, pnum, table_name):
         try:
-            self.authnz = self.validate_token(roles_allowed=self.acl['data'][self.location]['DELETE'])
+            self.authnz = self.validate_token(roles_allowed=self.acl[self.datatype][self.location]['DELETE'])
             project_dir = project_import_dir(options.uploads_folder, pnum, None, None)
             engine = sqlite_init(project_dir, builtin=True)
+            if self.datatype == 'metadata':
+                    table_name = table_name.replace('/', '_')
             data = sqlite_delete_data(engine, table_name, self.request.uri)
             self.set_status(200)
             self.write({'data': data})

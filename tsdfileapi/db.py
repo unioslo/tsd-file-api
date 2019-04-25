@@ -126,6 +126,7 @@ def sqlite_insert(engine, table_name, data):
             elif dtype is dict:
                 # investigate: http://docs.sqlalchemy.org/en/latest/faq/performance.html
                 # Bulk_insert_mappings or use raw sqlite3
+                row = data
                 session.execute('insert into ' + table_name + ' (data) values (:values)',
                         {'values': json.dumps(row)})
         return True

@@ -572,6 +572,11 @@ class TestFileApi(unittest.TestCase):
         resp8 = requests.delete(self.base_url + '/tables/generic/mytest1?key1=not.is.null', headers=headers)
         print resp8.text
         # test metadata endpoints
+        data = {'key1': 'int', 'key2': 'str', 'key3': 'bool'}
+        headers = {'Authorization': 'Bearer ' + TEST_TOKENS['VALID']}
+        resp = requests.put(self.base_url + '/tables/generic/mytest1/metadata',
+                             data=json.dumps(data), headers=headers)
+        self.assertEqual(resp.status_code, 201)
         # test authnz
 
 
