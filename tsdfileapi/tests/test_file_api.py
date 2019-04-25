@@ -550,6 +550,7 @@ class TestFileApi(unittest.TestCase):
         headers = {'Authorization': 'Bearer ' + TEST_TOKENS['VALID']}
         resp1 = requests.get(self.base_url + '/tables/generic', headers=headers)
         print resp1.text
+        headers = {'Authorization': 'Bearer ' + TEST_TOKENS['EXPORT']}
         resp2 = requests.get(self.base_url + '/tables/generic/mytest1', headers=headers)
         print resp2.text
         resp3 = requests.get(self.base_url + '/tables/generic/mytest1?select=key1&key2=eq.bla&order=key1.desc', headers=headers)
@@ -560,13 +561,25 @@ class TestFileApi(unittest.TestCase):
         resp5 = requests.get(self.base_url + '/tables/generic/mytest1', headers=headers)
         print resp5.text
         # delete a row
+        headers = {'Authorization': 'Bearer ' + TEST_TOKENS['ADMIN']}
         resp6 = requests.delete(self.base_url + '/tables/generic/mytest1?key1=eq.99',headers=headers)
         print resp6.text
+        headers = {'Authorization': 'Bearer ' + TEST_TOKENS['EXPORT']}
         resp7 = requests.get(self.base_url + '/tables/generic/mytest1', headers=headers)
         print resp7.text
         # delete all
+        headers = {'Authorization': 'Bearer ' + TEST_TOKENS['ADMIN']}
         resp8 = requests.delete(self.base_url + '/tables/generic/mytest1?key1=not.is.null', headers=headers)
         print resp8.text
+        # test metadata endpoints
+        # test authnz
+
+
+    # test_nettskjema_table
+        # factor out previous tests into function taking url,token list
+        # test data
+        # test metadata endpoints
+        # test authnz
 
 
     # More Authn+z

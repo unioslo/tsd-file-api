@@ -50,6 +50,7 @@ from dbresumable import resumable_db_insert_new_for_user, \
                resumable_db_pop_chunk, \
                resumable_db_get_group
 from pgp import _import_keys
+from acls import ACLS
 
 
 _RW______ = stat.S_IREAD | stat.S_IWRITE
@@ -1623,6 +1624,8 @@ class GenericTableHandler(AuthRequestHandler):
 
     TODO:
 
+    detect external and internal requests from hostname
+
     0) Code changes
         - implement table metadata endpoint
         - refactor classes
@@ -1643,22 +1646,28 @@ class GenericTableHandler(AuthRequestHandler):
 
     """
 
-    def prepare(self):
-        try:
-            self.authnz = self.validate_token(roles_allowed=['import_user', 'export_user', 'admin_user'])
-        except Exception as e:
-            self.finish({'message': 'Authorization failed'})
+    def initialize(self, app):
+        self.app = app
+        self.acl = ACLS[app]
+        #self.db_path = path-for-app
+        if 'internal' in  self.request.host:
+            self.location = 'internal'
+        else:
+            self.location = 'external'
 
 
-    def get(self, pnum, table_name=None):
+    def get(self, pnum, table_name=None): # TODO: add metadata
         try:
             project_dir = project_import_dir(options.uploads_folder, pnum, None, None)
             if not table_name:
+                logging.info('--------')
+                self.authnz = self.validate_token(roles_allowed=self.acl['metadata'][self.location]['GET'])
                 engine = sqlite_init(project_dir)
                 tables = sqlite_list_tables(engine)
                 self.set_status(200)
                 self.write({'tables': tables})
             else:
+                self.authnz = self.validate_token(roles_allowed=self.acl['data'][self.location]['GET'])
                 engine = sqlite_init(project_dir, builtin=True)
                 data = sqlite_get_data(engine, table_name, self.request.uri)
                 self.set_status(200)
@@ -1669,8 +1678,9 @@ class GenericTableHandler(AuthRequestHandler):
             self.write({'message': e.message})
 
 
-    def put(self, pnum, table_name):
+    def put(self, pnum, table_name): # TODO: add metadata
         try:
+            self.authnz = self.validate_token(roles_allowed=self.acl['data'][self.location]['PUT'])
             data = json_decode(self.request.body)
             assert _VALID_PNUM.match(pnum)
             # todo: change location - hidden from proj, ensure -rw-------
@@ -1689,8 +1699,9 @@ class GenericTableHandler(AuthRequestHandler):
             self.write({'message': e.message})
 
 
-    def patch(self, pnum, table_name):
+    def patch(self, pnum, table_name): # TODO: add metadata
         try:
+            self.authnz = self.validate_token(roles_allowed=self.acl['data'][self.location]['PATCH'])
             project_dir = project_import_dir(options.uploads_folder, pnum, None, None)
             engine = sqlite_init(project_dir, builtin=True)
             data = sqlite_update_data(engine, table_name, self.request.uri)
@@ -1702,8 +1713,9 @@ class GenericTableHandler(AuthRequestHandler):
             self.write({'message': e.message})
 
 
-    def delete(self, pnum, table_name):
+    def delete(self, pnum, table_name): # TODO: add metadata
         try:
+            self.authnz = self.validate_token(roles_allowed=self.acl['data'][self.location]['DELETE'])
             project_dir = project_import_dir(options.uploads_folder, pnum, None, None)
             engine = sqlite_init(project_dir, builtin=True)
             data = sqlite_delete_data(engine, table_name, self.request.uri)
@@ -1735,8 +1747,9 @@ def main():
         ('/(.*)/files/export/(.*)', FileStreamerHandler),
         ('/(.*)/files/resumables', ResumablesHandler),
         ('/(.*)/files/resumables/(.*)', ResumablesHandler),
-        ('/(.*)/tables/generic', GenericTableHandler),
-        ('/(.*)/tables/generic/(.*)', GenericTableHandler),
+        ('/(.*)/tables/generic', GenericTableHandler, dict(app='generic')),
+        ('/(.*)/tables/generic/(.*)', GenericTableHandler, dict(app='generic')),
+        ('/(.*)/tables/generic/(.*)/metadata', GenericTableHandler, dict(app='generic')),
         ('/(.*)/sns/(.*)/(.*)', SnsFormDataHandler),
         # with explicit versions - graceful transition in proxy config
         ('/v1/(.*)/files/health', HealthCheckHandler),
@@ -1749,8 +1762,9 @@ def main():
         ('/v1/(.*)/files/export/(.*)', FileStreamerHandler),
         ('/v1/(.*)/files/resumables', ResumablesHandler),
         ('/v1/(.*)/files/resumables/(.*)', ResumablesHandler),
-        ('/v1/(.*)/tables/generic', GenericTableHandler),
-        ('/v1/(.*)/tables/generic/(.*)', GenericTableHandler),
+        ('/v1/(.*)/tables/generic', GenericTableHandler, dict(app='generic')),
+        ('/v1/(.*)/tables/generic/(.*)', GenericTableHandler, dict(app='generic')),
+        ('/v1/(.*)/tables/generic/(.*)/metadata', GenericTableHandler, dict(app='generic')),
         ('/v1/(.*)/sns/(.*)/(.*)', SnsFormDataHandler),
     ], debug=options.debug)
     app.listen(options.port, max_body_size=options.max_body_size)
