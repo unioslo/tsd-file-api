@@ -1623,8 +1623,8 @@ class GenericTableHandler(AuthRequestHandler):
     Manage data in generic sqlite backend.
 
     TODO:
-    sqlite db file permissions, -rw-------
-    CSV response format
+    - limit sqlite db file access
+    - support CSV response format
 
     """
 

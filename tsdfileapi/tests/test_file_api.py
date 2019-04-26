@@ -1299,8 +1299,8 @@ def main():
         # sqlite backend
         # tests disabled for now, need sqlite+json1 in prod
         # before enabling this for projects
-        'test_W_create_and_insert_into_generic_table',
-        'test_X_use_generic_table',
+        #'test_W_create_and_insert_into_generic_table',
+        #'test_X_use_generic_table',
         # pnum logic
         'test_Y_invalid_project_number_rejected',
         'test_Z_token_for_other_project_rejected',
