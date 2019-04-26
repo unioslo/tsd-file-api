@@ -1637,7 +1637,7 @@ class GenericTableHandler(AuthRequestHandler):
     def initialize(self, app):
         self.app = app
         self.acl = ACLS[app]
-        #self.db_path = path-for-app
+        self.db_name =  '.' + app + '.db'
         if 'internal' in  self.request.host:
             self.location = 'internal'
         else:
@@ -1653,13 +1653,13 @@ class GenericTableHandler(AuthRequestHandler):
             project_dir = project_import_dir(options.uploads_folder, pnum, None, None)
             if not table_name:
                 self.authnz = self.validate_token(roles_allowed=self.acl['metadata'][self.location]['GET'])
-                engine = sqlite_init(project_dir)
+                engine = sqlite_init(project_dir, name=self.db_name)
                 tables = sqlite_list_tables(engine)
                 self.set_status(200)
                 self.write({'tables': tables})
             else:
                 self.authnz = self.validate_token(roles_allowed=self.acl[self.datatype][self.location]['GET'])
-                engine = sqlite_init(project_dir, builtin=True)
+                engine = sqlite_init(project_dir, name=self.db_name, builtin=True)
                 data = sqlite_get_data(engine, table_name, self.request.uri)
                 self.set_status(200)
                 self.write({'data': data})
@@ -1677,10 +1677,9 @@ class GenericTableHandler(AuthRequestHandler):
             # todo: change location - hidden from proj, ensure -rw-------
             project_dir = project_import_dir(options.uploads_folder, pnum, None, None)
             try:
-                engine = sqlite_init(project_dir)
+                engine = sqlite_init(project_dir, name=self.db_name)
                 if self.datatype == 'metadata':
                     table_name = table_name.replace('/', '_')
-                logging.info(table_name)
                 sqlite_insert(engine, table_name, data)
                 self.set_status(201)
                 self.write({'message': 'data stored'})
@@ -1697,7 +1696,7 @@ class GenericTableHandler(AuthRequestHandler):
         try:
             self.authnz = self.validate_token(roles_allowed=self.acl[self.datatype][self.location]['PATCH'])
             project_dir = project_import_dir(options.uploads_folder, pnum, None, None)
-            engine = sqlite_init(project_dir, builtin=True)
+            engine = sqlite_init(project_dir, name=self.db_name, builtin=True)
             if self.datatype == 'metadata':
                     table_name = table_name.replace('/', '_')
             data = sqlite_update_data(engine, table_name, self.request.uri)
@@ -1713,7 +1712,7 @@ class GenericTableHandler(AuthRequestHandler):
         try:
             self.authnz = self.validate_token(roles_allowed=self.acl[self.datatype][self.location]['DELETE'])
             project_dir = project_import_dir(options.uploads_folder, pnum, None, None)
-            engine = sqlite_init(project_dir, builtin=True)
+            engine = sqlite_init(project_dir, name=self.db_name, builtin=True)
             if self.datatype == 'metadata':
                     table_name = table_name.replace('/', '_')
             data = sqlite_delete_data(engine, table_name, self.request.uri)
