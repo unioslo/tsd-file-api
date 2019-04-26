@@ -544,47 +544,60 @@ class TestFileApi(unittest.TestCase):
         resp = requests.put(self.base_url + '/tables/generic/mytest1',
                              data=json.dumps(data), headers=headers)
         self.assertEqual(resp.status_code, 201)
+        data = [{'key1': 7, 'key2': 'bla'}, {'key1': 99, 'key3': False}]
+        headers = {'Authorization': 'Bearer ' + TEST_TOKENS['VALID']}
+        resp = requests.put(self.base_url + '/tables/nettskjema/mytest1',
+                             data=json.dumps(data), headers=headers)
+        self.assertEqual(resp.status_code, 201)
+
+
+    def use_generic_table(self, app_route, url_tokens_method):
+        methods = {
+            'GET': requests.get,
+            'PUT': requests.put,
+            'PATCH': requests.patch,
+            'DELETE': requests.delete
+        }
+        for url, token, method in url_tokens_method:
+            headers = {'Authorization': 'Bearer ' + TEST_TOKENS[token]}
+            full_url = self.base_url + app_route + url
+            resp = methods[method](full_url, headers=headers)
+            self.assertTrue(resp.status_code in [200, 201])
 
 
     def test_X_use_generic_table(self):
-        headers = {'Authorization': 'Bearer ' + TEST_TOKENS['VALID']}
-        resp1 = requests.get(self.base_url + '/tables/generic', headers=headers)
-        print resp1.text
-        headers = {'Authorization': 'Bearer ' + TEST_TOKENS['EXPORT']}
-        resp2 = requests.get(self.base_url + '/tables/generic/mytest1', headers=headers)
-        print resp2.text
-        resp3 = requests.get(self.base_url + '/tables/generic/mytest1?select=key1&key2=eq.bla&order=key1.desc', headers=headers)
-        print resp3.text
-        # update a value
-        resp4 = requests.patch(self.base_url + '/tables/generic/mytest1?set=key1.777&key2=eq.bla', headers=headers)
-        print resp4.text
-        resp5 = requests.get(self.base_url + '/tables/generic/mytest1', headers=headers)
-        print resp5.text
-        # delete a row
-        headers = {'Authorization': 'Bearer ' + TEST_TOKENS['ADMIN']}
-        resp6 = requests.delete(self.base_url + '/tables/generic/mytest1?key1=eq.99',headers=headers)
-        print resp6.text
-        headers = {'Authorization': 'Bearer ' + TEST_TOKENS['EXPORT']}
-        resp7 = requests.get(self.base_url + '/tables/generic/mytest1', headers=headers)
-        print resp7.text
-        # delete all
-        headers = {'Authorization': 'Bearer ' + TEST_TOKENS['ADMIN']}
-        resp8 = requests.delete(self.base_url + '/tables/generic/mytest1?key1=not.is.null', headers=headers)
-        print resp8.text
-        # test metadata endpoints
-        data = {'key1': 'int', 'key2': 'str', 'key3': 'bool'}
-        headers = {'Authorization': 'Bearer ' + TEST_TOKENS['VALID']}
-        resp = requests.put(self.base_url + '/tables/generic/mytest1/metadata',
-                             data=json.dumps(data), headers=headers)
-        self.assertEqual(resp.status_code, 201)
-        # test authnz
-
-
-    # test_nettskjema_table
-        # factor out previous tests into function taking url,token list
-        # test data
-        # test metadata endpoints
-        # test authnz
+        generic_url_tokens_method = [
+            ('', 'VALID', 'GET'),
+            ('/mytest1', 'EXPORT', 'GET'),
+            ('/mytest1?select=key1&key2=eq.bla&order=key1.desc', 'EXPORT', 'GET'),
+            ('/mytest1?set=key1.777&key2=eq.bla', 'EXPORT', 'PATCH'),
+            ('/mytest1', 'EXPORT', 'GET'),
+            ('/mytest1?key1=eq.99', 'ADMIN', 'DELETE'),
+            ('/mytest1', 'EXPORT', 'GET'),
+            ('/mytest1?key1=not.is.null', 'ADMIN', 'DELETE'),
+        ]
+        nettskjema_url_tokens_method = [
+            ('', 'VALID', 'GET'),
+            ('/mytest1', 'ADMIN', 'GET'),
+            ('/mytest1?select=key1&key2=eq.bla&order=key1.desc', 'ADMIN', 'GET'),
+            ('/mytest1?set=key1.777&key2=eq.bla', 'ADMIN', 'PATCH'),
+            ('/mytest1', 'ADMIN', 'GET'),
+            ('/mytest1?key1=eq.99', 'ADMIN', 'DELETE'),
+            ('/mytest1', 'ADMIN', 'GET'),
+            ('/mytest1?key1=not.is.null', 'ADMIN', 'DELETE'),
+        ]
+        for app, acl in [('/tables/generic', generic_url_tokens_method),
+                         ('/tables/nettskjema', nettskjema_url_tokens_method)]:
+            self.use_generic_table(app, acl)
+            data = {'key1': 'int', 'key2': 'str', 'key3': 'bool'}
+            headers = {'Authorization': 'Bearer ' + TEST_TOKENS['VALID']}
+            resp = requests.put(self.base_url + app + '/metadata/mytest1',
+                                data=json.dumps(data), headers=headers)
+            self.assertEqual(resp.status_code, 201)
+            headers = {'Authorization': 'Bearer ' + TEST_TOKENS['ADMIN']}
+            resp = requests.delete(self.base_url + app + '/metadata/mytest1?key1=not.is.null',
+                                   headers=headers)
+            self.assertEqual(resp.status_code, 200)
 
 
     # More Authn+z
@@ -1284,6 +1297,8 @@ def main():
         'test_N_head_on_uploads_fails_when_it_should',
         'test_O_head_on_uploads_succeeds_when_conditions_are_met',
         # sqlite backend
+        # tests disabled for now, need sqlite+json1 in prod
+        # before enabling this for projects
         'test_W_create_and_insert_into_generic_table',
         'test_X_use_generic_table',
         # pnum logic

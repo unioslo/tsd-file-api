@@ -4,10 +4,10 @@
 NETTSKJEMA_ACL = {
     "data": {
         "external": {
-            "GET": ["data_owner", "nettskjema_admin_user"],
+            "GET": ["data_owner", "nettskjema_admin_user", "admin_user"],
             "PUT": ["data_owner", "import_user"],
-            "PATCH": ["data_owner", "nettskjema_admin_user"],
-            "DELETE": ["nettskjema_admin_user"]
+            "PATCH": ["data_owner", "nettskjema_admin_user", "admin_user"],
+            "DELETE": ["nettskjema_admin_user", "admin_user"]
         },
         "internal": {
             "GET": ["admin_user"],
@@ -18,9 +18,9 @@ NETTSKJEMA_ACL = {
     },
     "metadata": {
         "external": {
-            "GET": ["import_user", "nettskjema_admin_user"],
+            "GET": ["import_user", "nettskjema_admin_user", "admin_user"],
             "PUT": ["import_user"],
-            "PATCH": ["nettskjema_admin_user"],
+            "PATCH": ["nettskjema_admin_user", "admin_user"],
             "DELETE": ["admin_user"]
             },
         "internal": {

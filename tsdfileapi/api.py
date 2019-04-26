@@ -1623,14 +1623,8 @@ class GenericTableHandler(AuthRequestHandler):
     Manage data in generic sqlite backend.
 
     TODO:
-
-    1) Nettskjema
-        - own URL
-        - own access control config
-
-    2) Response formats
-        - json, default
-        - csv, on request
+    sqlite db file permissions, -rw-------
+    CSV response format
 
     """
 
@@ -1674,12 +1668,9 @@ class GenericTableHandler(AuthRequestHandler):
             self.authnz = self.validate_token(roles_allowed=self.acl[self.datatype][self.location]['PUT'])
             data = json_decode(self.request.body)
             assert _VALID_PNUM.match(pnum)
-            # todo: change location - hidden from proj, ensure -rw-------
             project_dir = project_import_dir(options.uploads_folder, pnum, None, None)
             try:
                 engine = sqlite_init(project_dir, name=self.db_name)
-                if self.datatype == 'metadata':
-                    table_name = table_name.replace('/', '_')
                 sqlite_insert(engine, table_name, data)
                 self.set_status(201)
                 self.write({'message': 'data stored'})
@@ -1697,8 +1688,6 @@ class GenericTableHandler(AuthRequestHandler):
             self.authnz = self.validate_token(roles_allowed=self.acl[self.datatype][self.location]['PATCH'])
             project_dir = project_import_dir(options.uploads_folder, pnum, None, None)
             engine = sqlite_init(project_dir, name=self.db_name, builtin=True)
-            if self.datatype == 'metadata':
-                    table_name = table_name.replace('/', '_')
             data = sqlite_update_data(engine, table_name, self.request.uri)
             self.set_status(200)
             self.write({'data': data})
@@ -1713,8 +1702,6 @@ class GenericTableHandler(AuthRequestHandler):
             self.authnz = self.validate_token(roles_allowed=self.acl[self.datatype][self.location]['DELETE'])
             project_dir = project_import_dir(options.uploads_folder, pnum, None, None)
             engine = sqlite_init(project_dir, name=self.db_name, builtin=True)
-            if self.datatype == 'metadata':
-                    table_name = table_name.replace('/', '_')
             data = sqlite_delete_data(engine, table_name, self.request.uri)
             self.set_status(200)
             self.write({'data': data})
@@ -1744,11 +1731,14 @@ def main():
         ('/(.*)/files/export/(.*)', FileStreamerHandler),
         ('/(.*)/files/resumables', ResumablesHandler),
         ('/(.*)/files/resumables/(.*)', ResumablesHandler),
-        ('/(.*)/tables/generic', GenericTableHandler, dict(app='generic')),
+        ('/(.*)/tables/generic/metadata/(.*)', GenericTableHandler, dict(app='generic')),
         ('/(.*)/tables/generic/(.*)', GenericTableHandler, dict(app='generic')),
-        ('/(.*)/tables/generic/(.*)/metadata', GenericTableHandler, dict(app='generic')),
+        ('/(.*)/tables/generic', GenericTableHandler, dict(app='generic')),
+        ('/(.*)/tables/nettskjema/metadata/(.*)', GenericTableHandler, dict(app='nettskjema')),
+        ('/(.*)/tables/nettskjema/(.*)', GenericTableHandler, dict(app='nettskjema')),
+        ('/(.*)/tables/nettskjema', GenericTableHandler, dict(app='nettskjema')),
         ('/(.*)/sns/(.*)/(.*)', SnsFormDataHandler),
-        # with explicit versions - graceful transition in proxy config
+        # with explicit versions - for a graceful transition in proxy config
         ('/v1/(.*)/files/health', HealthCheckHandler),
         ('/v1/(.*)/files/upload_stream', StreamHandler),
         ('/v1/(.*)/files/upload_stream/(.*)', StreamHandler),
@@ -1759,9 +1749,12 @@ def main():
         ('/v1/(.*)/files/export/(.*)', FileStreamerHandler),
         ('/v1/(.*)/files/resumables', ResumablesHandler),
         ('/v1/(.*)/files/resumables/(.*)', ResumablesHandler),
-        ('/v1/(.*)/tables/generic', GenericTableHandler, dict(app='generic')),
+        ('/v1/(.*)/tables/generic/metadata/(.*)', GenericTableHandler, dict(app='generic')),
         ('/v1/(.*)/tables/generic/(.*)', GenericTableHandler, dict(app='generic')),
-        ('/v1/(.*)/tables/generic/(.*)/metadata', GenericTableHandler, dict(app='generic')),
+        ('/v1/(.*)/tables/generic', GenericTableHandler, dict(app='generic')),
+        ('/v1/(.*)/tables/nettskjema/metadata/(.*)', GenericTableHandler, dict(app='nettskjema')),
+        ('/v1/(.*)/tables/nettskjema/(.*)', GenericTableHandler, dict(app='nettskjema')),
+        ('/v1/(.*)/tables/nettskjema', GenericTableHandler, dict(app='nettskjema')),
         ('/v1/(.*)/sns/(.*)/(.*)', SnsFormDataHandler),
     ], debug=options.debug)
     app.listen(options.port, max_body_size=options.max_body_size)
