@@ -1235,10 +1235,10 @@ class StreamHandler(AuthRequestHandler):
                     filename = check_filename(url_unescape(uri_filename))
                     if self.request.method == 'PATCH':
                         self.rdb = sqlite_init(project_dir, name='.resumables-' + self.user + '.db')
-                        filename = self.handle_resumable_request(project_dir, filename)
+                        filename = self.handle_resumable_request(self.project_dir, filename)
                     # prepare the partial file name for incoming data
                     # ensure we do not write to active file
-                    self.path = os.path.normpath(project_dir + '/' + filename)
+                    self.path = os.path.normpath(self.project_dir + '/' + filename)
                     self.path_part = self.path + '.' + str(uuid4()) + '.part'
                     if os.path.lexists(self.path_part):
                         logging.error('trying to write to partial file - killing request')
@@ -1258,9 +1258,9 @@ class StreamHandler(AuthRequestHandler):
                     elif content_type == 'application/aes-octet-stream':
                         self.handle_aes_octet_stream(content_type)
                     elif content_type in ['application/tar', 'application/tar.gz']:
-                        self.handle_tar(content_type, project_dir)
+                        self.handle_tar(content_type, self.project_dir)
                     elif content_type in ['application/tar.aes', 'application/tar.gz.aes']:
-                        self.handle_tar_aes(content_type, project_dir)
+                        self.handle_tar_aes(content_type, self.project_dir)
                     elif content_type == 'application/gz':
                         self.handle_gz(content_type, filemode)
                     elif content_type == 'application/gz.aes':
