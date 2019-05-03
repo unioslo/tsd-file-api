@@ -871,7 +871,7 @@ class ResumablesHandler(AuthRequestHandler):
                 'filename': filename, 'group': group}
         return info
 
-    def initialize(self):
+    def initialize(self, cluster_software):
         try:
             pnum = pnum_from_url(self.request.uri)
             assert _VALID_PNUM.match(pnum)
@@ -1187,7 +1187,7 @@ class StreamHandler(AuthRequestHandler):
         return final
 
 
-    def initialize(self):
+    def initialize(self, cluster_software):
         try:
             pnum = pnum_from_url(self.request.uri)
             assert _VALID_PNUM.match(pnum)
@@ -1734,15 +1734,15 @@ def main():
     parse_command_line()
     app = Application([
         ('/(.*)/files/health', HealthCheckHandler),
-        ('/(.*)/files/upload_stream', StreamHandler),
-        ('/(.*)/files/upload_stream/(.*)', StreamHandler),
+        ('/(.*)/files/upload_stream', StreamHandler, dict(cluster_software=False)),
+        ('/(.*)/files/upload_stream/(.*)', StreamHandler, dict(cluster_software=False)),
         ('/(.*)/files/stream', ProxyHandler),
         ('/(.*)/files/stream/(.*)', ProxyHandler),
         ('/(.*)/files/upload', FormDataHandler),
         ('/(.*)/files/export', FileStreamerHandler),
         ('/(.*)/files/export/(.*)', FileStreamerHandler),
-        ('/(.*)/files/resumables', ResumablesHandler),
-        ('/(.*)/files/resumables/(.*)', ResumablesHandler),
+        ('/(.*)/files/resumables', ResumablesHandler, dict(cluster_software=False)),
+        ('/(.*)/files/resumables/(.*)', ResumablesHandler, dict(cluster_software=False)),
         ('/(.*)/tables/generic/metadata/(.*)', GenericTableHandler, dict(app='generic')),
         ('/(.*)/tables/generic/(.*)', GenericTableHandler, dict(app='generic')),
         ('/(.*)/tables/generic', GenericTableHandler, dict(app='generic')),
@@ -1752,15 +1752,15 @@ def main():
         ('/(.*)/sns/(.*)/(.*)', SnsFormDataHandler),
         # with explicit versions - for a graceful transition in proxy config
         ('/v1/(.*)/files/health', HealthCheckHandler),
-        ('/v1/(.*)/files/upload_stream', StreamHandler),
-        ('/v1/(.*)/files/upload_stream/(.*)', StreamHandler),
+        ('/v1/(.*)/files/upload_stream', StreamHandler, dict(cluster_software=False)),
+        ('/v1/(.*)/files/upload_stream/(.*)', StreamHandler, dict(cluster_software=False)),
         ('/v1/(.*)/files/stream', ProxyHandler),
         ('/v1/(.*)/files/stream/(.*)', ProxyHandler),
         ('/v1/(.*)/files/upload', FormDataHandler),
         ('/v1/(.*)/files/export', FileStreamerHandler),
         ('/v1/(.*)/files/export/(.*)', FileStreamerHandler),
-        ('/v1/(.*)/files/resumables', ResumablesHandler),
-        ('/v1/(.*)/files/resumables/(.*)', ResumablesHandler),
+        ('/v1/(.*)/files/resumables', ResumablesHandler, dict(cluster_software=False)),
+        ('/v1/(.*)/files/resumables/(.*)', ResumablesHandler, dict(cluster_software=False)),
         ('/v1/(.*)/tables/generic/metadata/(.*)', GenericTableHandler, dict(app='generic')),
         ('/v1/(.*)/tables/generic/(.*)', GenericTableHandler, dict(app='generic')),
         ('/v1/(.*)/tables/generic', GenericTableHandler, dict(app='generic')),

@@ -45,7 +45,7 @@ def check_filename(filename):
 
 
 def project_import_dir(uploads_folder, pnum=None, keyid=None,
-                       formid=None, cluster=False):
+                       formid=None, cluster_software=False):
     """
     Create a project specific path based on config and a project number.
 
@@ -62,7 +62,7 @@ def project_import_dir(uploads_folder, pnum=None, keyid=None,
 
     """
     try:
-        if cluster:
+        if cluster_software:
             return '/cluster/var/file-import'
         assert _VALID_PNUM.match(pnum)
         folder = uploads_folder[pnum]
