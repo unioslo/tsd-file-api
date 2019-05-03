@@ -1183,6 +1183,16 @@ class StreamHandler(AuthRequestHandler):
         return final
 
 
+    def initialize(self):
+        try:
+            pnum = pnum_from_url(self.request.uri)
+            assert _VALID_PNUM.match(pnum)
+            self.project_dir = project_import_dir(options.uploads_folder, pnum, None, None)
+        except AssertionError as e:
+            logging.error('URI does not contain a valid pnum')
+            raise e
+
+
     @gen.coroutine
     def prepare(self):
         """
@@ -1229,12 +1239,10 @@ class StreamHandler(AuthRequestHandler):
                     filemode = 'wb+'
                 try:
                     content_type = self.request.headers['Content-Type']
-                    project_dir = project_import_dir(options.uploads_folder, pnum, None, None)
-                    self.project_dir = project_dir
                     uri_filename = self.request.uri.split('?')[0].split('/')[-1]
                     filename = check_filename(url_unescape(uri_filename))
                     if self.request.method == 'PATCH':
-                        self.rdb = sqlite_init(project_dir, name='.resumables-' + self.user + '.db')
+                        self.rdb = sqlite_init(self.project_dir, name='.resumables-' + self.user + '.db')
                         filename = self.handle_resumable_request(self.project_dir, filename)
                     # prepare the partial file name for incoming data
                     # ensure we do not write to active file
