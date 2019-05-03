@@ -875,7 +875,8 @@ class ResumablesHandler(AuthRequestHandler):
         try:
             pnum = pnum_from_url(self.request.uri)
             assert _VALID_PNUM.match(pnum)
-            self.project_dir = project_import_dir(options.uploads_folder, pnum, None, None)
+            self.project_dir = project_import_dir(options.uploads_folder, pnum, None, None,
+                                                  cluster_software=cluster_software)
         except AssertionError as e:
             raise e
 
@@ -1191,7 +1192,8 @@ class StreamHandler(AuthRequestHandler):
         try:
             pnum = pnum_from_url(self.request.uri)
             assert _VALID_PNUM.match(pnum)
-            self.project_dir = project_import_dir(options.uploads_folder, pnum, None, None)
+            self.project_dir = project_import_dir(options.uploads_folder, pnum, None, None,
+                                                  cluster_software=cluster_software)
         except AssertionError as e:
             logging.error('URI does not contain a valid pnum')
             raise e
