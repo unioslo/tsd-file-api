@@ -44,7 +44,8 @@ def check_filename(filename):
     return filename
 
 
-def project_import_dir(uploads_folder, pnum=None, keyid=None, formid=None):
+def project_import_dir(uploads_folder, pnum=None, keyid=None,
+                       formid=None, cluster=False):
     """
     Create a project specific path based on config and a project number.
 
@@ -61,6 +62,8 @@ def project_import_dir(uploads_folder, pnum=None, keyid=None, formid=None):
 
     """
     try:
+        if cluster:
+            return '/cluster/var/file-import'
         assert _VALID_PNUM.match(pnum)
         folder = uploads_folder[pnum]
     except KeyError as e:

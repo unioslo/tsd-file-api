@@ -871,18 +871,22 @@ class ResumablesHandler(AuthRequestHandler):
                 'filename': filename, 'group': group}
         return info
 
+    def initialize(self):
+        try:
+            pnum = pnum_from_url(self.request.uri)
+            assert _VALID_PNUM.match(pnum)
+            self.project_dir = project_import_dir(options.uploads_folder, pnum, None, None)
+        except AssertionError as e:
+            raise e
+
 
     def prepare(self):
         try:
             self.authnz = self.validate_token(roles_allowed=['import_user', 'export_user', 'admin_user'])
-            pnum = pnum_from_url(self.request.uri)
-            assert _VALID_PNUM.match(pnum)
-            self.project_dir = project_import_dir(options.uploads_folder, pnum, None, None)
             self.rdb = sqlite_init(self.project_dir, name='.resumables-' + self.user + '.db')
         except Exception as e:
             logging.error(e)
             raise e
-
 
 
     def get(self, pnum, filename=None):
