@@ -44,7 +44,7 @@ def check_filename(filename):
     return filename
 
 
-def project_import_dir(uploads_folder, pnum, keyid=None, formid=None):
+def project_import_dir(uploads_folder, pnum=None, keyid=None, formid=None):
     """
     Create a project specific path based on config and a project number.
 
