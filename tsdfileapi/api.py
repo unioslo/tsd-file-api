@@ -1194,7 +1194,9 @@ class StreamHandler(AuthRequestHandler):
             assert _VALID_PNUM.match(pnum)
             self.project_dir = project_import_dir(options.uploads_folder, pnum, None, None,
                                                   cluster_software=cluster_software)
+            self.cluster_software = False
         except AssertionError as e:
+            self.cluster_software = None
             logging.error('URI does not contain a valid pnum')
             raise e
 
@@ -1438,8 +1440,9 @@ class StreamHandler(AuthRequestHandler):
                 else:
                     path = self.merged_file
                 os.chmod(path, _RW______)
-                subprocess.call(['sudo', options.chowner_path, path,
-                                 self.user, options.api_user, self.group_name])
+                if not self.cluster_software:
+                    subprocess.call(['sudo', options.chowner_path, path,
+                                     self.user, options.api_user, self.group_name])
                 if self.merged_file:
                     assert resumable_db_remove_completed_for_user(self.rdb, self.upload_id, self.user)
             except Exception as e:
@@ -1464,6 +1467,12 @@ class StreamHandler(AuthRequestHandler):
 
 @stream_request_body
 class ProxyHandler(AuthRequestHandler):
+
+    def initialize(self, cluster_software):
+        if cluster_software:
+            self.storage_backend = 'cluster'
+        else:
+            self.storage_backend = 'files'
 
     @gen.coroutine
     def prepare(self):
@@ -1562,7 +1571,8 @@ class ProxyHandler(AuthRequestHandler):
                 pass
             params = '?group=%s&chunk=%s&id=%s' % (group_name, chunk_num, upload_id)
             filename = url_escape(self.filename)
-            internal_url = 'http://localhost:%d/%s/files/upload_stream/%s%s' % (options.port, pnum, filename, params)
+            internal_url = 'http://localhost:%d/%s/%s/upload_stream/%s%s' % \
+                (options.port, pnum, self.storage_backend, filename, params)
             # 8. Do async request to handle incoming data
             try:
                 self.fetch_future = AsyncHTTPClient().fetch(
@@ -1736,15 +1746,23 @@ def main():
     parse_command_line()
     app = Application([
         ('/(.*)/files/health', HealthCheckHandler),
+        # cluster storage
+        ('/(.*)/cluster/upload_stream', StreamHandler, dict(cluster_software=True)),
+        ('/(.*)/cluster/upload_stream/(.*)', StreamHandler, dict(cluster_software=True)),
+        ('/(.*)/cluster/stream', ProxyHandler, dict(cluster_software=True)),
+        ('/(.*)/cluster/stream/(.*)', ProxyHandler, dict(cluster_software=True)),
+        ('/(.*)/cluster/resumables', ResumablesHandler, dict(cluster_software=True)),
+        ('/(.*)/cluster/resumables/(.*)', ResumablesHandler, dict(cluster_software=True)),
+        # hnas storage
         ('/(.*)/files/upload_stream', StreamHandler, dict(cluster_software=False)),
         ('/(.*)/files/upload_stream/(.*)', StreamHandler, dict(cluster_software=False)),
-        ('/(.*)/files/stream', ProxyHandler),
-        ('/(.*)/files/stream/(.*)', ProxyHandler),
+        ('/(.*)/files/stream', ProxyHandler, dict(cluster_software=False)),
+        ('/(.*)/files/stream/(.*)', ProxyHandler, dict(cluster_software=False)),
+        ('/(.*)/files/resumables', ResumablesHandler, dict(cluster_software=False)),
+        ('/(.*)/files/resumables/(.*)', ResumablesHandler, dict(cluster_software=False)),
         ('/(.*)/files/upload', FormDataHandler),
         ('/(.*)/files/export', FileStreamerHandler),
         ('/(.*)/files/export/(.*)', FileStreamerHandler),
-        ('/(.*)/files/resumables', ResumablesHandler, dict(cluster_software=False)),
-        ('/(.*)/files/resumables/(.*)', ResumablesHandler, dict(cluster_software=False)),
         ('/(.*)/tables/generic/metadata/(.*)', GenericTableHandler, dict(app='generic')),
         ('/(.*)/tables/generic/(.*)', GenericTableHandler, dict(app='generic')),
         ('/(.*)/tables/generic', GenericTableHandler, dict(app='generic')),
@@ -1754,15 +1772,23 @@ def main():
         ('/(.*)/sns/(.*)/(.*)', SnsFormDataHandler),
         # with explicit versions - for a graceful transition in proxy config
         ('/v1/(.*)/files/health', HealthCheckHandler),
+        # cluster storage
+        ('/v1/(.*)/cluster/upload_stream', StreamHandler, dict(cluster_software=True)),
+        ('/v1/(.*)/cluster/upload_stream/(.*)', StreamHandler, dict(cluster_software=True)),
+        ('/v1/(.*)/cluster/stream', ProxyHandler, dict(cluster_software=True)),
+        ('/v1/(.*)/cluster/stream/(.*)', ProxyHandler, dict(cluster_software=True)),
+        ('/v1/(.*)/cluster/resumables', ResumablesHandler, dict(cluster_software=True)),
+        ('/v1/(.*)/cluster/resumables/(.*)', ResumablesHandler, dict(cluster_software=True)),
+        # hnas storage
         ('/v1/(.*)/files/upload_stream', StreamHandler, dict(cluster_software=False)),
         ('/v1/(.*)/files/upload_stream/(.*)', StreamHandler, dict(cluster_software=False)),
-        ('/v1/(.*)/files/stream', ProxyHandler),
-        ('/v1/(.*)/files/stream/(.*)', ProxyHandler),
+        ('/v1/(.*)/files/stream', ProxyHandler, dict(cluster_software=False)),
+        ('/v1/(.*)/files/stream/(.*)', ProxyHandler, dict(cluster_software=False)),
+        ('/v1/(.*)/files/resumables', ResumablesHandler, dict(cluster_software=False)),
+        ('/v1/(.*)/files/resumables/(.*)', ResumablesHandler, dict(cluster_software=False)),
         ('/v1/(.*)/files/upload', FormDataHandler),
         ('/v1/(.*)/files/export', FileStreamerHandler),
         ('/v1/(.*)/files/export/(.*)', FileStreamerHandler),
-        ('/v1/(.*)/files/resumables', ResumablesHandler, dict(cluster_software=False)),
-        ('/v1/(.*)/files/resumables/(.*)', ResumablesHandler, dict(cluster_software=False)),
         ('/v1/(.*)/tables/generic/metadata/(.*)', GenericTableHandler, dict(app='generic')),
         ('/v1/(.*)/tables/generic/(.*)', GenericTableHandler, dict(app='generic')),
         ('/v1/(.*)/tables/generic', GenericTableHandler, dict(app='generic')),
