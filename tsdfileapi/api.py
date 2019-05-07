@@ -1571,7 +1571,7 @@ class ProxyHandler(AuthRequestHandler):
                 pass
             params = '?group=%s&chunk=%s&id=%s' % (group_name, chunk_num, upload_id)
             filename = url_escape(self.filename)
-            internal_url = 'http://localhost:%d/%s/%s/upload_stream/%s%s' % \
+            internal_url = 'http://localhost:%d/v1/%s/%s/upload_stream/%s%s' % \
                 (options.port, pnum, self.storage_backend, filename, params)
             # 8. Do async request to handle incoming data
             try:
@@ -1745,41 +1745,13 @@ class HealthCheckHandler(RequestHandler):
 def main():
     parse_command_line()
     app = Application([
-        ('/(.*)/files/health', HealthCheckHandler),
-        # cluster storage
-        ('/(.*)/cluster/upload_stream', StreamHandler, dict(cluster_software=True)),
-        ('/(.*)/cluster/upload_stream/(.*)', StreamHandler, dict(cluster_software=True)),
-        ('/(.*)/cluster/stream', ProxyHandler, dict(cluster_software=True)),
-        ('/(.*)/cluster/stream/(.*)', ProxyHandler, dict(cluster_software=True)),
-        ('/(.*)/cluster/resumables', ResumablesHandler, dict(cluster_software=True)),
-        ('/(.*)/cluster/resumables/(.*)', ResumablesHandler, dict(cluster_software=True)),
-        # hnas storage
-        ('/(.*)/files/upload_stream', StreamHandler, dict(cluster_software=False)),
-        ('/(.*)/files/upload_stream/(.*)', StreamHandler, dict(cluster_software=False)),
-        ('/(.*)/files/stream', ProxyHandler, dict(cluster_software=False)),
-        ('/(.*)/files/stream/(.*)', ProxyHandler, dict(cluster_software=False)),
-        ('/(.*)/files/resumables', ResumablesHandler, dict(cluster_software=False)),
-        ('/(.*)/files/resumables/(.*)', ResumablesHandler, dict(cluster_software=False)),
-        ('/(.*)/files/upload', FormDataHandler),
-        ('/(.*)/files/export', FileStreamerHandler),
-        ('/(.*)/files/export/(.*)', FileStreamerHandler),
-        ('/(.*)/tables/generic/metadata/(.*)', GenericTableHandler, dict(app='generic')),
-        ('/(.*)/tables/generic/(.*)', GenericTableHandler, dict(app='generic')),
-        ('/(.*)/tables/generic', GenericTableHandler, dict(app='generic')),
-        ('/(.*)/tables/nettskjema/metadata/(.*)', GenericTableHandler, dict(app='nettskjema')),
-        ('/(.*)/tables/nettskjema/(.*)', GenericTableHandler, dict(app='nettskjema')),
-        ('/(.*)/tables/nettskjema', GenericTableHandler, dict(app='nettskjema')),
-        ('/(.*)/sns/(.*)/(.*)', SnsFormDataHandler),
-        # with explicit versions - for a graceful transition in proxy config
         ('/v1/(.*)/files/health', HealthCheckHandler),
-        # cluster storage
         ('/v1/(.*)/cluster/upload_stream', StreamHandler, dict(cluster_software=True)),
         ('/v1/(.*)/cluster/upload_stream/(.*)', StreamHandler, dict(cluster_software=True)),
         ('/v1/(.*)/cluster/stream', ProxyHandler, dict(cluster_software=True)),
         ('/v1/(.*)/cluster/stream/(.*)', ProxyHandler, dict(cluster_software=True)),
         ('/v1/(.*)/cluster/resumables', ResumablesHandler, dict(cluster_software=True)),
         ('/v1/(.*)/cluster/resumables/(.*)', ResumablesHandler, dict(cluster_software=True)),
-        # hnas storage
         ('/v1/(.*)/files/upload_stream', StreamHandler, dict(cluster_software=False)),
         ('/v1/(.*)/files/upload_stream/(.*)', StreamHandler, dict(cluster_software=False)),
         ('/v1/(.*)/files/stream', ProxyHandler, dict(cluster_software=False)),

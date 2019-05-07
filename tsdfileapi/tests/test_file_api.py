@@ -153,7 +153,7 @@ class TestFileApi(unittest.TestCase):
 
         # includes p19 - a random project number for integration testing
         cls.test_project = cls.config['test_project']
-        cls.base_url = 'http://localhost' + ':' + str(cls.config['port']) + '/' + cls.test_project
+        cls.base_url = 'http://localhost' + ':' + str(cls.config['port']) + '/v1/' + cls.test_project
         cls.data_folder = cls.config['data_folder']
         cls.example_csv = os.path.normpath(cls.data_folder + '/example.csv')
         cls.an_empty_file = os.path.normpath(cls.data_folder + '/an-empty-file')
@@ -608,7 +608,7 @@ class TestFileApi(unittest.TestCase):
         headers = {'Authorization': 'Bearer ' + TEST_TOKENS['VALID']}
         resp = requests.put('http://localhost:' + str(self.config['port']) + '/p12-2193-1349213*&^/tables/generic/form_63332',
                              data=json.dumps(data), headers=headers)
-        self.assertEqual(resp.status_code, 400)
+        self.assertEqual(resp.status_code, 404)
 
 
     def test_Z_token_for_other_project_rejected(self):
@@ -783,7 +783,7 @@ class TestFileApi(unittest.TestCase):
         headers = {'Authorization': 'Bearer ' + P12_TOKEN}
         files = {'file': (newfilename, open(self.example_csv))}
         # remove hard-coded port from this, and similar tests
-        resp1 = requests.post('http://localhost:' + str(self.config['port']) + '/p12/files/upload', files=files, headers=headers)
+        resp1 = requests.post('http://localhost:' + str(self.config['port']) + '/v1/p12/files/upload', files=files, headers=headers)
         self.assertEqual(resp1.status_code, 201)
         uploaded_file = os.path.normpath(self.uploads_folder_p12 + '/' + newfilename)
         self.assertEqual(md5sum(self.example_csv), md5sum(uploaded_file))
@@ -795,7 +795,7 @@ class TestFileApi(unittest.TestCase):
         headers2 = {'Filename': 'streamed-put-example-p12.csv',
                    'Authorization': 'Bearer ' + P12_TOKEN,
                    'Expect': '100-Continue'}
-        resp2 = requests.put('http://localhost:' + str(self.config['port']) + '/p12/files/stream',
+        resp2 = requests.put('http://localhost:' + str(self.config['port']) + '/v1/p12/files/stream',
                             data=lazy_file_reader(self.example_csv), headers=headers2)
         self.assertEqual(resp2.status_code, 201)
         uploaded_file2 = os.path.normpath(self.uploads_folder_p12 + '/p12-member-group/' + newfilename2)
