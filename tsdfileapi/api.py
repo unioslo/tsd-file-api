@@ -1505,7 +1505,7 @@ class ProxyHandler(AuthRequestHandler):
             try:
                 uri = self.request.uri
                 uri_parts = uri.split('/')
-                if len(uri_parts) >= 5:
+                if len(uri_parts) >= 6:
                     basename = uri_parts[-1]
                     filename = basename.split('?')[0]
                     self.filename = check_filename(url_unescape(filename))
