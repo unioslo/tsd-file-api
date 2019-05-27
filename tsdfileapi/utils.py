@@ -62,6 +62,8 @@ def project_import_dir(uploads_folder, pnum=None, keyid=None,
 
     """
     try:
+        # future: if p01 then this dir, otherwise /cluster/projects
+        # change cluster_software to cluster
         if cluster_software:
             return '/cluster/var/file-import'
         assert _VALID_PNUM.match(pnum)

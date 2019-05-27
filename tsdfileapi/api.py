@@ -1155,7 +1155,10 @@ class StreamHandler(AuthRequestHandler):
         if '.chunk.end' in last_chunk_filename:
             logging.info('deleting: %s', chunks_dir)
             os.rename(out, final)
-            shutil.rmtree(chunks_dir)
+            try:
+                shutil.rmtree(chunks_dir) # do not need to fail upload if this does not work
+            except OSError as e:
+                logging.error(e)
         else:
             chunk_num = int(last_chunk_filename.split('.chunk.')[-1])
             chunk = chunks_dir + '/' + last_chunk_filename
