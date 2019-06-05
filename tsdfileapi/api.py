@@ -1652,7 +1652,6 @@ class GenericTableHandler(AuthRequestHandler):
 
     TODO:
     - limit sqlite db file access
-    - support CSV response format
 
     """
 
