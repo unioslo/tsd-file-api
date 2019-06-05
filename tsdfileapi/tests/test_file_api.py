@@ -549,6 +549,10 @@ class TestFileApi(unittest.TestCase):
         resp = requests.put(self.base_url + '/tables/nettskjema/mytest1',
                              data=json.dumps(data), headers=headers)
         self.assertEqual(resp.status_code, 201)
+        headers = {'Authorization': 'Bearer ' + TEST_TOKENS['EXPORT'],
+                   'Accept': 'text/csv'}
+        resp = requests.get(self.base_url + '/tables/generic/mytest1', headers=headers)
+        self.assertTrue(resp.status_code in [200, 201])
 
 
     def use_generic_table(self, app_route, url_tokens_method):
@@ -598,6 +602,8 @@ class TestFileApi(unittest.TestCase):
             resp = requests.delete(self.base_url + app + '/metadata/mytest1?key1=not.is.null',
                                    headers=headers)
             self.assertEqual(resp.status_code, 200)
+
+
 
 
     # More Authn+z

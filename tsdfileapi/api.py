@@ -25,6 +25,7 @@ from collections import OrderedDict
 import yaml
 import magic
 import tornado.queues
+from pandas import DataFrame
 from tornado.escape import json_decode, url_unescape, url_escape
 from tornado import gen
 from tornado.httpclient import AsyncHTTPClient
@@ -1682,8 +1683,20 @@ class GenericTableHandler(AuthRequestHandler):
                 self.authnz = self.validate_token(roles_allowed=self.acl[self.datatype][self.location]['GET'])
                 engine = sqlite_init(project_dir, name=self.db_name, builtin=True)
                 data = sqlite_get_data(engine, table_name, self.request.uri)
-                self.set_status(200)
-                self.write({'data': data})
+                if 'Accept' in self.request.headers:
+                    if self.request.headers['Accept'] == 'text/csv':
+                        df = DataFrame()
+                        df = df.from_records(data)
+                        data = df.to_csv(None, sep=',', index=False)
+                        self.set_status(200)
+                        self.write(data)
+                    else:
+                        self.set_status(200)
+                        logging.info(data)
+                        self.write({'data': data})
+                else:
+                    self.set_status(200)
+                    self.write({'data': data})
         except Exception as e:
             logging.error(e)
             self.set_status(400)
