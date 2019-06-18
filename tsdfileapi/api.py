@@ -1652,6 +1652,9 @@ class GenericTableHandler(AuthRequestHandler):
 
     TODO:
     - limit sqlite db file access
+    Maybe:
+    - GET Accept: application/sqlite
+    - POST Content-Type: text/csv -> "concatenate"
 
     """
 

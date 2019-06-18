@@ -3,8 +3,11 @@
 
 * [json1 extension](https://www.sqlite.org/json1.html)
 
-## methods
+## methods and endpoints
 
+### Generic data
+
+For data:
 ```txt
 GET /v1/pXX/tables/generic
 GET /v1/pXX/tables/generic/mytable
@@ -12,6 +15,37 @@ PUT /v1/pXX/tables/generic/mytable
 PATCH /v1/pXX/tables/generic/mytable
 DELETE /v1/pXX/tables/generic/mytable
 ```
+For metadata:
+```txt
+GET /v1/pXX/tables/generic/metadata
+GET /v1/pXX/tables/generic/metadata/mytable
+PUT /v1/pXX/tables/generic/metadata/mytable
+PATCH /v1/pXX/tables/generic/metadata/mytable
+DELETE /v1/pXX/tables/generic/metadata/mytable
+```
+
+### Nettskjema
+
+For data:
+```txt
+GET /v1/pXX/tables/nettskjema
+GET /v1/pXX/tables/nettskjema/mytable
+PUT /v1/pXX/tables/nettskjema/mytable
+PATCH /v1/pXX/tables/nettskjema/mytable
+DELETE /v1/pXX/tables/nettskjema/mytable
+```
+For metadata:
+```txt
+GET /v1/pXX/tables/nettskjema/metadata
+GET /v1/pXX/tables/nettskjema/metadata/mytable
+PUT /v1/pXX/tables/nettskjema/metadata/mytable
+PATCH /v1/pXX/tables/nettskjema/metadata/mytable
+DELETE /v1/pXX/tables/nettskjema/metadata/mytable
+```
+Requirements, for backward compatility:
+- JSON data should be flat, no nesting
+- each record should contain a unique submission ID, identified by a key called `_id`
+- each record should contain a `formid` field
 
 ## features
 
@@ -24,7 +58,7 @@ DELETE /v1/pXX/tables/generic/mytable
 Each instance of the handler must specify access control rules
 
 For Nettskjema:
-- user has to choose who is a member of pXX-nettskjema-admin-group
+- user has to choose who is a member of pXX-nettskjema-admin-group, this could default to e.g. all project members
 - this determines who can:
     - edit and delete data,
     - edit table metadata
