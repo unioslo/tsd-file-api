@@ -424,6 +424,7 @@ class FileStreamerHandler(AuthRequestHandler):
                 fd.close()
             logging.info('user: %s, exported file: %s , with MIME type: %s', self.user, self.filepath, mime_type)
         except Exception as e:
+            self.set_status(400)
             logging.error(e)
             logging.error(self.message)
             self.write({'message': self.message})
