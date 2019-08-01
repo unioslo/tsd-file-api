@@ -205,6 +205,7 @@ class FileStreamerHandler(AuthRequestHandler):
         """
         try:
             check_filename(os.path.basename(filename))
+            filename_raw_utf8 = filename.encode('utf-8')
         except Exception as e:
             logging.error(e)
             self.message = 'Illegal export filename: %s' % filename
@@ -212,7 +213,7 @@ class FileStreamerHandler(AuthRequestHandler):
             return False, None, None
         subprocess.call(['sudo', 'chmod', 'go+r', filename])
         with magic.Magic(flags=magic.MAGIC_MIME_TYPE) as m:
-            mime_type = m.id_filename(filename)
+            mime_type = m.id_filename(filename_raw_utf8)
         size = os.stat(filename).st_size
         if size > CONFIG['export_max_size']:
             logging.error('%s tried to export a file exceeding the maximum size limit', self.user)
