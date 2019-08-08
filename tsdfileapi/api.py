@@ -365,8 +365,13 @@ class FileStreamerHandler(AuthRequestHandler):
                 self.set_status(404)
                 self.message = 'File does not exist'
                 raise Exception
-            status, mime_type, size = self.enforce_export_policy(CONFIG['export_policy'], self.filepath)
-            assert status
+            try:
+                status, mime_type, size = self.enforce_export_policy(CONFIG['export_policy'], self.filepath)
+                assert status
+            except (Exception, AssertionError) as e:
+                logging.error(e)
+                self.set_status(400)
+                raise Exception
             self.set_header('Content-Type', mime_type)
             if 'Range' not in self.request.headers:
                 self.set_header('Content-Length', size)
@@ -424,7 +429,6 @@ class FileStreamerHandler(AuthRequestHandler):
                 fd.close()
             logging.info('user: %s, exported file: %s , with MIME type: %s', self.user, self.filepath, mime_type)
         except Exception as e:
-            self.set_status(400)
             logging.error(e)
             logging.error(self.message)
             self.write({'message': self.message})
