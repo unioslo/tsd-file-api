@@ -45,16 +45,24 @@ def check_filename(filename):
 
 
 def project_import_dir(uploads_folder, pnum=None, keyid=None,
-                       formid=None, cluster_software=False):
+                       formid=None, cluster=False):
     """
     Create a project specific path based on config and a project number.
+
+    If cluster=False, then the project directory is located on
+    /durable, otherwise it is on /cluster. For the latter case,
+    we first ensure that /cluster/projects/{pnum} exists, and if so
+    check whether /cluster/projects/{pnum}/file-import exists. If not,
+    it is created, and the path returned. Otherwise an exception is
+    raise, since the project first needs to get this storage.
 
     Paramaters
     ----------
     uploads_folder: list
     pnum: str
-    keyid: not used
-    formid: not used
+    keyid: deprecated
+    formid: deprecated
+    cluster: bool, default=False
 
     Returns
     -------
@@ -62,10 +70,18 @@ def project_import_dir(uploads_folder, pnum=None, keyid=None,
 
     """
     try:
-        # future: if p01 then this dir, otherwise /cluster/projects
-        # change cluster_software to cluster
-        if cluster_software:
+        if cluster and pnum == 'p01':
             return '/cluster/var/file-import'
+        elif cluster:
+            assert _VALID_PNUM.match(pnum)
+            base = '/cluster/projects/{0}'.format(pnum)
+            target = '{0}/file-import'.format(base)
+            if os.path.lexists(base):
+                if not os.path.lexists(target):
+                    os.makedirs(target) # unsure if we have the permissions
+                return target
+            else:
+                raise Exception('{0} does not have a cluster disk space')
         assert _VALID_PNUM.match(pnum)
         folder = uploads_folder[pnum]
     except KeyError as e:

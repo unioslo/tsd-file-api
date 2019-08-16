@@ -878,12 +878,12 @@ class ResumablesHandler(AuthRequestHandler):
                 'filename': filename, 'group': group}
         return info
 
-    def initialize(self, cluster_software):
+    def initialize(self, cluster):
         try:
             pnum = pnum_from_url(self.request.uri)
             assert _VALID_PNUM.match(pnum)
             self.project_dir = project_import_dir(options.uploads_folder, pnum, None, None,
-                                                  cluster_software=cluster_software)
+                                                  cluster=cluster)
         except AssertionError as e:
             raise e
 
@@ -1198,15 +1198,15 @@ class StreamHandler(AuthRequestHandler):
         return final
 
 
-    def initialize(self, cluster_software):
+    def initialize(self, cluster):
         try:
             pnum = pnum_from_url(self.request.uri)
             assert _VALID_PNUM.match(pnum)
             self.project_dir = project_import_dir(options.uploads_folder, pnum, None, None,
-                                                  cluster_software=cluster_software)
-            self.cluster_software = False
+                                                  cluster=cluster)
+            self.cluster = False
         except AssertionError as e:
-            self.cluster_software = None
+            self.cluster = None
             logging.error('URI does not contain a valid pnum')
             raise e
 
@@ -1450,7 +1450,9 @@ class StreamHandler(AuthRequestHandler):
                 else:
                     path = self.merged_file
                 os.chmod(path, _RW______)
-                if not self.cluster_software:
+                if self.cluster and pnum != 'p01':
+                    pass
+                else:
                     subprocess.call(['sudo', options.chowner_path, path,
                                      self.user, options.api_user, self.group_name])
                 if self.merged_file:
@@ -1478,8 +1480,8 @@ class StreamHandler(AuthRequestHandler):
 @stream_request_body
 class ProxyHandler(AuthRequestHandler):
 
-    def initialize(self, cluster_software):
-        if cluster_software:
+    def initialize(self, cluster):
+        if cluster:
             self.storage_backend = 'cluster'
         else:
             self.storage_backend = 'files'
@@ -1770,18 +1772,20 @@ def main():
     parse_command_line()
     app = Application([
         ('/v1/(.*)/files/health', HealthCheckHandler),
-        ('/v1/(.*)/cluster/upload_stream', StreamHandler, dict(cluster_software=True)),
-        ('/v1/(.*)/cluster/upload_stream/(.*)', StreamHandler, dict(cluster_software=True)),
-        ('/v1/(.*)/cluster/stream', ProxyHandler, dict(cluster_software=True)),
-        ('/v1/(.*)/cluster/stream/(.*)', ProxyHandler, dict(cluster_software=True)),
-        ('/v1/(.*)/cluster/resumables', ResumablesHandler, dict(cluster_software=True)),
-        ('/v1/(.*)/cluster/resumables/(.*)', ResumablesHandler, dict(cluster_software=True)),
-        ('/v1/(.*)/files/upload_stream', StreamHandler, dict(cluster_software=False)),
-        ('/v1/(.*)/files/upload_stream/(.*)', StreamHandler, dict(cluster_software=False)),
-        ('/v1/(.*)/files/stream', ProxyHandler, dict(cluster_software=False)),
-        ('/v1/(.*)/files/stream/(.*)', ProxyHandler, dict(cluster_software=False)),
-        ('/v1/(.*)/files/resumables', ResumablesHandler, dict(cluster_software=False)),
-        ('/v1/(.*)/files/resumables/(.*)', ResumablesHandler, dict(cluster_software=False)),
+        # /cluster storage
+        ('/v1/(.*)/cluster/upload_stream', StreamHandler, dict(cluster=True)),
+        ('/v1/(.*)/cluster/upload_stream/(.*)', StreamHandler, dict(cluster=True)),
+        ('/v1/(.*)/cluster/stream', ProxyHandler, dict(cluster=True)),
+        ('/v1/(.*)/cluster/stream/(.*)', ProxyHandler, dict(cluster=True)),
+        ('/v1/(.*)/cluster/resumables', ResumablesHandler, dict(cluster=True)),
+        ('/v1/(.*)/cluster/resumables/(.*)', ResumablesHandler, dict(cluster=True)),
+        # /durable storage
+        ('/v1/(.*)/files/upload_stream', StreamHandler, dict(cluster=False)),
+        ('/v1/(.*)/files/upload_stream/(.*)', StreamHandler, dict(cluster=False)),
+        ('/v1/(.*)/files/stream', ProxyHandler, dict(cluster=False)),
+        ('/v1/(.*)/files/stream/(.*)', ProxyHandler, dict(cluster=False)),
+        ('/v1/(.*)/files/resumables', ResumablesHandler, dict(cluster=False)),
+        ('/v1/(.*)/files/resumables/(.*)', ResumablesHandler, dict(cluster=False)),
         ('/v1/(.*)/files/upload', FormDataHandler),
         ('/v1/(.*)/files/export', FileStreamerHandler),
         ('/v1/(.*)/files/export/(.*)', FileStreamerHandler),

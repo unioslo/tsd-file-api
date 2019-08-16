@@ -177,6 +177,7 @@ class TestFileApi(unittest.TestCase):
         cls.upload_stream = cls.base_url + '/files/upload_stream'
         cls.export = cls.base_url + '/files/export'
         cls.resumables = cls.base_url + '/files/resumables'
+        cls.cluster = cls.base_url + '/cluster/stream'
         cls.test_project = cls.test_project
 
         # auth tokens
@@ -1273,6 +1274,18 @@ class TestFileApi(unittest.TestCase):
                             headers=headers)
         self.assertEqual(resp.status_code, 201)
 
+    # cluster uploads
+
+    def test_ZZe_cluster_uploads_not_p01(self):
+        token = gen_test_token_for_user(self.config, self.test_user)
+        headers = {'Authorization': 'Bearer ' + token,
+                   'Expect': '100-Continue'}
+        url = self.cluster + '/cluster-upload.csv?group=p11-member-group'
+        resp = requests.put(url,
+                            data=lazy_file_reader(self.example_csv),
+                            headers=headers)
+        self.assertEqual(resp.status_code, 201)
+
 
 def main():
     runner = unittest.TextTestRunner()
@@ -1358,7 +1371,9 @@ def main():
         'test_ZZa_get_specific_range_conditional_on_etag',
         'test_ZZb_get_range_out_of_bounds_returns_correct_error',
         'test_ZZd_filename_rules',
-        'test_ZZe_filename_rules_with_uploads'
+        'test_ZZe_filename_rules_with_uploads',
+        # cluster
+        'test_ZZe_cluster_uploads_not_p01'
         ])))
     map(runner.run, suite)
 
