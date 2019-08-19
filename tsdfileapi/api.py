@@ -187,6 +187,16 @@ class FileStreamerHandler(AuthRequestHandler):
 
     CHUNK_SIZE = CONFIG['export_chunk_size']
 
+    def initialize(self, cluster):
+        try:
+            pnum = pnum_from_url(self.request.uri)
+            assert _VALID_PNUM.match(pnum)
+            self.export_dir = project_export_dir(CONFIG, pnum, cluster=cluster)
+            self.cluster = cluster
+        except AssertionError as e:
+            self.cluster = None
+            logging.error('URI does not contain a valid pnum')
+            raise e
 
     def enforce_export_policy(self, policy_config, filename):
         """
@@ -348,7 +358,7 @@ class FileStreamerHandler(AuthRequestHandler):
                 self.set_status(401)
                 raise Exception
             assert _VALID_PNUM.match(pnum)
-            self.path = project_export_dir(CONFIG, pnum)
+            self.path = self.export_dir
             if not filename:
                 self.list_files(self.path)
                 return
@@ -457,7 +467,7 @@ class FileStreamerHandler(AuthRequestHandler):
                 self.set_status(401)
                 raise Exception
             assert _VALID_PNUM.match(pnum)
-            self.path = project_export_dir(CONFIG, pnum)
+            self.path = self.export_dir
             if not filename:
                 raise Exception('No info to report')
             try:
@@ -1780,7 +1790,8 @@ def main():
         ('/v1/(.*)/cluster/stream/(.*)', ProxyHandler, dict(cluster=True)),
         ('/v1/(.*)/cluster/resumables', ResumablesHandler, dict(cluster=True)),
         ('/v1/(.*)/cluster/resumables/(.*)', ResumablesHandler, dict(cluster=True)),
-        # add cluster export
+        ('/v1/(.*)/cluster/export', FileStreamerHandler, dict(cluster=True)),
+        ('/v1/(.*)/cluster/export/(.*)', FileStreamerHandler, dict(cluster=True)),
         # /durable storage
         ('/v1/(.*)/files/upload_stream', StreamHandler, dict(cluster=False)),
         ('/v1/(.*)/files/upload_stream/(.*)', StreamHandler, dict(cluster=False)),
@@ -1789,8 +1800,8 @@ def main():
         ('/v1/(.*)/files/resumables', ResumablesHandler, dict(cluster=False)),
         ('/v1/(.*)/files/resumables/(.*)', ResumablesHandler, dict(cluster=False)),
         ('/v1/(.*)/files/upload', FormDataHandler),
-        ('/v1/(.*)/files/export', FileStreamerHandler),
-        ('/v1/(.*)/files/export/(.*)', FileStreamerHandler),
+        ('/v1/(.*)/files/export', FileStreamerHandler, dict(cluster=False)),
+        ('/v1/(.*)/files/export/(.*)', FileStreamerHandler, dict(cluster=False)),
         ('/v1/(.*)/tables/generic/metadata/(.*)', GenericTableHandler, dict(app='generic')),
         ('/v1/(.*)/tables/generic/(.*)', GenericTableHandler, dict(app='generic')),
         ('/v1/(.*)/tables/generic', GenericTableHandler, dict(app='generic')),
