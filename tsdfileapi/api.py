@@ -193,9 +193,10 @@ class FileStreamerHandler(AuthRequestHandler):
             assert _VALID_PNUM.match(pnum)
             self.export_dir = project_export_dir(CONFIG, pnum, cluster=cluster)
             self.cluster = cluster
-        except AssertionError as e:
+        except (AssertionError, Exception) as e:
             self.cluster = None
-            logging.error('URI does not contain a valid pnum')
+            logging.error(e)
+            logging.error('Maybe the URI does not contain a valid pnum')
             raise e
 
     def enforce_export_policy(self, policy_config, filename):

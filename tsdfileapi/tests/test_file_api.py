@@ -178,6 +178,7 @@ class TestFileApi(unittest.TestCase):
         cls.export = cls.base_url + '/files/export'
         cls.resumables = cls.base_url + '/files/resumables'
         cls.cluster = cls.base_url + '/cluster/stream'
+        cls.export_cluster = cls.base_url + '/cluster/export'
         cls.test_project = cls.test_project
 
         # auth tokens
@@ -1238,6 +1239,7 @@ class TestFileApi(unittest.TestCase):
         resp = requests.get(url, headers=headers)
         self.assertEqual(resp.status_code, 405)
 
+    # TODO: add test for norwegian chars
 
     def test_ZZd_filename_rules(self):
         illegal_names = [
@@ -1274,7 +1276,7 @@ class TestFileApi(unittest.TestCase):
                             headers=headers)
         self.assertEqual(resp.status_code, 201)
 
-    # cluster uploads
+    # cluster import
 
     def test_ZZe_cluster_uploads_not_p01(self):
         token = gen_test_token_for_user(self.config, self.test_user)
@@ -1285,6 +1287,16 @@ class TestFileApi(unittest.TestCase):
                             data=lazy_file_reader(self.example_csv),
                             headers=headers)
         self.assertEqual(resp.status_code, 201)
+
+    # Cluster export
+
+    def test_ZZf_cluster_export_not_p01_works(self):
+        url = self.export_cluster + '/file1'
+        headers = {'Authorization': 'Bearer ' + TEST_TOKENS['EXPORT']}
+        resp1 = requests.head(url, headers=headers)
+        self.assertEqual(resp1.status_code, 200)
+        resp2 = requests.get(url, headers=headers)
+        self.assertEqual(resp2.status_code, 200)
 
 
 def main():
@@ -1373,7 +1385,8 @@ def main():
         'test_ZZd_filename_rules',
         'test_ZZe_filename_rules_with_uploads',
         # cluster
-        'test_ZZe_cluster_uploads_not_p01'
+        'test_ZZe_cluster_uploads_not_p01',
+        'test_ZZf_cluster_export_not_p01_works',
         ])))
     map(runner.run, suite)
 
