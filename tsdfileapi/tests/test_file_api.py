@@ -161,8 +161,8 @@ class TestFileApi(unittest.TestCase):
             open(os.path.normpath(cls.data_folder + '/example-ns.json')).read())
         cls.test_user = cls.config['test_user']
         cls.test_group = cls.config['test_group']
-        cls.uploads_folder = project_import_dir(cls.config['uploads_folder'], cls.config['test_project'])
-        cls.uploads_folder_p12 = project_import_dir(cls.config['uploads_folder'], 'p12')
+        cls.uploads_folder = project_import_dir(cls.config, cls.config['test_project'])
+        cls.uploads_folder_p12 = project_import_dir(cls.config, 'p12')
         cls.sns_uploads_folder = project_sns_dir(cls.config['sns_uploads_folder'],
                                                  cls.config['test_project'],
                                                  cls.config['test_keyid'],

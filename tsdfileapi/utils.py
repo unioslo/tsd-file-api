@@ -44,7 +44,7 @@ def check_filename(filename):
     return filename
 
 
-def project_import_dir(uploads_folder, pnum=None, keyid=None,
+def project_import_dir(config, pnum=None, keyid=None,
                        formid=None, cluster=False):
     """
     Create a project specific path based on config and a project number.
@@ -58,7 +58,7 @@ def project_import_dir(uploads_folder, pnum=None, keyid=None,
 
     Paramaters
     ----------
-    uploads_folder: list
+    config: dict
     pnum: str
     keyid: deprecated
     formid: deprecated
@@ -70,29 +70,48 @@ def project_import_dir(uploads_folder, pnum=None, keyid=None,
 
     """
     try:
+        assert _VALID_PNUM.match(pnum)
         if cluster and pnum == 'p01':
-            return '/cluster/var/file-import'
+            return config['uploads_folder_cluster_software']
         elif cluster:
-            assert _VALID_PNUM.match(pnum)
-            base = '/cluster/projects/{0}'.format(pnum)
-            target = '{0}/file-import'.format(base)
+            path = config['uploads_folder_cluster']
+            base = path.replace('pXX', pnum).replace('/file-import', '')
+            logging.info(base)
+            target = path.replace('pXX', pnum)
+            logging.info(target)
             if os.path.lexists(base):
                 if not os.path.lexists(target):
                     os.makedirs(target) # unsure if we have the permissions
                 return target
             else:
                 raise Exception('{0} does not have a cluster disk space')
-        assert _VALID_PNUM.match(pnum)
-        folder = uploads_folder[pnum]
+        folder = config['uploads_folder'][pnum]
     except KeyError as e:
-        folder = uploads_folder['default'].replace('pXX', pnum)
+        folder = config['uploads_folder']['default'].replace('pXX', pnum)
     return os.path.normpath(folder)
 
 
 def project_export_dir(config, pnum, cluster=False):
     """
+    Return the path from where files should be exported.
+
+    Paramaters
+    ----------
+    config: dict
+    pnum: str, project number
+    cluster: bool, if True then use cluster storage location
+
+    Returns
+    -------
+    str
+
     """
-    return config['export_path'].replace('pXX', pnum)
+    if cluster:
+        key = 'export_path_cluster'
+    else:
+        key = 'export_path'
+    return config[key].replace('pXX', pnum)
+
 
 def project_sns_dir(sns_uploads_folder, pnum, keyid=None, formid=None, test=False,
                     use_hidden_tsd_folder=False):

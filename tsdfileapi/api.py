@@ -508,7 +508,7 @@ class GenericFormDataHandler(AuthRequestHandler):
     def write_files(self,
                     filemode,
                     pnum,
-                    uploads_folder=options.uploads_folder,
+                    uploads_folder_config=CONFIG,
                     folder_func=project_import_dir,
                     keyid=None,
                     formid=None,
@@ -538,7 +538,7 @@ class GenericFormDataHandler(AuthRequestHandler):
                    filename,
                    filebody,
                    pnum,
-                   uploads_folder=options.uploads_folder,
+                   uploads_folder_config=CONFIG,
                    folder_func=project_import_dir,
                    keyid=None,
                    formid=None,
@@ -883,7 +883,7 @@ class ResumablesHandler(AuthRequestHandler):
         try:
             pnum = pnum_from_url(self.request.uri)
             assert _VALID_PNUM.match(pnum)
-            self.project_dir = project_import_dir(options.uploads_folder, pnum, None, None,
+            self.project_dir = project_import_dir(CONFIG, pnum, None, None,
                                                   cluster=cluster)
         except AssertionError as e:
             raise e
@@ -1203,7 +1203,7 @@ class StreamHandler(AuthRequestHandler):
         try:
             pnum = pnum_from_url(self.request.uri)
             assert _VALID_PNUM.match(pnum)
-            self.project_dir = project_import_dir(options.uploads_folder, pnum, None, None,
+            self.project_dir = project_import_dir(CONFIG, pnum, None, None,
                                                   cluster=cluster)
             self.cluster = False
         except AssertionError as e:
@@ -1683,7 +1683,7 @@ class GenericTableHandler(AuthRequestHandler):
 
     def get(self, pnum, table_name=None):
         try:
-            project_dir = project_import_dir(options.uploads_folder, pnum, None, None)
+            project_dir = project_import_dir(CONFIG, pnum, None, None)
             if not table_name:
                 self.authnz = self.validate_token(roles_allowed=self.acl['metadata'][self.location]['GET'])
                 engine = sqlite_init(project_dir, name=self.db_name)
@@ -1719,7 +1719,7 @@ class GenericTableHandler(AuthRequestHandler):
             self.authnz = self.validate_token(roles_allowed=self.acl[self.datatype][self.location]['PUT'])
             data = json_decode(self.request.body)
             assert _VALID_PNUM.match(pnum)
-            project_dir = project_import_dir(options.uploads_folder, pnum, None, None)
+            project_dir = project_import_dir(CONFIG, pnum, None, None)
             try:
                 engine = sqlite_init(project_dir, name=self.db_name)
                 sqlite_insert(engine, table_name, data)
@@ -1737,7 +1737,7 @@ class GenericTableHandler(AuthRequestHandler):
     def patch(self, pnum, table_name):
         try:
             self.authnz = self.validate_token(roles_allowed=self.acl[self.datatype][self.location]['PATCH'])
-            project_dir = project_import_dir(options.uploads_folder, pnum, None, None)
+            project_dir = project_import_dir(CONFIG, pnum, None, None)
             engine = sqlite_init(project_dir, name=self.db_name, builtin=True)
             data = sqlite_update_data(engine, table_name, self.request.uri)
             self.set_status(200)
@@ -1751,7 +1751,7 @@ class GenericTableHandler(AuthRequestHandler):
     def delete(self, pnum, table_name):
         try:
             self.authnz = self.validate_token(roles_allowed=self.acl[self.datatype][self.location]['DELETE'])
-            project_dir = project_import_dir(options.uploads_folder, pnum, None, None)
+            project_dir = project_import_dir(CONFIG, pnum, None, None)
             engine = sqlite_init(project_dir, name=self.db_name, builtin=True)
             data = sqlite_delete_data(engine, table_name, self.request.uri)
             self.set_status(200)
