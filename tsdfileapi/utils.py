@@ -76,15 +76,13 @@ def project_import_dir(config, pnum=None, keyid=None,
         elif cluster:
             path = config['uploads_folder_cluster']
             base = path.replace('pXX', pnum).replace('/file-import', '')
-            logging.info(base)
             target = path.replace('pXX', pnum)
-            logging.info(target)
             if os.path.lexists(base):
                 if not os.path.lexists(target):
                     os.makedirs(target) # unsure if we have the permissions
                 return target
             else:
-                raise Exception('{0} does not have a cluster disk space')
+                raise Exception('{0} does not have a cluster disk space'.format(pnum))
         folder = config['uploads_folder'][pnum]
     except KeyError as e:
         folder = config['uploads_folder']['default'].replace('pXX', pnum)
@@ -113,14 +111,14 @@ def project_export_dir(config, pnum, cluster=False):
     return config[key].replace('pXX', pnum)
 
 
-def project_sns_dir(sns_uploads_folder, pnum, keyid=None, formid=None, test=False,
+def project_sns_dir(config, pnum, keyid=None, formid=None, test=False,
                     use_hidden_tsd_folder=False):
     """
     Construct a path for sns uploads.
 
     Paramaters
     ----------
-    uploads_folder: list
+    config: dict
     pnum: str
     keyid: PGP public key id - must match what we already have
     formid: nettskjema form id - restricted to numerical chars
@@ -142,6 +140,7 @@ def project_sns_dir(sns_uploads_folder, pnum, keyid=None, formid=None, test=Fals
     path
 
     """
+    sns_uploads_folder = config['sns_uploads_folder']
     if not use_hidden_tsd_folder:
         base_pattern = '/tsd/pXX/data/durable/nettskjema-submissions/keyid/formid'
     else:

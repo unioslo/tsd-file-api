@@ -163,7 +163,7 @@ class TestFileApi(unittest.TestCase):
         cls.test_group = cls.config['test_group']
         cls.uploads_folder = project_import_dir(cls.config, cls.config['test_project'])
         cls.uploads_folder_p12 = project_import_dir(cls.config, 'p12')
-        cls.sns_uploads_folder = project_sns_dir(cls.config['sns_uploads_folder'],
+        cls.sns_uploads_folder = project_sns_dir(cls.config,
                                                  cls.config['test_project'],
                                                  cls.config['test_keyid'],
                                                  cls.config['test_formid'],
@@ -810,19 +810,19 @@ class TestFileApi(unittest.TestCase):
 
     def test_ZB_sns_folder_logic_is_correct(self):
         # non-existent project
-        self.assertRaises(Exception, project_sns_dir, '/tsd/pXX/data/durable',
+        self.assertRaises(Exception, project_sns_dir, {'sns_uploads_folder': '/tsd/pXX/data/durable'},
                          'p1000', '255CE5ED50A7558B', '98765')
         # lowercase in key id
-        self.assertRaises(Exception, project_sns_dir, '/tsd/pXX/data/durable',
+        self.assertRaises(Exception, project_sns_dir, {'sns_uploads_folder': '/tsd/pXX/data/durable'},
                          'p11', '255cE5ED50A7558B', '98765')
         # too long but still valid key id
-        self.assertRaises(Exception, project_sns_dir, '/tsd/pXX/data/durable',
+        self.assertRaises(Exception, project_sns_dir, {'sns_uploads_folder':  '/tsd/pXX/data/durable'},
                          'p11', '255CE5ED50A7558BXIJIJ87878', '98765')
         # non-numeric formid
-        self.assertRaises(Exception, project_sns_dir, '/tsd/pXX/data/durable',
+        self.assertRaises(Exception, project_sns_dir, {'sns_uploads_folder': '/tsd/pXX/data/durable'},
                          'p11', '255CE5ED50A7558B', '99999-%$%&*')
         # note: /tsd/p11/data/durable _must_ exist for this test to pass
-        self.assertEqual(project_sns_dir('/tsd/pXX/data/durable', 'p11', '255CE5ED50A7558B', '98765'),
+        self.assertEqual(project_sns_dir({'sns_uploads_folder': '/tsd/pXX/data/durable'}, 'p11', '255CE5ED50A7558B', '98765'),
                          '/tsd/p11/data/durable/nettskjema-submissions/255CE5ED50A7558B/98765')
         try:
             os.rmdir('/tsd/p11/data/durable/nettskjema-submissions/255CE5ED50A7558B/98765')
