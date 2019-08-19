@@ -88,6 +88,12 @@ def project_import_dir(uploads_folder, pnum=None, keyid=None,
         folder = uploads_folder['default'].replace('pXX', pnum)
     return os.path.normpath(folder)
 
+
+def project_export_dir(config, pnum, cluster=False):
+    """
+    """
+    return config['export_path'].replace('pXX', pnum)
+
 def project_sns_dir(sns_uploads_folder, pnum, keyid=None, formid=None, test=False,
                     use_hidden_tsd_folder=False):
     """

@@ -46,7 +46,7 @@ def pnum_is_consistent_in_user_input(path, user_name, group_name=None):
         if path_pnum == username_pnum == groupname_pnum:
             return True
         else:
-            logging.error('pnum in path %s, username %s and group_name %s do not math', path_pnum, username_pnum, groupname_pnum)
+            logging.error('pnum in path %s, username %s and group_name %s do not match', path_pnum, username_pnum, groupname_pnum)
             return False
     if path_pnum == username_pnum:
         return True

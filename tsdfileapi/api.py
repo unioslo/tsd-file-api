@@ -38,7 +38,8 @@ from tornado.web import Application, RequestHandler, stream_request_body, \
 from auth import verify_json_web_token
 from utils import project_import_dir, project_sns_dir, \
                   IS_VALID_GROUPNAME, check_filename, _IS_VALID_UUID, \
-                  md5sum, natural_keys, pnum_from_url
+                  md5sum, natural_keys, pnum_from_url, \
+                  project_export_dir
 from db import sqlite_insert, sqlite_init, _VALID_PNUM, load_jwk_store, \
                sqlite_list_tables, sqlite_get_data, sqlite_update_data, \
                sqlite_delete_data
@@ -347,7 +348,7 @@ class FileStreamerHandler(AuthRequestHandler):
                 self.set_status(401)
                 raise Exception
             assert _VALID_PNUM.match(pnum)
-            self.path = CONFIG['export_path'].replace('pXX', pnum)
+            self.path = project_export_dir(CONFIG, pnum)
             if not filename:
                 self.list_files(self.path)
                 return
@@ -456,7 +457,7 @@ class FileStreamerHandler(AuthRequestHandler):
                 self.set_status(401)
                 raise Exception
             assert _VALID_PNUM.match(pnum)
-            self.path = CONFIG['export_path'].replace('pXX', pnum)
+            self.path = project_export_dir(CONFIG, pnum)
             if not filename:
                 raise Exception('No info to report')
             try:
@@ -1779,6 +1780,7 @@ def main():
         ('/v1/(.*)/cluster/stream/(.*)', ProxyHandler, dict(cluster=True)),
         ('/v1/(.*)/cluster/resumables', ResumablesHandler, dict(cluster=True)),
         ('/v1/(.*)/cluster/resumables/(.*)', ResumablesHandler, dict(cluster=True)),
+        # add cluster export
         # /durable storage
         ('/v1/(.*)/files/upload_stream', StreamHandler, dict(cluster=False)),
         ('/v1/(.*)/files/upload_stream/(.*)', StreamHandler, dict(cluster=False)),
