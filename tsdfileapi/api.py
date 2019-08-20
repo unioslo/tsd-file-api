@@ -1670,8 +1670,6 @@ class GenericTableHandler(AuthRequestHandler):
     """
     Manage data in generic sqlite backend.
 
-    TODO:
-    - limit sqlite db file access
     Maybe:
     - GET Accept: application/sqlite
     - POST Content-Type: text/csv -> "concatenate"
@@ -1732,6 +1730,7 @@ class GenericTableHandler(AuthRequestHandler):
             assert _VALID_PNUM.match(pnum)
             project_dir = project_import_dir(CONFIG, pnum, None, None)
             try:
+                os.chmod(project_dir + '/' + self.db_name, _RW______)
                 engine = sqlite_init(project_dir, name=self.db_name)
                 sqlite_insert(engine, table_name, data)
                 self.set_status(201)
