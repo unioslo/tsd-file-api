@@ -52,7 +52,6 @@ from dbresumable import resumable_db_insert_new_for_user, \
                resumable_db_pop_chunk, \
                resumable_db_get_group
 from pgp import _import_keys
-from acls import ACLS
 
 
 _RW______ = stat.S_IREAD | stat.S_IWRITE
@@ -121,13 +120,6 @@ class AuthRequestHandler(RequestHandler):
         self.status = None
         try:
             try:
-                assert roles_allowed
-            except AssertionError as e:
-                logging.error(e)
-                logging.error('No roles specified, cannot do authorization')
-                self.set_status(500)
-                raise Exception('Authorization not possible: caller must specify roles')
-            try:
                 auth_header = self.request.headers['Authorization']
             except (KeyError, UnboundLocalError) as e:
                 self.message = 'Missing authorization header'
@@ -162,7 +154,7 @@ class AuthRequestHandler(RequestHandler):
                 raise Exception('Authorization not possible: server error')
             try:
                 authnz = verify_json_web_token(auth_header, project_specific_secret,
-                                                              roles_allowed, pnum)
+                                               roles_allowed, pnum)
                 self.claims = authnz['claims']
                 self.user = self.claims['user']
                 if not authnz['status']:
@@ -1678,12 +1670,7 @@ class GenericTableHandler(AuthRequestHandler):
 
     def initialize(self, app):
         self.app = app
-        self.acl = ACLS[app]
         self.db_name =  '.' + app + '.db'
-        if 'internal' in  self.request.host:
-            self.location = 'internal'
-        else:
-            self.location = 'external'
         if 'metadata' in self.request.uri:
             self.datatype = 'metadata'
         else:
@@ -1694,13 +1681,13 @@ class GenericTableHandler(AuthRequestHandler):
         try:
             project_dir = project_import_dir(CONFIG, pnum, None, None)
             if not table_name:
-                self.authnz = self.validate_token(roles_allowed=self.acl['metadata'][self.location]['GET'])
+                self.authnz = self.validate_token(roles_allowed=[])
                 engine = sqlite_init(project_dir, name=self.db_name)
                 tables = sqlite_list_tables(engine)
                 self.set_status(200)
                 self.write({'tables': tables})
             else:
-                self.authnz = self.validate_token(roles_allowed=self.acl[self.datatype][self.location]['GET'])
+                self.authnz = self.validate_token(roles_allowed=[])
                 engine = sqlite_init(project_dir, name=self.db_name, builtin=True)
                 data = sqlite_get_data(engine, table_name, self.request.uri)
                 if 'Accept' in self.request.headers:
@@ -1725,14 +1712,14 @@ class GenericTableHandler(AuthRequestHandler):
 
     def put(self, pnum, table_name):
         try:
-            self.authnz = self.validate_token(roles_allowed=self.acl[self.datatype][self.location]['PUT'])
+            self.authnz = self.validate_token(roles_allowed=[])
             data = json_decode(self.request.body)
             assert _VALID_PNUM.match(pnum)
             project_dir = project_import_dir(CONFIG, pnum, None, None)
             try:
-                os.chmod(project_dir + '/' + self.db_name, _RW______)
                 engine = sqlite_init(project_dir, name=self.db_name)
                 sqlite_insert(engine, table_name, data)
+                os.chmod(project_dir + '/' + self.db_name, _RW______)
                 self.set_status(201)
                 self.write({'message': 'data stored'})
             except Exception as e:
@@ -1746,7 +1733,7 @@ class GenericTableHandler(AuthRequestHandler):
 
     def patch(self, pnum, table_name):
         try:
-            self.authnz = self.validate_token(roles_allowed=self.acl[self.datatype][self.location]['PATCH'])
+            self.authnz = self.validate_token(roles_allowed=[])
             project_dir = project_import_dir(CONFIG, pnum, None, None)
             engine = sqlite_init(project_dir, name=self.db_name, builtin=True)
             data = sqlite_update_data(engine, table_name, self.request.uri)
@@ -1760,7 +1747,7 @@ class GenericTableHandler(AuthRequestHandler):
 
     def delete(self, pnum, table_name):
         try:
-            self.authnz = self.validate_token(roles_allowed=self.acl[self.datatype][self.location]['DELETE'])
+            self.authnz = self.validate_token(roles_allowed=[])
             project_dir = project_import_dir(CONFIG, pnum, None, None)
             engine = sqlite_init(project_dir, name=self.db_name, builtin=True)
             data = sqlite_delete_data(engine, table_name, self.request.uri)

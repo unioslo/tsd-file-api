@@ -1327,11 +1327,9 @@ def main():
         # head
         'test_N_head_on_uploads_fails_when_it_should',
         'test_O_head_on_uploads_succeeds_when_conditions_are_met',
-        # sqlite backend
-        # tests disabled for now, need sqlite+json1 in prod
-        # before enabling this for projects
-        #'test_W_create_and_insert_into_generic_table',
-        #'test_X_use_generic_table',
+        # sqlite backend -> needs sqlite+json1
+        'test_W_create_and_insert_into_generic_table',
+        'test_X_use_generic_table',
         # pnum logic
         'test_Y_invalid_project_number_rejected',
         'test_Z_token_for_other_project_rejected',

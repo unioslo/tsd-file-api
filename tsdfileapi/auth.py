@@ -65,8 +65,9 @@ def verify_json_web_token(auth_header, secret, roles_allowed, pnum):
         logging.error('Access denied to project - mismatch in project numbers')
         return failure_message
     if claims['role'] not in roles_allowed:
-        logging.error('Role not allowed to perform requested operation')
-        return failure_message
+        if len(roles_allowed) > 0: # an empty list means we do not specify it here
+            logging.error('Role not allowed to perform requested operation')
+            return failure_message
     if int(time.time()) > int(claims['exp']):
         logging.error('JWT expired')
         return failure_message
