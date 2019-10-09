@@ -215,6 +215,6 @@ if __name__ == '__main__':
             '/mytable?z=not.is.null']
     for uri in uris:
         sql = SqlStatement(uri)
-        print sql.select_query
-        print sql.update_query
-        print sql.delete_query
+        print(sql.select_query)
+        print(sql.update_query)
+        print(sql.delete_query)
