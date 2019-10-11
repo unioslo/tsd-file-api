@@ -320,7 +320,7 @@ class FileStreamerHandler(AuthRequestHandler):
 
     @tornado.web.asynchronous
     @tornado.gen.engine
-    # py3: @gen.coroutine
+    #@gen.coroutine
     def get(self, pnum, filename=None):
         """
         List the export dir, or serve a file, asynchronously.
@@ -386,7 +386,7 @@ class FileStreamerHandler(AuthRequestHandler):
                 data = fd.read(self.CHUNK_SIZE)
                 while data:
                     self.write(data)
-                    #py3 yield self.flush()
+                    #yield self.flush() #py3
                     yield gen.Task(self.flush)
                     data = fd.read(self.CHUNK_SIZE)
                 fd.close()
@@ -430,7 +430,7 @@ class FileStreamerHandler(AuthRequestHandler):
                 sent = sent + self.CHUNK_SIZE
                 while data and sent <= bytes_to_read:
                     self.write(data)
-                    #py3 yield self.flush()
+                    #yield self.flush() # py3
                     yield gen.Task(self.flush)
                     data = fd.read(self.CHUNK_SIZE)
                     sent = sent + self.CHUNK_SIZE
