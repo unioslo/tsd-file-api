@@ -60,7 +60,7 @@ _RW_RW___ = stat.S_IREAD | stat.S_IWRITE | stat.S_IRGRP | stat.S_IWGRP
 
 def read_config(filename):
     with open(filename) as f:
-        conf = yaml.load(f)
+        conf = yaml.load(f, Loader=yaml.Loader)
     return conf
 
 
@@ -216,8 +216,10 @@ class FileStreamerHandler(AuthRequestHandler):
             logging.error(self.message)
             return False, None, None
         subprocess.call(['sudo', 'chmod', 'go+r', filename])
-        with magic.Magic(flags=magic.MAGIC_MIME_TYPE) as m:
-            mime_type = m.id_filename(filename_raw_utf8)
+        # py2:
+        #with magic.Magic(flags=magic.MAGIC_MIME_TYPE) as m:
+        #    mime_type = m.id_filename(filename_raw_utf8)
+        mime_type = magic.from_file(filename_raw_utf8, mime=True)
         size = os.stat(filename).st_size
         if size > CONFIG['export_max_size']:
             logging.error('%s tried to export a file exceeding the maximum size limit', self.user)
@@ -310,8 +312,10 @@ class FileStreamerHandler(AuthRequestHandler):
         try:
             if self.filepath:
                 mtime = os.stat(self.filepath).st_mtime
-                return hashlib.md5(str(mtime)).hexdigest()
-        except AttributeError:
+                etag = hashlib.md5(str(mtime).encode('utf-8')).hexdigest()
+                return etag
+        except (Exception, AttributeError) as e:
+            logging.error(e)
             return None
         else:
             return None
@@ -319,6 +323,7 @@ class FileStreamerHandler(AuthRequestHandler):
 
     @tornado.web.asynchronous
     @tornado.gen.engine
+    # py3: @gen.coroutine
     def get(self, pnum, filename=None):
         """
         List the export dir, or serve a file, asynchronously.
@@ -384,7 +389,8 @@ class FileStreamerHandler(AuthRequestHandler):
                 data = fd.read(self.CHUNK_SIZE)
                 while data:
                     self.write(data)
-                    yield tornado.gen.Task(self.flush)
+                    #py3 yield self.flush()
+                    yield gen.Task(self.flush)
                     data = fd.read(self.CHUNK_SIZE)
                 fd.close()
             elif 'Range' in self.request.headers:
@@ -427,7 +433,8 @@ class FileStreamerHandler(AuthRequestHandler):
                 sent = sent + self.CHUNK_SIZE
                 while data and sent <= bytes_to_read:
                     self.write(data)
-                    yield tornado.gen.Task(self.flush)
+                    #py3 yield self.flush()
+                    yield gen.Task(self.flush)
                     data = fd.read(self.CHUNK_SIZE)
                     sent = sent + self.CHUNK_SIZE
                 fd.close()
@@ -980,7 +987,7 @@ class StreamHandler(AuthRequestHandler):
     def decrypt_aes_key(self, b64encoded_pgpencrypted_key):
         gpg = _import_keys(CONFIG)
         key = base64.b64decode(b64encoded_pgpencrypted_key)
-        decr_aes_key = str(gpg.decrypt(key)).strip()
+        decr_aes_key = str(gpg.decrypt(key.decode())).strip()
         return decr_aes_key
 
 
@@ -996,7 +1003,10 @@ class StreamHandler(AuthRequestHandler):
 
 
     def aes_decryption_args_from_headers(self):
-        decr_aes_key = self.decrypt_aes_key(self.request.headers['Aes-Key'])
+        try:
+            decr_aes_key = self.decrypt_aes_key(self.request.headers['Aes-Key'])
+        except Exception as e:
+            logging.error(e)
         if "Aes-Iv" in self.request.headers:
             return ['-iv', self.request.headers["Aes-Iv"], '-K', decr_aes_key]
         else:
@@ -1030,7 +1040,6 @@ class StreamHandler(AuthRequestHandler):
             tarflags = '-xf'
         self.custom_content_type = content_type
         self.openssl_proc = self.start_openssl_proc()
-        logging.info('started openssl process')
         self.tar_proc = subprocess.Popen(['tar', '-C', project_dir, tarflags, '-'],
                                  stdin=self.openssl_proc.stdout)
 
@@ -1707,7 +1716,7 @@ class GenericTableHandler(AuthRequestHandler):
         except Exception as e:
             logging.error(e)
             self.set_status(400)
-            self.write({'message': e.message})
+            self.write({'message': 'error'})
 
 
     def put(self, pnum, table_name):
@@ -1728,7 +1737,7 @@ class GenericTableHandler(AuthRequestHandler):
         except Exception as e:
             logging.error(e)
             self.set_status(400)
-            self.write({'message': e.message})
+            self.write({'message': 'error'})
 
 
     def patch(self, pnum, table_name):
@@ -1742,7 +1751,7 @@ class GenericTableHandler(AuthRequestHandler):
         except Exception as e:
             logging.error(e)
             self.set_status(400)
-            self.write({'message': e.message})
+            self.write({'message': 'error'})
 
 
     def delete(self, pnum, table_name):
@@ -1756,7 +1765,7 @@ class GenericTableHandler(AuthRequestHandler):
         except Exception as e:
             logging.error(e)
             self.set_status(400)
-            self.write({'message': e.message})
+            self.write({'message': 'error'})
 
 
 class HealthCheckHandler(RequestHandler):

@@ -6,7 +6,7 @@ from datetime import datetime, timedelta
 
 from jwcrypto import jwt, jwk
 
-from ..db import load_jwk_store
+from db import load_jwk_store
 
 
 def tkn(secret, exp=1, role=None, pnum=None, user=None):
