@@ -984,7 +984,7 @@ class StreamHandler(AuthRequestHandler):
     def decrypt_aes_key(self, b64encoded_pgpencrypted_key):
         gpg = _import_keys(CONFIG)
         key = base64.b64decode(b64encoded_pgpencrypted_key)
-        decr_aes_key = str(gpg.decrypt(key.decode())).strip()
+        decr_aes_key = str(gpg.decrypt(key)).strip()
         return decr_aes_key
 
 
