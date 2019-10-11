@@ -32,7 +32,7 @@ IS_VALID_GROUPNAME = re.compile(r'p+[0-9]+-[a-z-]')
 
 def pnum_is_consistent_in_user_input(path, user_name, group_name=None):
     try:
-        if 'cluster' in path:
+        if path.startswith('/cluster'):
             pnum_idx = 3
         else:
             pnum_idx = 2
