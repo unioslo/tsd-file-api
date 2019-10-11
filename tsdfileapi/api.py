@@ -216,9 +216,6 @@ class FileStreamerHandler(AuthRequestHandler):
             logging.error(self.message)
             return False, None, None
         subprocess.call(['sudo', 'chmod', 'go+r', filename])
-        # py2:
-        #with magic.Magic(flags=magic.MAGIC_MIME_TYPE) as m:
-        #    mime_type = m.id_filename(filename_raw_utf8)
         mime_type = magic.from_file(filename_raw_utf8, mime=True)
         size = os.stat(filename).st_size
         if size > CONFIG['export_max_size']:
