@@ -6,8 +6,8 @@ requests==2.12.5
 gnupg==2.3.1
 sqlalchemy==1.1.0
 psycopg2==2.7.0
-filemagic==1.6
-https://github.com/unioslo/tsd-api-client/archive/v1.6.1.tar.gz
+python-magic==0.4.15
+-e git://github.com/unioslo/tsd-api-client.git#egg=tsd-api-client
 humanfriendly==4.18
 progress==1.5
 pandas==0.24.2
