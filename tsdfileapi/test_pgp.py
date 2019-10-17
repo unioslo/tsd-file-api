@@ -3,9 +3,9 @@ import yaml, sys, base64
 
 #from pgp import _import_keys
 # some monkey patch
-import gnupg
-import gnupg._parsers
-gnupg._parsers.Verify.TRUST_LEVELS["ENCRYPTION_COMPLIANCE_MODE"] = 23
+#import gnupg
+#import gnupg._parsers
+#gnupg._parsers.Verify.TRUST_LEVELS["ENCRYPTION_COMPLIANCE_MODE"] = 23
 #gnupg._parsers.Verify.TRUST_LEVELS["DECRYPTION_KEY"] = 23
 #gnupg._parsers.Verify.TRUST_LEVELS["DECRYPTION_COMPLIANCE_MODE"] = 23
 

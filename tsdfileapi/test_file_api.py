@@ -77,17 +77,15 @@ import uuid
 import shutil
 from datetime import datetime
 
-import gnupg
+from pretty_bad_protocol import gnupg
 import requests
 import yaml
 from sqlalchemy.exc import OperationalError
 from tsdapiclient import fileapi
 from tornado.escape import url_escape
 
-# monkey patch to avoid random error message
-# https://github.com/isislovecruft/python-gnupg/issues/207
-import gnupg._parsers
-gnupg._parsers.Verify.TRUST_LEVELS["ENCRYPTION_COMPLIANCE_MODE"] = 23
+import pretty_bad_protocol._parsers
+pretty_bad_protocol._parsers.Verify.TRUST_LEVELS["ENCRYPTION_COMPLIANCE_MODE"] = 23
 
 # pylint: disable=relative-import
 from tokens import gen_test_tokens, get_test_token_for_p12, gen_test_token_for_user

@@ -4,13 +4,11 @@
 import logging
 import json
 
-import gnupg
+from pretty_bad_protocol import gnupg
 
-# monkey patch to avoid random error message
-# https://github.com/isislovecruft/python-gnupg/issues/207
-import gnupg._parsers
-gnupg._parsers.Verify.TRUST_LEVELS["DECRYPTION_KEY"] = 23
-gnupg._parsers.Verify.TRUST_LEVELS["DECRYPTION_COMPLIANCE_MODE"] = 23
+import pretty_bad_protocol._parsers
+pretty_bad_protocol._parsers.Verify.TRUST_LEVELS["DECRYPTION_KEY"] = 23
+pretty_bad_protocol._parsers.Verify.TRUST_LEVELS["DECRYPTION_COMPLIANCE_MODE"] = 23
 
 
 def _import_keys(config):
