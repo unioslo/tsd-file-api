@@ -27,9 +27,11 @@ def pnum_from_url(url):
 
 
 def check_filename(filename):
-    # py3 remove this block
-    if isinstance(filename, unicode):
-        filename = filename.encode('utf-8')
+    try: # py2/3 compat
+        if isinstance(filename, unicode):
+            filename = filename.encode('utf-8')
+    except (Exception, NameError) as e:
+        pass
     try:
         assert os.path.basename(filename) == filename
     except Exception:

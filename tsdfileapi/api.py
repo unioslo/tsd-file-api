@@ -318,9 +318,7 @@ class FileStreamerHandler(AuthRequestHandler):
             return None
 
 
-    @tornado.web.asynchronous
-    @tornado.gen.engine
-    #@gen.coroutine
+    @gen.coroutine
     def get(self, pnum, filename=None):
         """
         List the export dir, or serve a file, asynchronously.
@@ -386,8 +384,7 @@ class FileStreamerHandler(AuthRequestHandler):
                 data = fd.read(self.CHUNK_SIZE)
                 while data:
                     self.write(data)
-                    #yield self.flush() #py3
-                    yield gen.Task(self.flush)
+                    yield self.flush()
                     data = fd.read(self.CHUNK_SIZE)
                 fd.close()
             elif 'Range' in self.request.headers:
@@ -430,8 +427,7 @@ class FileStreamerHandler(AuthRequestHandler):
                 sent = sent + self.CHUNK_SIZE
                 while data and sent <= bytes_to_read:
                     self.write(data)
-                    #yield self.flush() # py3
-                    yield gen.Task(self.flush)
+                    yield self.flush()
                     data = fd.read(self.CHUNK_SIZE)
                     sent = sent + self.CHUNK_SIZE
                 fd.close()
