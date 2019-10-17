@@ -10,3 +10,4 @@ tsd_file_api.egg-info/
 mappings.yaml
 dist/*
 tsdfileapi/data/large-file
+src/
