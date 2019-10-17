@@ -1,4 +1,4 @@
-# -*- coding: utf-8 -*-
+
 """
 
 Run this as: python -m tsdfileapi.tests.test_file_api test-config.yaml
@@ -65,6 +65,7 @@ https://github.com/kennethreitz/requests/issues/713
 # pylint: disable=invalid-name
 
 import base64
+import httplib
 import json
 import logging
 import os
@@ -91,20 +92,43 @@ gnupg._parsers.Verify.TRUST_LEVELS["ENCRYPTION_COMPLIANCE_MODE"] = 23
 
 # pylint: disable=relative-import
 from tokens import gen_test_tokens, get_test_token_for_p12, gen_test_token_for_user
-from db import session_scope, sqlite_init
-from dbresumable import resumable_db_remove_completed_for_user
-from utils import project_import_dir, project_sns_dir, md5sum, check_filename, IllegalFilenameException
-from pgp import _import_keys
+from ..db import session_scope, sqlite_init
+from ..dbresumable import resumable_db_remove_completed_for_user
+from ..utils import project_import_dir, project_sns_dir, md5sum, check_filename, IllegalFilenameException
+from ..pgp import _import_keys
 
 
 def lazy_file_reader(filename):
-    with open(filename, 'rb') as f:
+    with open(filename, 'r+') as f:
         while True:
-            data = f.read(10)
-            if not data:
+            line = f.readline()
+            if line == '':
                 break
             else:
-                yield data
+                yield line
+
+
+def build_payload(config, dtype):
+    gpg = gnupg.GPG(binary=config['gpg_binary'], homedir=config['gpg_homedir'],
+                    keyring=config['gpg_keyring'], secring=config['gpg_secring'])
+    key_id = config['public_key_id']
+    _id = random.randint(1, 1000000)
+    if dtype == 'ns':
+        message = json.dumps({'submission_id': _id, 'consent': 'yes', 'age': 20,
+                              'email_address': 'my2@email.com',
+                              'national_id_number': '18101922351',
+                              'phone_number': '4820666472',
+                              'children_ages': '{"6", "70"}', 'var1': '{"val2"}'})
+        encr = str(gpg.encrypt(message, key_id))
+        data = {'form_id': 63332, 'submission_id': _id,
+                'submission_timestamp': datetime.utcnow().isoformat(),
+                'key_id': key_id, 'data': encr}
+    elif dtype == 'generic':
+        message = json.dumps({'x': 10, 'y': 'bla'})
+        encr = str(gpg.encrypt(message, key_id))
+        data = {'table_name': 'test1', 'submission_id': _id,
+                'key_id': key_id, 'data': encr}
+    return data
 
 
 class TestFileApi(unittest.TestCase):
@@ -121,10 +145,10 @@ class TestFileApi(unittest.TestCase):
 
         try:
             with open(sys.argv[1]) as f:
-                cls.config = yaml.load(f, Loader=yaml.Loader)
+                cls.config = yaml.load(f)
         except Exception as e:
-            print(e)
-            print("Missing config file?")
+            print e
+            print "Missing config file?"
             sys.exit(1)
 
         # includes p19 - a random project number for integration testing
@@ -220,7 +244,7 @@ class TestFileApi(unittest.TestCase):
             #os.remove(sqlite_path)
             pass
         except OSError:
-            print('no tables to cleanup')
+            print 'not tables to cleanup'
             return
 
     # Import Auth
@@ -735,7 +759,7 @@ class TestFileApi(unittest.TestCase):
            self.assertEqual('x,y\n4,5\n2,1\n', uploaded_file.read())
 
 
-    def test_Zh_stream_gz_aes_with_custom_header_decompress_works(self):
+    def test_Zh_stream_gz_with_custom_header_decompress_works(self):
         headers = {'Authorization': 'Bearer ' + TEST_TOKENS['VALID'],
                    'Content-Type': 'application/gz.aes',
                    'Filename': 'ungz-aes1',
@@ -937,7 +961,7 @@ class TestFileApi(unittest.TestCase):
         upload_id = self.start_new_resumable(filepath, chunksize=cs, stop_at=1)
         token = TEST_TOKENS['VALID']
         url = '%s/%s' % (self.resumables, filename)
-        print('---> going to resume from chunk 2:')
+        print '---> going to resume from chunk 2:'
         resp = fileapi.initiate_resumable(proj, self.test_project, filepath,
                                           token, chunksize=cs, new=False, group=None,
                                           verify=True, upload_id=upload_id, dev_url=url)
@@ -947,7 +971,7 @@ class TestFileApi(unittest.TestCase):
 
 
     def test_ZO_resume_works_with_filename_match(self):
-        print('test_ZO_resume_works_with_filename_match')
+        print 'test_ZO_resume_works_with_filename_match'
         cs = 5
         proj = ''
         filepath = self.resume_file2
@@ -955,7 +979,7 @@ class TestFileApi(unittest.TestCase):
         upload_id = self.start_new_resumable(filepath, chunksize=cs, stop_at=1)
         token = TEST_TOKENS['VALID']
         url = '%s/%s' % (self.resumables, filename)
-        print('---> going to resume from chunk 2:')
+        print '---> going to resume from chunk 2:'
         resp = fileapi.initiate_resumable(proj, self.test_project, filepath,
                                           token, chunksize=cs, new=False, group=None,
                                           verify=True, upload_id=upload_id, dev_url=url)
@@ -974,12 +998,12 @@ class TestFileApi(unittest.TestCase):
         merged_file = self.uploads_folder + '/' + filename + '.' + upload_id
         # manipulate the data to force an md5 mismatch
         with open(uploaded_chunk, 'wb+') as f:
-            f.write(b'ffff\n')
+            f.write('ffff\n')
         with open(merged_file, 'wb+') as f:
-            f.write(b'ffff\n')
+            f.write('ffff\n')
         token = TEST_TOKENS['VALID']
         url = '%s/%s' % (self.resumables, filename)
-        print('---> resume should fail:')
+        print '---> resume should fail:'
         # now this _should_ start a new upload due to md5 mismatch
         resp = fileapi.initiate_resumable(proj, self.test_project, filepath,
                                           token, chunksize=cs, new=False, group=None,
@@ -1025,7 +1049,7 @@ class TestFileApi(unittest.TestCase):
         with open(merged_file, 'ab') as f:
             f.truncate(cs + (cs/2))
         # this should trigger data recovery, and restart the resumable at chunk1
-        print('---> going to resume from chunk 3, after data recovery:')
+        print '---> going to resume from chunk 3, after data recovery:'
         resp = fileapi.initiate_resumable(proj, self.test_project, filepath,
                                           token, chunksize=cs, new=False, group=None,
                                           verify=True, upload_id=upload_id, dev_url=url)
@@ -1066,7 +1090,7 @@ class TestFileApi(unittest.TestCase):
         upload_id1 = self.start_new_resumable(filepath, chunksize=3, stop_at=1)
         url = '%s/%s' % (self.resumables, filename)
         token = TEST_TOKENS['VALID']
-        print('---> going to resume from chunk 2, with a new chunk size:')
+        print '---> going to resume from chunk 2, with a new chunk size:'
         resp = fileapi.initiate_resumable('', self.test_project, filepath,
                                           token, chunksize=4, new=False, group=None,
                                           verify=True, dev_url=url, upload_id=upload_id1)
@@ -1276,6 +1300,8 @@ class TestFileApi(unittest.TestCase):
 
 
 def main():
+    runner = unittest.TextTestRunner()
+    suite = []
     tests = []
     base = [
         # authz
@@ -1346,13 +1372,12 @@ def main():
         # cluster
         'test_ZZe_cluster_uploads_not_p01',
         'test_ZZf_cluster_export_not_p01_works',
-        # pipelines
+    ]
+    gpg_related = [
+        # custom data processing
         'test_Za_stream_tar_without_custom_content_type_works',
         'test_Zb_stream_tar_with_custom_content_type_untar_works',
         'test_Zc_stream_tar_gz_with_custom_content_type_untar_works',
-        'test_Zg_stream_gz_with_custom_header_decompress_works',
-    ]
-    gpg_related = [
         'test_Zd_stream_aes_with_custom_content_type_decrypt_works',
         'test_Zd0_stream_aes_with_iv_and_custom_content_type_decrypt_works',
         'test_Zd1_stream_binary_aes_with_iv_and_custom_content_type_decrypt_works',
@@ -1360,18 +1385,13 @@ def main():
         'test_Ze0_stream_tar_aes_with_iv_and_custom_content_type_decrypt_untar_works',
         'test_Zf_stream_tar_aes_with_custom_content_type_decrypt_untar_works',
         'test_Zf0_stream_tar_aes_with_iv_and_custom_content_type_decrypt_untar_works',
-        'test_Zh_stream_gz_aes_with_custom_header_decompress_works',
+        'test_Zg_stream_gz_with_custom_header_decompress_works',
+        'test_Zh_stream_gz_with_custom_header_decompress_works',
         'test_Zh0_stream_gz_with_iv_and_custom_header_decompress_works',
     ]
     tests.extend(base)
-    if 'gpg' in sys.argv:
-        tests.extend(gpg_related)
-    tests.sort()
-    suite = unittest.TestSuite()
-    for test in tests:
-        suite.addTest(TestFileApi(test))
-    runner = unittest.TextTestRunner()
-    runner.run(suite)
+    suite.append(unittest.TestSuite(map(TestFileApi, tests)))
+    map(runner.run, suite)
 
 
 if __name__ == '__main__':
