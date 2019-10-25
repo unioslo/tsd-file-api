@@ -15,7 +15,7 @@ Vagrant.configure(2) do |config|
 
     sudo echo '#!/bin/bash' | sudo tee --append /etc/profile.d/rh-python36.sh > /dev/null
     sudo echo 'source scl_source enable rh-python36'| sudo tee --append /etc/profile.d/rh-python36.sh > /dev/null
-    sudo sh /etc/profile.d/rh-python36.sh
+    sudo source /etc/profile.d/rh-python36.sh
 
     sudo pip3 install --upgrade pip
     sudo pip3 install virtualenv-tools3 ecdsa
@@ -23,7 +23,7 @@ Vagrant.configure(2) do |config|
     sudo yum -y install ruby-devel gcc make rpm-build rubygems
     sudo gem install --no-ri --no-rdoc fpm
 
-    # sudo fpm --verbose -v 2.0 -s virtualenv -p /vagrant -t rpm --name tsd-file-api-venv --prefix /opt/tsd-file-api-venv/virtualenv /vagrant/requirements.txt
+    # sudo fpm --verbose -v 2.1 -s virtualenv -p /vagrant -t rpm --name tsd-file-api-venv --prefix /opt/tsd-file-api-venv/virtualenv /vagrant/requirements.txt
     # sudo fpm -s python -p /vagrant -t rpm /vagrant/setup.py
   SHELL
 

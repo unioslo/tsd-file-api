@@ -1794,6 +1794,7 @@ def main():
         ('/v1/(.*)/tables/generic/metadata/(.*)', GenericTableHandler, dict(app='generic')),
         ('/v1/(.*)/tables/generic/(.*)', GenericTableHandler, dict(app='generic')),
         ('/v1/(.*)/tables/generic', GenericTableHandler, dict(app='generic')),
+        # todo: nettskjema -> survey
         ('/v1/(.*)/tables/nettskjema/metadata/(.*)', GenericTableHandler, dict(app='nettskjema')),
         ('/v1/(.*)/tables/nettskjema/(.*)', GenericTableHandler, dict(app='nettskjema')),
         ('/v1/(.*)/tables/nettskjema', GenericTableHandler, dict(app='nettskjema')),
