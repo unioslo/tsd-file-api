@@ -17,8 +17,8 @@ Vagrant.configure(2) do |config|
     sudo echo 'source scl_source enable rh-python36'| sudo tee --append /etc/profile.d/rh-python36.sh > /dev/null
     sudo source /etc/profile.d/rh-python36.sh
 
-    sudo pip3 install --upgrade pip
-    sudo pip3 install virtualenv-tools3 ecdsa
+    pip3 install --upgrade pip
+    pip3 install virtualenv-tools3 ecdsa
 
     sudo yum -y install ruby-devel gcc make rpm-build rubygems
     sudo gem install --no-ri --no-rdoc fpm
