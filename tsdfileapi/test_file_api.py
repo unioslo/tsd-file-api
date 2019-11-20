@@ -522,7 +522,7 @@ class TestFileApi(unittest.TestCase):
         self.assertEqual(resp.status_code, 201)
         data = [{'key1': 7, 'key2': 'bla'}, {'key1': 99, 'key3': False}]
         headers = {'Authorization': 'Bearer ' + TEST_TOKENS['VALID']}
-        resp = requests.put(self.base_url + '/tables/nettskjema/mytest1',
+        resp = requests.put(self.base_url + '/tables/survey/mytest1',
                              data=json.dumps(data), headers=headers)
         self.assertEqual(resp.status_code, 201)
         headers = {'Authorization': 'Bearer ' + TEST_TOKENS['EXPORT'],
@@ -567,7 +567,7 @@ class TestFileApi(unittest.TestCase):
             ('/mytest1?key1=not.is.null', 'ADMIN', 'DELETE'),
         ]
         for app, acl in [('/tables/generic', generic_url_tokens_method),
-                         ('/tables/nettskjema', nettskjema_url_tokens_method)]:
+                         ('/tables/survey', nettskjema_url_tokens_method)]:
             self.use_generic_table(app, acl)
             data = {'key1': 'int', 'key2': 'str', 'key3': 'bool'}
             headers = {'Authorization': 'Bearer ' + TEST_TOKENS['VALID']}
