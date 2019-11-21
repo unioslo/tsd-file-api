@@ -1302,6 +1302,7 @@ class StreamHandler(AuthRequestHandler):
                         self.custom_content_type = None
                         if not self.merged_file:
                             self.target_file = open(self.path, filemode)
+                            os.chmod(self.path, _RW______)
                 except KeyError:
                     raise Exception('No content-type - do not know what to do with data')
             except Exception as e:
@@ -1455,7 +1456,6 @@ class StreamHandler(AuthRequestHandler):
                     path, path_part = self.path_part, self.path
                 else:
                     path = self.merged_file
-                os.chmod(path, _RW______)
                 if self.cluster and pnum != 'p01':
                     pass
                 else:
@@ -1476,11 +1476,16 @@ class StreamHandler(AuthRequestHandler):
         try:
             if not self.target_file.closed:
                 self.target_file.close()
-                os.rename(self.path, self.path_part)
+                path = self.path
+                if self.cluster and pnum != 'p01':
+                    pass
+                else:
+                    subprocess.call(['sudo', options.chowner_path, path,
+                                     self.user, options.api_user, self.group_name])
                 logging.info('StreamHandler: Closed file after client closed connection')
         except AttributeError as e:
             logging.info(e)
-            logging.info('There was no open file to close')
+            logging.info('There was no open file to close or move')
 
 
 @stream_request_body
@@ -1794,11 +1799,11 @@ def main():
         ('/v1/(.*)/tables/generic/metadata/(.*)', GenericTableHandler, dict(app='generic')),
         ('/v1/(.*)/tables/generic/(.*)', GenericTableHandler, dict(app='generic')),
         ('/v1/(.*)/tables/generic', GenericTableHandler, dict(app='generic')),
-        # todo: nettskjema -> survey
-        ('/v1/(.*)/tables/nettskjema/metadata/(.*)', GenericTableHandler, dict(app='nettskjema')),
-        ('/v1/(.*)/tables/nettskjema/(.*)', GenericTableHandler, dict(app='nettskjema')),
-        ('/v1/(.*)/tables/nettskjema', GenericTableHandler, dict(app='nettskjema')),
+        ('/v1/(.*)/tables/survey/metadata/(.*)', GenericTableHandler, dict(app='survey')),
+        ('/v1/(.*)/tables/survey/(.*)', GenericTableHandler, dict(app='survey')),
+        ('/v1/(.*)/tables/survey', GenericTableHandler, dict(app='survey')),
         ('/v1/(.*)/sns/(.*)/(.*)', SnsFormDataHandler),
+        # TODO: /v1/(.*)/publication}/{import,resumables,export}/{file}
     ], debug=options.debug)
     app.listen(options.port, max_body_size=options.max_body_size)
     IOLoop.instance().start()
