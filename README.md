@@ -22,23 +22,17 @@ mkdir -p /tmp/p11/fx/import_alt/lanthir
 mkdir -p /tmp/p11/fx/import/sns-test
 # create config files, see tsdfileapi/config/file-api-config.yaml.example
 # run the server
-python tsdauthapi/api.py test-config.yaml
+python tsdfileapi/api.py test-config.yaml
 # run the tests
 python -m tsdfileapi.tests.test_file_api test-config.yaml
 ```
 
 ## Build and release
 
-Download [VirtualBox](https://www.virtualbox.org/wiki/Downloads) and [vagrant](https://www.vagrantup.com/downloads.html)
-
 ```bash
 git clone ssh://git@bitbucket.usit.uio.no:7999/tsd/tsd-file-api.git
 cd tsd-file-api
-vagrant up
+docker build -t tsd:fileapi .
+export id=$(sudo docker create tsd:fileapi)
+docker cp $id:/file-api/dist/ .
 ```
-
-This will build two rpms and place them in the repo directory:
-- tsd-file-api-venv
-- python-tsd-file-api
-
-Releasing them is a manual process.
