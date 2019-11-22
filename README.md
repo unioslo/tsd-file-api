@@ -11,7 +11,7 @@ A REST API for upload and streaming of files to TSD.
 ```bash
 git clone ssh://git@bitbucket.usit.uio.no:7999/tsd/tsd-file-api.git
 cd tsd-file-api
-pip install -r requirements.txt
+pip3 install -r requirements.txt
 # make sure you have gpg installed
 # import the test keys
 gpg --import tsdfileapi/keys/public.pem
@@ -21,10 +21,8 @@ mkdir -p /tmp/p12/data/durable/api
 mkdir -p /tmp/p11/fx/import_alt/lanthir
 mkdir -p /tmp/p11/fx/import/sns-test
 # create config files, see tsdfileapi/config/file-api-config.yaml.example
-# run the server
-python tsdfileapi/api.py test-config.yaml
-# run the tests
-python -m tsdfileapi.tests.test_file_api test-config.yaml
+python3 tsdfileapi/api.py test-config.yaml
+python3 tsdfileapi/test_file_api.py test-config.yaml
 ```
 
 ## Build and release
@@ -33,6 +31,6 @@ python -m tsdfileapi.tests.test_file_api test-config.yaml
 git clone ssh://git@bitbucket.usit.uio.no:7999/tsd/tsd-file-api.git
 cd tsd-file-api
 docker build -t tsd:fileapi .
-export id=$(sudo docker create tsd:fileapi)
+export id=$(docker create tsd:fileapi)
 docker cp $id:/file-api/dist/ .
 ```
