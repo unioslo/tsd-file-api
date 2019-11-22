@@ -265,6 +265,9 @@ class FileStreamerHandler(AuthRequestHandler):
             date_time = str(datetime.datetime.fromtimestamp(latest).isoformat())
             times.append(date_time)
             try:
+                if os.path.isdir(filepath):
+                    status, mime_type, size = None, None, None
+                    reason = 'exporting from directories not supported yet'
                 status, mime_type, size = self.enforce_export_policy(CONFIG['export_policy'], filepath)
                 if status:
                     reason = None
