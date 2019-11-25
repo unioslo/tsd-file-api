@@ -236,7 +236,7 @@ class FileStreamerHandler(AuthRequestHandler):
             if not status:
                 self.message = 'not allowed to export file with MIME type: %s' % mime_type
                 logging.error(self.message)
-        if size > policy['max_size']:
+        if policy['max_size'] and size > policy['max_size']:
             logging.error('%s tried to export a file exceeding the maximum size limit', self.user)
             maxsize = CONFIG['export_max_size'] / 1024 / 1024 / 1024
             self.message = 'File size exceeds maximum allowed for %s: %d Gigabyte' % (pnum, maxsize)
@@ -270,9 +270,12 @@ class FileStreamerHandler(AuthRequestHandler):
         reasons = []
         sizes = []
         mimes = []
+        owners = []
         for file in files:
             filepath = os.path.normpath(path + '/' + file)
-            latest = os.stat(filepath).st_mtime
+            path_stat = os.stat(filepath)
+            latest = path_stat.st_mtime
+            owner = pwd.getpwuid(path_stat.st_uid).pw_name
             date_time = str(datetime.datetime.fromtimestamp(latest).isoformat())
             times.append(date_time)
             try:
@@ -293,8 +296,9 @@ class FileStreamerHandler(AuthRequestHandler):
             reasons.append(reason)
             sizes.append(size)
             mimes.append(mime_type)
+            owners.append(owner)
         file_info = []
-        for f, t, e, r, s, m in zip(files, times, exportable, reasons, sizes, mimes):
+        for f, t, e, r, s, m, o in zip(files, times, exportable, reasons, sizes, mimes, owners):
             href = '%s/%s' % (self.request.uri, f)
             file_info.append({'filename': f,
                               'size': s,
@@ -302,7 +306,8 @@ class FileStreamerHandler(AuthRequestHandler):
                               'href': href,
                               'exportable': e,
                               'reason': r,
-                              'mime-type': m})
+                              'mime-type': m,
+                              'owner': o})
         logging.info('%s listed %s', self.user, path)
         self.write({'files': file_info})
 
