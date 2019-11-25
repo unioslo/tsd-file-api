@@ -229,7 +229,6 @@ class FileStreamerHandler(AuthRequestHandler):
         if not policy['enabled']:
             status = True
             return status, mime_type, size
-        logging.info(policy)
         if '*' in policy['allowed_mime_types']:
             status = True
         else:
