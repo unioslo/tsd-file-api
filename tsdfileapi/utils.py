@@ -47,6 +47,16 @@ def check_filename(filename):
     return filename
 
 
+def create_cluster_dir_if_not_exists(path, pnum):
+    base = path.replace('pXX', pnum).replace('/file-import', '')
+    target = path.replace('pXX', pnum)
+    if os.path.lexists(base):
+        if not os.path.lexists(target):
+            os.makedirs(target)
+        return target
+    else:
+        raise Exception('{0} does not have a cluster disk space'.format(pnum))
+
 def project_import_dir(config, pnum=None, keyid=None,
                        formid=None, backend=False):
     """

@@ -38,7 +38,7 @@ from tornado.web import Application, RequestHandler, stream_request_body, \
 from auth import verify_json_web_token
 from utils import project_import_dir, project_sns_dir, \
                   IS_VALID_GROUPNAME, check_filename, _IS_VALID_UUID, \
-                  md5sum, natural_keys, pnum_from_url
+                  md5sum, natural_keys, pnum_from_url, create_cluster_dir_if_not_exists
 from db import sqlite_insert, sqlite_init, _VALID_PNUM, load_jwk_store, \
                sqlite_list_tables, sqlite_get_data, sqlite_update_data, \
                sqlite_delete_data
@@ -901,8 +901,12 @@ class ResumablesHandler(AuthRequestHandler):
         try:
             pnum = pnum_from_url(self.request.uri)
             assert _VALID_PNUM.match(pnum)
-            self.project_dir = project_import_dir(CONFIG, pnum, None, None,
-                                                  backend=backend)
+            # can deprecate once rsync is in place for cluster software install
+            key = 'admin_path' if (backend == 'cluster' and pnum == 'p01') else 'import_path'
+            self.import_dir = CONFIG['backends']['disk']['files'][key]
+            if backend == 'cluster' and pnum != 'p01':
+                assert create_cluster_dir_if_not_exists(self.import_dir, pnum)
+            self.project_dir = self.import_dir.replace('pXX', pnum)
         except AssertionError as e:
             raise e
 
@@ -1471,7 +1475,7 @@ class StreamHandler(AuthRequestHandler):
                     path, path_part = self.path_part, self.path
                 else:
                     path = self.merged_file
-                if self.cluster and pnum != 'p01':
+                if self.backend == 'cluster' and pnum != 'p01':
                     pass
                 else:
                     subprocess.call(['sudo', options.chowner_path, path,
@@ -1492,7 +1496,7 @@ class StreamHandler(AuthRequestHandler):
             if not self.target_file.closed:
                 self.target_file.close()
                 path = self.path
-                if self.cluster and pnum != 'p01':
+                if self.backend == 'cluster' and pnum != 'p01':
                     pass
                 else:
                     subprocess.call(['sudo', options.chowner_path, path,
