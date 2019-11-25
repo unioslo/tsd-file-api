@@ -179,14 +179,14 @@ class FileStreamerHandler(AuthRequestHandler):
 
     CHUNK_SIZE = CONFIG['export_chunk_size']
 
-    def initialize(self, cluster):
+    def initialize(self, backend):
         try:
             pnum = pnum_from_url(self.request.uri)
             assert _VALID_PNUM.match(pnum)
-            self.export_dir = project_export_dir(CONFIG, pnum, cluster=cluster)
-            self.cluster = cluster
+            self.export_dir = project_export_dir(CONFIG, pnum, backend=backend)
+            self.backend = backend
         except (AssertionError, Exception) as e:
-            self.cluster = None
+            self.backend = None
             logging.error(e)
             logging.error('Maybe the URI does not contain a valid pnum')
             raise e
@@ -895,12 +895,12 @@ class ResumablesHandler(AuthRequestHandler):
                 'filename': filename, 'group': group}
         return info
 
-    def initialize(self, cluster):
+    def initialize(self, backend):
         try:
             pnum = pnum_from_url(self.request.uri)
             assert _VALID_PNUM.match(pnum)
             self.project_dir = project_import_dir(CONFIG, pnum, None, None,
-                                                  cluster=cluster)
+                                                  backend=backend)
         except AssertionError as e:
             raise e
 
@@ -1217,15 +1217,15 @@ class StreamHandler(AuthRequestHandler):
         return final
 
 
-    def initialize(self, cluster):
+    def initialize(self, backend):
         try:
             pnum = pnum_from_url(self.request.uri)
             assert _VALID_PNUM.match(pnum)
             self.project_dir = project_import_dir(CONFIG, pnum, None, None,
-                                                  cluster=cluster)
-            self.cluster = False
+                                                  backend=backend)
+            self.backend = backend
         except AssertionError as e:
-            self.cluster = None
+            self.backend = backend
             logging.error('URI does not contain a valid pnum')
             raise e
 
@@ -1504,11 +1504,8 @@ class StreamHandler(AuthRequestHandler):
 @stream_request_body
 class ProxyHandler(AuthRequestHandler):
 
-    def initialize(self, cluster):
-        if cluster:
-            self.storage_backend = 'cluster'
-        else:
-            self.storage_backend = 'files'
+    def initialize(self, backend):
+        self.storage_backend = backend
 
     @gen.coroutine
     def prepare(self):
@@ -1789,26 +1786,25 @@ class HealthCheckHandler(RequestHandler):
 def main():
     parse_command_line()
     app = Application([
+        # Note: the name of the storage backend is the same as the URL fragment
         ('/v1/(.*)/files/health', HealthCheckHandler),
-        # /cluster storage
-        ('/v1/(.*)/cluster/upload_stream', StreamHandler, dict(cluster=True)),
-        ('/v1/(.*)/cluster/upload_stream/(.*)', StreamHandler, dict(cluster=True)),
-        ('/v1/(.*)/cluster/stream', ProxyHandler, dict(cluster=True)),
-        ('/v1/(.*)/cluster/stream/(.*)', ProxyHandler, dict(cluster=True)),
-        ('/v1/(.*)/cluster/resumables', ResumablesHandler, dict(cluster=True)),
-        ('/v1/(.*)/cluster/resumables/(.*)', ResumablesHandler, dict(cluster=True)),
-        ('/v1/(.*)/cluster/export', FileStreamerHandler, dict(cluster=True)),
-        ('/v1/(.*)/cluster/export/(.*)', FileStreamerHandler, dict(cluster=True)),
-        # /durable storage
-        ('/v1/(.*)/files/upload_stream', StreamHandler, dict(cluster=False)),
-        ('/v1/(.*)/files/upload_stream/(.*)', StreamHandler, dict(cluster=False)),
-        ('/v1/(.*)/files/stream', ProxyHandler, dict(cluster=False)),
-        ('/v1/(.*)/files/stream/(.*)', ProxyHandler, dict(cluster=False)),
-        ('/v1/(.*)/files/resumables', ResumablesHandler, dict(cluster=False)),
-        ('/v1/(.*)/files/resumables/(.*)', ResumablesHandler, dict(cluster=False)),
+        ('/v1/(.*)/cluster/upload_stream', StreamHandler, dict(backend='cluster')),
+        ('/v1/(.*)/cluster/upload_stream/(.*)', StreamHandler, dict(backend='cluster')),
+        ('/v1/(.*)/cluster/stream', ProxyHandler, dict(backend='cluster')),
+        ('/v1/(.*)/cluster/stream/(.*)', ProxyHandler, dict(backend='cluster')),
+        ('/v1/(.*)/cluster/resumables', ResumablesHandler, dict(backend='cluster')),
+        ('/v1/(.*)/cluster/resumables/(.*)', ResumablesHandler, dict(backend='cluster')),
+        ('/v1/(.*)/cluster/export', FileStreamerHandler, dict(backend='cluster')),
+        ('/v1/(.*)/cluster/export/(.*)', FileStreamerHandler, dict(backend='cluster')),
+        ('/v1/(.*)/files/upload_stream', StreamHandler, dict(backend='files')),
+        ('/v1/(.*)/files/upload_stream/(.*)', StreamHandler, dict(backend='files')),
+        ('/v1/(.*)/files/stream', ProxyHandler, dict(backend='files')),
+        ('/v1/(.*)/files/stream/(.*)', ProxyHandler, dict(backend='files')),
+        ('/v1/(.*)/files/resumables', ResumablesHandler, dict(backend='files')),
+        ('/v1/(.*)/files/resumables/(.*)', ResumablesHandler, dict(backend='files')),
         ('/v1/(.*)/files/upload', FormDataHandler),
-        ('/v1/(.*)/files/export', FileStreamerHandler, dict(cluster=False)),
-        ('/v1/(.*)/files/export/(.*)', FileStreamerHandler, dict(cluster=False)),
+        ('/v1/(.*)/files/export', FileStreamerHandler, dict(backend='files')),
+        ('/v1/(.*)/files/export/(.*)', FileStreamerHandler, dict(backend='files')),
         ('/v1/(.*)/tables/generic/metadata/(.*)', GenericTableHandler, dict(app='generic')),
         ('/v1/(.*)/tables/generic/(.*)', GenericTableHandler, dict(app='generic')),
         ('/v1/(.*)/tables/generic', GenericTableHandler, dict(app='generic')),

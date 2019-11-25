@@ -48,11 +48,11 @@ def check_filename(filename):
 
 
 def project_import_dir(config, pnum=None, keyid=None,
-                       formid=None, cluster=False):
+                       formid=None, backend=False):
     """
     Create a project specific path based on config and a project number.
 
-    If cluster=False, then the project directory is located on
+    If backend=False, then the project directory is located on
     /durable, otherwise it is on /cluster. For the latter case,
     we first ensure that /cluster/projects/{pnum} exists, and if so
     check whether /cluster/projects/{pnum}/file-import exists. If not,
@@ -74,9 +74,9 @@ def project_import_dir(config, pnum=None, keyid=None,
     """
     try:
         assert _VALID_PNUM.match(pnum)
-        if cluster and pnum == 'p01':
+        if backend != 'cluster' and pnum == 'p01':
             return config['uploads_folder_cluster_software']
-        elif cluster:
+        elif backend == 'cluster':
             path = config['uploads_folder_cluster']
             base = path.replace('pXX', pnum).replace('/file-import', '')
             target = path.replace('pXX', pnum)
@@ -92,7 +92,7 @@ def project_import_dir(config, pnum=None, keyid=None,
     return os.path.normpath(folder)
 
 
-def project_export_dir(config, pnum, cluster=False):
+def project_export_dir(config, pnum, backend=False):
     """
     Return the path from where files should be exported.
 
@@ -107,7 +107,7 @@ def project_export_dir(config, pnum, cluster=False):
     str
 
     """
-    if cluster:
+    if backend == 'cluster':
         key = 'export_path_cluster'
     else:
         key = 'export_path'
