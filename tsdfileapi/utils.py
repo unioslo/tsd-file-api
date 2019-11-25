@@ -92,28 +92,6 @@ def project_import_dir(config, pnum=None, keyid=None,
     return os.path.normpath(folder)
 
 
-def project_export_dir(config, pnum, backend=False):
-    """
-    Return the path from where files should be exported.
-
-    Paramaters
-    ----------
-    config: dict
-    pnum: str, project number
-    cluster: bool, if True then use cluster storage location
-
-    Returns
-    -------
-    str
-
-    """
-    if backend == 'cluster':
-        key = 'export_path_cluster'
-    else:
-        key = 'export_path'
-    return config[key].replace('pXX', pnum)
-
-
 def project_sns_dir(config, pnum, keyid=None, formid=None, test=False,
                     use_hidden_tsd_folder=False):
     """

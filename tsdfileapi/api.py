@@ -38,8 +38,7 @@ from tornado.web import Application, RequestHandler, stream_request_body, \
 from auth import verify_json_web_token
 from utils import project_import_dir, project_sns_dir, \
                   IS_VALID_GROUPNAME, check_filename, _IS_VALID_UUID, \
-                  md5sum, natural_keys, pnum_from_url, \
-                  project_export_dir
+                  md5sum, natural_keys, pnum_from_url
 from db import sqlite_insert, sqlite_init, _VALID_PNUM, load_jwk_store, \
                sqlite_list_tables, sqlite_get_data, sqlite_update_data, \
                sqlite_delete_data
@@ -183,7 +182,9 @@ class FileStreamerHandler(AuthRequestHandler):
         try:
             pnum = pnum_from_url(self.request.uri)
             assert _VALID_PNUM.match(pnum)
-            self.export_dir = project_export_dir(CONFIG, pnum, backend=backend)
+            self.backend_paths = CONFIG['backends']['disk'][backend]
+            self.export_path_pattern = self.backend_paths['export_path']
+            self.export_dir = self.export_path_pattern.replace('pXX', pnum)
             self.backend = backend
         except (AssertionError, Exception) as e:
             self.backend = None
@@ -486,6 +487,7 @@ class FileStreamerHandler(AuthRequestHandler):
                 raise Exception
             self.filepath = '%s/%s' % (self.path, secured_filename)
             if not os.path.lexists(self.filepath):
+                logging.error(self.filepath)
                 logging.error('%s tried to access a file that does not exist', self.user)
                 self.set_status(404)
                 self.message = 'File does not exist'
