@@ -1227,8 +1227,11 @@ class StreamHandler(AuthRequestHandler):
         try:
             pnum = pnum_from_url(self.request.uri)
             assert _VALID_PNUM.match(pnum)
-            self.project_dir = project_import_dir(CONFIG, pnum, None, None,
-                                                  backend=backend)
+            key = 'admin_path' if (backend == 'cluster' and pnum == 'p01') else 'import_path'
+            self.import_dir = CONFIG['backends']['disk']['files'][key]
+            if backend == 'cluster' and pnum != 'p01':
+                assert create_cluster_dir_if_not_exists(self.import_dir, pnum)
+            self.project_dir = self.import_dir.replace('pXX', pnum)
             self.backend = backend
         except AssertionError as e:
             self.backend = backend
