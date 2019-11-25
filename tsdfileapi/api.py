@@ -191,15 +191,16 @@ class FileStreamerHandler(AuthRequestHandler):
             logging.error('Maybe the URI does not contain a valid pnum')
             raise e
 
-    def enforce_export_policy(self, policy_config, filename):
+    def enforce_export_policy(self, policy_config, filename, pnum):
         """
         Check file to ensure it meets the requirements of the export policy
 
         Checks
         ------
-        1. file name follows conventions
-        2. file size does not exceed max allowed for export
-        3. checks that MIME types conform to allowed types, if policy enabled
+        1. For all projects, check that the file name follows conventions
+        2. For the given project, if a policy is specified and enabled check:
+            - file size does not exceed max allowed for export
+            - MIME types conform to allowed types, if policy enabled
 
         Returns
         -------
@@ -207,6 +208,9 @@ class FileStreamerHandler(AuthRequestHandler):
         (is_conformant, mime-type, size)
 
         """
+        status = False # until proven otherwise
+        mime_type = None # until we know
+        size = None # until we know
         try:
             check_filename(os.path.basename(filename))
             filename_raw_utf8 = filename.encode('utf-8')
@@ -214,26 +218,34 @@ class FileStreamerHandler(AuthRequestHandler):
             logging.error(e)
             self.message = 'Illegal export filename: %s' % filename
             logging.error(self.message)
-            return False, None, None
+            return status, None, None
         subprocess.call(['sudo', 'chmod', 'go+r', filename])
         mime_type = magic.from_file(filename_raw_utf8, mime=True)
         size = os.stat(filename).st_size
-        if size > CONFIG['export_max_size']:
+        if pnum in policy_config.keys():
+            policy = policy_config[pnum]
+        else:
+            policy = policy_config['default']
+        if not policy['enabled']:
+            status = True
+            return status, mime_type, size
+        logging.info(policy)
+        if '*' in policy['allowed_mime_types']:
+            status = True
+        else:
+            status = True if mime_type in policy['allowed_mime_types'] else False
+            if not status:
+                self.message = 'not allowed to export file with MIME type: %s' % mime_type
+                logging.error(self.message)
+        if size > policy['max_size']:
             logging.error('%s tried to export a file exceeding the maximum size limit', self.user)
             maxsize = CONFIG['export_max_size'] / 1024 / 1024 / 1024
-            self.message = 'File size exceeds maximum allowed: %d Gigabyte, create a zip archive, or use the s3 API' % maxsize
-            return False, mime_type, size
-        if not policy_config['enabled']:
-            return True, mime_type, size
-        if mime_type in policy_config['allowed_mime_types']:
-            return True, mime_type, size
-        else:
-            self.message = 'not allowed to export file with MIME type: %s' % mime_type
-            logging.error(self.message)
-            return False, mime_type, size
+            self.message = 'File size exceeds maximum allowed for %s: %d Gigabyte' % (pnum, maxsize)
+            status = False
+        return status, mime_type, size
 
 
-    def list_files(self, path):
+    def list_files(self, path, pnum):
         """
         Lists files in the export directory.
 
@@ -269,7 +281,7 @@ class FileStreamerHandler(AuthRequestHandler):
                     status, mime_type, size = None, None, None
                     self.message = 'exporting from directories not supported yet'
                 else:
-                    status, mime_type, size = self.enforce_export_policy(CONFIG['export_policy'], filepath)
+                    status, mime_type, size = self.enforce_export_policy(CONFIG['export_policy'], filepath, pnum)
                 if status:
                     reason = None
                 else:
@@ -357,7 +369,7 @@ class FileStreamerHandler(AuthRequestHandler):
             assert _VALID_PNUM.match(pnum)
             self.path = self.export_dir
             if not filename:
-                self.list_files(self.path)
+                self.list_files(self.path, pnum)
                 return
             try:
                 secured_filename = check_filename(url_unescape(filename))
@@ -374,7 +386,7 @@ class FileStreamerHandler(AuthRequestHandler):
                 self.message = 'File does not exist'
                 raise Exception
             try:
-                status, mime_type, size = self.enforce_export_policy(CONFIG['export_policy'], self.filepath)
+                status, mime_type, size = self.enforce_export_policy(CONFIG['export_policy'], self.filepath, pnum)
                 assert status
             except (Exception, AssertionError) as e:
                 logging.error(e)
@@ -481,7 +493,7 @@ class FileStreamerHandler(AuthRequestHandler):
                 self.set_status(404)
                 self.message = 'File does not exist'
                 raise Exception
-            status, mime_type, size = self.enforce_export_policy(CONFIG['export_policy'], self.filepath)
+            status, mime_type, size = self.enforce_export_policy(CONFIG['export_policy'], self.filepath, pnum)
             assert status
             logging.info('user: %s, checked file: %s , with MIME type: %s', self.user, self.filepath, mime_type)
             self.set_header('Content-Length', size)
