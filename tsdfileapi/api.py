@@ -250,14 +250,7 @@ class FileStreamerHandler(AuthRequestHandler):
 
         Returns
         -------
-        dict,
-        {
-            'filename': <name>,
-            'modified_date': <mtime>,
-            'href': <url reference to resource>,
-            'exportable': <bool, indication of whether file is exportible>,
-            'reason': <str, explanation of exporable>
-        }
+        dict
 
         """
         files = os.listdir(path)
