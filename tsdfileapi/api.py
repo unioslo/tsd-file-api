@@ -1788,6 +1788,7 @@ def main():
     app = Application([
         # Note: the name of the storage backend is the same as the URL fragment
         ('/v1/(.*)/files/health', HealthCheckHandler),
+        # hpc storage
         ('/v1/(.*)/cluster/upload_stream', StreamHandler, dict(backend='cluster')),
         ('/v1/(.*)/cluster/upload_stream/(.*)', StreamHandler, dict(backend='cluster')),
         ('/v1/(.*)/cluster/stream', ProxyHandler, dict(backend='cluster')),
@@ -1796,21 +1797,24 @@ def main():
         ('/v1/(.*)/cluster/resumables/(.*)', ResumablesHandler, dict(backend='cluster')),
         ('/v1/(.*)/cluster/export', FileStreamerHandler, dict(backend='cluster')),
         ('/v1/(.*)/cluster/export/(.*)', FileStreamerHandler, dict(backend='cluster')),
+        # project storage
         ('/v1/(.*)/files/upload_stream', StreamHandler, dict(backend='files')),
         ('/v1/(.*)/files/upload_stream/(.*)', StreamHandler, dict(backend='files')),
         ('/v1/(.*)/files/stream', ProxyHandler, dict(backend='files')),
         ('/v1/(.*)/files/stream/(.*)', ProxyHandler, dict(backend='files')),
         ('/v1/(.*)/files/resumables', ResumablesHandler, dict(backend='files')),
         ('/v1/(.*)/files/resumables/(.*)', ResumablesHandler, dict(backend='files')),
-        ('/v1/(.*)/files/upload', FormDataHandler),
         ('/v1/(.*)/files/export', FileStreamerHandler, dict(backend='files')),
         ('/v1/(.*)/files/export/(.*)', FileStreamerHandler, dict(backend='files')),
+        # sqlite backend
         ('/v1/(.*)/tables/generic/metadata/(.*)', GenericTableHandler, dict(app='generic')),
         ('/v1/(.*)/tables/generic/(.*)', GenericTableHandler, dict(app='generic')),
         ('/v1/(.*)/tables/generic', GenericTableHandler, dict(app='generic')),
         ('/v1/(.*)/tables/survey/metadata/(.*)', GenericTableHandler, dict(app='survey')),
         ('/v1/(.*)/tables/survey/(.*)', GenericTableHandler, dict(app='survey')),
         ('/v1/(.*)/tables/survey', GenericTableHandler, dict(app='survey')),
+        # form data
+        ('/v1/(.*)/files/upload', FormDataHandler),
         ('/v1/(.*)/sns/(.*)/(.*)', SnsFormDataHandler),
         # TODO: /v1/(.*)/publication}/{import,resumables,export}/{file}
     ], debug=options.debug)
