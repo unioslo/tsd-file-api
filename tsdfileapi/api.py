@@ -1701,20 +1701,23 @@ class GenericTableHandler(AuthRequestHandler):
             self.datatype = 'metadata'
         else:
             self.datatype = 'data'
+        pnum = pnum_from_url(self.request.uri)
+        assert _VALID_PNUM.match(pnum)
+        self.import_dir = CONFIG['backends']['sqlite'][app]['db_path']
+        self.project_dir = self.import_dir.replace('pXX', pnum)
 
 
     def get(self, pnum, table_name=None):
         try:
-            project_dir = project_import_dir(CONFIG, pnum, None, None)
             if not table_name:
                 self.authnz = self.validate_token(roles_allowed=[])
-                engine = sqlite_init(project_dir, name=self.db_name)
+                engine = sqlite_init(self.project_dir, name=self.db_name)
                 tables = sqlite_list_tables(engine)
                 self.set_status(200)
                 self.write({'tables': tables})
             else:
                 self.authnz = self.validate_token(roles_allowed=[])
-                engine = sqlite_init(project_dir, name=self.db_name, builtin=True)
+                engine = sqlite_init(self.project_dir, name=self.db_name, builtin=True)
                 data = sqlite_get_data(engine, table_name, self.request.uri)
                 if 'Accept' in self.request.headers:
                     if self.request.headers['Accept'] == 'text/csv':
@@ -1740,12 +1743,10 @@ class GenericTableHandler(AuthRequestHandler):
         try:
             self.authnz = self.validate_token(roles_allowed=[])
             data = json_decode(self.request.body)
-            assert _VALID_PNUM.match(pnum)
-            project_dir = project_import_dir(CONFIG, pnum, None, None)
             try:
-                engine = sqlite_init(project_dir, name=self.db_name)
+                engine = sqlite_init(self.project_dir, name=self.db_name)
                 sqlite_insert(engine, table_name, data)
-                os.chmod(project_dir + '/' + self.db_name, _RW______)
+                os.chmod(self.project_dir + '/' + self.db_name, _RW______)
                 self.set_status(201)
                 self.write({'message': 'data stored'})
             except Exception as e:
@@ -1760,8 +1761,7 @@ class GenericTableHandler(AuthRequestHandler):
     def patch(self, pnum, table_name):
         try:
             self.authnz = self.validate_token(roles_allowed=[])
-            project_dir = project_import_dir(CONFIG, pnum, None, None)
-            engine = sqlite_init(project_dir, name=self.db_name, builtin=True)
+            engine = sqlite_init(self.project_dir, name=self.db_name, builtin=True)
             data = sqlite_update_data(engine, table_name, self.request.uri)
             self.set_status(200)
             self.write({'data': data})
@@ -1774,8 +1774,7 @@ class GenericTableHandler(AuthRequestHandler):
     def delete(self, pnum, table_name):
         try:
             self.authnz = self.validate_token(roles_allowed=[])
-            project_dir = project_import_dir(CONFIG, pnum, None, None)
-            engine = sqlite_init(project_dir, name=self.db_name, builtin=True)
+            engine = sqlite_init(self.project_dir, name=self.db_name, builtin=True)
             data = sqlite_delete_data(engine, table_name, self.request.uri)
             self.set_status(200)
             self.write({'data': data})
