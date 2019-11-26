@@ -508,6 +508,18 @@ class FileStreamerHandler(AuthRequestHandler):
 
 class GenericFormDataHandler(AuthRequestHandler):
 
+    def initialize(self, backend):
+        try:
+            pnum = pnum_from_url(self.request.uri)
+            assert _VALID_PNUM.match(pnum)
+            self.project_dir_pattern = CONFIG['backends']['disk'][backend]['import_path']
+            self.tsd_hidden_folder = None
+            self.backend = backend
+            if backend == 'sns': # hope to deprecate this with new nettskjema integration
+                self.tsd_hidden_folder_pattern = CONFIG['backends']['disk'][backend]['subfolder_path']
+        except (Exception, AssertionError) as e:
+            logging.error('could not initalize form data handler')
+
     def prepare(self):
         try:
             self.authnz = self.validate_token(roles_allowed=['import_user', 'export_user', 'admin_user'])
@@ -523,14 +535,7 @@ class GenericFormDataHandler(AuthRequestHandler):
                 self.set_status(400)
             self.finish({'message': 'request failed'})
 
-    def write_files(self,
-                    filemode,
-                    pnum,
-                    uploads_folder=CONFIG,
-                    folder_func=project_import_dir,
-                    keyid=None,
-                    formid=None,
-                    copy_to_hidden_tsd_subfolder=False):
+    def write_files(self, filemode, pnum):
         try:
             for i in range(len(self.request.files['file'])):
                 filename = check_filename(self.request.files['file'][i]['filename'])
@@ -540,9 +545,7 @@ class GenericFormDataHandler(AuthRequestHandler):
                     raise Exception('EmptyFileBodyError')
                 # add all optional parameters to file writer
                 # this is used for nettskjema specific backend
-                written = self.write_file(filemode, filename, filebody, pnum,
-                                uploads_folder, folder_func, keyid, formid,
-                                copy_to_hidden_tsd_subfolder)
+                written = self.write_file(filemode, filename, filebody, pnum)
                 assert written
             return True
         except Exception as e:
@@ -551,18 +554,13 @@ class GenericFormDataHandler(AuthRequestHandler):
             return False
 
 
-    def write_file(self,
-                   filemode,
-                   filename,
-                   filebody,
-                   pnum,
-                   uploads_folder=CONFIG,
-                   folder_func=project_import_dir,
-                   keyid=None,
-                   formid=None,
-                   copy_to_hidden_tsd_subfolder=False):
+    def write_file(self, filemode, filename, filebody, pnum):
         try:
-            project_dir = folder_func(uploads_folder, pnum, keyid, formid)
+            if self.backend == 'sns':
+                tsd_hidden_folder = project_sns_dir(self.tsd_hidden_folder_pattern, pnum, self.request.uri)
+                project_dir = project_sns_dir(self.project_dir_pattern, pnum, self.request.uri)
+            else:
+                project_dir = self.project_dir_pattern.replace('pXX', pnum)
             self.path = os.path.normpath(project_dir + '/' + filename)
             # add the partial file indicator, check existence
             self.path_part = self.path + '.' + str(uuid4()) + '.part'
@@ -579,9 +577,7 @@ class GenericFormDataHandler(AuthRequestHandler):
                 f.write(filebody)
                 os.rename(self.path, self.path_part)
                 os.chmod(self.path_part, _RW_RW___)
-            if copy_to_hidden_tsd_subfolder:
-                tsd_hidden_folder = folder_func(uploads_folder, pnum, keyid, formid,
-                                                use_hidden_tsd_folder=True)
+            if self.backend == 'sns':
                 subfolder_path = os.path.normpath(tsd_hidden_folder + '/' + filename)
                 try:
                     shutil.copy(self.path_part, subfolder_path)
@@ -591,7 +587,7 @@ class GenericFormDataHandler(AuthRequestHandler):
                     logging.error('Could not copy file %s to .tsd folder', self.path_part)
                     return False
             return True
-        except Exception as e:
+        except (Exception, AssertionError) as e:
             logging.error(e)
             logging.error('Could not write to file')
             return False
@@ -608,11 +604,9 @@ class FormDataHandler(GenericFormDataHandler):
             self.set_status(400)
             self.write({'message': 'could not upload data'})
 
-    # TODO: drop this
     def post(self, pnum):
         self.handle_data('ab+', pnum)
 
-    # TODO: drop this
     def patch(self, pnum):
         self.handle_data('ab+', pnum)
 
@@ -625,33 +619,23 @@ class FormDataHandler(GenericFormDataHandler):
 
 class SnsFormDataHandler(GenericFormDataHandler):
 
-    """Used to upload nettskjema files to fx dir."""
-
-    def handle_data(self, filemode, pnum, keyid, formid):
+    def handle_data(self, filemode, pnum):
         try:
-            assert self.write_files(filemode,
-                         pnum,
-                         uploads_folder=CONFIG,
-                         folder_func=project_sns_dir,
-                         keyid=keyid,
-                         formid=formid,
-                         copy_to_hidden_tsd_subfolder=True)
+            assert self.write_files(filemode, pnum)
             self.set_status(201)
             self.write({'message': 'data uploaded'})
         except Exception:
             self.set_status(400)
             self.write({'message': 'could not upload data'})
 
-    # TODO: drop this
     def post(self, pnum, keyid, formid):
-        self.handle_data('ab+', pnum, keyid, formid)
+        self.handle_data('ab+', pnum)
 
-    # TODO: drop this
     def patch(self, pnum, keyid, formid):
-        self.handle_data('ab+', pnum, keyid, formid)
+        self.handle_data('ab+', pnum)
 
     def put(self, pnum, keyid, formid):
-        self.handle_data('wb+', pnum, keyid, formid)
+        self.handle_data('wb+', pnum)
 
     def head(self, pnum, keyid, formid):
         self.set_status(201)
@@ -1728,7 +1712,6 @@ class GenericTableHandler(AuthRequestHandler):
                         self.write(data)
                     else:
                         self.set_status(200)
-                        logging.info(data)
                         self.write({'data': data})
                 else:
                     self.set_status(200)
@@ -1822,8 +1805,8 @@ def main():
         ('/v1/(.*)/tables/survey/(.*)', GenericTableHandler, dict(app='survey')),
         ('/v1/(.*)/tables/survey', GenericTableHandler, dict(app='survey')),
         # form data
-        ('/v1/(.*)/files/upload', FormDataHandler),
-        ('/v1/(.*)/sns/(.*)/(.*)', SnsFormDataHandler),
+        ('/v1/(.*)/files/upload', FormDataHandler, dict(backend='form_data')),
+        ('/v1/(.*)/sns/(.*)/(.*)', SnsFormDataHandler, dict(backend='sns')),
         # TODO: /v1/(.*)/publication}/{import,resumables,export}/{file}
     ], debug=options.debug)
     app.listen(options.port, max_body_size=options.max_body_size)

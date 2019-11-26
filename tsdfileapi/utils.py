@@ -102,8 +102,7 @@ def project_import_dir(config, pnum=None, keyid=None,
     return os.path.normpath(folder)
 
 
-def project_sns_dir(config, pnum, keyid=None, formid=None, test=False,
-                    use_hidden_tsd_folder=False):
+def project_sns_dir(base_pattern, pnum, uri, test=False):
     """
     Construct a path for sns uploads.
 
@@ -111,40 +110,21 @@ def project_sns_dir(config, pnum, keyid=None, formid=None, test=False,
     ----------
     config: dict
     pnum: str
-    keyid: PGP public key id - must match what we already have
-    formid: nettskjema form id - restricted to numerical chars
-
-    Notes
-    -----
-    The following must be true for the path to be constructed
-    (and, therefore, data to be written to a file):
-
-        1) pnum must be alphanumeric
-        2) the project must have a /tsd/pXX/data/durable/nettskjema folder already
-        3) formid must be numeric
-        4) the provided PGP key id must be realistic
-
-    If the keyid/formid path does not exist, it will be created.
+    uri: request uri
+    test: bool
 
     Returns
     -------
     path
 
     """
-    sns_uploads_folder = config['sns_uploads_folder']
-    if not use_hidden_tsd_folder:
-        base_pattern = '/tsd/pXX/data/durable/nettskjema-submissions/keyid/formid'
-    else:
-        base_pattern = '/tsd/pXX/data/durable/nettskjema-submissions/.tsd/keyid/formid'
     try:
-        assert _VALID_PNUM.match(pnum)
-        durable = sns_uploads_folder.replace('pXX', pnum)
-        if not os.path.lexists(durable):
-            logging.error('durable folder does not exist for %s', pnum)
-            raise Exception
+        uri_parts = uri.split('/')
+        formid = uri_parts[-1]
+        keyid = uri_parts[-2]
         assert _VALID_FORMID.match(formid)
         assert _IS_REALISTIC_PGP_KEY_FINGERPRINT.match(keyid)
-        folder = base_pattern.replace('pXX', pnum).replace('keyid', keyid).replace('formid', formid)
+        folder = base_pattern.replace('pXX', pnum).replace('KEYID', keyid).replace('FORMID', formid)
         _path = os.path.normpath(folder)
         if test:
             return _path
