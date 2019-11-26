@@ -188,7 +188,7 @@ class FileStreamerHandler(AuthRequestHandler):
             logging.error('Maybe the URI does not contain a valid pnum')
             raise e
 
-    def enforce_export_policy(self, policy_config, filename, pnum):
+    def enforce_export_policy(self, policy_config, filename, pnum, size, mime_type):
         """
         Check file to ensure it meets the requirements of the export policy
 
@@ -206,26 +206,20 @@ class FileStreamerHandler(AuthRequestHandler):
 
         """
         status = False # until proven otherwise
-        mime_type = None # until we know
-        size = None # until we know
         try:
             check_filename(os.path.basename(filename))
-            filename_raw_utf8 = filename.encode('utf-8')
         except Exception as e:
             logging.error(e)
             self.message = 'Illegal export filename: %s' % filename
             logging.error(self.message)
             return status, None, None
-        subprocess.call(['sudo', 'chmod', 'go+r', filename])
-        mime_type = magic.from_file(filename_raw_utf8, mime=True)
-        size = os.stat(filename).st_size
         if pnum in policy_config.keys():
             policy = policy_config[pnum]
         else:
             policy = policy_config['default']
         if not policy['enabled']:
             status = True
-            return status, mime_type, size
+            return status
         if '*' in policy['allowed_mime_types']:
             status = True
         else:
@@ -238,7 +232,15 @@ class FileStreamerHandler(AuthRequestHandler):
             maxsize = CONFIG['export_max_size'] / 1024 / 1024 / 1024
             self.message = 'File size exceeds maximum allowed for %s: %d Gigabyte' % (pnum, maxsize)
             status = False
-        return status, mime_type, size
+        return status
+
+
+    def get_file_metadata(self, filename):
+        filename_raw_utf8 = filename.encode('utf-8')
+        subprocess.call(['sudo', 'chmod', 'go+r', filename]) # only necessary for export
+        mime_type = magic.from_file(filename_raw_utf8, mime=True)
+        size = os.stat(filename).st_size
+        return size, mime_type
 
 
     def list_files(self, path, pnum):
@@ -273,7 +275,8 @@ class FileStreamerHandler(AuthRequestHandler):
                     status, mime_type, size = None, None, None
                     self.message = 'exporting from directories not supported yet'
                 else:
-                    status, mime_type, size = self.enforce_export_policy(CONFIG['export_policy'], filepath, pnum)
+                    size, mime_type = self.get_file_metadata(filepath)
+                    status = self.enforce_export_policy(CONFIG['export_policy'], filepath, pnum, size, mime_type)
                 if status:
                     reason = None
                 else:
@@ -380,7 +383,8 @@ class FileStreamerHandler(AuthRequestHandler):
                 self.message = 'File does not exist'
                 raise Exception
             try:
-                status, mime_type, size = self.enforce_export_policy(CONFIG['export_policy'], self.filepath, pnum)
+                size, mime_type = self.get_file_metadata(self.filepath)
+                status = self.enforce_export_policy(CONFIG['export_policy'], self.filepath, pnum, size, mime_type)
                 assert status
             except (Exception, AssertionError) as e:
                 logging.error(e)
@@ -488,7 +492,8 @@ class FileStreamerHandler(AuthRequestHandler):
                 self.set_status(404)
                 self.message = 'File does not exist'
                 raise Exception
-            status, mime_type, size = self.enforce_export_policy(CONFIG['export_policy'], self.filepath, pnum)
+            size, mime_type = self.get_file_metadata(self.filepath)
+            status = self.enforce_export_policy(CONFIG['export_policy'], self.filepath, pnum, size, mime_type)
             assert status
             logging.info('user: %s, checked file: %s , with MIME type: %s', self.user, self.filepath, mime_type)
             self.set_header('Content-Length', size)
