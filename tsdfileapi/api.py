@@ -79,8 +79,6 @@ define('max_body_size', CONFIG['max_body_size'])
 define('user_authorization', default=CONFIG['user_authorization'])
 define('api_user', CONFIG['api_user'])
 define('secret_store', load_jwk_store(CONFIG))
-define('set_owner', CONFIG['set_owner'])
-define('chowner_path', CONFIG['chowner_path'])
 
 
 class AuthRequestHandler(RequestHandler):
@@ -1107,7 +1105,7 @@ class StreamHandler(AuthRequestHandler):
         if chunk_num == 'end':
             self.chunk_num = 'end'
             self.upload_id = upload_id
-            self.call_hook = True
+            self.resumable_is_complete = True
             filename = self.upload_id + '/' + chunk_filename
             self.merged_file = self.merge_resumables(project_dir, filename, self.upload_id)
             self.target_file = None
@@ -1115,7 +1113,7 @@ class StreamHandler(AuthRequestHandler):
         elif chunk_num == 1:
             self.chunk_num = 1
             self.upload_id = str(uuid4())
-            self.call_hook = False
+            self.resumable_is_complete = False
             filename = self.upload_id + '/' + chunk_filename
             os.makedirs(project_dir + '/' + self.upload_id)
             assert resumable_db_insert_new_for_user(self.rdb, self.upload_id, self.user, group)
@@ -1123,7 +1121,7 @@ class StreamHandler(AuthRequestHandler):
         elif chunk_num > 1:
             self.chunk_num = chunk_num
             self.upload_id = upload_id
-            self.call_hook = False
+            self.resumable_is_complete = False
             filename = self.upload_id + '/' + chunk_filename
             self.refuse_upload_if_not_in_sequential_order(project_dir, self.upload_id, chunk_num)
             return filename
@@ -1205,16 +1203,19 @@ class StreamHandler(AuthRequestHandler):
         return final
 
 
-    def initialize(self, backend):
+    def initialize(self, backend, hook_enabled=False):
         try:
             pnum = pnum_from_url(self.request.uri)
             assert _VALID_PNUM.match(pnum)
             key = 'admin_path' if (backend == 'cluster' and pnum == 'p01') else 'import_path'
-            self.import_dir = CONFIG['backends']['disk']['files'][key]
+            self.import_dir = CONFIG['backends']['disk'][backend][key]
             if backend == 'cluster' and pnum != 'p01':
                 assert create_cluster_dir_if_not_exists(self.import_dir, pnum)
             self.project_dir = self.import_dir.replace('pXX', pnum)
             self.backend = backend
+            self.hook_enabled = hook_enabled
+            if hook_enabled:
+                self.hook_path = CONFIG['backends']['disk'][backend]['request_hook']['path']
         except AssertionError as e:
             self.backend = backend
             logging.error('URI does not contain a valid pnum')
@@ -1236,7 +1237,7 @@ class StreamHandler(AuthRequestHandler):
 
         """
         try:
-            self.call_hook = True
+            self.resumable_is_complete = True # set to false by resumable handler if needed
             self.merged_file = False
             self.target_file = None
             self.custom_content_type = None
@@ -1442,9 +1443,7 @@ class StreamHandler(AuthRequestHandler):
         Called after each request at the very end before closing the connection.
 
         - clean up any open files if an error occurred
-        - call the chowner
-            - to set permissions, and mode
-            - move the file to the project import area
+        - call the request hook, if configured
 
         """
         try:
@@ -1453,7 +1452,7 @@ class StreamHandler(AuthRequestHandler):
                 os.rename(self.path, self.path_part)
         except AttributeError as e:
             pass
-        if self.call_hook:
+        if self.resumable_is_complete:
             try:
                 # switch path and path_part variables back to their original values
                 # keep local copies in this scope for safety
@@ -1461,12 +1460,12 @@ class StreamHandler(AuthRequestHandler):
                     path, path_part = self.path_part, self.path
                 else:
                     path = self.merged_file
+                    assert resumable_db_remove_completed_for_user(self.rdb, self.upload_id, self.user)
                 if self.backend == 'cluster' and self.pnum != 'p01': # TODO: remove special case
                     pass
                 else:
-                    call_request_hook(options.chowner_path, [path, self.user, options.api_user, self.group_name])
-                if self.merged_file:
-                    assert resumable_db_remove_completed_for_user(self.rdb, self.upload_id, self.user)
+                    if self.hook_enabled:
+                        call_request_hook(self.hook_path, [path, self.user, options.api_user, self.group_name])
             except Exception as e:
                 logging.info('could not change file mode or owner for some reason')
                 logging.info(e)
@@ -1484,7 +1483,8 @@ class StreamHandler(AuthRequestHandler):
                 if self.backend == 'cluster' and pnum != 'p01':  # TODO: remove special case
                     pass
                 else:
-                    call_request_hook(options.chowner_path, [path, self.user, options.api_user, self.group_name])
+                    if self.hook_enabled:
+                        call_request_hook(self.hook_path, [path, self.user, options.api_user, self.group_name])
                 logging.info('StreamHandler: Closed file after client closed connection')
         except AttributeError as e:
             logging.info(e)
@@ -1777,8 +1777,8 @@ def main():
         # Note: the name of the storage backend is the same as the URL fragment
         ('/v1/(.*)/files/health', HealthCheckHandler),
         # hpc storage
-        ('/v1/(.*)/cluster/upload_stream', StreamHandler, dict(backend='cluster')),
-        ('/v1/(.*)/cluster/upload_stream/(.*)', StreamHandler, dict(backend='cluster')),
+        ('/v1/(.*)/cluster/upload_stream', StreamHandler, dict(backend='cluster', hook_enabled=True)),
+        ('/v1/(.*)/cluster/upload_stream/(.*)', StreamHandler, dict(backend='cluster', hook_enabled=True)),
         ('/v1/(.*)/cluster/stream', ProxyHandler, dict(backend='cluster')),
         ('/v1/(.*)/cluster/stream/(.*)', ProxyHandler, dict(backend='cluster')),
         ('/v1/(.*)/cluster/resumables', ResumablesHandler, dict(backend='cluster')),
@@ -1786,8 +1786,8 @@ def main():
         ('/v1/(.*)/cluster/export', FileStreamerHandler, dict(backend='cluster')),
         ('/v1/(.*)/cluster/export/(.*)', FileStreamerHandler, dict(backend='cluster')),
         # project storage
-        ('/v1/(.*)/files/upload_stream', StreamHandler, dict(backend='files')),
-        ('/v1/(.*)/files/upload_stream/(.*)', StreamHandler, dict(backend='files')),
+        ('/v1/(.*)/files/upload_stream', StreamHandler, dict(backend='files', hook_enabled=True)),
+        ('/v1/(.*)/files/upload_stream/(.*)', StreamHandler, dict(backend='files', hook_enabled=True)),
         ('/v1/(.*)/files/stream', ProxyHandler, dict(backend='files')),
         ('/v1/(.*)/files/stream/(.*)', ProxyHandler, dict(backend='files')),
         ('/v1/(.*)/files/resumables', ResumablesHandler, dict(backend='files')),
