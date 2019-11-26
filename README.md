@@ -30,7 +30,7 @@ python3 tsdfileapi/test_file_api.py test-config.yaml
 ```bash
 git clone ssh://git@bitbucket.usit.uio.no:7999/tsd/tsd-file-api.git
 cd tsd-file-api
-docker build -t tsd:fileapi .
-export id=$(docker create tsd:fileapi)
-docker cp $id:/file-api/dist/ .
+./buid.sh
 ```
+
+New rpms will be in `tsd-file-api/dist`.
