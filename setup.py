@@ -21,6 +21,7 @@ setup(
             'data/an*',
             'data/ex*',
             'data/tsd/p11/export/*',
+            'data/tsd/p11/export/bl*',
             'config/file-api-config.yaml.example',
             'config/file-api.service',
         ]
