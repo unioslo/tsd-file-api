@@ -5,6 +5,7 @@ import re
 import logging
 import hashlib
 import subprocess
+import shlex
 
 
 _VALID_PNUM = re.compile(r'^[0-9a-z]+$')
@@ -16,7 +17,7 @@ _IS_VALID_UUID = re.compile(r'([a-f\d0-9-]{32,36})')
 
 def call_request_hook(path, params):
     cmd = ['sudo']
-    cmd.append(path)
+    cmd.append(shlex.quote(path))
     cmd.extend(params)
     subprocess.call(cmd)
 
