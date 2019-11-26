@@ -218,7 +218,7 @@ class TestFileApi(unittest.TestCase):
                 except OSError as e:
                     logging.error(e)
                     continue
-        sqlite_path = cls.config['uploads_folder'][cls.config['test_project']] + '/api-data.db'
+        sqlite_path = cls.uploads_folder + '/api-data.db'
         try:
             #os.remove(sqlite_path)
             pass
