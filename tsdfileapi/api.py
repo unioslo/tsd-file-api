@@ -1107,7 +1107,7 @@ class StreamHandler(AuthRequestHandler):
         if chunk_num == 'end':
             self.chunk_num = 'end'
             self.upload_id = upload_id
-            self.call_chowner = True
+            self.call_hook = True
             filename = self.upload_id + '/' + chunk_filename
             self.merged_file = self.merge_resumables(project_dir, filename, self.upload_id)
             self.target_file = None
@@ -1115,7 +1115,7 @@ class StreamHandler(AuthRequestHandler):
         elif chunk_num == 1:
             self.chunk_num = 1
             self.upload_id = str(uuid4())
-            self.call_chowner = False
+            self.call_hook = False
             filename = self.upload_id + '/' + chunk_filename
             os.makedirs(project_dir + '/' + self.upload_id)
             assert resumable_db_insert_new_for_user(self.rdb, self.upload_id, self.user, group)
@@ -1123,7 +1123,7 @@ class StreamHandler(AuthRequestHandler):
         elif chunk_num > 1:
             self.chunk_num = chunk_num
             self.upload_id = upload_id
-            self.call_chowner = False
+            self.call_hook = False
             filename = self.upload_id + '/' + chunk_filename
             self.refuse_upload_if_not_in_sequential_order(project_dir, self.upload_id, chunk_num)
             return filename
@@ -1236,7 +1236,7 @@ class StreamHandler(AuthRequestHandler):
 
         """
         try:
-            self.call_chowner = True
+            self.call_hook = True
             self.merged_file = False
             self.target_file = None
             self.custom_content_type = None
@@ -1250,6 +1250,7 @@ class StreamHandler(AuthRequestHandler):
                 raise Exception
             try:
                 pnum = pnum_from_url(self.request.uri)
+                self.pnum = pnum
                 try:
                     assert _VALID_PNUM.match(pnum)
                 except AssertionError as e:
@@ -1452,7 +1453,7 @@ class StreamHandler(AuthRequestHandler):
                 os.rename(self.path, self.path_part)
         except AttributeError as e:
             pass
-        if options.set_owner and self.call_chowner:
+        if self.call_hook:
             try:
                 # switch path and path_part variables back to their original values
                 # keep local copies in this scope for safety
@@ -1460,7 +1461,7 @@ class StreamHandler(AuthRequestHandler):
                     path, path_part = self.path_part, self.path
                 else:
                     path = self.merged_file
-                if self.backend == 'cluster' and pnum != 'p01':
+                if self.backend == 'cluster' and self.pnum != 'p01':
                     pass
                 else:
                     subprocess.call(['sudo', options.chowner_path, path,
