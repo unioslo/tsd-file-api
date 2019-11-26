@@ -1815,6 +1815,15 @@ def main():
         # form data
         ('/v1/(.*)/files/upload', FormDataHandler, dict(backend='form_data')),
         ('/v1/(.*)/sns/(.*)/(.*)', SnsFormDataHandler, dict(backend='sns')),
+        # publication system
+        ('/v1/(.*)/publication/upload_stream', StreamHandler, dict(backend='publication', request_hook_enabled=False)),
+        ('/v1/(.*)/publication/upload_stream/(.*)', StreamHandler, dict(backend='publication', request_hook_enabled=False)),
+        ('/v1/(.*)/publication/import', ProxyHandler, dict(backend='publication')),
+        ('/v1/(.*)/publication/import/(.*)', ProxyHandler, dict(backend='publication')),
+        ('/v1/(.*)/publication/resumables', ResumablesHandler, dict(backend='publication')),
+        ('/v1/(.*)/publication/resumables/(.*)', ResumablesHandler, dict(backend='publication')),
+        ('/v1/(.*)/publication/export', FileStreamerHandler, dict(backend='publication')),
+        ('/v1/(.*)/publication/export/(.*)', FileStreamerHandler, dict(backend='publication')),
     ], debug=options.debug)
     app.listen(options.port, max_body_size=options.max_body_size)
     IOLoop.instance().start()
