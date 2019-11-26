@@ -892,7 +892,6 @@ class TestFileApi(unittest.TestCase):
         headers = {'Authorization': 'Bearer ' + TEST_TOKENS['EXPORT']}
         resp = requests.get(self.export, headers=headers)
         data = json.loads(resp.text)
-        print(data)
         self.assertEqual(resp.status_code, 200)
         self.assertTrue(len(data['files']), 3)
         self.assertTrue(len(data['files'][0].keys()), 3) # seems broken
@@ -1253,7 +1252,7 @@ class TestFileApi(unittest.TestCase):
         resp2 = requests.get(url, headers=headers)
         self.assertEqual(resp2.status_code, 200)
 
-    # TODO: add test for Cluster software import p01
+    # TODO: publication system backend
 
 def main():
     tests = []

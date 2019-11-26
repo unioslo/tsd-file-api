@@ -1281,7 +1281,9 @@ class StreamHandler(AuthRequestHandler):
                     uri_filename = self.request.uri.split('?')[0].split('/')[-1]
                     filename = check_filename(url_unescape(uri_filename))
                     if self.request.method == 'PATCH':
-                        self.rdb = sqlite_init(self.project_dir, name='.resumables-' + self.user + '.db')
+                        dbname = '{0}{1}{2}'.format('.resumables-', self.user, '.db')
+                        self.rdb = sqlite_init(self.project_dir, name=dbname)
+                        os.chmod('{0}/{1}'.format(self.project_dir, dbname), _RW______)
                         filename = self.handle_resumable_request(self.project_dir, filename)
                     # prepare the partial file name for incoming data
                     # ensure we do not write to active file
@@ -1813,7 +1815,6 @@ def main():
         # form data
         ('/v1/(.*)/files/upload', FormDataHandler, dict(backend='form_data')),
         ('/v1/(.*)/sns/(.*)/(.*)', SnsFormDataHandler, dict(backend='sns')),
-        # TODO: /v1/(.*)/publication}/{import,resumables,export}/{file}
     ], debug=options.debug)
     app.listen(options.port, max_body_size=options.max_body_size)
     IOLoop.instance().start()
