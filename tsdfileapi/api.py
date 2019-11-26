@@ -208,12 +208,13 @@ class FileStreamerHandler(AuthRequestHandler):
         """
         status = False # until proven otherwise
         try:
-            check_filename(os.path.basename(filename))
+            file = os.path.basename(filename)
+            check_filename(file)
         except Exception as e:
             logging.error(e)
-            self.message = 'Illegal export filename: %s' % filename
+            self.message = 'Illegal export filename: %s' % file
             logging.error(self.message)
-            return status, None, None
+            return status
         if pnum in policy_config.keys():
             policy = policy_config[pnum]
         else:
@@ -295,7 +296,7 @@ class FileStreamerHandler(AuthRequestHandler):
             owners.append(owner)
         file_info = []
         for f, t, e, r, s, m, o in zip(files, times, exportable, reasons, sizes, mimes, owners):
-            href = '%s/%s' % (self.request.uri, f)
+            href = '%s/%s' % (self.request.uri, url_escape(f))
             file_info.append({'filename': f,
                               'size': s,
                               'modified_date': t,

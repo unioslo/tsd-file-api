@@ -891,8 +891,9 @@ class TestFileApi(unittest.TestCase):
         headers = {'Authorization': 'Bearer ' + TEST_TOKENS['EXPORT']}
         resp = requests.get(self.export, headers=headers)
         data = json.loads(resp.text)
+        print(data)
         self.assertEqual(resp.status_code, 200)
-        self.assertTrue(len(data['files']), 2)
+        self.assertTrue(len(data['files']), 3)
         self.assertTrue(len(data['files'][0].keys()), 3) # seems broken
 
 
@@ -901,7 +902,9 @@ class TestFileApi(unittest.TestCase):
         resp = requests.get(self.export + '/file1', headers=headers)
         self.assertEqual(resp.text, u'some data\n')
         self.assertEqual(resp.status_code, 200)
-
+        resp = requests.get(self.export + '/' + url_escape('blå fil 3 (v1).txt'), headers=headers)
+        self.assertEqual(resp.text, u'even more data')
+        self.assertEqual(resp.status_code, 200)
 
     # resumable uploads
 
@@ -1215,35 +1218,6 @@ class TestFileApi(unittest.TestCase):
         resp = requests.get(url, headers=headers)
         self.assertEqual(resp.status_code, 405)
 
-    # TODO: add test for norwegian chars
-
-    def test_ZZd_filename_rules(self):
-        illegal_names = [
-            '~/.pgpass',
-            '/etc/passwd',
-            '/tsd/p01/data/durable/gpg-keys/*',
-            '%8.txt',
-            '../../../.bash_history',
-            '; rm -rf /',
-            'echo $PATH',
-        ]
-        example_chars = '~`§±@#$%^&*+={}[]\\|":;<>?/'
-        good_names = [
-            'Anotherfile.txt',
-            'å-så-søt.exe',
-            'My-amazing-data.csv',
-            'My-amazing-data(1).csv',
-            'sær_navn.bat',
-            'Ærlig'
-        ]
-        for name in illegal_names:
-            self.assertRaises(IllegalFilenameException, check_filename, name)
-        for char in example_chars:
-            self.assertRaises(IllegalFilenameException, check_filename, char)
-        for name in good_names:
-            out = check_filename(name)
-            self.assertTrue(out, name)
-
 
     def test_ZZe_filename_rules_with_uploads(self):
         headers = {'Authorization': 'Bearer ' + TEST_TOKENS['VALID']}
@@ -1342,7 +1316,6 @@ def main():
         'test_ZZ_get_range_until_end_for_export',
         'test_ZZa_get_specific_range_conditional_on_etag',
         'test_ZZb_get_range_out_of_bounds_returns_correct_error',
-        'test_ZZd_filename_rules',
         'test_ZZe_filename_rules_with_uploads',
         # cluster
         'test_ZZe_cluster_uploads_not_p01',
