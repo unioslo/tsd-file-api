@@ -36,7 +36,7 @@ from tornado.web import Application, RequestHandler, stream_request_body, \
 
 # pylint: disable=relative-import
 from auth import verify_json_web_token
-from utils import project_import_dir, project_sns_dir, \
+from utils import project_sns_dir, \
                   IS_VALID_GROUPNAME, check_filename, _IS_VALID_UUID, \
                   md5sum, natural_keys, pnum_from_url, create_cluster_dir_if_not_exists
 from db import sqlite_insert, sqlite_init, _VALID_PNUM, load_jwk_store, \

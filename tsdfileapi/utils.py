@@ -57,50 +57,6 @@ def create_cluster_dir_if_not_exists(path, pnum):
     else:
         raise Exception('{0} does not have a cluster disk space'.format(pnum))
 
-def project_import_dir(config, pnum=None, keyid=None,
-                       formid=None, backend=False):
-    """
-    Create a project specific path based on config and a project number.
-
-    If backend=False, then the project directory is located on
-    /durable, otherwise it is on /cluster. For the latter case,
-    we first ensure that /cluster/projects/{pnum} exists, and if so
-    check whether /cluster/projects/{pnum}/file-import exists. If not,
-    it is created, and the path returned. Otherwise an exception is
-    raise, since the project first needs to get this storage.
-
-    Paramaters
-    ----------
-    config: dict
-    pnum: str
-    keyid: deprecated
-    formid: deprecated
-    cluster: bool, default=False
-
-    Returns
-    -------
-    path
-
-    """
-    try:
-        assert _VALID_PNUM.match(pnum)
-        if backend != 'cluster' and pnum == 'p01':
-            return config['uploads_folder_cluster_software']
-        elif backend == 'cluster':
-            path = config['uploads_folder_cluster']
-            base = path.replace('pXX', pnum).replace('/file-import', '')
-            target = path.replace('pXX', pnum)
-            if os.path.lexists(base):
-                if not os.path.lexists(target):
-                    os.makedirs(target) # unsure if we have the permissions
-                return target
-            else:
-                raise Exception('{0} does not have a cluster disk space'.format(pnum))
-        folder = config['uploads_folder'][pnum]
-    except KeyError as e:
-        folder = config['uploads_folder']['default'].replace('pXX', pnum)
-    return os.path.normpath(folder)
-
 
 def project_sns_dir(base_pattern, pnum, uri, test=False):
     """

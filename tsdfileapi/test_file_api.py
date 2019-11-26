@@ -91,8 +91,13 @@ pretty_bad_protocol._parsers.Verify.TRUST_LEVELS["ENCRYPTION_COMPLIANCE_MODE"] =
 from tokens import gen_test_tokens, get_test_token_for_p12, gen_test_token_for_user
 from db import session_scope, sqlite_init
 from dbresumable import resumable_db_remove_completed_for_user
-from utils import project_import_dir, project_sns_dir, md5sum, check_filename, IllegalFilenameException
+from utils import project_sns_dir, md5sum, check_filename, IllegalFilenameException
 from pgp import _import_keys
+
+
+def project_import_dir(config, pnum=None, backend=None):
+    folder = config['backends']['disk'][backend]['import_path'].replace('pXX', pnum)
+    return os.path.normpath(folder)
 
 
 def lazy_file_reader(filename):
@@ -135,8 +140,8 @@ class TestFileApi(unittest.TestCase):
             open(os.path.normpath(cls.data_folder + '/example-ns.json')).read())
         cls.test_user = cls.config['test_user']
         cls.test_group = cls.config['test_group']
-        cls.uploads_folder = project_import_dir(cls.config, cls.config['test_project'])
-        cls.uploads_folder_p12 = project_import_dir(cls.config, 'p12')
+        cls.uploads_folder = project_import_dir(cls.config, cls.config['test_project'], backend='files')
+        cls.uploads_folder_p12 = project_import_dir(cls.config, 'p12', backend='files')
         cls.test_sns_url = '/v1/{0}/sns/{1}/{2}'.format(cls.config['test_project'], cls.config['test_keyid'], cls.config['test_formid'])
         cls.test_sns_dir = cls.config['backends']['disk']['sns']['import_path']
         cls.test_formid = cls.config['test_formid']
