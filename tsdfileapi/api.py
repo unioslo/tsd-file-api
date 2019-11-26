@@ -36,7 +36,7 @@ from tornado.web import Application, RequestHandler, stream_request_body, \
 
 # pylint: disable=relative-import
 from auth import verify_json_web_token
-from utils import project_sns_dir, \
+from utils import call_request_hook, project_sns_dir, \
                   IS_VALID_GROUPNAME, check_filename, _IS_VALID_UUID, \
                   md5sum, natural_keys, pnum_from_url, create_cluster_dir_if_not_exists
 from db import sqlite_insert, sqlite_init, _VALID_PNUM, load_jwk_store, \
@@ -1461,11 +1461,10 @@ class StreamHandler(AuthRequestHandler):
                     path, path_part = self.path_part, self.path
                 else:
                     path = self.merged_file
-                if self.backend == 'cluster' and self.pnum != 'p01':
+                if self.backend == 'cluster' and self.pnum != 'p01': # TODO: remove special case
                     pass
                 else:
-                    subprocess.call(['sudo', options.chowner_path, path,
-                                     self.user, options.api_user, self.group_name])
+                    call_request_hook(options.chowner_path, [path, self.user, options.api_user, self.group_name])
                 if self.merged_file:
                     assert resumable_db_remove_completed_for_user(self.rdb, self.upload_id, self.user)
             except Exception as e:
@@ -1482,11 +1481,10 @@ class StreamHandler(AuthRequestHandler):
             if not self.target_file.closed:
                 self.target_file.close()
                 path = self.path
-                if self.backend == 'cluster' and pnum != 'p01':
+                if self.backend == 'cluster' and pnum != 'p01':  # TODO: remove special case
                     pass
                 else:
-                    subprocess.call(['sudo', options.chowner_path, path,
-                                     self.user, options.api_user, self.group_name])
+                    call_request_hook(options.chowner_path, [path, self.user, options.api_user, self.group_name])
                 logging.info('StreamHandler: Closed file after client closed connection')
         except AttributeError as e:
             logging.info(e)

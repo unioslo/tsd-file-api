@@ -4,6 +4,7 @@ import os
 import re
 import logging
 import hashlib
+import subprocess
 
 
 _VALID_PNUM = re.compile(r'^[0-9a-z]+$')
@@ -12,6 +13,14 @@ _IS_REALISTIC_PGP_KEY_FINGERPRINT = re.compile(r'^[0-9A-Z]{16}$')
 IS_VALID_GROUPNAME = re.compile(r'p+[0-9]+-[a-z-]')
 _IS_VALID_UUID = re.compile(r'([a-f\d0-9-]{32,36})')
 ILLEGAL_CHARS = re.compile(r'[^A-Za-z0-9_().æøåÆØÅ\-]')
+
+
+def call_request_hook(path, params):
+    cmd = ['sudo']
+    cmd.append(path)
+    cmd.extend(params)
+    logging.info(cmd)
+    subprocess.call(cmd)
 
 
 class IllegalFilenameException(Exception):
