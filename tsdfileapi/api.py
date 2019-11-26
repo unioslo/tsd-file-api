@@ -182,6 +182,7 @@ class FileStreamerHandler(AuthRequestHandler):
             self.export_path_pattern = self.backend_paths['export_path']
             self.export_dir = self.export_path_pattern.replace('pXX', pnum)
             self.backend = backend
+            self.export_policy = CONFIG['backends']['disk'][backend]['export_policy']
         except (AssertionError, Exception) as e:
             self.backend = None
             logging.error(e)
@@ -237,7 +238,9 @@ class FileStreamerHandler(AuthRequestHandler):
 
     def get_file_metadata(self, filename):
         filename_raw_utf8 = filename.encode('utf-8')
-        subprocess.call(['sudo', 'chmod', 'go+r', filename]) # only necessary for export
+        if self.backend == 'files':
+            # only necessary for export folder
+            subprocess.call(['sudo', 'chmod', 'go+r', filename])
         mime_type = magic.from_file(filename_raw_utf8, mime=True)
         size = os.stat(filename).st_size
         return size, mime_type
@@ -276,7 +279,7 @@ class FileStreamerHandler(AuthRequestHandler):
                     self.message = 'exporting from directories not supported yet'
                 else:
                     size, mime_type = self.get_file_metadata(filepath)
-                    status = self.enforce_export_policy(CONFIG['export_policy'], filepath, pnum, size, mime_type)
+                    status = self.enforce_export_policy(self.export_policy, filepath, pnum, size, mime_type)
                 if status:
                     reason = None
                 else:
@@ -384,7 +387,7 @@ class FileStreamerHandler(AuthRequestHandler):
                 raise Exception
             try:
                 size, mime_type = self.get_file_metadata(self.filepath)
-                status = self.enforce_export_policy(CONFIG['export_policy'], self.filepath, pnum, size, mime_type)
+                status = self.enforce_export_policy(self.export_policy, self.filepath, pnum, size, mime_type)
                 assert status
             except (Exception, AssertionError) as e:
                 logging.error(e)
@@ -493,7 +496,7 @@ class FileStreamerHandler(AuthRequestHandler):
                 self.message = 'File does not exist'
                 raise Exception
             size, mime_type = self.get_file_metadata(self.filepath)
-            status = self.enforce_export_policy(CONFIG['export_policy'], self.filepath, pnum, size, mime_type)
+            status = self.enforce_export_policy(self.export_policy, self.filepath, pnum, size, mime_type)
             assert status
             logging.info('user: %s, checked file: %s , with MIME type: %s', self.user, self.filepath, mime_type)
             self.set_header('Content-Length', size)
