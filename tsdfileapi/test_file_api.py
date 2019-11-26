@@ -191,6 +191,7 @@ class TestFileApi(unittest.TestCase):
         cls.resume_file2 = os.path.normpath(cls.data_folder + '/resume-file2')
         # filename tests
         cls.so_sweet = os.path.normpath(cls.data_folder + '/så_søt(1).txt')
+        cls.red = os.path.normpath(cls.data_folder + '/rød fil (1).txt')
         cls.test_upload_id = '96c68dad-8dc5-4076-9569-92394001d42a'
         # TODO: make this configurable
         # do not dist with package
@@ -1223,6 +1224,10 @@ class TestFileApi(unittest.TestCase):
         headers = {'Authorization': 'Bearer ' + TEST_TOKENS['VALID']}
         resp = requests.put(self.stream + '/' + url_escape('så_søt(1).txt'),
                             data=lazy_file_reader(self.so_sweet),
+                            headers=headers)
+        self.assertEqual(resp.status_code, 201)
+        resp = requests.put(self.stream + '/' + url_escape('rød fil (1).txt'),
+                            data=lazy_file_reader(self.red),
                             headers=headers)
         self.assertEqual(resp.status_code, 201)
 

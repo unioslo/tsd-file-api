@@ -18,7 +18,6 @@ def call_request_hook(path, params):
     cmd = ['sudo']
     cmd.append(path)
     cmd.extend(params)
-    logging.info(cmd)
     subprocess.call(cmd)
 
 

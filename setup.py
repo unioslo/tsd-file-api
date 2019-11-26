@@ -18,6 +18,7 @@ setup(
             'data/.tar.*',
             'data/resume*',
             'data/s*',
+            'data/r*',
             'data/an*',
             'data/ex*',
             'data/tsd/p11/export/*',
