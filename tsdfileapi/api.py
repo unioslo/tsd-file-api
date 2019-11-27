@@ -256,7 +256,8 @@ class FileStreamerHandler(AuthRequestHandler):
         dict
 
         """
-        files = os.listdir(path)
+        dir_map = map(lambda x: x if not x.startswith('.') else None, os.listdir(path))
+        files = list(dir_map)
         if len(files) > CONFIG['export_max_num_list']:
             self.set_status(400)
             self.message = 'too many files, create a zip archive'

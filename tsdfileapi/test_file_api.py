@@ -894,7 +894,7 @@ class TestFileApi(unittest.TestCase):
         data = json.loads(resp.text)
         self.assertEqual(resp.status_code, 200)
         self.assertTrue(len(data['files']), 3)
-        self.assertTrue(len(data['files'][0].keys()), 3) # seems broken
+        self.assertTrue(len(data['files'][0].keys()), 3)
 
 
     def test_ZL_export_file_works(self):
