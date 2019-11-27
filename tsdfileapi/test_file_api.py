@@ -1229,6 +1229,10 @@ class TestFileApi(unittest.TestCase):
                             data=lazy_file_reader(self.red),
                             headers=headers)
         self.assertEqual(resp.status_code, 201)
+        resp = requests.put(self.stream + '/' + url_escape('~not allowed'),
+                            data=lazy_file_reader(self.red),
+                            headers=headers)
+        self.assertEqual(resp.status_code, 401)
 
     # cluster import
 
