@@ -193,7 +193,7 @@ class TestFileApi(unittest.TestCase):
         cls.resume_file2 = os.path.normpath(cls.data_folder + '/resume-file2')
         # filename tests
         cls.so_sweet = os.path.normpath(cls.data_folder + '/så_søt(1).txt')
-        cls.red = os.path.normpath(cls.data_folder + '/rød fil (1).txt')
+        cls.red = os.path.normpath(cls.data_folder + '/rød_fil_(1).txt')
         cls.test_upload_id = '96c68dad-8dc5-4076-9569-92394001d42a'
         # TODO: make this configurable
         # do not dist with package
@@ -904,7 +904,7 @@ class TestFileApi(unittest.TestCase):
         resp = requests.get(self.export + '/file1', headers=headers)
         self.assertEqual(resp.text, u'some data\n')
         self.assertEqual(resp.status_code, 200)
-        resp = requests.get(self.export + '/' + url_escape('blå fil 3 (v1).txt'), headers=headers)
+        resp = requests.get(self.export + '/' + url_escape('blå_fil_3_(v1).txt'), headers=headers)
         self.assertEqual(resp.text, u'even more data')
         self.assertEqual(resp.status_code, 200)
 
