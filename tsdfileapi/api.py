@@ -42,9 +42,9 @@ from utils import call_request_hook, project_sns_dir, \
 from db import sqlite_insert, sqlite_init, _VALID_PNUM, load_jwk_store, \
                sqlite_list_tables, sqlite_get_data, sqlite_update_data, \
                sqlite_delete_data
-from resumables import Resumable, natural_keys, find_nth_chunk, \
-                       find_relevant_resumable_dir, list_all_resumables, \
-                       get_resumable_info, delete_resumable, merge_resumables
+from resumables import Resumable, list_all_resumables, \
+                       get_resumable_info, delete_resumable, merge_resumables, \
+                       get_full_chunks_on_disk
 from pgp import _import_keys
 
 
@@ -847,9 +847,7 @@ class StreamHandler(AuthRequestHandler):
 
 
     def refuse_upload_if_not_in_sequential_order(self, project_dir, upload_id, chunk_num):
-        chunks_on_disk = os.listdir(project_dir + '/' + upload_id)
-        chunks_on_disk.sort(key=natural_keys)
-        full_chunks_on_disk = [ c for c in chunks_on_disk if '.part' not in c ]
+        full_chunks_on_disk = get_full_chunks_on_disk(project_dir, upload_id, chunk_num)
         previous_chunk_num = int(full_chunks_on_disk[-1].split('.chunk.')[-1])
         if chunk_num <= previous_chunk_num or (chunk_num - previous_chunk_num) >= 2:
             self.chunk_order_correct = False

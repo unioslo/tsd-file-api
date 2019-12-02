@@ -219,6 +219,13 @@ def get_resumable_info(project_dir, filename, upload_id, res_db=None, user=None)
     return info
 
 
+def get_full_chunks_on_disk(project_dir, upload_id, chunk_num):
+    chunks_on_disk = os.listdir(project_dir + '/' + upload_id)
+    chunks_on_disk.sort(key=natural_keys)
+    full_chunks_on_disk = [ c for c in chunks_on_disk if '.part' not in c ]
+    return full_chunks_on_disk
+
+
 def delete_resumable(project_dir, filename, upload_id, res_db=None, user=None):
     try:
         assert Resumable.db_upload_belongs_to_user(res_db, upload_id, user)
@@ -232,6 +239,7 @@ def delete_resumable(project_dir, filename, upload_id, res_db=None, user=None):
         logging.error(e)
         logging.error('could not complete resumable deletion')
         return False
+
 
 def merge_resumables(project_dir, last_chunk_filename, upload_id, res_db=None):
     """
