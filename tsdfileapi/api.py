@@ -44,7 +44,7 @@ from db import sqlite_insert, sqlite_init, _VALID_PNUM, load_jwk_store, \
                sqlite_delete_data
 from resumables import Resumable, natural_keys, find_nth_chunk, \
                        find_relevant_resumable_dir, list_all_resumables, \
-                       get_resumable_info, delete_resumable
+                       get_resumable_info, delete_resumable, merge_resumables
 from pgp import _import_keys
 
 
@@ -847,7 +847,6 @@ class StreamHandler(AuthRequestHandler):
 
 
     def refuse_upload_if_not_in_sequential_order(self, project_dir, upload_id, chunk_num):
-        # TODO: move out
         chunks_on_disk = os.listdir(project_dir + '/' + upload_id)
         chunks_on_disk.sort(key=natural_keys)
         full_chunks_on_disk = [ c for c in chunks_on_disk if '.part' not in c ]
@@ -901,7 +900,7 @@ class StreamHandler(AuthRequestHandler):
             self.upload_id = upload_id
             self.resumable_is_complete = True
             filename = self.upload_id + '/' + chunk_filename
-            self.merged_file = self.merge_resumables(project_dir, filename, self.upload_id)
+            self.merged_file = merge_resumables(project_dir, filename, self.upload_id, res_db=self.rdb)
             self.target_file = None
             return filename
         elif chunk_num == 1:
@@ -919,82 +918,6 @@ class StreamHandler(AuthRequestHandler):
             filename = self.upload_id + '/' + chunk_filename
             self.refuse_upload_if_not_in_sequential_order(project_dir, self.upload_id, chunk_num)
             return filename
-
-
-    def merge_resumables(self, project_dir, last_chunk_filename, upload_id):
-        """
-        Merge chunks into one file, _in order_.
-
-        Sequence
-        --------
-        1. Check that the chunk is not partial
-        2. If last request
-            - remove any remaining chunks, and the working directory
-            - continue to the chowner: move file, set permissions
-        3. If new chunk
-            - if chunk_num > 1, create a lockfile - link to a unique file (NFS-safe method)
-            - append it to the merge file
-            - remove chunks older than 5 requests back in the sequence
-              to avoid using lots of disk space for very large files
-            - update the resumable's info table
-        4. If a merge fails
-            - remove the chunk
-            - reset the file to its prior size
-            - end the request
-        5. Finally
-            - unlink any existing lock
-
-        Note
-        ----
-        This will produce bizarre files if clients send chunks out of order,
-        which rules out multi-threaded senders. That can be supported by delaying
-        the merge until the final request. Until a feature request arrives,
-        it remain unimplemented.
-
-        """
-        assert '.part' not in last_chunk_filename
-        filename = os.path.basename(last_chunk_filename.split('.chunk')[0])
-        out = os.path.normpath(project_dir + '/' + filename + '.' + upload_id)
-        out_lock = out + '.lock'
-        final = out.replace('.' + upload_id, '')
-        chunks_dir = project_dir + '/' + upload_id
-        if '.chunk.end' in last_chunk_filename:
-            logging.info('deleting: %s', chunks_dir)
-            os.rename(out, final)
-            try:
-                shutil.rmtree(chunks_dir) # do not need to fail upload if this does not work
-            except OSError as e:
-                logging.error(e)
-        else:
-            chunk_num = int(last_chunk_filename.split('.chunk.')[-1])
-            chunk = chunks_dir + '/' + last_chunk_filename
-            try:
-                if chunk_num > 1:
-                    os.link(out, out_lock)
-                with open(out, 'ab') as fout:
-                    with open(chunk, 'rb') as fin:
-                        size_before_merge = os.stat(out).st_size
-                        shutil.copyfileobj(fin, fout)
-                chunk_size = os.stat(chunk).st_size
-                assert Resumable.db_update_with_chunk_info(self.rdb, upload_id, chunk_num, chunk_size)
-            except Exception as e:
-                logging.error(e)
-                try:
-                    os.remove(chunk)
-                    with open(out, 'ab') as fout:
-                        fout.truncate(size_before_merge)
-                except (Exception, OSError) as e:
-                    raise Exception('could not merge %s', chunk)
-            finally:
-                try:
-                    os.unlink(out_lock)
-                except OSError:
-                    pass
-            if chunk_num >= 5:
-                target_chunk_num = chunk_num - 4
-                old_chunk = chunk.replace('.chunk.' + str(chunk_num), '.chunk.' + str(target_chunk_num))
-                os.remove(old_chunk)
-        return final
 
 
     def initialize(self, backend, request_hook_enabled=False):
@@ -1221,7 +1144,7 @@ class StreamHandler(AuthRequestHandler):
             if not os.path.lexists(self.path_part):
                 os.rename(self.path, self.path_part)
                 filename = os.path.basename(self.path_part).split('.chunk')[0]
-                self.merge_resumables(self.project_dir, os.path.basename(self.path_part), self.upload_id)
+                merge_resumables(self.project_dir, os.path.basename(self.path_part), self.upload_id, res_db=self.rdb)
             else:
                 self.write({'message': 'chunk_order_incorrect'})
         else:
