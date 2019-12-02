@@ -90,7 +90,7 @@ pretty_bad_protocol._parsers.Verify.TRUST_LEVELS["ENCRYPTION_COMPLIANCE_MODE"] =
 # pylint: disable=relative-import
 from tokens import gen_test_tokens, get_test_token_for_p12, gen_test_token_for_user
 from db import session_scope, sqlite_init
-from dbresumable import resumable_db_remove_completed_for_user
+from resumables import Resumable
 from utils import project_sns_dir, md5sum, check_filename, IllegalFilenameException
 from pgp import _import_keys
 
@@ -991,7 +991,7 @@ class TestFileApi(unittest.TestCase):
                                           verify=True, upload_id=upload_id, dev_url=url)
         self.assertEqual(resp, None)
         rdb = sqlite_init(self.uploads_folder, '.resumables-p11-import_user.db')
-        resumable_db_remove_completed_for_user(rdb, upload_id, 'p11-import_user')
+        Resumable.db_remove_completed_for_user(rdb, upload_id, 'p11-import_user')
 
 
     def test_ZQ_large_start_file_resume(self):
@@ -1059,8 +1059,8 @@ class TestFileApi(unittest.TestCase):
             os.remove(merged_file1)
             os.remove(merged_file2)
             rdb = sqlite_init(self.uploads_folder, '.resumables-p11-import_user.db')
-            resumable_db_remove_completed_for_user(rdb, upload_id1, 'p11-import_user')
-            resumable_db_remove_completed_for_user(rdb, upload_id2, 'p11-import_user')
+            Resumable.db_remove_completed_for_user(rdb, upload_id1, 'p11-import_user')
+            Resumable.db_remove_completed_for_user(rdb, upload_id2, 'p11-import_user')
         except OSError:
             pass
 
@@ -1083,7 +1083,7 @@ class TestFileApi(unittest.TestCase):
             shutil.rmtree(uploaded_folder1)
             os.remove(merged_file1)
             rdb = sqlite_init(self.uploads_folder, '.resumables-p11-import_user.db')
-            resumable_db_remove_completed_for_user(rdb, upload_id1, 'p11-import_user')
+            Resumable.db_remove_completed_for_user(rdb, upload_id1, 'p11-import_user')
         except OSError:
             pass
 
@@ -1107,7 +1107,7 @@ class TestFileApi(unittest.TestCase):
             shutil.rmtree(uploaded_folder)
             os.remove(merged_file)
             rdb = sqlite_init(self.uploads_folder, '.resumables-p11-import_user.db')
-            resumable_db_remove_completed_for_user(rdb, upload_id, 'p11-import_user')
+            Resumable.db_remove_completed_for_user(rdb, upload_id, 'p11-import_user')
         except OSError:
             pass
 
@@ -1136,9 +1136,9 @@ class TestFileApi(unittest.TestCase):
             shutil.rmtree(uploaded_folder1)
             os.remove(merged_file2)
             rdb = sqlite_init(self.uploads_folder, '.resumables-p11-import_user.db')
-            resumable_db_remove_completed_for_user(rdb, upload_id1, 'p11-import_user')
+            Resumable.db_remove_completed_for_user(rdb, upload_id1, 'p11-import_user')
             rdb = sqlite_init(self.uploads_folder, '.resumables-p11-tommy.db')
-            resumable_db_remove_completed_for_user(rdb, upload_id2, 'p11-tommy')
+            Resumable.db_remove_completed_for_user(rdb, upload_id2, 'p11-tommy')
         except OSError:
             pass
 

@@ -42,14 +42,7 @@ from utils import call_request_hook, project_sns_dir, \
 from db import sqlite_insert, sqlite_init, _VALID_PNUM, load_jwk_store, \
                sqlite_list_tables, sqlite_get_data, sqlite_update_data, \
                sqlite_delete_data
-from dbresumable import resumable_db_insert_new_for_user, \
-               resumable_db_remove_completed_for_user, \
-               resumable_db_get_all_resumable_ids_for_user, \
-               resumable_db_upload_belongs_to_user, \
-               resumable_db_update_with_chunk_info, \
-               resumable_db_get_total_size, \
-               resumable_db_pop_chunk, \
-               resumable_db_get_group
+from resumables import Resumable
 from pgp import _import_keys
 
 
@@ -723,7 +716,7 @@ class ResumablesHandler(AuthRequestHandler):
 
         """
         relevant = None
-        potential_resumables = resumable_db_get_all_resumable_ids_for_user(self.rdb, self.user)
+        potential_resumables = Resumable.db_get_all_resumable_ids_for_user(self.rdb, self.user)
         if not upload_id:
             logging.info('Trying to find a matching resumable for %s', filename)
             candidates = []
@@ -749,7 +742,7 @@ class ResumablesHandler(AuthRequestHandler):
 
 
     def list_all_resumables(self, project_dir):
-        potential_resumables = resumable_db_get_all_resumable_ids_for_user(self.rdb, self.user)
+        potential_resumables = Resumable.db_get_all_resumable_ids_for_user(self.rdb, self.user)
         resumables = []
         info = []
         for item in potential_resumables:
@@ -767,7 +760,7 @@ class ResumablesHandler(AuthRequestHandler):
                 except (OSError, Exception):
                     pass
                 if chunk_size:
-                    group = resumable_db_get_group(self.rdb, pr)
+                    group = Resumable.db_get_group(self.rdb, pr)
                     info.append({'chunk_size': chunk_size, 'max_chunk': max_chunk,
                                  'md5sum': md5sum, 'previous_offset': previous_offset,
                                  'next_offset': next_offset, 'id': pr,
@@ -837,7 +830,7 @@ class ResumablesHandler(AuthRequestHandler):
             num = int(chunks[-1].split('.')[-1])
             latest_size = bytes(chunks[-1])
             upload_id = os.path.basename(resumable_dir)
-            next_offset = resumable_db_get_total_size(self.rdb, upload_id)
+            next_offset = Resumable.db_get_total_size(self.rdb, upload_id)
             previous_offset = next_offset - latest_size
             filename = os.path.basename(chunks[-1].split('.chunk')[0])
             merged_file = os.path.normpath(project_dir + '/' + filename + '.' + upload_id)
@@ -877,7 +870,7 @@ class ResumablesHandler(AuthRequestHandler):
         chunk_size, max_chunk, md5sum, \
             previous_offset, next_offset, \
             warning, recommendation, filename = self.get_resumable_chunk_info(resumable_dir, project_dir)
-        group = resumable_db_get_group(self.rdb, upload_id)
+        group = Resumable.db_get_group(self.rdb, upload_id)
         if recommendation == 'end':
             next_offset = 'end'
         info = {'filename': filename, 'id': relevant_dir,
@@ -938,12 +931,12 @@ class ResumablesHandler(AuthRequestHandler):
 
     def delete_resumable(self, project_dir, filename, upload_id):
         try:
-            assert resumable_db_upload_belongs_to_user(self.rdb, upload_id, self.user)
+            assert Resumable.db_upload_belongs_to_user(self.rdb, upload_id, self.user)
             relevant_dir = project_dir + '/' + upload_id
             relevant_merged_file = project_dir + '/' + filename + '.' + upload_id
             shutil.rmtree(relevant_dir)
             os.remove(relevant_merged_file)
-            assert resumable_db_remove_completed_for_user(self.rdb, upload_id, self.user)
+            assert Resumable.db_remove_completed_for_user(self.rdb, upload_id, self.user)
             return True
         except Exception as e:
             logging.error(e)
@@ -1126,7 +1119,7 @@ class StreamHandler(AuthRequestHandler):
             self.resumable_is_complete = False
             filename = self.upload_id + '/' + chunk_filename
             os.makedirs(project_dir + '/' + self.upload_id)
-            assert resumable_db_insert_new_for_user(self.rdb, self.upload_id, self.user, group)
+            assert Resumable.db_insert_new_for_user(self.rdb, self.upload_id, self.user, group)
             return filename
         elif chunk_num > 1:
             self.chunk_num = chunk_num
@@ -1192,7 +1185,7 @@ class StreamHandler(AuthRequestHandler):
                         size_before_merge = os.stat(out).st_size
                         shutil.copyfileobj(fin, fout)
                 chunk_size = os.stat(chunk).st_size
-                assert resumable_db_update_with_chunk_info(self.rdb, upload_id, chunk_num, chunk_size)
+                assert Resumable.db_update_with_chunk_info(self.rdb, upload_id, chunk_num, chunk_size)
             except Exception as e:
                 logging.error(e)
                 try:
@@ -1472,7 +1465,7 @@ class StreamHandler(AuthRequestHandler):
                     path, path_part = self.path_part, self.path
                 else:
                     path = self.merged_file
-                    assert resumable_db_remove_completed_for_user(self.rdb, self.upload_id, self.user)
+                    assert Resumable.db_remove_completed_for_user(self.rdb, self.upload_id, self.user)
                 if self.backend == 'cluster' and self.pnum != 'p01': # TODO: remove special case
                     pass
                 else:
