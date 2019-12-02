@@ -42,9 +42,7 @@ from utils import call_request_hook, project_sns_dir, \
 from db import sqlite_insert, sqlite_init, _VALID_PNUM, load_jwk_store, \
                sqlite_list_tables, sqlite_get_data, sqlite_update_data, \
                sqlite_delete_data
-from resumables import Resumable, list_all_resumables, \
-                       get_resumable_info, delete_resumable, merge_resumables, \
-                       get_full_chunks_on_disk
+from resumables import Resumable
 from pgp import _import_keys
 
 
@@ -723,9 +721,11 @@ class ResumablesHandler(AuthRequestHandler):
             except Exception:
                 pass
             if not filename:
-                info = list_all_resumables(self.project_dir, res_db=self.rdb, user=self.user)
+                info = Resumable.list_all_resumables(self.project_dir, res_db=self.rdb, user=self.user)
             else:
-                info = get_resumable_info(self.project_dir, secured_filename, upload_id, res_db=self.rdb, user=self.user)
+                i = '{} {} {}'.format(self.project_dir, secured_filename, upload_id)
+                logging.info('before call {}'.format(i))
+                info = Resumable.get_resumable_info(self.project_dir, secured_filename, upload_id, res_db=self.rdb, user=self.user)
             self.set_status(200)
             self.write(info)
         except Exception as e:
@@ -746,7 +746,7 @@ class ResumablesHandler(AuthRequestHandler):
                 upload_id = url_unescape(self.get_query_argument('id'))
             except Exception:
                 raise Exception('upload id required to delete resumable')
-            assert delete_resumable(self.project_dir, filename, upload_id, self.rdb, self.user)
+            assert Resumable.delete_resumable(self.project_dir, filename, upload_id, self.rdb, self.user)
             self.set_status(200)
             self.write({'message': 'resumable deleted'})
         except Exception as e:
@@ -847,7 +847,7 @@ class StreamHandler(AuthRequestHandler):
 
 
     def refuse_upload_if_not_in_sequential_order(self, project_dir, upload_id, chunk_num):
-        full_chunks_on_disk = get_full_chunks_on_disk(project_dir, upload_id, chunk_num)
+        full_chunks_on_disk = Resumable.get_full_chunks_on_disk(project_dir, upload_id, chunk_num)
         previous_chunk_num = int(full_chunks_on_disk[-1].split('.chunk.')[-1])
         if chunk_num <= previous_chunk_num or (chunk_num - previous_chunk_num) >= 2:
             self.chunk_order_correct = False
@@ -898,7 +898,7 @@ class StreamHandler(AuthRequestHandler):
             self.upload_id = upload_id
             self.resumable_is_complete = True
             filename = self.upload_id + '/' + chunk_filename
-            self.merged_file = merge_resumables(project_dir, filename, self.upload_id, res_db=self.rdb)
+            self.merged_file = Resumable.merge_resumables(project_dir, filename, self.upload_id, res_db=self.rdb)
             self.target_file = None
             return filename
         elif chunk_num == 1:
@@ -1142,7 +1142,7 @@ class StreamHandler(AuthRequestHandler):
             if not os.path.lexists(self.path_part):
                 os.rename(self.path, self.path_part)
                 filename = os.path.basename(self.path_part).split('.chunk')[0]
-                merge_resumables(self.project_dir, os.path.basename(self.path_part), self.upload_id, res_db=self.rdb)
+                Resumable.merge_resumables(self.project_dir, os.path.basename(self.path_part), self.upload_id, res_db=self.rdb)
             else:
                 self.write({'message': 'chunk_order_incorrect'})
         else:
