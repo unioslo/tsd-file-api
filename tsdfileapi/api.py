@@ -723,8 +723,6 @@ class ResumablesHandler(AuthRequestHandler):
             if not filename:
                 info = Resumable.list_all_resumables(self.project_dir, res_db=self.rdb, user=self.user)
             else:
-                i = '{} {} {}'.format(self.project_dir, secured_filename, upload_id)
-                logging.info('before call {}'.format(i))
                 info = Resumable.get_resumable_info(self.project_dir, secured_filename, upload_id, res_db=self.rdb, user=self.user)
             self.set_status(200)
             self.write(info)

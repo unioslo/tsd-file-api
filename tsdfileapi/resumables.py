@@ -211,8 +211,6 @@ class Resumable(object):
 
     @classmethod
     def get_resumable_info(self, project_dir, filename, upload_id, res_db=None, user=None):
-        i = '-> {} {} {} {} {}'.format(project_dir, filename, upload_id, res_db, user)
-        logging.info(i)
         relevant_dir = Resumable._find_relevant_resumable_dir(project_dir, filename, upload_id, res_db=res_db, user=user)
         if not relevant_dir:
             raise Exception('No resumable found for: %s', filename)
