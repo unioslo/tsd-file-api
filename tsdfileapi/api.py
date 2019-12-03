@@ -1289,7 +1289,6 @@ class ProxyHandler(AuthRequestHandler):
                 elif 'Content-Type' in self.request.headers.keys():
                     content_type = self.request.headers['Content-Type']
                 headers = {'Authorization': 'Bearer ' + self.jwt,
-                           'Filename': self.filename,
                            'Content-Type': content_type}
                 if 'Aes-Key' in self.request.headers.keys():
                     headers['Aes-Key'] = self.request.headers['Aes-Key']
