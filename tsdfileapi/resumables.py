@@ -39,6 +39,10 @@ class Resumable(object):
         pass
 
     @classmethod
+    def add_chunk(self, fd, chunk):
+        fd.write(chunk)
+
+    @classmethod
     def refuse_upload_if_not_in_sequential_order(self, project_dir, upload_id, chunk_num):
         chunk_order_correct = True
         full_chunks_on_disk = Resumable.get_full_chunks_on_disk(project_dir, upload_id, chunk_num)

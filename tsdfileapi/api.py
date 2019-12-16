@@ -1046,8 +1046,7 @@ class StreamHandler(AuthRequestHandler):
         try:
             if not self.custom_content_type:
                 if self.request.method == 'PATCH':
-                    # add chunk to resumable
-                    self.target_file.write(chunk)
+                    Resumable.add_chunk(self.target_file, chunk)
                 else:
                     self.target_file.write(chunk)
             elif self.custom_content_type in ['application/tar', 'application/tar.gz',
