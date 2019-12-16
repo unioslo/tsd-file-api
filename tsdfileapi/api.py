@@ -224,8 +224,7 @@ class FileStreamerHandler(AuthRequestHandler):
                 logging.error(self.message)
         if policy['max_size'] and size > policy['max_size']:
             logging.error('%s tried to export a file exceeding the maximum size limit', self.user)
-            maxsize = CONFIG['export_max_size'] / 1024 / 1024 / 1024
-            self.message = 'File size exceeds maximum allowed for %s: %d Gigabyte' % (pnum, maxsize)
+            self.message = 'File size exceeds maximum allowed for %s' % pnum
             status = False
         return status
 
@@ -323,7 +322,6 @@ class FileStreamerHandler(AuthRequestHandler):
                 etag = hashlib.md5(str(mtime).encode('utf-8')).hexdigest()
                 return etag
         except (Exception, AttributeError) as e:
-            logging.error(e)
             return None
         else:
             return None
