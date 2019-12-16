@@ -42,7 +42,7 @@ from utils import call_request_hook, project_sns_dir, \
 from db import sqlite_insert, sqlite_init, _VALID_PNUM, load_jwk_store, \
                sqlite_list_tables, sqlite_get_data, sqlite_update_data, \
                sqlite_delete_data
-from resumables import Resumable, refuse_upload_if_not_in_sequential_order
+from resumables import Resumable
 from pgp import _import_keys
 
 
@@ -902,7 +902,7 @@ class StreamHandler(AuthRequestHandler):
             self.upload_id = upload_id
             self.resumable_is_complete = False
             filename = self.upload_id + '/' + chunk_filename
-            self.chunk_order_correct = refuse_upload_if_not_in_sequential_order(project_dir, self.upload_id, chunk_num)
+            self.chunk_order_correct = Resumable.refuse_upload_if_not_in_sequential_order(project_dir, self.upload_id, chunk_num)
             if not self.chunk_order_correct:
                 raise Exception
             return filename
