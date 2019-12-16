@@ -42,7 +42,7 @@ from utils import call_request_hook, project_sns_dir, \
 from db import sqlite_insert, sqlite_init, _VALID_PNUM, load_jwk_store, \
                sqlite_list_tables, sqlite_get_data, sqlite_update_data, \
                sqlite_delete_data
-from resumables import Resumable
+from resumables import Resumable, refuse_upload_if_not_in_sequential_order
 from pgp import _import_keys
 
 
@@ -842,14 +842,6 @@ class StreamHandler(AuthRequestHandler):
                                              stdout=self.target_file)
 
 
-    def refuse_upload_if_not_in_sequential_order(self, project_dir, upload_id, chunk_num):
-        full_chunks_on_disk = Resumable.get_full_chunks_on_disk(project_dir, upload_id, chunk_num)
-        previous_chunk_num = int(full_chunks_on_disk[-1].split('.chunk.')[-1])
-        if chunk_num <= previous_chunk_num or (chunk_num - previous_chunk_num) >= 2:
-            self.chunk_order_correct = False # return this
-            raise Exception('chunks must be uploaded in sequential order')
-
-
     def handle_resumable_request(self, project_dir, filename):
         """
         There are three types of requests for resumables, which are
@@ -910,7 +902,9 @@ class StreamHandler(AuthRequestHandler):
             self.upload_id = upload_id
             self.resumable_is_complete = False
             filename = self.upload_id + '/' + chunk_filename
-            self.refuse_upload_if_not_in_sequential_order(project_dir, self.upload_id, chunk_num)
+            self.chunk_order_correct = refuse_upload_if_not_in_sequential_order(project_dir, self.upload_id, chunk_num)
+            if not self.chunk_order_correct:
+                raise Exception
             return filename
 
 
@@ -1027,7 +1021,6 @@ class StreamHandler(AuthRequestHandler):
                             if not self.merged_file:
                                 self.target_file = open(self.path, filemode)
                                 os.chmod(self.path, _RW______)
-                    # prepare the partial file name for in
                 except KeyError:
                     raise Exception('No content-type - do not know what to do with data')
             except Exception as e:

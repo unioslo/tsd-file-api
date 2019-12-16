@@ -33,6 +33,16 @@ def _resumables_cmp(a, b):
         return 1
 
 
+def refuse_upload_if_not_in_sequential_order(project_dir, upload_id, chunk_num):
+    chunk_order_correct = True
+    full_chunks_on_disk = Resumable.get_full_chunks_on_disk(project_dir, upload_id, chunk_num)
+    previous_chunk_num = int(full_chunks_on_disk[-1].split('.chunk.')[-1])
+    if chunk_num <= previous_chunk_num or (chunk_num - previous_chunk_num) >= 2:
+        chunk_order_correct = False
+        logging.error('chunks must be uploaded in sequential order')
+    return chunk_order_correct
+
+
 class Resumable(object):
 
     def __init__(self):
