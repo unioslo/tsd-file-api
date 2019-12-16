@@ -846,7 +846,7 @@ class StreamHandler(AuthRequestHandler):
         full_chunks_on_disk = Resumable.get_full_chunks_on_disk(project_dir, upload_id, chunk_num)
         previous_chunk_num = int(full_chunks_on_disk[-1].split('.chunk.')[-1])
         if chunk_num <= previous_chunk_num or (chunk_num - previous_chunk_num) >= 2:
-            self.chunk_order_correct = False
+            self.chunk_order_correct = False # return this
             raise Exception('chunks must be uploaded in sequential order')
 
 
@@ -983,11 +983,11 @@ class StreamHandler(AuthRequestHandler):
                     uri_filename = self.request.uri.split('?')[0].split('/')[-1]
                     filename = check_filename(url_unescape(uri_filename))
                     if self.request.method == 'PATCH':
+                        # then we are handling a resumable request
                         dbname = '{0}{1}{2}'.format('.resumables-', self.user, '.db')
                         self.rdb = sqlite_init(self.project_dir, name=dbname)
                         os.chmod('{0}/{1}'.format(self.project_dir, dbname), _RW______)
                         filename = self.handle_resumable_request(self.project_dir, filename)
-                    # prepare the partial file name for incoming data
                     # ensure we do not write to active file
                     self.path = os.path.normpath(self.project_dir + '/' + filename)
                     self.path_part = self.path + '.' + str(uuid4()) + '.part'
@@ -1017,11 +1017,17 @@ class StreamHandler(AuthRequestHandler):
                     elif content_type == 'application/gz.aes':
                         # seeing a non-determnistic failure here sometimes...
                         self.handle_gz_aes(content_type, filemode)
-                    else:
-                        self.custom_content_type = None
-                        if not self.merged_file:
+                    else: # no custom content type
+                        if self.request.method != 'PATCH':
+                            self.custom_content_type = None
                             self.target_file = open(self.path, filemode)
                             os.chmod(self.path, _RW______)
+                        elif self.request.method == 'PATCH':
+                            self.custom_content_type = None
+                            if not self.merged_file:
+                                self.target_file = open(self.path, filemode)
+                                os.chmod(self.path, _RW______)
+                    # prepare the partial file name for in
                 except KeyError:
                     raise Exception('No content-type - do not know what to do with data')
             except Exception as e:
@@ -1044,11 +1050,13 @@ class StreamHandler(AuthRequestHandler):
 
     @gen.coroutine
     def data_received(self, chunk):
-        # could use this to rate limit the client if needed
-        # yield gen.Task(IOLoop.current().call_later, options.server_delay)
         try:
             if not self.custom_content_type:
-                self.target_file.write(chunk)
+                if self.request.method == 'PATCH':
+                    # add chunk to resumable
+                    self.target_file.write(chunk)
+                else:
+                    self.target_file.write(chunk)
             elif self.custom_content_type in ['application/tar', 'application/tar.gz',
                                               'application/aes']:
                 self.proc.stdin.write(chunk)
