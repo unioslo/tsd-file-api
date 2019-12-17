@@ -842,7 +842,7 @@ class StreamHandler(AuthRequestHandler):
                                              stdout=self.target_file)
 
 
-    def handle_resumable_request(self, project_dir, filename):
+    def handle_resumable_request(self, project_dir, in_filename, url_chunk_num, url_upload_id, url_group):
         """
         There are three types of requests for resumables, which are
         handled in the following ways:
@@ -871,41 +871,32 @@ class StreamHandler(AuthRequestHandler):
         upload_id/filename.extention.chunk.num
 
         """
-        self.chunk_order_correct = True
-        chunk_num = url_unescape(self.get_query_argument('chunk'))
-        upload_id = url_unescape(self.get_query_argument('id'))
-        group = url_unescape(self.get_query_argument('group'))
-        chunk_filename = filename + '.chunk.' + chunk_num
-        if os.path.lexists(chunk_filename):
-            message = 'Trying to upload a chunk which has already been uploaded: %s' % chunk_filename
-            raise Exception(message)
-        if chunk_num != 'end':
-            chunk_num = int(chunk_num)
+        # construct inputs
+        chunk_num = int(url_chunk_num) if url_chunk_num != 'end' else url_chunk_num
+        upload_id = str(uuid4()) if url_upload_id == 'None' else url_upload_id
+        chunk_filename = in_filename + '.chunk.' + url_chunk_num
+        filename = upload_id + '/' + chunk_filename
+        #current_resumable = Resumable(project_dir, in_filename, chunk_num, self.user, group, self.upload_id)
+        #logging.info(current_resumable.chunk_filename)
+        #logging.info(current_resumable.relative_chunk_path)
+        #logging.info(current_resumable.absolute_chunk_path)
         if chunk_num == 'end':
-            self.chunk_num = 'end'
-            self.upload_id = upload_id
-            self.resumable_is_complete = True
-            filename = self.upload_id + '/' + chunk_filename
-            self.merged_file = Resumable.merge_resumables(project_dir, filename, self.upload_id, res_db=self.rdb)
+            self.merged_file = Resumable.merge_resumables(project_dir, filename, upload_id, res_db=self.rdb)
             self.target_file = None
-            return filename
+            chunk_order_correct = True
         elif chunk_num == 1:
-            self.chunk_num = 1
-            self.upload_id = str(uuid4())
-            self.resumable_is_complete = False
-            filename = self.upload_id + '/' + chunk_filename
-            os.makedirs(project_dir + '/' + self.upload_id)
-            assert Resumable.db_insert_new_for_user(self.rdb, self.upload_id, self.user, group)
-            return filename
+            os.makedirs(project_dir + '/' + upload_id)
+            assert Resumable.db_insert_new_for_user(self.rdb, upload_id, self.user, url_group)
+            chunk_order_correct = True
         elif chunk_num > 1:
-            self.chunk_num = chunk_num
-            self.upload_id = upload_id
-            self.resumable_is_complete = False
-            filename = self.upload_id + '/' + chunk_filename
-            self.chunk_order_correct = Resumable.refuse_upload_if_not_in_sequential_order(project_dir, self.upload_id, chunk_num)
-            if not self.chunk_order_correct:
+            chunk_order_correct = Resumable.refuse_upload_if_not_in_sequential_order(project_dir, upload_id, chunk_num)
+        # store attributes - rather return them, set them outside
+        self.chunk_num = chunk_num
+        self.upload_id = upload_id
+        self.chunk_order_correct = chunk_order_correct
+        if not chunk_order_correct:
                 raise Exception
-            return filename
+        return filename
 
 
     def initialize(self, backend, request_hook_enabled=False):
@@ -942,13 +933,12 @@ class StreamHandler(AuthRequestHandler):
 
         """
         try:
-            self.resumable_is_complete = True # set to false by resumable handler if needed
             self.merged_file = False
             self.target_file = None
             self.custom_content_type = None
             self.path = None
             self.path_part = None
-            self.chunk_order_correct = None
+            self.chunk_order_correct = True
             try:
                 self.authnz = self.validate_token(roles_allowed=['import_user', 'export_user', 'admin_user'])
             except Exception as e:
@@ -981,7 +971,10 @@ class StreamHandler(AuthRequestHandler):
                         dbname = '{0}{1}{2}'.format('.resumables-', self.user, '.db')
                         self.rdb = sqlite_init(self.project_dir, name=dbname)
                         os.chmod('{0}/{1}'.format(self.project_dir, dbname), _RW______)
-                        filename = self.handle_resumable_request(self.project_dir, filename)
+                        url_chunk_num = url_unescape(self.get_query_argument('chunk'))
+                        url_upload_id = url_unescape(self.get_query_argument('id'))
+                        url_group = url_unescape(self.get_query_argument('group'))
+                        filename = self.handle_resumable_request(self.project_dir, filename, url_chunk_num, url_upload_id, url_group)
                     # ensure we do not write to active file
                     self.path = os.path.normpath(self.project_dir + '/' + filename)
                     self.path_part = self.path + '.' + str(uuid4()) + '.part'
@@ -1165,7 +1158,7 @@ class StreamHandler(AuthRequestHandler):
                 os.rename(self.path, self.path_part)
         except AttributeError as e:
             pass
-        if self.resumable_is_complete:
+        if self.request.method in ('PUT','POST') or (self.request.method == 'PATCH' and self.chunk_num == 'end'):
             try:
                 # switch path and path_part variables back to their original values
                 # keep local copies in this scope for safety

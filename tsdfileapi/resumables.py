@@ -35,8 +35,16 @@ def _resumables_cmp(a, b):
 
 class Resumable(object):
 
-    def __init__(self):
-        pass
+    def __init__(self, work_dir=None, filename=None, chunk_num=None, owner=None, group=None, resumable_id=None):
+        self.work_dir = work_dir
+        self.filename = filename
+        self.chunk_num = chunk_num
+        self.owner = owner
+        self.group = group
+        self.resumable_id = resumable_id
+        self.chunk_filename = '{0}.chunk.{1}'.format(filename, chunk_num)
+        self.relative_chunk_path = '{0}/{1}'.format(resumable_id, self.chunk_filename)
+        self.absolute_chunk_path = '{0}/{1}'.format(work_dir, self.relative_chunk_path)
 
     @classmethod
     def add_chunk(self, fd, chunk):
