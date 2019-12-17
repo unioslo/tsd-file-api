@@ -60,28 +60,21 @@ class Resumable(object):
     @classmethod
     def prepare_for_chunk_processing(self, project_dir, in_filename, url_chunk_num, url_upload_id, url_group, owner):
         """
-        There are three types of requests for resumables, which are
-        handled in the following ways:
+        The following cases are handled:
 
         1. First chunk
             - check that the chunk has not already been uploaded
-            - the chowner is disabled
             - a new upload id is generated
             - the upload id is recorded as beloning to the authenticated owner
             - a new working directory is created
-            - data_received is called, writing the file
-            - merge_chunk is called by the exiting patch method
+            - set completed_resumable_file to None
 
         2. Rest of the chunks
-            - check that the chunk has not already been uploaded
-            - a check is performed to disallow uploading chunks out of order
-            - the chowner is disabled
-            - data_received is called, writing the file
-            - merge_chunk is called by the exiting patch method
+            - ensure monotonically increasing chunk order
+            - set completed_resumable_file to None
 
         3. End request
-            - the chowner is enabled
-            - merge_chunk is called, branching into the cleanup code
+            - set completed_resumable_file to True
 
         In all cases the function returns:
         upload_id/filename.extention.chunk.num
