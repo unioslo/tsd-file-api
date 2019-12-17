@@ -58,7 +58,7 @@ class Resumable(object):
 
 
     @classmethod
-    def prepare_for_chunk_processing(self, project_dir, in_filename, url_chunk_num, url_upload_id, url_group, res_db, owner):
+    def prepare_for_chunk_processing(self, project_dir, in_filename, url_chunk_num, url_upload_id, url_group, owner):
         """
         There are three types of requests for resumables, which are
         handled in the following ways:
@@ -91,6 +91,7 @@ class Resumable(object):
         upload_id = str(uuid.uuid4()) if url_upload_id == 'None' else url_upload_id
         chunk_filename = in_filename + '.chunk.' + url_chunk_num
         filename = upload_id + '/' + chunk_filename
+        res_db = Resumable.init_db(owner, project_dir)
         if chunk_num == 'end':
             completed_resumable_file = True
             chunk_order_correct = True
@@ -344,7 +345,7 @@ class Resumable(object):
             return False
 
     @classmethod
-    def finalise_resumable(self, project_dir, last_chunk_filename, upload_id, res_db=None, owner=None):
+    def finalise_resumable(self, project_dir, last_chunk_filename, upload_id, owner):
         assert '.part' not in last_chunk_filename
         filename = os.path.basename(last_chunk_filename.split('.chunk')[0])
         out = os.path.normpath(project_dir + '/' + filename + '.' + upload_id)
@@ -357,13 +358,14 @@ class Resumable(object):
                 shutil.rmtree(chunks_dir) # do not need to fail upload if this does not work
             except OSError as e:
                 logging.error(e)
+            res_db = Resumable.init_db(owner, project_dir)
             assert Resumable.db_remove_completed_for_user(res_db, upload_id, owner)
         else:
             logging.error('finalise_resumable called on non-end chunk')
         return final
 
     @classmethod
-    def merge_chunk(self, project_dir, last_chunk_filename, upload_id, res_db=None):
+    def merge_chunk(self, project_dir, last_chunk_filename, upload_id, owner):
         """
         Merge chunks into one file, _in order_.
 
@@ -410,6 +412,7 @@ class Resumable(object):
                     size_before_merge = os.stat(out).st_size
                     shutil.copyfileobj(fin, fout)
             chunk_size = os.stat(chunk).st_size
+            res_db = Resumable.init_db(owner, project_dir)
             assert Resumable.db_update_with_chunk_info(res_db, upload_id, chunk_num, chunk_size)
         except Exception as e:
             logging.error(e)

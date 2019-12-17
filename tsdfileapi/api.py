@@ -757,13 +757,49 @@ class StreamHandler(AuthRequestHandler):
     #pylint: disable=line-too-long
 
     """
-    Handles internal requests made from ProxyHandler.
-    Does request data processing, file management, and writes data to disk.
-    Calls the chowner to set ownership and rights.
+    This class writes request data to files for PUT, POST and PATCH methods,
+    optionally calling request hooks after writing has finished.
+
+    The following steps are performed:
+
+    call initialize:
+    1. load backend config, depending on the url
+
+    call prepare
+    2. extract claims from the access token
+    3. validate url
+    4. load url parameters
+    5. process content-type header
+    6. if PATCH, prepare the resumable
+    7. rename the target file to .part (indicating an active upload)
+    8. optionally dispatch to a custom content-type request handler
+    9. open the file, set file permissions
+
+    call data_received
+    10. write data to target
+
+
+    call put, post, patch
+    11. close the file
+    12. if PATCH, either merge the new chunk or finalise the resumable
+
+    call on_finish, or on_connection_close
+    13. rename the file
+    14. optionally call a request hook (setting permissions and moving the file)
+
+    Resumable uploads therefore have the following request life cycle:
+    1. prepare
+        - setup
+        - checks
+    2. process
+        - open
+        - write
+        - close
+    3. complete
+        - merge chunk
+        - finalise
 
     """
-
-
 
     def decrypt_aes_key(self, b64encoded_pgpencrypted_key):
         gpg = _import_keys(CONFIG)
@@ -910,14 +946,13 @@ class StreamHandler(AuthRequestHandler):
                         url_chunk_num = url_unescape(self.get_query_argument('chunk'))
                         url_upload_id = url_unescape(self.get_query_argument('id'))
                         url_group = url_unescape(self.get_query_argument('group'))
-                        self.rdb = Resumable.init_db(self.user, self.project_dir)
                         self.chunk_num, \
                             self.upload_id, \
                             self.completed_resumable_file, \
                             self.chunk_order_correct, \
                             filename = Resumable.prepare_for_chunk_processing(self.project_dir, filename,
                                                                               url_chunk_num, url_upload_id,
-                                                                              url_group, self.rdb, self.user)
+                                                                              url_group, self.user)
                         if not self.chunk_order_correct:
                             raise Exception
                     # ensure we do not write to active file
@@ -1043,7 +1078,6 @@ class StreamHandler(AuthRequestHandler):
     def put(self, pnum, uri_filename=None):
         if not self.custom_content_type:
             self.target_file.close()
-            logging.info('handling %s', self.path_part)
             os.rename(self.path, self.path_part)
         elif self.custom_content_type in ['application/tar', 'application/tar.gz',
                                           'application/aes']:
@@ -1075,12 +1109,12 @@ class StreamHandler(AuthRequestHandler):
             if not os.path.lexists(self.path_part):
                 os.rename(self.path, self.path_part)
                 filename = os.path.basename(self.path_part).split('.chunk')[0]
-                Resumable.merge_chunk(self.project_dir, os.path.basename(self.path_part), self.upload_id, res_db=self.rdb)
+                Resumable.merge_chunk(self.project_dir, os.path.basename(self.path_part), self.upload_id, self.user)
             else:
                 self.write({'message': 'chunk_order_incorrect'})
         else:
             self.completed_resumable_filename = Resumable.finalise_resumable(self.project_dir, os.path.basename(self.path_part),
-                                                                             self.upload_id, res_db=self.rdb, owner=self.user)
+                                                                             self.upload_id, self.user)
             filename = os.path.basename(self.completed_resumable_filename)
         self.set_status(201)
         self.write({'filename': filename, 'id': self.upload_id, 'max_chunk': self.chunk_num})
