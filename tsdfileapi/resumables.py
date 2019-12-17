@@ -4,12 +4,13 @@ import logging
 import os
 import shutil
 import uuid
+import stat
 
-from db import session_scope
+from db import session_scope, sqlite_init
 from utils import md5sum
 
 _IS_VALID_UUID = re.compile(r'([a-f\d0-9-]{32,36})')
-
+_RW______ = stat.S_IREAD | stat.S_IWRITE
 
 def _atoi(text):
     return int(text) if text.isdigit() else text
@@ -46,6 +47,15 @@ class Resumable(object):
         self.chunk_filename = '{0}.chunk.{1}'.format(filename, chunk_num)
         self.relative_chunk_path = '{0}/{1}'.format(resumable_id, self.chunk_filename)
         self.absolute_chunk_path = '{0}/{1}'.format(work_dir, self.relative_chunk_path)
+
+
+    @classmethod
+    def init_db(self, owner, work_dir):
+        dbname = '{0}{1}{2}'.format('.resumables-', owner, '.db')
+        rdb = sqlite_init(work_dir, name=dbname)
+        os.chmod('{0}/{1}'.format(work_dir, dbname), _RW______)
+        return rdb
+
 
     @classmethod
     def handle_resumable_request(self, project_dir, in_filename, url_chunk_num, url_upload_id, url_group, res_db, owner):

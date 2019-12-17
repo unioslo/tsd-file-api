@@ -911,12 +911,10 @@ class StreamHandler(AuthRequestHandler):
                     filename = check_filename(url_unescape(uri_filename))
                     if self.request.method == 'PATCH':
                         # then we are handling a resumable request
-                        dbname = '{0}{1}{2}'.format('.resumables-', self.user, '.db')
-                        self.rdb = sqlite_init(self.project_dir, name=dbname)
-                        os.chmod('{0}/{1}'.format(self.project_dir, dbname), _RW______)
                         url_chunk_num = url_unescape(self.get_query_argument('chunk'))
                         url_upload_id = url_unescape(self.get_query_argument('id'))
                         url_group = url_unescape(self.get_query_argument('group'))
+                        self.rdb = Resumable.init_db(self.user, self.project_dir)
                         self.chunk_num, \
                             self.upload_id, \
                             self.merged_file, \
