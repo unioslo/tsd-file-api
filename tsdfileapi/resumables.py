@@ -181,8 +181,9 @@ class Resumable(object):
 
 
     @classmethod
-    def list_all_resumables(self, project_dir, res_db=None, user=None):
-        potential_resumables = self.db_get_all_resumable_ids_for_user(res_db, user)
+    def list_all_resumables(self, project_dir, owner):
+        res_db = Resumable.init_db(owner, project_dir)
+        potential_resumables = self.db_get_all_resumable_ids_for_user(res_db, owner)
         resumables = []
         info = []
         for item in potential_resumables:

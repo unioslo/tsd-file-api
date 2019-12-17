@@ -719,7 +719,7 @@ class ResumablesHandler(AuthRequestHandler):
             except Exception:
                 pass
             if not filename:
-                info = Resumable.list_all_resumables(self.project_dir, res_db=self.rdb, user=self.user)
+                info = Resumable.list_all_resumables(self.project_dir, self.user)
             else:
                 info = Resumable.get_resumable_info(self.project_dir, secured_filename, upload_id, res_db=self.rdb, user=self.user)
             self.set_status(200)
