@@ -698,7 +698,6 @@ class ResumablesHandler(AuthRequestHandler):
     def prepare(self):
         try:
             self.authnz = self.validate_token(roles_allowed=['import_user', 'export_user', 'admin_user'])
-            self.rdb = sqlite_init(self.project_dir, name='.resumables-' + self.user + '.db')
         except Exception as e:
             logging.error(e)
             raise e
@@ -721,7 +720,7 @@ class ResumablesHandler(AuthRequestHandler):
             if not filename:
                 info = Resumable.list_all_resumables(self.project_dir, self.user)
             else:
-                info = Resumable.get_resumable_info(self.project_dir, secured_filename, upload_id, res_db=self.rdb, user=self.user)
+                info = Resumable.get_resumable_info(self.project_dir, secured_filename, upload_id, self.user)
             self.set_status(200)
             self.write(info)
         except Exception as e:
@@ -742,7 +741,7 @@ class ResumablesHandler(AuthRequestHandler):
                 upload_id = url_unescape(self.get_query_argument('id'))
             except Exception:
                 raise Exception('upload id required to delete resumable')
-            assert Resumable.delete_resumable(self.project_dir, filename, upload_id, self.rdb, self.user)
+            assert Resumable.delete_resumable(self.project_dir, filename, upload_id, self.user)
             self.set_status(200)
             self.write({'message': 'resumable deleted'})
         except Exception as e:

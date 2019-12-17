@@ -305,8 +305,9 @@ class Resumable(object):
 
 
     @classmethod
-    def get_resumable_info(self, project_dir, filename, upload_id, res_db=None, user=None):
-        relevant_dir = Resumable._find_relevant_resumable_dir(project_dir, filename, upload_id, res_db=res_db, user=user)
+    def get_resumable_info(self, project_dir, filename, upload_id, owner):
+        res_db = Resumable.init_db(owner, project_dir)
+        relevant_dir = Resumable._find_relevant_resumable_dir(project_dir, filename, upload_id, res_db=res_db, user=owner)
         if not relevant_dir:
             raise Exception('No resumable found for: %s', filename)
         resumable_dir = '%s/%s' % (project_dir, relevant_dir)
@@ -331,14 +332,15 @@ class Resumable(object):
         return full_chunks_on_disk
 
     @classmethod
-    def delete_resumable(self, project_dir, filename, upload_id, res_db=None, user=None):
+    def delete_resumable(self, project_dir, filename, upload_id, owner):
         try:
-            assert Resumable.db_upload_belongs_to_user(res_db, upload_id, user)
+            res_db = Resumable.init_db(owner, project_dir)
+            assert Resumable.db_upload_belongs_to_user(res_db, upload_id, owner)
             relevant_dir = project_dir + '/' + upload_id
             relevant_merged_file = project_dir + '/' + filename + '.' + upload_id
             shutil.rmtree(relevant_dir)
             os.remove(relevant_merged_file)
-            assert Resumable.db_remove_completed_for_user(res_db, upload_id, user)
+            assert Resumable.db_remove_completed_for_user(res_db, upload_id, owner)
             return True
         except Exception as e:
             logging.error(e)
