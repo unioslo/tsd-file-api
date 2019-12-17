@@ -106,7 +106,9 @@ class Resumable(object):
 
     @classmethod
     def open_file(self, filename, mode):
-        return open(filename, mode)
+        fd = open(filename, mode)
+        os.chmod(filename, _RW______)
+        return fd
 
     @classmethod
     def add_chunk(self, fd, chunk):
@@ -342,7 +344,7 @@ class Resumable(object):
             return False
 
     @classmethod
-    def finalise_resumable(self, project_dir, last_chunk_filename, upload_id, res_db=None):
+    def finalise_resumable(self, project_dir, last_chunk_filename, upload_id, res_db=None, owner=None):
         assert '.part' not in last_chunk_filename
         filename = os.path.basename(last_chunk_filename.split('.chunk')[0])
         out = os.path.normpath(project_dir + '/' + filename + '.' + upload_id)
@@ -355,6 +357,7 @@ class Resumable(object):
                 shutil.rmtree(chunks_dir) # do not need to fail upload if this does not work
             except OSError as e:
                 logging.error(e)
+            assert Resumable.db_remove_completed_for_user(res_db, upload_id, owner)
         else:
             logging.error('finalise_resumable called on non-end chunk')
         return final

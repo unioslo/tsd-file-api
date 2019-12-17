@@ -947,7 +947,6 @@ class StreamHandler(AuthRequestHandler):
                     elif content_type == 'application/gz':
                         self.handle_gz(content_type, filemode)
                     elif content_type == 'application/gz.aes':
-                        # seeing a non-determnistic failure here sometimes...
                         self.handle_gz_aes(content_type, filemode)
                     else: # no custom content type
                         if self.request.method != 'PATCH':
@@ -958,7 +957,6 @@ class StreamHandler(AuthRequestHandler):
                             self.custom_content_type = None
                             if not self.completed_resumable_file:
                                 self.target_file = Resumable.open_file(self.path, filemode)
-                                os.chmod(self.path, _RW______)
                 except KeyError:
                     raise Exception('No content-type - do not know what to do with data')
             except Exception as e:
@@ -1045,6 +1043,7 @@ class StreamHandler(AuthRequestHandler):
     def put(self, pnum, uri_filename=None):
         if not self.custom_content_type:
             self.target_file.close()
+            logging.info('handling %s', self.path_part)
             os.rename(self.path, self.path_part)
         elif self.custom_content_type in ['application/tar', 'application/tar.gz',
                                           'application/aes']:
@@ -1080,9 +1079,9 @@ class StreamHandler(AuthRequestHandler):
             else:
                 self.write({'message': 'chunk_order_incorrect'})
         else:
-            completed_resumable_filename = Resumable.finalise_resumable(self.project_dir, os.path.basename(self.path_part), self.upload_id, res_db=self.rdb)
-            assert Resumable.db_remove_completed_for_user(self.rdb, self.upload_id, self.user)
-            filename = os.path.basename(completed_resumable_filename)
+            self.completed_resumable_filename = Resumable.finalise_resumable(self.project_dir, os.path.basename(self.path_part),
+                                                                             self.upload_id, res_db=self.rdb, owner=self.user)
+            filename = os.path.basename(self.completed_resumable_filename)
         self.set_status(201)
         self.write({'filename': filename, 'id': self.upload_id, 'max_chunk': self.chunk_num})
 
@@ -1112,7 +1111,7 @@ class StreamHandler(AuthRequestHandler):
                 if not self.completed_resumable_file:
                     path, path_part = self.path_part, self.path
                 else:
-                    path = self.completed_resumable_file
+                    path = self.completed_resumable_filename
                 if self.backend == 'cluster' and self.pnum != 'p01': # TODO: remove special case
                     pass
                 else:
