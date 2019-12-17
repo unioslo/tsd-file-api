@@ -717,10 +717,11 @@ class ResumablesHandler(AuthRequestHandler):
                 upload_id = url_unescape(self.get_query_argument('id'))
             except Exception:
                 pass
+            res = Resumable(self.project_dir, self.user)
             if not filename:
-                info = Resumable.list_all(self.project_dir, self.user)
+                info = res.list_all(self.project_dir, self.user)
             else:
-                info = Resumable.info(self.project_dir, secured_filename, upload_id, self.user)
+                info = res.info(self.project_dir, secured_filename, upload_id, self.user)
             self.set_status(200)
             self.write(info)
         except Exception as e:
@@ -741,7 +742,8 @@ class ResumablesHandler(AuthRequestHandler):
                 upload_id = url_unescape(self.get_query_argument('id'))
             except Exception:
                 raise Exception('upload id required to delete resumable')
-            assert Resumable.delete(self.project_dir, filename, upload_id, self.user)
+            res = Resumable(self.project_dir, self.user)
+            assert res.delete(self.project_dir, filename, upload_id, self.user)
             self.set_status(200)
             self.write({'message': 'resumable deleted'})
         except Exception as e:
@@ -941,7 +943,7 @@ class StreamHandler(AuthRequestHandler):
                     uri_filename = self.request.uri.split('?')[0].split('/')[-1]
                     filename = check_filename(url_unescape(uri_filename))
                     if self.request.method == 'PATCH':
-                        # then we are handling a resumable request
+                        self.res = Resumable(self.project_dir, self.user)
                         url_chunk_num = url_unescape(self.get_query_argument('chunk'))
                         url_upload_id = url_unescape(self.get_query_argument('id'))
                         url_group = url_unescape(self.get_query_argument('group'))
@@ -949,7 +951,7 @@ class StreamHandler(AuthRequestHandler):
                             self.upload_id, \
                             self.completed_resumable_file, \
                             self.chunk_order_correct, \
-                            filename = Resumable.prepare(self.project_dir, filename,
+                            filename = self.res.prepare(self.project_dir, filename,
                                                          url_chunk_num, url_upload_id,
                                                          url_group, self.user)
                         if not self.chunk_order_correct:
@@ -990,7 +992,7 @@ class StreamHandler(AuthRequestHandler):
                         elif self.request.method == 'PATCH':
                             self.custom_content_type = None
                             if not self.completed_resumable_file:
-                                self.target_file = Resumable.open_file(self.path, filemode)
+                                self.target_file = self.res.open_file(self.path, filemode)
                 except KeyError:
                     raise Exception('No content-type - do not know what to do with data')
             except Exception as e:
@@ -1016,7 +1018,7 @@ class StreamHandler(AuthRequestHandler):
         try:
             if not self.custom_content_type:
                 if self.request.method == 'PATCH':
-                    Resumable.add_chunk(self.target_file, chunk)
+                    self.res.add_chunk(self.target_file, chunk)
                 else:
                     self.target_file.write(chunk)
             elif self.custom_content_type in ['application/tar', 'application/tar.gz',
@@ -1101,18 +1103,18 @@ class StreamHandler(AuthRequestHandler):
 
     def patch(self, pnum, uri_filename=None):
         if not self.completed_resumable_file:
-            Resumable.close_file(self.target_file)
+            self.res.close_file(self.target_file)
             # if the path to which we want to rename the file exists
             # then we have been writing the same chunk concurrently
             # from two different processes, so we should not do it
             if not os.path.lexists(self.path_part):
                 os.rename(self.path, self.path_part)
                 filename = os.path.basename(self.path_part).split('.chunk')[0]
-                Resumable.merge_chunk(self.project_dir, os.path.basename(self.path_part), self.upload_id, self.user)
+                self.res.merge_chunk(self.project_dir, os.path.basename(self.path_part), self.upload_id, self.user)
             else:
                 self.write({'message': 'chunk_order_incorrect'})
         else:
-            self.completed_resumable_filename = Resumable.finalise(self.project_dir, os.path.basename(self.path_part),
+            self.completed_resumable_filename = self.res.finalise(self.project_dir, os.path.basename(self.path_part),
                                                                    self.upload_id, self.user)
             filename = os.path.basename(self.completed_resumable_filename)
         self.set_status(201)
