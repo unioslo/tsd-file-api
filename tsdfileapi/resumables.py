@@ -105,8 +105,16 @@ class Resumable(object):
         return chunk_num, upload_id, merged_file, chunk_order_correct, filename
 
     @classmethod
+    def open_file(self, filename, mode):
+        return open(filename, mode)
+
+    @classmethod
     def add_chunk(self, fd, chunk):
         fd.write(chunk)
+
+    @classmethod
+    def close_file(self, fd):
+        fd.close()
 
     @classmethod
     def refuse_upload_if_not_in_sequential_order(self, project_dir, upload_id, chunk_num):

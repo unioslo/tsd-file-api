@@ -957,7 +957,7 @@ class StreamHandler(AuthRequestHandler):
                         elif self.request.method == 'PATCH':
                             self.custom_content_type = None
                             if not self.merged_file:
-                                self.target_file = open(self.path, filemode)
+                                self.target_file = Resumable.open_file(self.path, filemode)
                                 os.chmod(self.path, _RW______)
                 except KeyError:
                     raise Exception('No content-type - do not know what to do with data')
@@ -1069,7 +1069,7 @@ class StreamHandler(AuthRequestHandler):
 
     def patch(self, pnum, uri_filename=None):
         if not self.merged_file:
-            self.target_file.close()
+            Resumable.close_file(self.target_file)
             # if the path to which we want to rename the file exists
             # then we have been writing the same chunk concurrently
             # from two different processes, so we should not do it
