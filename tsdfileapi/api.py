@@ -882,15 +882,16 @@ class StreamHandler(AuthRequestHandler):
             self.path = None
             self.path_part = None
             self.chunk_order_correct = True
+            filemodes = {'POST': 'ab+', 'PUT': 'wb+', 'PATCH': 'wb+'}
             try:
                 self.authnz = self.validate_token(roles_allowed=['import_user', 'export_user', 'admin_user'])
             except Exception as e:
                 logging.error(e)
                 raise Exception
             try:
-                pnum = pnum_from_url(self.request.uri)
-                self.pnum = pnum
                 try:
+                    pnum = pnum_from_url(self.request.uri)
+                    self.pnum = pnum
                     assert _VALID_PNUM.match(pnum)
                 except AssertionError as e:
                     logging.error('URI does not contain a valid pnum')
@@ -899,12 +900,7 @@ class StreamHandler(AuthRequestHandler):
                     self.group_name = url_unescape(self.get_query_argument('group'))
                 except Exception:
                     self.group_name = pnum + '-member-group'
-                if self.request.method == 'POST':
-                    filemode = 'ab+'
-                elif self.request.method == 'PUT' or self.request.method == 'PATCH':
-                    # even for PATCH, files writes are idempotent
-                    # because we use that for resumable uploads
-                    filemode = 'wb+'
+                filemode = filemodes[self.request.method]
                 try:
                     content_type = self.request.headers['Content-Type']
                     uri_filename = self.request.uri.split('?')[0].split('/')[-1]
