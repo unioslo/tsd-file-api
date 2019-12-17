@@ -67,7 +67,7 @@ class Resumable(object):
             - check that the chunk has not already been uploaded
             - the chowner is disabled
             - a new upload id is generated
-            - the upload id is recorded as beloning to the authenticated user
+            - the upload id is recorded as beloning to the authenticated owner
             - a new working directory is created
             - data_received is called, writing the file
             - merge_chunk is called by the exiting patch method
