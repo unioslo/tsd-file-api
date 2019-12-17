@@ -97,7 +97,7 @@ class Resumable(object):
             chunk_order_correct = True
         elif chunk_num == 1:
             os.makedirs(project_dir + '/' + upload_id)
-            assert Resumable.db_insert_new_for_user(res_db, upload_id, owner, url_group)
+            assert Resumable.db_insert_new_for_owner(res_db, upload_id, url_group)
             chunk_order_correct = True
             completed_resumable_file = None
         elif chunk_num > 1:
@@ -438,7 +438,7 @@ class Resumable(object):
 
 
     @classmethod
-    def db_insert_new_for_user(self, engine, resumable_id, user, group):
+    def db_insert_new_for_owner(self, engine, resumable_id, group):
         resumable_table = 'resumable_%s' % resumable_id
         with session_scope(engine) as session:
             session.execute('create table if not exists resumable_uploads(id text, upload_group text)')
