@@ -58,7 +58,7 @@ class Resumable(object):
 
 
     @classmethod
-    def handle_resumable_request(self, project_dir, in_filename, url_chunk_num, url_upload_id, url_group, res_db, owner):
+    def prepare_for_chunk_processing(self, project_dir, in_filename, url_chunk_num, url_upload_id, url_group, res_db, owner):
         """
         There are three types of requests for resumables, which are
         handled in the following ways:
@@ -70,18 +70,18 @@ class Resumable(object):
             - the upload id is recorded as beloning to the authenticated user
             - a new working directory is created
             - data_received is called, writing the file
-            - merge_resumables is called by the exiting patch method
+            - merge_chunk is called by the exiting patch method
 
         2. Rest of the chunks
             - check that the chunk has not already been uploaded
             - a check is performed to disallow uploading chunks out of order
             - the chowner is disabled
             - data_received is called, writing the file
-            - merge_resumables is called by the exiting patch method
+            - merge_chunk is called by the exiting patch method
 
         3. End request
             - the chowner is enabled
-            - merge_resumables is called, branching into the cleanup code
+            - merge_chunk is called, branching into the cleanup code
 
         In all cases the function returns:
         upload_id/filename.extention.chunk.num
@@ -92,7 +92,7 @@ class Resumable(object):
         chunk_filename = in_filename + '.chunk.' + url_chunk_num
         filename = upload_id + '/' + chunk_filename
         if chunk_num == 'end':
-            completed_resumable_file = Resumable.merge_resumables(project_dir, filename, upload_id, res_db=res_db)
+            completed_resumable_file = Resumable.merge_chunk(project_dir, filename, upload_id, res_db=res_db)
             chunk_order_correct = True
         elif chunk_num == 1:
             os.makedirs(project_dir + '/' + upload_id)
@@ -339,7 +339,7 @@ class Resumable(object):
             return False
 
     @classmethod
-    def merge_resumables(self, project_dir, last_chunk_filename, upload_id, res_db=None):
+    def merge_chunk(self, project_dir, last_chunk_filename, upload_id, res_db=None):
         """
         Merge chunks into one file, _in order_.
 

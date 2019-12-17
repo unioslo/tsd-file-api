@@ -915,9 +915,9 @@ class StreamHandler(AuthRequestHandler):
                             self.upload_id, \
                             self.completed_resumable_file, \
                             self.chunk_order_correct, \
-                            filename = Resumable.handle_resumable_request(self.project_dir, filename,
-                                                                          url_chunk_num, url_upload_id,
-                                                                          url_group, self.rdb, self.user)
+                            filename = Resumable.prepare_for_chunk_processing(self.project_dir, filename,
+                                                                              url_chunk_num, url_upload_id,
+                                                                              url_group, self.rdb, self.user)
                         if not self.chunk_order_correct:
                             raise Exception
                     # ensure we do not write to active file
@@ -1076,7 +1076,7 @@ class StreamHandler(AuthRequestHandler):
             if not os.path.lexists(self.path_part):
                 os.rename(self.path, self.path_part)
                 filename = os.path.basename(self.path_part).split('.chunk')[0]
-                Resumable.merge_resumables(self.project_dir, os.path.basename(self.path_part), self.upload_id, res_db=self.rdb)
+                Resumable.merge_chunk(self.project_dir, os.path.basename(self.path_part), self.upload_id, res_db=self.rdb)
             else:
                 self.write({'message': 'chunk_order_incorrect'})
         else:
