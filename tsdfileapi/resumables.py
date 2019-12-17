@@ -37,6 +37,29 @@ def _resumables_cmp(a, b):
 
 class Resumable(object):
 
+    """
+    Class for creating files in a piecemeal fashion,
+    useful for resumable uploads, for example.
+
+    The following public methods are exposed:
+
+        a) for creating files incrementally:
+
+            prepare
+            open_file
+            add_chunk
+            close_file
+            merge_chunk
+            finalise
+
+        b) for managing files which are still being finalised:
+
+            list_all
+            info
+            delete
+
+    """
+
     def __init__(self, work_dir=None, filename=None, chunk_num=None, owner=None, group=None, resumable_id=None):
         self.work_dir = work_dir
         self.filename = filename
@@ -50,7 +73,7 @@ class Resumable(object):
 
 
     @classmethod
-    def init_db(self, owner, work_dir):
+    def _init_db(self, owner, work_dir):
         dbname = '{0}{1}{2}'.format('.resumables-', owner, '.db')
         rdb = sqlite_init(work_dir, name=dbname)
         os.chmod('{0}/{1}'.format(work_dir, dbname), _RW______)
@@ -58,7 +81,7 @@ class Resumable(object):
 
 
     @classmethod
-    def prepare_for_chunk_processing(self, work_dir, in_filename, url_chunk_num, url_upload_id, url_group, owner):
+    def prepare(self, work_dir, in_filename, url_chunk_num, url_upload_id, url_group, owner):
         """
         The following cases are handled:
 
@@ -84,7 +107,7 @@ class Resumable(object):
         upload_id = str(uuid.uuid4()) if url_upload_id == 'None' else url_upload_id
         chunk_filename = in_filename + '.chunk.' + url_chunk_num
         filename = upload_id + '/' + chunk_filename
-        res_db = Resumable.init_db(owner, work_dir)
+        res_db = Resumable._init_db(owner, work_dir)
         if chunk_num == 'end':
             completed_resumable_file = True
             chunk_order_correct = True
@@ -94,7 +117,7 @@ class Resumable(object):
             chunk_order_correct = True
             completed_resumable_file = None
         elif chunk_num > 1:
-            chunk_order_correct = Resumable.refuse_upload_if_not_in_sequential_order(work_dir, upload_id, chunk_num)
+            chunk_order_correct = Resumable._refuse_upload_if_not_in_sequential_order(work_dir, upload_id, chunk_num)
             completed_resumable_file = None
         return chunk_num, upload_id, completed_resumable_file, chunk_order_correct, filename
 
@@ -116,9 +139,9 @@ class Resumable(object):
         fd.close()
 
     @classmethod
-    def refuse_upload_if_not_in_sequential_order(self, work_dir, upload_id, chunk_num):
+    def _refuse_upload_if_not_in_sequential_order(self, work_dir, upload_id, chunk_num):
         chunk_order_correct = True
-        full_chunks_on_disk = Resumable.get_full_chunks_on_disk(work_dir, upload_id, chunk_num)
+        full_chunks_on_disk = Resumable._get_full_chunks_on_disk(work_dir, upload_id, chunk_num)
         previous_chunk_num = int(full_chunks_on_disk[-1].split('.chunk.')[-1])
         if chunk_num <= previous_chunk_num or (chunk_num - previous_chunk_num) >= 2:
             chunk_order_correct = False
@@ -174,8 +197,8 @@ class Resumable(object):
 
 
     @classmethod
-    def list_all_resumables(self, work_dir, owner):
-        res_db = Resumable.init_db(owner, work_dir)
+    def list_all(self, work_dir, owner):
+        res_db = Resumable._init_db(owner, work_dir)
         potential_resumables = self._db_get_all_resumable_ids_for_owner(res_db)
         resumables = []
         info = []
@@ -298,8 +321,8 @@ class Resumable(object):
 
 
     @classmethod
-    def get_resumable_info(self, work_dir, filename, upload_id, owner):
-        res_db = Resumable.init_db(owner, work_dir)
+    def info(self, work_dir, filename, upload_id, owner):
+        res_db = Resumable._init_db(owner, work_dir)
         relevant_dir = Resumable._find_relevant_resumable_dir(work_dir, filename, upload_id, res_db)
         if not relevant_dir:
             raise Exception('No resumable found for: %s', filename)
@@ -318,16 +341,16 @@ class Resumable(object):
         return info
 
     @classmethod
-    def get_full_chunks_on_disk(self, work_dir, upload_id, chunk_num):
+    def _get_full_chunks_on_disk(self, work_dir, upload_id, chunk_num):
         chunks_on_disk = os.listdir(work_dir + '/' + upload_id)
         chunks_on_disk.sort(key=_natural_keys)
         full_chunks_on_disk = [ c for c in chunks_on_disk if '.part' not in c ]
         return full_chunks_on_disk
 
     @classmethod
-    def delete_resumable(self, work_dir, filename, upload_id, owner):
+    def delete(self, work_dir, filename, upload_id, owner):
         try:
-            res_db = Resumable.init_db(owner, work_dir)
+            res_db = Resumable._init_db(owner, work_dir)
             assert Resumable._db_upload_belongs_to_owner(res_db, upload_id)
             relevant_dir = work_dir + '/' + upload_id
             relevant_merged_file = work_dir + '/' + filename + '.' + upload_id
@@ -341,7 +364,7 @@ class Resumable(object):
             return False
 
     @classmethod
-    def finalise_resumable(self, work_dir, last_chunk_filename, upload_id, owner):
+    def finalise(self, work_dir, last_chunk_filename, upload_id, owner):
         assert '.part' not in last_chunk_filename
         filename = os.path.basename(last_chunk_filename.split('.chunk')[0])
         out = os.path.normpath(work_dir + '/' + filename + '.' + upload_id)
@@ -354,10 +377,10 @@ class Resumable(object):
                 shutil.rmtree(chunks_dir) # do not need to fail upload if this does not work
             except OSError as e:
                 logging.error(e)
-            res_db = Resumable.init_db(owner, work_dir)
+            res_db = Resumable._init_db(owner, work_dir)
             assert Resumable._db_remove_completed_for_owner(res_db, upload_id)
         else:
-            logging.error('finalise_resumable called on non-end chunk')
+            logging.error('finalise called on non-end chunk')
         return final
 
     @classmethod
@@ -408,7 +431,7 @@ class Resumable(object):
                     size_before_merge = os.stat(out).st_size
                     shutil.copyfileobj(fin, fout)
             chunk_size = os.stat(chunk).st_size
-            res_db = Resumable.init_db(owner, work_dir)
+            res_db = Resumable._init_db(owner, work_dir)
             assert Resumable._db_update_with_chunk_info(res_db, upload_id, chunk_num, chunk_size)
         except Exception as e:
             logging.error(e)

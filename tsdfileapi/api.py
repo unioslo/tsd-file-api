@@ -718,9 +718,9 @@ class ResumablesHandler(AuthRequestHandler):
             except Exception:
                 pass
             if not filename:
-                info = Resumable.list_all_resumables(self.project_dir, self.user)
+                info = Resumable.list_all(self.project_dir, self.user)
             else:
-                info = Resumable.get_resumable_info(self.project_dir, secured_filename, upload_id, self.user)
+                info = Resumable.info(self.project_dir, secured_filename, upload_id, self.user)
             self.set_status(200)
             self.write(info)
         except Exception as e:
@@ -741,7 +741,7 @@ class ResumablesHandler(AuthRequestHandler):
                 upload_id = url_unescape(self.get_query_argument('id'))
             except Exception:
                 raise Exception('upload id required to delete resumable')
-            assert Resumable.delete_resumable(self.project_dir, filename, upload_id, self.user)
+            assert Resumable.delete(self.project_dir, filename, upload_id, self.user)
             self.set_status(200)
             self.write({'message': 'resumable deleted'})
         except Exception as e:
@@ -949,9 +949,9 @@ class StreamHandler(AuthRequestHandler):
                             self.upload_id, \
                             self.completed_resumable_file, \
                             self.chunk_order_correct, \
-                            filename = Resumable.prepare_for_chunk_processing(self.project_dir, filename,
-                                                                              url_chunk_num, url_upload_id,
-                                                                              url_group, self.user)
+                            filename = Resumable.prepare(self.project_dir, filename,
+                                                         url_chunk_num, url_upload_id,
+                                                         url_group, self.user)
                         if not self.chunk_order_correct:
                             raise Exception
                     # ensure we do not write to active file
@@ -1112,8 +1112,8 @@ class StreamHandler(AuthRequestHandler):
             else:
                 self.write({'message': 'chunk_order_incorrect'})
         else:
-            self.completed_resumable_filename = Resumable.finalise_resumable(self.project_dir, os.path.basename(self.path_part),
-                                                                             self.upload_id, self.user)
+            self.completed_resumable_filename = Resumable.finalise(self.project_dir, os.path.basename(self.path_part),
+                                                                   self.upload_id, self.user)
             filename = os.path.basename(self.completed_resumable_filename)
         self.set_status(201)
         self.write({'filename': filename, 'id': self.upload_id, 'max_chunk': self.chunk_num})
