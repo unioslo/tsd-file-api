@@ -110,6 +110,7 @@ class Resumable(AbstractResumable):
         super(Resumable, self).__init__(work_dir, owner)
         self.work_dir = work_dir
         self.owner = owner
+        self.engine = self._init_db(owner, work_dir)
 
     def _init_db(self, owner, work_dir):
         dbname = '{0}{1}{2}'.format('.resumables-', owner, '.db')
@@ -143,13 +144,12 @@ class Resumable(AbstractResumable):
         upload_id = str(uuid.uuid4()) if url_upload_id == 'None' else url_upload_id
         chunk_filename = in_filename + '.chunk.' + url_chunk_num
         filename = upload_id + '/' + chunk_filename
-        res_db = self._init_db(owner, work_dir)
         if chunk_num == 'end':
             completed_resumable_file = True
             chunk_order_correct = True
         elif chunk_num == 1:
             os.makedirs(work_dir + '/' + upload_id)
-            assert self._db_insert_new_for_owner(res_db, upload_id, url_group)
+            assert self._db_insert_new_for_owner(upload_id, url_group)
             chunk_order_correct = True
             completed_resumable_file = None
         elif chunk_num > 1:
@@ -188,7 +188,7 @@ class Resumable(AbstractResumable):
         completed_chunks = [ f for f in files if '.part' not in f ]
         return completed_chunks[n]
 
-    def _find_relevant_resumable_dir(self, work_dir, filename, upload_id, res_db):
+    def _find_relevant_resumable_dir(self, work_dir, filename, upload_id):
         """
         If the client provides an upload_id, then the exact folder is returned.
         If no upload_id is provided, e.g. when the upload_id is lost, then
@@ -201,7 +201,7 @@ class Resumable(AbstractResumable):
 
         """
         relevant = None
-        potential_resumables = self._db_get_all_resumable_ids_for_owner(res_db)
+        potential_resumables = self._db_get_all_resumable_ids_for_owner()
         if not upload_id:
             logging.info('Trying to find a matching resumable for %s', filename)
             candidates = []
@@ -225,10 +225,8 @@ class Resumable(AbstractResumable):
                     relevant = pr
         return relevant
 
-
     def list_all(self, work_dir, owner):
-        res_db = self._init_db(owner, work_dir)
-        potential_resumables = self._db_get_all_resumable_ids_for_owner(res_db)
+        potential_resumables = self._db_get_all_resumable_ids_for_owner()
         resumables = []
         info = []
         for item in potential_resumables:
@@ -240,13 +238,13 @@ class Resumable(AbstractResumable):
                     chunk_size, max_chunk, md5sum, \
                         previous_offset, next_offset, \
                         warning, recommendation, \
-                        filename = self._get_resumable_chunk_info(current_pr, work_dir, res_db=res_db)
+                        filename = self._get_resumable_chunk_info(current_pr, work_dir)
                     if recommendation == 'end':
                         next_offset = 'end'
                 except (OSError, Exception):
                     pass
                 if chunk_size:
-                    group = self._db_get_group(res_db, pr)
+                    group = self._db_get_group(pr)
                     info.append({'chunk_size': chunk_size, 'max_chunk': max_chunk,
                                  'md5sum': md5sum, 'previous_offset': previous_offset,
                                  'next_offset': next_offset, 'id': pr,
@@ -298,8 +296,7 @@ class Resumable(AbstractResumable):
             logging.error(e)
             return chunks, 'not sure what to do', 'end'
 
-
-    def _get_resumable_chunk_info(self, resumable_dir, work_dir, res_db=None):
+    def _get_resumable_chunk_info(self, resumable_dir, work_dir):
         """
         Get information needed to resume an upload.
         If the server-side data is inconsistent, then
@@ -315,7 +312,7 @@ class Resumable(AbstractResumable):
             num = int(chunks[-1].split('.')[-1])
             latest_size = bytes(chunks[-1])
             upload_id = os.path.basename(resumable_dir)
-            next_offset = self._db_get_total_size(res_db, upload_id)
+            next_offset = self._db_get_total_size(upload_id)
             previous_offset = next_offset - latest_size
             filename = os.path.basename(chunks[-1].split('.chunk')[0])
             merged_file = os.path.normpath(work_dir + '/' + filename + '.' + upload_id)
@@ -346,17 +343,15 @@ class Resumable(AbstractResumable):
         chunks = [ c for c in all_chunks if '.part' not in c ]
         return info(chunks)
 
-
     def info(self, work_dir, filename, upload_id, owner):
-        res_db = self._init_db(owner, work_dir)
-        relevant_dir = self._find_relevant_resumable_dir(work_dir, filename, upload_id, res_db)
+        relevant_dir = self._find_relevant_resumable_dir(work_dir, filename, upload_id)
         if not relevant_dir:
             raise Exception('No resumable found for: %s', filename)
         resumable_dir = '%s/%s' % (work_dir, relevant_dir)
         chunk_size, max_chunk, md5sum, \
             previous_offset, next_offset, \
-            warning, recommendation, filename = self._get_resumable_chunk_info(resumable_dir, work_dir, res_db=res_db)
-        group = self._db_get_group(res_db, upload_id)
+            warning, recommendation, filename = self._get_resumable_chunk_info(resumable_dir, work_dir)
+        group = self._db_get_group(upload_id)
         if recommendation == 'end':
             next_offset = 'end'
         info = {'filename': filename, 'id': relevant_dir,
@@ -374,13 +369,12 @@ class Resumable(AbstractResumable):
 
     def delete(self, work_dir, filename, upload_id, owner):
         try:
-            res_db = self._init_db(owner, work_dir)
-            assert self._db_upload_belongs_to_owner(res_db, upload_id)
+            assert self._db_upload_belongs_to_owner(upload_id)
             relevant_dir = work_dir + '/' + upload_id
             relevant_merged_file = work_dir + '/' + filename + '.' + upload_id
             shutil.rmtree(relevant_dir)
             os.remove(relevant_merged_file)
-            assert self._db_remove_completed_for_owner(res_db, upload_id)
+            assert self._db_remove_completed_for_owner(upload_id)
             return True
         except Exception as e:
             logging.error(e)
@@ -400,8 +394,7 @@ class Resumable(AbstractResumable):
                 shutil.rmtree(chunks_dir) # do not need to fail upload if this does not work
             except OSError as e:
                 logging.error(e)
-            res_db = self._init_db(owner, work_dir)
-            assert self._db_remove_completed_for_owner(res_db, upload_id)
+            assert self._db_remove_completed_for_owner(upload_id)
         else:
             logging.error('finalise called on non-end chunk')
         return final
@@ -453,8 +446,7 @@ class Resumable(AbstractResumable):
                     size_before_merge = os.stat(out).st_size
                     shutil.copyfileobj(fin, fout)
             chunk_size = os.stat(chunk).st_size
-            res_db = self._init_db(owner, work_dir)
-            assert self._db_update_with_chunk_info(res_db, upload_id, chunk_num, chunk_size)
+            assert self._db_update_with_chunk_info(upload_id, chunk_num, chunk_size)
         except Exception as e:
             logging.error(e)
             try:
@@ -474,59 +466,59 @@ class Resumable(AbstractResumable):
             os.remove(old_chunk)
         return final
 
-    def _db_insert_new_for_owner(self, engine, resumable_id, group):
+    def _db_insert_new_for_owner(self, resumable_id, group):
         resumable_table = 'resumable_%s' % resumable_id
-        with session_scope(engine) as session:
+        with session_scope(self.engine) as session:
             session.execute('create table if not exists resumable_uploads(id text, upload_group text)')
             session.execute('insert into resumable_uploads (id, upload_group) values (:resumable_id, :upload_group)',
                             {'resumable_id': resumable_id, 'upload_group': group})
             session.execute('create table "%s"(chunk_num int, chunk_size int)' % resumable_table) # want an exception if exists
         return True
 
-    def _db_update_with_chunk_info(self, engine, resumable_id, chunk_num, chunk_size):
+    def _db_update_with_chunk_info(self, resumable_id, chunk_num, chunk_size):
         resumable_table = 'resumable_%s' % resumable_id
-        with session_scope(engine) as session:
+        with session_scope(self.engine) as session:
             session.execute('insert into "%s"(chunk_num, chunk_size) values (:chunk_num, :chunk_size)' % resumable_table,
                             {'chunk_num': chunk_num, 'chunk_size': chunk_size})
         return True
 
-    def _db_pop_chunk(self, engine, resumable_id, chunk_num):
+    def _db_pop_chunk(self, resumable_id, chunk_num):
         resumable_table = 'resumable_%s' % resumable_id
-        with session_scope(engine) as session:
+        with session_scope(self.engine) as session:
             res = session.execute('delete from "%s" where chunk_num = :chunk_num' % resumable_table,
                                   {'chunk_num': chunk_num})
         return True
 
-    def _db_get_total_size(self, engine, resumable_id):
+    def _db_get_total_size(self, resumable_id):
         resumable_table = 'resumable_%s' % resumable_id
-        with session_scope(engine) as session:
+        with session_scope(self.engine) as session:
             res = session.execute('select sum(chunk_size) from "%s"' % resumable_table).fetchone()[0]
         return res
 
-    def _db_get_group(self, engine, resumable_id):
+    def _db_get_group(self, resumable_id):
         resumable_table = 'resumable_%s' % resumable_id
-        with session_scope(engine) as session:
+        with session_scope(self.engine) as session:
             res = session.execute('select upload_group from resumable_uploads where id = :resumable_id',
                                   {'resumable_id': resumable_id}).fetchone()[0]
         return res
 
-    def _db_upload_belongs_to_owner(self, engine, resumable_id):
-        with session_scope(engine) as session:
+    def _db_upload_belongs_to_owner(self, resumable_id):
+        with session_scope(self.engine) as session:
             res = session.execute('select count(1) from resumable_uploads where id = :resumable_id',
                                   {'resumable_id': resumable_id}).fetchone()[0]
         return True if res > 0 else False
 
-    def _db_get_all_resumable_ids_for_owner(self, engine):
+    def _db_get_all_resumable_ids_for_owner(self):
         try:
-            with session_scope(engine) as session:
+            with session_scope(self.engine) as session:
                 res = session.execute('select id from resumable_uploads').fetchall()
         except Exception:
             return []
         return res # [(id,), (id,)]
 
-    def _db_remove_completed_for_owner(self, engine, resumable_id):
+    def _db_remove_completed_for_owner(self, resumable_id):
         resumable_table = 'resumable_%s' % resumable_id
-        with session_scope(engine) as session:
+        with session_scope(self.engine) as session:
             session.execute('delete from resumable_uploads where id = :resumable_id',
                             {'resumable_id': resumable_id})
             session.execute('drop table "%s"' % resumable_table)

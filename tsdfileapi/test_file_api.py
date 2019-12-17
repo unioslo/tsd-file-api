@@ -990,9 +990,8 @@ class TestFileApi(unittest.TestCase):
                                           token, chunksize=cs, new=False, group=None,
                                           verify=True, upload_id=upload_id, dev_url=url)
         self.assertEqual(resp, None)
-        rdb = sqlite_init(self.uploads_folder, '.resumables-p11-import_user.db')
         res = Resumable(self.uploads_folder, 'p11-import_user')
-        res._db_remove_completed_for_owner(rdb, upload_id)
+        res._db_remove_completed_for_owner(upload_id)
 
 
     def test_ZQ_large_start_file_resume(self):
@@ -1059,10 +1058,9 @@ class TestFileApi(unittest.TestCase):
             shutil.rmtree(uploaded_folder2)
             os.remove(merged_file1)
             os.remove(merged_file2)
-            rdb = sqlite_init(self.uploads_folder, '.resumables-p11-import_user.db')
             res = Resumable(self.uploads_folder, 'p11-import_user')
-            res._db_remove_completed_for_owner(rdb, upload_id1)
-            res._db_remove_completed_for_owner(rdb, upload_id2)
+            res._db_remove_completed_for_owner(upload_id1)
+            res._db_remove_completed_for_owner(upload_id2)
         except OSError:
             pass
 
@@ -1084,9 +1082,8 @@ class TestFileApi(unittest.TestCase):
         try:
             shutil.rmtree(uploaded_folder1)
             os.remove(merged_file1)
-            rdb = sqlite_init(self.uploads_folder, '.resumables-p11-import_user.db')
             res = Resumable(self.uploads_folder, 'p11-import_user')
-            res._db_remove_completed_for_owner(rdb, upload_id1)
+            res._db_remove_completed_for_owner(upload_id1)
         except OSError:
             pass
 
@@ -1109,9 +1106,8 @@ class TestFileApi(unittest.TestCase):
         try:
             shutil.rmtree(uploaded_folder)
             os.remove(merged_file)
-            rdb = sqlite_init(self.uploads_folder, '.resumables-p11-import_user.db')
             res = Resumable(self.uploads_folder, 'p11-import_user')
-            res._db_remove_completed_for_owner(rdb, upload_id)
+            res._db_remove_completed_for_owner(upload_id)
         except OSError:
             pass
 
@@ -1139,12 +1135,10 @@ class TestFileApi(unittest.TestCase):
         try:
             shutil.rmtree(uploaded_folder1)
             os.remove(merged_file2)
-            rdb = sqlite_init(self.uploads_folder, '.resumables-p11-import_user.db')
             res = Resumable(self.uploads_folder, 'p11-import_user')
-            res._db_remove_completed_for_owner(rdb, upload_id1)
-            rdb = sqlite_init(self.uploads_folder, '.resumables-p11-tommy.db')
+            res._db_remove_completed_for_owner(upload_id1)
             res = Resumable(self.uploads_folder, 'p11-tommy')
-            res._db_remove_completed_for_owner(rdb, upload_id2)
+            res._db_remove_completed_for_owner(upload_id2)
         except OSError:
             pass
 
