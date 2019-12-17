@@ -58,7 +58,7 @@ class Resumable(object):
 
 
     @classmethod
-    def prepare_for_chunk_processing(self, project_dir, in_filename, url_chunk_num, url_upload_id, url_group, owner):
+    def prepare_for_chunk_processing(self, work_dir, in_filename, url_chunk_num, url_upload_id, url_group, owner):
         """
         The following cases are handled:
 
@@ -84,17 +84,17 @@ class Resumable(object):
         upload_id = str(uuid.uuid4()) if url_upload_id == 'None' else url_upload_id
         chunk_filename = in_filename + '.chunk.' + url_chunk_num
         filename = upload_id + '/' + chunk_filename
-        res_db = Resumable.init_db(owner, project_dir)
+        res_db = Resumable.init_db(owner, work_dir)
         if chunk_num == 'end':
             completed_resumable_file = True
             chunk_order_correct = True
         elif chunk_num == 1:
-            os.makedirs(project_dir + '/' + upload_id)
+            os.makedirs(work_dir + '/' + upload_id)
             assert Resumable.db_insert_new_for_owner(res_db, upload_id, url_group)
             chunk_order_correct = True
             completed_resumable_file = None
         elif chunk_num > 1:
-            chunk_order_correct = Resumable.refuse_upload_if_not_in_sequential_order(project_dir, upload_id, chunk_num)
+            chunk_order_correct = Resumable.refuse_upload_if_not_in_sequential_order(work_dir, upload_id, chunk_num)
             completed_resumable_file = None
         return chunk_num, upload_id, completed_resumable_file, chunk_order_correct, filename
 
@@ -116,9 +116,9 @@ class Resumable(object):
         fd.close()
 
     @classmethod
-    def refuse_upload_if_not_in_sequential_order(self, project_dir, upload_id, chunk_num):
+    def refuse_upload_if_not_in_sequential_order(self, work_dir, upload_id, chunk_num):
         chunk_order_correct = True
-        full_chunks_on_disk = Resumable.get_full_chunks_on_disk(project_dir, upload_id, chunk_num)
+        full_chunks_on_disk = Resumable.get_full_chunks_on_disk(work_dir, upload_id, chunk_num)
         previous_chunk_num = int(full_chunks_on_disk[-1].split('.chunk.')[-1])
         if chunk_num <= previous_chunk_num or (chunk_num - previous_chunk_num) >= 2:
             chunk_order_correct = False
@@ -126,16 +126,16 @@ class Resumable(object):
         return chunk_order_correct
 
     @classmethod
-    def _find_nth_chunk(self, project_dir, upload_id, filename, n):
+    def _find_nth_chunk(self, work_dir, upload_id, filename, n):
         n = n - 1 # chunk numbers start at 1, but keep 0-based for the signaure
-        current_resumable = '%s/%s' % (project_dir, upload_id)
+        current_resumable = '%s/%s' % (work_dir, upload_id)
         files = os.listdir(current_resumable)
         files.sort(key=_natural_keys)
         completed_chunks = [ f for f in files if '.part' not in f ]
         return completed_chunks[n]
 
     @classmethod
-    def _find_relevant_resumable_dir(self, project_dir, filename, upload_id, res_db):
+    def _find_relevant_resumable_dir(self, work_dir, filename, upload_id, res_db):
         """
         If the client provides an upload_id, then the exact folder is returned.
         If no upload_id is provided, e.g. when the upload_id is lost, then
@@ -154,41 +154,41 @@ class Resumable(object):
             candidates = []
             for item in potential_resumables:
                 pr = item[0]
-                current_pr = '%s/%s' % (project_dir, pr)
+                current_pr = '%s/%s' % (work_dir, pr)
                 if _IS_VALID_UUID.match(pr) and os.path.lexists(current_pr):
                     candidates.append((os.stat(current_pr).st_size, pr))
             candidates.sort(_resumables_cmp)
             for cand in candidates:
                 upload_id = cand[1]
-                first_chunk = Resumable._find_nth_chunk(project_dir, upload_id, filename, 1)
+                first_chunk = Resumable._find_nth_chunk(work_dir, upload_id, filename, 1)
                 if filename in first_chunk:
                     relevant = cand[1]
                     break
         else:
             for item in potential_resumables:
                 pr = item[0]
-                current_pr = '%s/%s' % (project_dir, pr)
+                current_pr = '%s/%s' % (work_dir, pr)
                 if _IS_VALID_UUID.match(pr) and str(upload_id) == str(pr):
                     relevant = pr
         return relevant
 
 
     @classmethod
-    def list_all_resumables(self, project_dir, owner):
-        res_db = Resumable.init_db(owner, project_dir)
+    def list_all_resumables(self, work_dir, owner):
+        res_db = Resumable.init_db(owner, work_dir)
         potential_resumables = self.db_get_all_resumable_ids_for_owner(res_db)
         resumables = []
         info = []
         for item in potential_resumables:
             chunk_size = None
             pr = item[0]
-            current_pr = '%s/%s' % (project_dir, pr)
+            current_pr = '%s/%s' % (work_dir, pr)
             if _IS_VALID_UUID.match(pr):
                 try:
                     chunk_size, max_chunk, md5sum, \
                         previous_offset, next_offset, \
                         warning, recommendation, \
-                        filename = Resumable._get_resumable_chunk_info(current_pr, project_dir, res_db=res_db)
+                        filename = Resumable._get_resumable_chunk_info(current_pr, work_dir, res_db=res_db)
                     if recommendation == 'end':
                         next_offset = 'end'
                 except (OSError, Exception):
@@ -249,7 +249,7 @@ class Resumable(object):
 
 
     @classmethod
-    def _get_resumable_chunk_info(self, resumable_dir, project_dir, res_db=None):
+    def _get_resumable_chunk_info(self, resumable_dir, work_dir, res_db=None):
         """
         Get information needed to resume an upload.
         If the server-side data is inconsistent, then
@@ -268,7 +268,7 @@ class Resumable(object):
             next_offset = Resumable.db_get_total_size(res_db, upload_id)
             previous_offset = next_offset - latest_size
             filename = os.path.basename(chunks[-1].split('.chunk')[0])
-            merged_file = os.path.normpath(project_dir + '/' + filename + '.' + upload_id)
+            merged_file = os.path.normpath(work_dir + '/' + filename + '.' + upload_id)
             try:
                 # check that the size of the merge file
                 # matches what we calculate from the
@@ -298,15 +298,15 @@ class Resumable(object):
 
 
     @classmethod
-    def get_resumable_info(self, project_dir, filename, upload_id, owner):
-        res_db = Resumable.init_db(owner, project_dir)
-        relevant_dir = Resumable._find_relevant_resumable_dir(project_dir, filename, upload_id, res_db)
+    def get_resumable_info(self, work_dir, filename, upload_id, owner):
+        res_db = Resumable.init_db(owner, work_dir)
+        relevant_dir = Resumable._find_relevant_resumable_dir(work_dir, filename, upload_id, res_db)
         if not relevant_dir:
             raise Exception('No resumable found for: %s', filename)
-        resumable_dir = '%s/%s' % (project_dir, relevant_dir)
+        resumable_dir = '%s/%s' % (work_dir, relevant_dir)
         chunk_size, max_chunk, md5sum, \
             previous_offset, next_offset, \
-            warning, recommendation, filename = Resumable._get_resumable_chunk_info(resumable_dir, project_dir, res_db=res_db)
+            warning, recommendation, filename = Resumable._get_resumable_chunk_info(resumable_dir, work_dir, res_db=res_db)
         group = Resumable.db_get_group(res_db, upload_id)
         if recommendation == 'end':
             next_offset = 'end'
@@ -318,19 +318,19 @@ class Resumable(object):
         return info
 
     @classmethod
-    def get_full_chunks_on_disk(self, project_dir, upload_id, chunk_num):
-        chunks_on_disk = os.listdir(project_dir + '/' + upload_id)
+    def get_full_chunks_on_disk(self, work_dir, upload_id, chunk_num):
+        chunks_on_disk = os.listdir(work_dir + '/' + upload_id)
         chunks_on_disk.sort(key=_natural_keys)
         full_chunks_on_disk = [ c for c in chunks_on_disk if '.part' not in c ]
         return full_chunks_on_disk
 
     @classmethod
-    def delete_resumable(self, project_dir, filename, upload_id, owner):
+    def delete_resumable(self, work_dir, filename, upload_id, owner):
         try:
-            res_db = Resumable.init_db(owner, project_dir)
+            res_db = Resumable.init_db(owner, work_dir)
             assert Resumable.db_upload_belongs_to_owner(res_db, upload_id)
-            relevant_dir = project_dir + '/' + upload_id
-            relevant_merged_file = project_dir + '/' + filename + '.' + upload_id
+            relevant_dir = work_dir + '/' + upload_id
+            relevant_merged_file = work_dir + '/' + filename + '.' + upload_id
             shutil.rmtree(relevant_dir)
             os.remove(relevant_merged_file)
             assert Resumable.db_remove_completed_for_owner(res_db, upload_id)
@@ -341,12 +341,12 @@ class Resumable(object):
             return False
 
     @classmethod
-    def finalise_resumable(self, project_dir, last_chunk_filename, upload_id, owner):
+    def finalise_resumable(self, work_dir, last_chunk_filename, upload_id, owner):
         assert '.part' not in last_chunk_filename
         filename = os.path.basename(last_chunk_filename.split('.chunk')[0])
-        out = os.path.normpath(project_dir + '/' + filename + '.' + upload_id)
+        out = os.path.normpath(work_dir + '/' + filename + '.' + upload_id)
         final = out.replace('.' + upload_id, '')
-        chunks_dir = project_dir + '/' + upload_id
+        chunks_dir = work_dir + '/' + upload_id
         if '.chunk.end' in last_chunk_filename:
             logging.info('deleting: %s', chunks_dir)
             os.rename(out, final)
@@ -354,14 +354,14 @@ class Resumable(object):
                 shutil.rmtree(chunks_dir) # do not need to fail upload if this does not work
             except OSError as e:
                 logging.error(e)
-            res_db = Resumable.init_db(owner, project_dir)
+            res_db = Resumable.init_db(owner, work_dir)
             assert Resumable.db_remove_completed_for_owner(res_db, upload_id)
         else:
             logging.error('finalise_resumable called on non-end chunk')
         return final
 
     @classmethod
-    def merge_chunk(self, project_dir, last_chunk_filename, upload_id, owner):
+    def merge_chunk(self, work_dir, last_chunk_filename, upload_id, owner):
         """
         Merge chunks into one file, _in order_.
 
@@ -394,10 +394,10 @@ class Resumable(object):
         """
         assert '.part' not in last_chunk_filename
         filename = os.path.basename(last_chunk_filename.split('.chunk')[0])
-        out = os.path.normpath(project_dir + '/' + filename + '.' + upload_id)
+        out = os.path.normpath(work_dir + '/' + filename + '.' + upload_id)
         out_lock = out + '.lock'
         final = out.replace('.' + upload_id, '')
-        chunks_dir = project_dir + '/' + upload_id
+        chunks_dir = work_dir + '/' + upload_id
         chunk_num = int(last_chunk_filename.split('.chunk.')[-1])
         chunk = chunks_dir + '/' + last_chunk_filename
         try:
@@ -408,7 +408,7 @@ class Resumable(object):
                     size_before_merge = os.stat(out).st_size
                     shutil.copyfileobj(fin, fout)
             chunk_size = os.stat(chunk).st_size
-            res_db = Resumable.init_db(owner, project_dir)
+            res_db = Resumable.init_db(owner, work_dir)
             assert Resumable.db_update_with_chunk_info(res_db, upload_id, chunk_num, chunk_size)
         except Exception as e:
             logging.error(e)
