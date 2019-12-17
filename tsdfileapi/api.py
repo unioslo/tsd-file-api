@@ -842,58 +842,6 @@ class StreamHandler(AuthRequestHandler):
                                              stdout=self.target_file)
 
 
-    def handle_resumable_request(self, project_dir, in_filename, url_chunk_num, url_upload_id, url_group, res_db, owner):
-        """
-        There are three types of requests for resumables, which are
-        handled in the following ways:
-
-        1. First chunk
-            - check that the chunk has not already been uploaded
-            - the chowner is disabled
-            - a new upload id is generated
-            - the upload id is recorded as beloning to the authenticated user
-            - a new working directory is created
-            - data_received is called, writing the file
-            - merge_resumables is called by the exiting patch method
-
-        2. Rest of the chunks
-            - check that the chunk has not already been uploaded
-            - a check is performed to disallow uploading chunks out of order
-            - the chowner is disabled
-            - data_received is called, writing the file
-            - merge_resumables is called by the exiting patch method
-
-        3. End request
-            - the chowner is enabled
-            - merge_resumables is called, branching into the cleanup code
-
-        In all cases the function returns:
-        upload_id/filename.extention.chunk.num
-
-        """
-        # construct inputs
-        chunk_num = int(url_chunk_num) if url_chunk_num != 'end' else url_chunk_num
-        upload_id = str(uuid4()) if url_upload_id == 'None' else url_upload_id
-        chunk_filename = in_filename + '.chunk.' + url_chunk_num
-        filename = upload_id + '/' + chunk_filename
-        #current_resumable = Resumable(project_dir, in_filename, chunk_num, self.user, group, self.upload_id)
-        #logging.info(current_resumable.chunk_filename)
-        #logging.info(current_resumable.relative_chunk_path)
-        #logging.info(current_resumable.absolute_chunk_path)
-        if chunk_num == 'end':
-            merged_file = Resumable.merge_resumables(project_dir, filename, upload_id, res_db=res_db)
-            chunk_order_correct = True
-        elif chunk_num == 1:
-            os.makedirs(project_dir + '/' + upload_id)
-            assert Resumable.db_insert_new_for_user(res_db, upload_id, owner, url_group)
-            chunk_order_correct = True
-            merged_file = None
-        elif chunk_num > 1:
-            chunk_order_correct = Resumable.refuse_upload_if_not_in_sequential_order(project_dir, upload_id, chunk_num)
-            merged_file = None
-        return chunk_num, upload_id, merged_file, chunk_order_correct, filename
-
-
     def initialize(self, backend, request_hook_enabled=False):
         try:
             pnum = pnum_from_url(self.request.uri)
@@ -973,9 +921,9 @@ class StreamHandler(AuthRequestHandler):
                             self.upload_id, \
                             self.merged_file, \
                             self.chunk_order_correct, \
-                            filename = self.handle_resumable_request(self.project_dir, filename,
-                                                                     url_chunk_num, url_upload_id,
-                                                                     url_group, self.rdb, self.user)
+                            filename = Resumable.handle_resumable_request(self.project_dir, filename,
+                                                                          url_chunk_num, url_upload_id,
+                                                                          url_group, self.rdb, self.user)
                         if not self.chunk_order_correct:
                             raise Exception
                     # ensure we do not write to active file
