@@ -1080,7 +1080,9 @@ class StreamHandler(AuthRequestHandler):
             else:
                 self.write({'message': 'chunk_order_incorrect'})
         else:
-            filename = os.path.basename(self.completed_resumable_file)
+            completed_resumable_filename = Resumable.finalise_resumable(self.project_dir, os.path.basename(self.path_part), self.upload_id, res_db=self.rdb)
+            assert Resumable.db_remove_completed_for_user(self.rdb, self.upload_id, self.user)
+            filename = os.path.basename(completed_resumable_filename)
         self.set_status(201)
         self.write({'filename': filename, 'id': self.upload_id, 'max_chunk': self.chunk_num})
 
@@ -1111,7 +1113,6 @@ class StreamHandler(AuthRequestHandler):
                     path, path_part = self.path_part, self.path
                 else:
                     path = self.completed_resumable_file
-                    assert Resumable.db_remove_completed_for_user(self.rdb, self.upload_id, self.user)
                 if self.backend == 'cluster' and self.pnum != 'p01': # TODO: remove special case
                     pass
                 else:

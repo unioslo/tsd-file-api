@@ -92,7 +92,7 @@ class Resumable(object):
         chunk_filename = in_filename + '.chunk.' + url_chunk_num
         filename = upload_id + '/' + chunk_filename
         if chunk_num == 'end':
-            completed_resumable_file = Resumable.merge_chunk(project_dir, filename, upload_id, res_db=res_db)
+            completed_resumable_file = True
             chunk_order_correct = True
         elif chunk_num == 1:
             os.makedirs(project_dir + '/' + upload_id)
@@ -110,7 +110,10 @@ class Resumable(object):
 
     @classmethod
     def add_chunk(self, fd, chunk):
-        fd.write(chunk)
+        if not fd:
+            return
+        else:
+            fd.write(chunk)
 
     @classmethod
     def close_file(self, fd):
@@ -339,6 +342,24 @@ class Resumable(object):
             return False
 
     @classmethod
+    def finalise_resumable(self, project_dir, last_chunk_filename, upload_id, res_db=None):
+        assert '.part' not in last_chunk_filename
+        filename = os.path.basename(last_chunk_filename.split('.chunk')[0])
+        out = os.path.normpath(project_dir + '/' + filename + '.' + upload_id)
+        final = out.replace('.' + upload_id, '')
+        chunks_dir = project_dir + '/' + upload_id
+        if '.chunk.end' in last_chunk_filename:
+            logging.info('deleting: %s', chunks_dir)
+            os.rename(out, final)
+            try:
+                shutil.rmtree(chunks_dir) # do not need to fail upload if this does not work
+            except OSError as e:
+                logging.error(e)
+        else:
+            logging.error('finalise_resumable called on non-end chunk')
+        return final
+
+    @classmethod
     def merge_chunk(self, project_dir, last_chunk_filename, upload_id, res_db=None):
         """
         Merge chunks into one file, _in order_.
@@ -376,42 +397,34 @@ class Resumable(object):
         out_lock = out + '.lock'
         final = out.replace('.' + upload_id, '')
         chunks_dir = project_dir + '/' + upload_id
-        if '.chunk.end' in last_chunk_filename:
-            logging.info('deleting: %s', chunks_dir)
-            os.rename(out, final)
+        chunk_num = int(last_chunk_filename.split('.chunk.')[-1])
+        chunk = chunks_dir + '/' + last_chunk_filename
+        try:
+            if chunk_num > 1:
+                os.link(out, out_lock)
+            with open(out, 'ab') as fout:
+                with open(chunk, 'rb') as fin:
+                    size_before_merge = os.stat(out).st_size
+                    shutil.copyfileobj(fin, fout)
+            chunk_size = os.stat(chunk).st_size
+            assert Resumable.db_update_with_chunk_info(res_db, upload_id, chunk_num, chunk_size)
+        except Exception as e:
+            logging.error(e)
             try:
-                shutil.rmtree(chunks_dir) # do not need to fail upload if this does not work
-            except OSError as e:
-                logging.error(e)
-        else:
-            chunk_num = int(last_chunk_filename.split('.chunk.')[-1])
-            chunk = chunks_dir + '/' + last_chunk_filename
-            try:
-                if chunk_num > 1:
-                    os.link(out, out_lock)
+                os.remove(chunk)
                 with open(out, 'ab') as fout:
-                    with open(chunk, 'rb') as fin:
-                        size_before_merge = os.stat(out).st_size
-                        shutil.copyfileobj(fin, fout)
-                chunk_size = os.stat(chunk).st_size
-                assert Resumable.db_update_with_chunk_info(res_db, upload_id, chunk_num, chunk_size)
-            except Exception as e:
-                logging.error(e)
-                try:
-                    os.remove(chunk)
-                    with open(out, 'ab') as fout:
-                        fout.truncate(size_before_merge)
-                except (Exception, OSError) as e:
-                    raise Exception('could not merge %s', chunk)
-            finally:
-                try:
-                    os.unlink(out_lock)
-                except OSError:
-                    pass
-            if chunk_num >= 5:
-                target_chunk_num = chunk_num - 4
-                old_chunk = chunk.replace('.chunk.' + str(chunk_num), '.chunk.' + str(target_chunk_num))
-                os.remove(old_chunk)
+                    fout.truncate(size_before_merge)
+            except (Exception, OSError) as e:
+                raise Exception('could not merge %s', chunk)
+        finally:
+            try:
+                os.unlink(out_lock)
+            except OSError:
+                pass
+        if chunk_num >= 5:
+            target_chunk_num = chunk_num - 4
+            old_chunk = chunk.replace('.chunk.' + str(chunk_num), '.chunk.' + str(target_chunk_num))
+            os.remove(old_chunk)
         return final
 
 
