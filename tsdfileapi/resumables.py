@@ -142,7 +142,7 @@ class Resumable(object):
         return completed_chunks[n]
 
     @classmethod
-    def _find_relevant_resumable_dir(self, project_dir, filename, upload_id, res_db=None, user=None):
+    def _find_relevant_resumable_dir(self, project_dir, filename, upload_id, res_db):
         """
         If the client provides an upload_id, then the exact folder is returned.
         If no upload_id is provided, e.g. when the upload_id is lost, then
@@ -155,7 +155,7 @@ class Resumable(object):
 
         """
         relevant = None
-        potential_resumables = Resumable.db_get_all_resumable_ids_for_user(res_db, user)
+        potential_resumables = Resumable.db_get_all_resumable_ids_for_owner(res_db)
         if not upload_id:
             logging.info('Trying to find a matching resumable for %s', filename)
             candidates = []
@@ -183,7 +183,7 @@ class Resumable(object):
     @classmethod
     def list_all_resumables(self, project_dir, owner):
         res_db = Resumable.init_db(owner, project_dir)
-        potential_resumables = self.db_get_all_resumable_ids_for_user(res_db, owner)
+        potential_resumables = self.db_get_all_resumable_ids_for_owner(res_db)
         resumables = []
         info = []
         for item in potential_resumables:
@@ -307,7 +307,7 @@ class Resumable(object):
     @classmethod
     def get_resumable_info(self, project_dir, filename, upload_id, owner):
         res_db = Resumable.init_db(owner, project_dir)
-        relevant_dir = Resumable._find_relevant_resumable_dir(project_dir, filename, upload_id, res_db=res_db, user=owner)
+        relevant_dir = Resumable._find_relevant_resumable_dir(project_dir, filename, upload_id, res_db)
         if not relevant_dir:
             raise Exception('No resumable found for: %s', filename)
         resumable_dir = '%s/%s' % (project_dir, relevant_dir)
@@ -335,12 +335,12 @@ class Resumable(object):
     def delete_resumable(self, project_dir, filename, upload_id, owner):
         try:
             res_db = Resumable.init_db(owner, project_dir)
-            assert Resumable.db_upload_belongs_to_user(res_db, upload_id, owner)
+            assert Resumable.db_upload_belongs_to_owner(res_db, upload_id)
             relevant_dir = project_dir + '/' + upload_id
             relevant_merged_file = project_dir + '/' + filename + '.' + upload_id
             shutil.rmtree(relevant_dir)
             os.remove(relevant_merged_file)
-            assert Resumable.db_remove_completed_for_user(res_db, upload_id, owner)
+            assert Resumable.db_remove_completed_for_owner(res_db, upload_id)
             return True
         except Exception as e:
             logging.error(e)
@@ -362,7 +362,7 @@ class Resumable(object):
             except OSError as e:
                 logging.error(e)
             res_db = Resumable.init_db(owner, project_dir)
-            assert Resumable.db_remove_completed_for_user(res_db, upload_id, owner)
+            assert Resumable.db_remove_completed_for_owner(res_db, upload_id)
         else:
             logging.error('finalise_resumable called on non-end chunk')
         return final
@@ -479,14 +479,14 @@ class Resumable(object):
         return res
 
     @classmethod
-    def db_upload_belongs_to_user(self, engine, resumable_id, user):
+    def db_upload_belongs_to_owner(self, engine, resumable_id):
         with session_scope(engine) as session:
             res = session.execute('select count(1) from resumable_uploads where id = :resumable_id',
                                   {'resumable_id': resumable_id}).fetchone()[0]
         return True if res > 0 else False
 
     @classmethod
-    def db_get_all_resumable_ids_for_user(self, engine, user):
+    def db_get_all_resumable_ids_for_owner(self, engine):
         try:
             with session_scope(engine) as session:
                 res = session.execute('select id from resumable_uploads').fetchall()
@@ -495,7 +495,7 @@ class Resumable(object):
         return res # [(id,), (id,)]
 
     @classmethod
-    def db_remove_completed_for_user(self, engine, resumable_id, user):
+    def db_remove_completed_for_owner(self, engine, resumable_id):
         resumable_table = 'resumable_%s' % resumable_id
         with session_scope(engine) as session:
             session.execute('delete from resumable_uploads where id = :resumable_id',
