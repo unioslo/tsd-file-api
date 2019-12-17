@@ -842,7 +842,7 @@ class StreamHandler(AuthRequestHandler):
                                              stdout=self.target_file)
 
 
-    def handle_resumable_request(self, project_dir, in_filename, url_chunk_num, url_upload_id, url_group):
+    def handle_resumable_request(self, project_dir, in_filename, url_chunk_num, url_upload_id, url_group, res_db):
         """
         There are three types of requests for resumables, which are
         handled in the following ways:
@@ -881,18 +881,20 @@ class StreamHandler(AuthRequestHandler):
         #logging.info(current_resumable.relative_chunk_path)
         #logging.info(current_resumable.absolute_chunk_path)
         if chunk_num == 'end':
-            self.merged_file = Resumable.merge_resumables(project_dir, filename, upload_id, res_db=self.rdb)
-            self.target_file = None
+            merged_file = Resumable.merge_resumables(project_dir, filename, upload_id, res_db=res_db)
             chunk_order_correct = True
         elif chunk_num == 1:
             os.makedirs(project_dir + '/' + upload_id)
-            assert Resumable.db_insert_new_for_user(self.rdb, upload_id, self.user, url_group)
+            assert Resumable.db_insert_new_for_user(res_db, upload_id, self.user, url_group)
             chunk_order_correct = True
+            merged_file = None
         elif chunk_num > 1:
             chunk_order_correct = Resumable.refuse_upload_if_not_in_sequential_order(project_dir, upload_id, chunk_num)
+            merged_file = None
         # store attributes - rather return them, set them outside
         self.chunk_num = chunk_num
         self.upload_id = upload_id
+        self.merged_file = merged_file
         self.chunk_order_correct = chunk_order_correct
         if not chunk_order_correct:
                 raise Exception
@@ -974,7 +976,7 @@ class StreamHandler(AuthRequestHandler):
                         url_chunk_num = url_unescape(self.get_query_argument('chunk'))
                         url_upload_id = url_unescape(self.get_query_argument('id'))
                         url_group = url_unescape(self.get_query_argument('group'))
-                        filename = self.handle_resumable_request(self.project_dir, filename, url_chunk_num, url_upload_id, url_group)
+                        filename = self.handle_resumable_request(self.project_dir, filename, url_chunk_num, url_upload_id, url_group, self.rdb)
                     # ensure we do not write to active file
                     self.path = os.path.normpath(self.project_dir + '/' + filename)
                     self.path_part = self.path + '.' + str(uuid4()) + '.part'
