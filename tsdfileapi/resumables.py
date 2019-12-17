@@ -92,17 +92,17 @@ class Resumable(object):
         chunk_filename = in_filename + '.chunk.' + url_chunk_num
         filename = upload_id + '/' + chunk_filename
         if chunk_num == 'end':
-            merged_file = Resumable.merge_resumables(project_dir, filename, upload_id, res_db=res_db)
+            completed_resumable_file = Resumable.merge_resumables(project_dir, filename, upload_id, res_db=res_db)
             chunk_order_correct = True
         elif chunk_num == 1:
             os.makedirs(project_dir + '/' + upload_id)
             assert Resumable.db_insert_new_for_user(res_db, upload_id, owner, url_group)
             chunk_order_correct = True
-            merged_file = None
+            completed_resumable_file = None
         elif chunk_num > 1:
             chunk_order_correct = Resumable.refuse_upload_if_not_in_sequential_order(project_dir, upload_id, chunk_num)
-            merged_file = None
-        return chunk_num, upload_id, merged_file, chunk_order_correct, filename
+            completed_resumable_file = None
+        return chunk_num, upload_id, completed_resumable_file, chunk_order_correct, filename
 
     @classmethod
     def open_file(self, filename, mode):

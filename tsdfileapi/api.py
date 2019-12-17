@@ -876,7 +876,7 @@ class StreamHandler(AuthRequestHandler):
 
         """
         try:
-            self.merged_file = False
+            self.completed_resumable_file = False
             self.target_file = None
             self.custom_content_type = None
             self.path = None
@@ -913,7 +913,7 @@ class StreamHandler(AuthRequestHandler):
                         self.rdb = Resumable.init_db(self.user, self.project_dir)
                         self.chunk_num, \
                             self.upload_id, \
-                            self.merged_file, \
+                            self.completed_resumable_file, \
                             self.chunk_order_correct, \
                             filename = Resumable.handle_resumable_request(self.project_dir, filename,
                                                                           url_chunk_num, url_upload_id,
@@ -956,7 +956,7 @@ class StreamHandler(AuthRequestHandler):
                             os.chmod(self.path, _RW______)
                         elif self.request.method == 'PATCH':
                             self.custom_content_type = None
-                            if not self.merged_file:
+                            if not self.completed_resumable_file:
                                 self.target_file = Resumable.open_file(self.path, filemode)
                                 os.chmod(self.path, _RW______)
                 except KeyError:
@@ -1068,7 +1068,7 @@ class StreamHandler(AuthRequestHandler):
 
 
     def patch(self, pnum, uri_filename=None):
-        if not self.merged_file:
+        if not self.completed_resumable_file:
             Resumable.close_file(self.target_file)
             # if the path to which we want to rename the file exists
             # then we have been writing the same chunk concurrently
@@ -1080,7 +1080,7 @@ class StreamHandler(AuthRequestHandler):
             else:
                 self.write({'message': 'chunk_order_incorrect'})
         else:
-            filename = os.path.basename(self.merged_file)
+            filename = os.path.basename(self.completed_resumable_file)
         self.set_status(201)
         self.write({'filename': filename, 'id': self.upload_id, 'max_chunk': self.chunk_num})
 
@@ -1107,10 +1107,10 @@ class StreamHandler(AuthRequestHandler):
             try:
                 # switch path and path_part variables back to their original values
                 # keep local copies in this scope for safety
-                if not self.merged_file:
+                if not self.completed_resumable_file:
                     path, path_part = self.path_part, self.path
                 else:
-                    path = self.merged_file
+                    path = self.completed_resumable_file
                     assert Resumable.db_remove_completed_for_user(self.rdb, self.upload_id, self.user)
                 if self.backend == 'cluster' and self.pnum != 'p01': # TODO: remove special case
                     pass
