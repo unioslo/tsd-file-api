@@ -69,14 +69,14 @@ define('debug', default=CONFIG['debug'])
 define('server_delay', default=CONFIG['server_delay'])
 define('num_chunks', default=CONFIG['num_chunks'])
 define('max_body_size', CONFIG['max_body_size'])
-define('user_authorization', default=CONFIG['user_authorization'])
 define('api_user', CONFIG['api_user'])
+define('check_tenant', CONFIG['token_check_tenant'])
+define('check_exp', CONFIG['token_check_exp'])
 
 
 class AuthRequestHandler(RequestHandler):
 
-    # TODO: make tenant and exp checks configurable here
-    def validate_token(self, check_tenant=True, check_exp=True):
+    def validate_token(self, check_tenant=options.check_tenant, check_exp=options.check_exp):
         """
         When performing requests against the API, JWT access tokens are presented
         in the Authorization header of the HTTP request as a Bearer token. Before
