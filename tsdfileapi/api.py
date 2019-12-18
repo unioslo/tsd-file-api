@@ -204,7 +204,6 @@ class FileStreamerHandler(AuthRequestHandler):
             file = os.path.basename(filename)
             check_filename(file)
         except Exception as e:
-            logging.error(e)
             self.message = 'Illegal export filename: %s' % file
             logging.error(self.message)
             return status
@@ -248,7 +247,7 @@ class FileStreamerHandler(AuthRequestHandler):
         dict
 
         """
-        dir_map = map(lambda x: x if not x.startswith('.') else None, os.listdir(path))
+        dir_map = os.listdir(path)
         files = list(dir_map)
         if len(files) > CONFIG['export_max_num_list']:
             self.set_status(400)
