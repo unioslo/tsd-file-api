@@ -243,11 +243,6 @@ class TestFileApi(unittest.TestCase):
             self.assertEqual(resp.status_code, 401)
 
 
-    def test_C_token_with_wrong_role_rejected(self):
-        headers = {'Authorization': 'Bearer ' + TEST_TOKENS['WRONG_ROLE']}
-        self.check_endpoints(headers)
-
-
     def test_D_timed_out_token_rejected(self):
         headers = {'Authorization': 'Bearer ' + TEST_TOKENS['TIMED_OUT']}
         self.check_endpoints(headers)
@@ -859,19 +854,6 @@ class TestFileApi(unittest.TestCase):
 
     # export
 
-    def test_ZI_export_endpoints_require_auth(self):
-        import_token = TEST_TOKENS['VALID']
-        resp = requests.get(self.export)
-        self.assertEqual(resp.status_code, 401)
-        resp = requests.get(self.export + '/file1')
-        self.assertEqual(resp.status_code, 401)
-        resp = requests.get(self.export,
-                            headers={'Authorization': 'Bearer ' + import_token})
-        self.assertEqual(resp.status_code, 401)
-        resp = requests.get(self.export + '/file1',
-                            headers={'Authorization': 'Bearer ' + import_token})
-        self.assertEqual(resp.status_code, 401)
-
 
     def test_ZJ_export_file_restrictions_enforced(self):
         headers={'Authorization': 'Bearer ' + TEST_TOKENS['EXPORT']}
@@ -1265,7 +1247,6 @@ def main():
     tests = []
     base = [
         # authz
-        'test_C_token_with_wrong_role_rejected',
         'test_D_timed_out_token_rejected',
         'test_E_unauthenticated_request_rejected',
         # form-data
@@ -1303,7 +1284,6 @@ def main():
         'test_ZG_stream_does_not_work_with_client_specified_group_nonsense_input',
         'test_ZH_stream_does_not_work_with_client_specified_group_not_a_member',
         # export
-        'test_ZI_export_endpoints_require_auth',
         'test_ZJ_export_file_restrictions_enforced',
         'test_ZK_export_list_dir_works',
         'test_ZL_export_file_works',
