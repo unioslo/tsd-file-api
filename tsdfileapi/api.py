@@ -35,11 +35,11 @@ from tornado.web import Application, RequestHandler, stream_request_body, \
                         HTTPError, MissingArgumentError
 
 # pylint: disable=relative-import
-from auth import verify_json_web_token
+from auth import process_access_token
 from utils import call_request_hook, project_sns_dir, \
                   IS_VALID_GROUPNAME, check_filename, _IS_VALID_UUID, \
                   md5sum, pnum_from_url, create_cluster_dir_if_not_exists
-from db import sqlite_insert, sqlite_init, _VALID_PNUM, load_jwk_store, \
+from db import sqlite_insert, sqlite_init, _VALID_PNUM, \
                sqlite_list_tables, sqlite_get_data, sqlite_update_data, \
                sqlite_delete_data
 from resumables import SerialResumable
@@ -71,34 +71,24 @@ define('num_chunks', default=CONFIG['num_chunks'])
 define('max_body_size', CONFIG['max_body_size'])
 define('user_authorization', default=CONFIG['user_authorization'])
 define('api_user', CONFIG['api_user'])
-define('secret_store', load_jwk_store(CONFIG))
 
 
 class AuthRequestHandler(RequestHandler):
 
+    # TODO: make tenant and exp checks configurable here
     def validate_token(self, roles_allowed=None):
         """
-        Token validation is about authorization. Clients and/or users authenticate
-        themselves with the auth-api to obtain tokens. When performing requests
-        against the file-api these tokens are presented in the Authorization header
-        of the HTTP request as a Bearer token.
+        When performing requests against the API, JWT access tokens are presented
+        in the Authorization header of the HTTP request as a Bearer token. Before
+        the body of each request is processed this method is called in 'prepare'.
 
-        Before the body of each request is processed this method is called in 'prepare'.
-        The caller passes a list of roles that should be authorized to perform the HTTP
-        request(s) in the request handler.
+        The process_access_token method will:
+            - extract claims from the JWT
+            - OPTIONALLY check for consistent tenant access
+            - OPTIONALLY check for token expiry
 
-        The verify_json_web_token method will check whether the authenticated client/user
-        belongs to a role that is authorized to perform the request. If not, the request
-        will be terminated with 401 not authorized. Otherwise it will continue.
-
-        For more details about the full authorization check the docstring of
-        verify_json_web_token.
-
-        Parameters
-        ----------
-        roles_allowed: list
-            should contain the names of the roles that are allowed to
-            perform the operation on the resource.
+        The latter checks are OPTIONAL since they SHOULD already have been
+        performed by an authorization server _before_ the request is handled here.
 
         Returns
         -------
@@ -122,26 +112,16 @@ class AuthRequestHandler(RequestHandler):
                 self.set_status(400)
                 raise Exception('Authorization not possible: malformed header')
             try:
-                if not CONFIG['use_secret_store']:
-                    project_specific_secret = options.secret
-                else:
-                    try:
-                        pnum = pnum_from_url(self.request.uri)
-                        assert _VALID_PNUM.match(pnum)
-                        self.pnum = pnum
-                    except AssertionError as e:
-                        logging.error(e.message)
-                        logging.error('pnum invalid')
-                        self.set_status(400)
-                        raise e
-                    project_specific_secret = options.secret_store[pnum]
-            except Exception as e:
-                logging.error(e)
-                logging.error('Could not get project specific secret key for JWT validation')
-                self.set_status(500)
-                raise Exception('Authorization not possible: server error')
+                pnum = pnum_from_url(self.request.uri)
+                assert _VALID_PNUM.match(pnum)
+                self.pnum = pnum
+            except AssertionError as e:
+                logging.error(e.message)
+                logging.error('pnum invalid')
+                self.set_status(400)
+                raise e
             try:
-                authnz = verify_json_web_token(auth_header, project_specific_secret, pnum)
+                authnz = process_access_token(auth_header, pnum)
                 self.claims = authnz['claims']
                 self.user = self.claims['user']
                 if not authnz['status']:

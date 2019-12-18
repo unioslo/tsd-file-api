@@ -87,6 +87,7 @@ def _pg_connect(config):
 
 
 def load_jwk_store(config):
+    # todo: move to tests, decouple from db
     secrets = {}
     engine = _pg_connect(config)
     with session_scope(engine) as session:
