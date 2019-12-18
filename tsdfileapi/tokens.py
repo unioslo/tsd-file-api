@@ -1,12 +1,29 @@
 
 """Helper functions for testing JWT."""
 
+import string
+import base64
+import random
+import os
 import time
 from datetime import datetime, timedelta
 
 from jwcrypto import jwt, jwk
+from structlog import get_logger
 
-from db import load_jwk_store
+def rand_gen():
+    alt1 = string.ascii_letters[random.randint(0, len(string.ascii_letters) - 1)]
+    alt2 = string.ascii_letters[random.randint(0, len(string.ascii_letters) - 1)]
+    altchars = (alt1 + alt2).encode('utf-8')
+    return base64.b64encode(os.urandom(32), altchars).decode('utf-8')
+
+
+def gen_test_jwt_secrets(config):
+    secrets = {}
+    for proj in range(1, 2000):
+        pnum = 'p%02d' % proj
+        secrets[pnum] = rand_gen()
+    return secrets
 
 
 def tkn(secret, exp=1, role=None, pnum=None, user=None):
@@ -38,7 +55,7 @@ def gen_test_tokens(config):
     A set of tokens to be used in tests.
     """
     proj = config['test_project']
-    store = load_jwk_store(config)
+    store = gen_test_jwt_secrets(config)
     secret = store[proj]
     wrong = store['p01']
     user = config['test_user']
@@ -54,11 +71,11 @@ def gen_test_tokens(config):
     }
 
 def get_test_token_for_p12(config):
-    store = load_jwk_store(config)
+    store = gen_test_jwt_secrets(config)
     secret = store['p12']
     return tkn(secret, role='import_user', pnum='p12')
 
 def gen_test_token_for_user(config, user):
-    store = load_jwk_store(config)
+    store = gen_test_jwt_secrets(config)
     secret = store['p11']
     return tkn(secret, role='import_user', pnum='p11', user=user)

@@ -76,7 +76,7 @@ define('api_user', CONFIG['api_user'])
 class AuthRequestHandler(RequestHandler):
 
     # TODO: make tenant and exp checks configurable here
-    def validate_token(self, roles_allowed=None):
+    def validate_token(self, check_tenant=True, check_exp=True):
         """
         When performing requests against the API, JWT access tokens are presented
         in the Authorization header of the HTTP request as a Bearer token. Before
@@ -121,7 +121,7 @@ class AuthRequestHandler(RequestHandler):
                 self.set_status(400)
                 raise e
             try:
-                authnz = process_access_token(auth_header, pnum)
+                authnz = process_access_token(auth_header, pnum, check_tenant, check_exp)
                 self.claims = authnz['claims']
                 self.user = self.claims['user']
                 if not authnz['status']:

@@ -21,7 +21,7 @@ def extract_claims(token):
     return claims
 
 
-def process_access_token(auth_header, pnum):
+def process_access_token(auth_header, pnum, check_tenant, check_exp):
     """
     Extract claims, check tenant access, and expiry.
 
