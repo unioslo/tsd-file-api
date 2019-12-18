@@ -243,16 +243,6 @@ class TestFileApi(unittest.TestCase):
             self.assertEqual(resp.status_code, 401)
 
 
-    def test_A_mangled_valid_token_rejected(self):
-        headers = {'Authorization': 'Bearer ' + TEST_TOKENS['MANGLED_VALID']}
-        self.check_endpoints(headers)
-
-
-    def test_B_invalid_signature_rejected(self):
-        headers = {'Authorization': 'Bearer ' + TEST_TOKENS['INVALID_SIGNATURE']}
-        self.check_endpoints(headers)
-
-
     def test_C_token_with_wrong_role_rejected(self):
         headers = {'Authorization': 'Bearer ' + TEST_TOKENS['WRONG_ROLE']}
         self.check_endpoints(headers)
@@ -1275,8 +1265,6 @@ def main():
     tests = []
     base = [
         # authz
-        'test_A_mangled_valid_token_rejected',
-        'test_B_invalid_signature_rejected',
         'test_C_token_with_wrong_role_rejected',
         'test_D_timed_out_token_rejected',
         'test_E_unauthenticated_request_rejected',
