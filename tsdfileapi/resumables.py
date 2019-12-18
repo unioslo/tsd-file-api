@@ -5,14 +5,21 @@ import os
 import shutil
 import uuid
 import stat
+import sqlite3
+import hashlib
 
 from abc import ABC, abstractmethod
+from contextlib import contextmanager
 
-from db import session_scope, sqlite_init
-from utils import md5sum
+from sqlalchemy.pool import QueuePool
+from sqlalchemy.orm import sessionmaker
+from sqlalchemy import create_engine
+from sqlalchemy.exc import OperationalError, IntegrityError, StatementError
+
 
 _IS_VALID_UUID = re.compile(r'([a-f\d0-9-]{32,36})')
 _RW______ = stat.S_IREAD | stat.S_IWRITE
+
 
 def _atoi(text):
     return int(text) if text.isdigit() else text
@@ -35,6 +42,40 @@ def _resumables_cmp(a, b):
         return 1
     else:
         return 1
+
+
+def db_init(path, name='api-data.db', builtin=False):
+    dbname = name
+    if not builtin:
+        dburl = 'sqlite:///' + path + '/' + dbname
+        engine = create_engine(dburl, poolclass=QueuePool)
+    else:
+        engine = sqlite3.connect(path + '/' + dbname)
+    return engine
+
+
+@contextmanager
+def session_scope(engine):
+    Session = sessionmaker(bind=engine)
+    session = Session()
+    try:
+        yield session
+        session.commit()
+    except (OperationalError, IntegrityError, StatementError) as e:
+        logging.error(e)
+        logging.error("Rolling back transaction")
+        session.rollback()
+        raise e
+    finally:
+        session.close()
+
+
+def md5sum(filename, blocksize=65536):
+    _hash = hashlib.md5()
+    with open(filename, "rb") as f:
+        for block in iter(lambda: f.read(blocksize), b""):
+            _hash.update(block)
+    return _hash.hexdigest()
 
 
 class AbstractResumable(ABC):
@@ -114,7 +155,7 @@ class Resumable(AbstractResumable):
 
     def _init_db(self, owner, work_dir):
         dbname = '{0}{1}{2}'.format('.resumables-', owner, '.db')
-        rdb = sqlite_init(work_dir, name=dbname)
+        rdb = db_init(work_dir, name=dbname)
         os.chmod('{0}/{1}'.format(work_dir, dbname), _RW______)
         return rdb
 
@@ -523,4 +564,3 @@ class Resumable(AbstractResumable):
                             {'resumable_id': resumable_id})
             session.execute('drop table "%s"' % resumable_table)
         return True
-
