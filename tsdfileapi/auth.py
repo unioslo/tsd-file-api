@@ -21,7 +21,7 @@ def extract_claims(token):
     return claims
 
 
-def verify_json_web_token(auth_header, secret, roles_allowed, pnum):
+def verify_json_web_token(auth_header, secret, pnum):
     """
     Verifies the authenticity of API credentials, as stored in a
     JSON Web Token (see jwt.io for more).

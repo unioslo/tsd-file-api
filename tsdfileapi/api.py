@@ -141,8 +141,7 @@ class AuthRequestHandler(RequestHandler):
                 self.set_status(500)
                 raise Exception('Authorization not possible: server error')
             try:
-                authnz = verify_json_web_token(auth_header, project_specific_secret,
-                                               roles_allowed, pnum)
+                authnz = verify_json_web_token(auth_header, project_specific_secret, pnum)
                 self.claims = authnz['claims']
                 self.user = self.claims['user']
                 if not authnz['status']:
@@ -351,7 +350,7 @@ class FileStreamerHandler(AuthRequestHandler):
         self.message = 'Unknown error, please contact TSD'
         try:
             try:
-                self.authnz = self.validate_token(roles_allowed=['export_user', 'admin_user'])
+                self.authnz = self.validate_token()
                 self.user = self.authnz['claims']['user']
             except Exception:
                 if not self.message:
@@ -461,7 +460,7 @@ class FileStreamerHandler(AuthRequestHandler):
         self.message = 'Unknown error, please contact TSD'
         try:
             try:
-                self.authnz = self.validate_token(roles_allowed=['export_user', 'admin_user'])
+                self.authnz = self.validate_token()
                 self.user = self.authnz['claims']['user']
             except Exception:
                 if not self.message:
@@ -518,7 +517,7 @@ class GenericFormDataHandler(AuthRequestHandler):
 
     def prepare(self):
         try:
-            self.authnz = self.validate_token(roles_allowed=['import_user', 'export_user', 'admin_user'])
+            self.authnz = self.validate_token()
             if not self.authnz:
                 self.set_status(401)
                 raise Exception
@@ -696,7 +695,7 @@ class ResumablesHandler(AuthRequestHandler):
 
     def prepare(self):
         try:
-            self.authnz = self.validate_token(roles_allowed=['import_user', 'export_user', 'admin_user'])
+            self.authnz = self.validate_token()
         except Exception as e:
             logging.error(e)
             raise e
@@ -920,7 +919,7 @@ class StreamHandler(AuthRequestHandler):
             self.chunk_order_correct = True
             filemodes = {'POST': 'ab+', 'PUT': 'wb+', 'PATCH': 'wb+'}
             try:
-                self.authnz = self.validate_token(roles_allowed=['import_user', 'export_user', 'admin_user'])
+                self.authnz = self.validate_token()
             except Exception as e:
                 logging.error(e)
                 raise Exception
@@ -1198,7 +1197,7 @@ class ProxyHandler(AuthRequestHandler):
                 raise e
             # 2. Authentication and authorization
             try:
-                authnz_status = self.validate_token(roles_allowed=['import_user', 'export_user', 'admin_user'])
+                authnz_status = self.validate_token()
             except Exception as e:
                 logging.error('Access token invalid')
                 raise e
@@ -1375,13 +1374,13 @@ class GenericTableHandler(AuthRequestHandler):
     def get(self, pnum, table_name=None):
         try:
             if not table_name:
-                self.authnz = self.validate_token(roles_allowed=[])
+                self.authnz = self.validate_token()
                 engine = sqlite_init(self.project_dir, name=self.db_name)
                 tables = sqlite_list_tables(engine)
                 self.set_status(200)
                 self.write({'tables': tables})
             else:
-                self.authnz = self.validate_token(roles_allowed=[])
+                self.authnz = self.validate_token()
                 engine = sqlite_init(self.project_dir, name=self.db_name, builtin=True)
                 data = sqlite_get_data(engine, table_name, self.request.uri)
                 if 'Accept' in self.request.headers:
@@ -1405,7 +1404,7 @@ class GenericTableHandler(AuthRequestHandler):
 
     def put(self, pnum, table_name):
         try:
-            self.authnz = self.validate_token(roles_allowed=[])
+            self.authnz = self.validate_token()
             data = json_decode(self.request.body)
             try:
                 engine = sqlite_init(self.project_dir, name=self.db_name)
@@ -1424,7 +1423,7 @@ class GenericTableHandler(AuthRequestHandler):
 
     def patch(self, pnum, table_name):
         try:
-            self.authnz = self.validate_token(roles_allowed=[])
+            self.authnz = self.validate_token()
             engine = sqlite_init(self.project_dir, name=self.db_name, builtin=True)
             data = sqlite_update_data(engine, table_name, self.request.uri)
             self.set_status(200)
@@ -1437,7 +1436,7 @@ class GenericTableHandler(AuthRequestHandler):
 
     def delete(self, pnum, table_name):
         try:
-            self.authnz = self.validate_token(roles_allowed=[])
+            self.authnz = self.validate_token()
             engine = sqlite_init(self.project_dir, name=self.db_name, builtin=True)
             data = sqlite_delete_data(engine, table_name, self.request.uri)
             self.set_status(200)
