@@ -42,7 +42,7 @@ from utils import call_request_hook, project_sns_dir, \
 from db import sqlite_insert, sqlite_init, _VALID_PNUM, load_jwk_store, \
                sqlite_list_tables, sqlite_get_data, sqlite_update_data, \
                sqlite_delete_data
-from resumables import Resumable
+from resumables import SerialResumable
 from pgp import _import_keys
 
 
@@ -717,7 +717,7 @@ class ResumablesHandler(AuthRequestHandler):
                 upload_id = url_unescape(self.get_query_argument('id'))
             except Exception:
                 pass
-            res = Resumable(self.project_dir, self.user)
+            res = SerialResumable(self.project_dir, self.user)
             if not filename:
                 info = res.list_all(self.project_dir, self.user)
             else:
@@ -742,7 +742,7 @@ class ResumablesHandler(AuthRequestHandler):
                 upload_id = url_unescape(self.get_query_argument('id'))
             except Exception:
                 raise Exception('upload id required to delete resumable')
-            res = Resumable(self.project_dir, self.user)
+            res = SerialResumable(self.project_dir, self.user)
             assert res.delete(self.project_dir, filename, upload_id, self.user)
             self.set_status(200)
             self.write({'message': 'resumable deleted'})
@@ -943,7 +943,7 @@ class StreamHandler(AuthRequestHandler):
                     uri_filename = self.request.uri.split('?')[0].split('/')[-1]
                     filename = check_filename(url_unescape(uri_filename))
                     if self.request.method == 'PATCH':
-                        self.res = Resumable(self.project_dir, self.user)
+                        self.res = SerialResumable(self.project_dir, self.user)
                         url_chunk_num = url_unescape(self.get_query_argument('chunk'))
                         url_upload_id = url_unescape(self.get_query_argument('id'))
                         url_group = url_unescape(self.get_query_argument('group'))

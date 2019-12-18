@@ -90,7 +90,7 @@ pretty_bad_protocol._parsers.Verify.TRUST_LEVELS["ENCRYPTION_COMPLIANCE_MODE"] =
 # pylint: disable=relative-import
 from tokens import gen_test_tokens, get_test_token_for_p12, gen_test_token_for_user
 from db import session_scope, sqlite_init
-from resumables import Resumable
+from resumables import SerialResumable
 from utils import project_sns_dir, md5sum, check_filename, IllegalFilenameException
 from pgp import _import_keys
 
@@ -990,7 +990,7 @@ class TestFileApi(unittest.TestCase):
                                           token, chunksize=cs, new=False, group=None,
                                           verify=True, upload_id=upload_id, dev_url=url)
         self.assertEqual(resp, None)
-        res = Resumable(self.uploads_folder, 'p11-import_user')
+        res = SerialResumable(self.uploads_folder, 'p11-import_user')
         res._db_remove_completed_for_owner(upload_id)
 
 
@@ -1058,7 +1058,7 @@ class TestFileApi(unittest.TestCase):
             shutil.rmtree(uploaded_folder2)
             os.remove(merged_file1)
             os.remove(merged_file2)
-            res = Resumable(self.uploads_folder, 'p11-import_user')
+            res = SerialResumable(self.uploads_folder, 'p11-import_user')
             res._db_remove_completed_for_owner(upload_id1)
             res._db_remove_completed_for_owner(upload_id2)
         except OSError:
@@ -1082,7 +1082,7 @@ class TestFileApi(unittest.TestCase):
         try:
             shutil.rmtree(uploaded_folder1)
             os.remove(merged_file1)
-            res = Resumable(self.uploads_folder, 'p11-import_user')
+            res = SerialResumable(self.uploads_folder, 'p11-import_user')
             res._db_remove_completed_for_owner(upload_id1)
         except OSError:
             pass
@@ -1106,7 +1106,7 @@ class TestFileApi(unittest.TestCase):
         try:
             shutil.rmtree(uploaded_folder)
             os.remove(merged_file)
-            res = Resumable(self.uploads_folder, 'p11-import_user')
+            res = SerialResumable(self.uploads_folder, 'p11-import_user')
             res._db_remove_completed_for_owner(upload_id)
         except OSError:
             pass
@@ -1135,9 +1135,9 @@ class TestFileApi(unittest.TestCase):
         try:
             shutil.rmtree(uploaded_folder1)
             os.remove(merged_file2)
-            res = Resumable(self.uploads_folder, 'p11-import_user')
+            res = SerialResumable(self.uploads_folder, 'p11-import_user')
             res._db_remove_completed_for_owner(upload_id1)
-            res = Resumable(self.uploads_folder, 'p11-tommy')
+            res = SerialResumable(self.uploads_folder, 'p11-tommy')
             res._db_remove_completed_for_owner(upload_id2)
         except OSError:
             pass

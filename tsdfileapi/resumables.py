@@ -122,7 +122,7 @@ class AbstractResumable(ABC):
         pass
 
 
-class Resumable(AbstractResumable):
+class SerialResumable(AbstractResumable):
 
     """
     Class for creating files in a piecemeal fashion,
@@ -148,7 +148,7 @@ class Resumable(AbstractResumable):
     """
 
     def __init__(self, work_dir=None, owner=None):
-        super(Resumable, self).__init__(work_dir, owner)
+        super(SerialResumable, self).__init__(work_dir, owner)
         self.work_dir = work_dir
         self.owner = owner
         self.engine = self._init_db(owner, work_dir)
