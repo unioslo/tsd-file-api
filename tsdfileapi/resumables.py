@@ -365,7 +365,7 @@ class SerialResumable(AbstractResumable):
             except AssertionError:
                 try:
                     logging.info('trying to repair inconsistent data')
-                    chunks, wanring, recommendation = self._repair_inconsistent_resumable(merged_file,
+                    chunks, warning, recommendation = self._repair_inconsistent_resumable(merged_file,
                                                                             chunks, bytes(merged_file),
                                                                             next_offset)
                     return info(chunks)
