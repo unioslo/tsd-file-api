@@ -21,12 +21,12 @@ def rand_gen():
 def gen_test_jwt_secrets(config):
     secrets = {}
     for proj in range(1, 2000):
-        pnum = 'p%02d' % proj
-        secrets[pnum] = rand_gen()
+        tenant = 'p%02d' % proj
+        secrets[tenant] = rand_gen()
     return secrets
 
 
-def tkn(secret, exp=1, role=None, pnum=None, user=None):
+def tkn(secret, exp=1, role=None, tenant=None, user=None):
     """
     This is the same token generation function as found in tsd-auth-api/auth.py
     """
@@ -34,11 +34,11 @@ def tkn(secret, exp=1, role=None, pnum=None, user=None):
     if role in allowed_roles:
         expiry = datetime.now() + timedelta(hours=exp)
         exp = int(time.mktime(expiry.timetuple()))
-        if pnum:
+        if tenant:
             if not user:
-                user = pnum + '-' + role
-            claims = {'role': role, 'exp': exp, 'proj': pnum,
-                      'user': user, 'groups': [pnum + '-member-group']}
+                user = tenant + '-' + role
+            claims = {'role': role, 'exp': exp, 'proj': tenant,
+                      'user': user, 'groups': [tenant + '-member-group']}
         else:
             claims = {'role': role, 'exp': exp}
     else:
@@ -60,22 +60,22 @@ def gen_test_tokens(config):
     wrong = store['p01']
     user = config['test_user']
     return {
-        'VALID': tkn(secret, role='import_user', pnum=proj),
-        'MANGLED_VALID': tkn(secret, role='import_user', pnum=proj)[:-1],
-        'INVALID_SIGNATURE': tkn(wrong, role='import_user', pnum=proj),
-        'WRONG_ROLE': tkn(secret, role='wrong_user', pnum=proj),
-        'TIMED_OUT': tkn(secret, exp=-1, role='import_user', pnum=proj),
-        'WRONG_PROJECT': tkn(wrong, exp=-1, role='import_user', pnum='p01'),
-        'EXPORT': tkn(secret, role='export_user', pnum=proj, user=user),
-        'ADMIN': tkn(secret, role='admin_user', pnum=proj, user=user)
+        'VALID': tkn(secret, role='import_user', tenant=proj),
+        'MANGLED_VALID': tkn(secret, role='import_user', tenant=proj)[:-1],
+        'INVALID_SIGNATURE': tkn(wrong, role='import_user', tenant=proj),
+        'WRONG_ROLE': tkn(secret, role='wrong_user', tenant=proj),
+        'TIMED_OUT': tkn(secret, exp=-1, role='import_user', tenant=proj),
+        'WRONG_PROJECT': tkn(wrong, exp=-1, role='import_user', tenant='p01'),
+        'EXPORT': tkn(secret, role='export_user', tenant=proj, user=user),
+        'ADMIN': tkn(secret, role='admin_user', tenant=proj, user=user)
     }
 
 def get_test_token_for_p12(config):
     store = gen_test_jwt_secrets(config)
     secret = store['p12']
-    return tkn(secret, role='import_user', pnum='p12')
+    return tkn(secret, role='import_user', tenant='p12')
 
 def gen_test_token_for_user(config, user):
     store = gen_test_jwt_secrets(config)
     secret = store['p11']
-    return tkn(secret, role='import_user', pnum='p11', user=user)
+    return tkn(secret, role='import_user', tenant='p11', user=user)

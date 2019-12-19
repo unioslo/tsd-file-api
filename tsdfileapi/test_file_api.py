@@ -95,8 +95,8 @@ from utils import project_sns_dir, md5sum, IllegalFilenameException
 from pgp import _import_keys
 
 
-def project_import_dir(config, pnum=None, backend=None):
-    folder = config['backends']['disk'][backend]['import_path'].replace('pXX', pnum)
+def project_import_dir(config, tenant=None, backend=None):
+    folder = config['backends']['disk'][backend]['import_path'].replace('pXX', tenant)
     return os.path.normpath(folder)
 
 
@@ -749,7 +749,7 @@ class TestFileApi(unittest.TestCase):
                              headers=headers)
         self.assertEqual(resp1.status_code, 201)
 
-    def test_ZA_choosing_file_upload_directories_based_on_pnum_works(self):
+    def test_ZA_choosing_file_upload_directories_based_on_tenant_works(self):
         newfilename = 'uploaded-example-p12.csv'
         try:
             os.remove(os.path.normpath(self.uploads_folder_p12 + '/' + newfilename))
@@ -825,7 +825,7 @@ class TestFileApi(unittest.TestCase):
                              headers=headers)
         self.assertEqual(resp.status_code, 201)
 
-    def test_ZF_stream_does_not_work_with_client_specified_group_wrong_pnum(self):
+    def test_ZF_stream_does_not_work_with_client_specified_group_wrong_tenant(self):
         headers = {'Authorization': 'Bearer ' + TEST_TOKENS['VALID'],
                    'Expect': '100-Continue'}
         url = self.stream + '/streamed-example-with-group-spec.csv?group=p12-member-group'
@@ -1270,17 +1270,17 @@ def main():
         # sqlite backend -> needs sqlite+json1
         'test_W_create_and_insert_into_generic_table',
         'test_X_use_generic_table',
-        # pnum logic
+        # tenant logic
         'test_Y_invalid_project_number_rejected',
         'test_Z_token_for_other_project_rejected',
         # upload dirs
-        'test_ZA_choosing_file_upload_directories_based_on_pnum_works',
+        'test_ZA_choosing_file_upload_directories_based_on_tenant_works',
         'test_ZB_sns_folder_logic_is_correct',
         'test_ZC_setting_ownership_based_on_user_works',
         'test_ZD_cannot_upload_empty_file_to_sns',
         # groups
         'test_ZE_stream_works_with_client_specified_group',
-        'test_ZF_stream_does_not_work_with_client_specified_group_wrong_pnum',
+        'test_ZF_stream_does_not_work_with_client_specified_group_wrong_tenant',
         'test_ZG_stream_does_not_work_with_client_specified_group_nonsense_input',
         'test_ZH_stream_does_not_work_with_client_specified_group_not_a_member',
         # export
