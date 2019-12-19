@@ -69,11 +69,18 @@ define('api_user', CONFIG['api_user'])
 define('check_tenant', CONFIG['token_check_tenant'])
 define('check_exp', CONFIG['token_check_exp'])
 define('start_chars', CONFIG['disallowed_start_chars'])
+define('requestor_claim_name', CONFIG['requestor_claim_name'])
 
 
 class AuthRequestHandler(RequestHandler):
 
-    def validate_token(self, check_tenant=options.check_tenant, check_exp=options.check_exp):
+    """
+    All RequestHandler(s) in the API inherit from this one, thereby
+    giving them access to the process_token_and_extract_claims method.
+
+    """
+
+    def process_token_and_extract_claims(self, check_tenant=options.check_tenant, check_exp=options.check_exp):
         """
         When performing requests against the API, JWT access tokens are presented
         in the Authorization header of the HTTP request as a Bearer token. Before
@@ -120,7 +127,7 @@ class AuthRequestHandler(RequestHandler):
             try:
                 authnz = process_access_token(auth_header, pnum, check_tenant, check_exp)
                 self.claims = authnz['claims']
-                self.requestor = self.claims['user']
+                self.requestor = self.claims[options.requestor_claim_name]
                 if not authnz['status']:
                     self.set_status(401)
                     raise Exception('JWT verification failed')
@@ -327,7 +334,7 @@ class FileStreamerHandler(AuthRequestHandler):
         self.message = 'Unknown error, please contact TSD'
         try:
             try:
-                self.authnz = self.validate_token()
+                self.authnz = self.process_token_and_extract_claims()
             except Exception:
                 if not self.message:
                     self.message = 'Not authorized to export data'
@@ -437,7 +444,7 @@ class FileStreamerHandler(AuthRequestHandler):
         self.message = 'Unknown error, please contact TSD'
         try:
             try:
-                self.authnz = self.validate_token()
+                self.authnz = self.process_token_and_extract_claims()
             except Exception:
                 if not self.message:
                     self.message = 'Not authorized to export data'
@@ -494,7 +501,7 @@ class GenericFormDataHandler(AuthRequestHandler):
 
     def prepare(self):
         try:
-            self.authnz = self.validate_token()
+            self.authnz = self.process_token_and_extract_claims()
             if not self.authnz:
                 self.set_status(401)
                 raise Exception
@@ -673,7 +680,7 @@ class ResumablesHandler(AuthRequestHandler):
 
     def prepare(self):
         try:
-            self.authnz = self.validate_token()
+            self.authnz = self.process_token_and_extract_claims()
         except Exception as e:
             logging.error(e)
             raise e
@@ -900,7 +907,7 @@ class StreamHandler(AuthRequestHandler):
             self.chunk_order_correct = True
             filemodes = {'POST': 'ab+', 'PUT': 'wb+', 'PATCH': 'wb+'}
             try:
-                self.authnz = self.validate_token()
+                self.authnz = self.process_token_and_extract_claims()
             except Exception as e:
                 logging.error(e)
                 raise Exception
@@ -1183,7 +1190,7 @@ class ProxyHandler(AuthRequestHandler):
                 raise e
             # 2. Authentication and authorization
             try:
-                authnz_status = self.validate_token()
+                authnz_status = self.process_token_and_extract_claims()
             except Exception as e:
                 logging.error('Access token invalid')
                 raise e
@@ -1362,13 +1369,13 @@ class GenericTableHandler(AuthRequestHandler):
     def get(self, pnum, table_name=None):
         try:
             if not table_name:
-                self.authnz = self.validate_token()
+                self.authnz = self.process_token_and_extract_claims()
                 engine = sqlite_init(self.project_dir, name=self.db_name)
                 tables = sqlite_list_tables(engine)
                 self.set_status(200)
                 self.write({'tables': tables})
             else:
-                self.authnz = self.validate_token()
+                self.authnz = self.process_token_and_extract_claims()
                 engine = sqlite_init(self.project_dir, name=self.db_name, builtin=True)
                 data = sqlite_get_data(engine, table_name, self.request.uri)
                 if 'Accept' in self.request.headers:
@@ -1392,7 +1399,7 @@ class GenericTableHandler(AuthRequestHandler):
 
     def put(self, pnum, table_name):
         try:
-            self.authnz = self.validate_token()
+            self.authnz = self.process_token_and_extract_claims()
             data = json_decode(self.request.body)
             try:
                 engine = sqlite_init(self.project_dir, name=self.db_name)
@@ -1411,7 +1418,7 @@ class GenericTableHandler(AuthRequestHandler):
 
     def patch(self, pnum, table_name):
         try:
-            self.authnz = self.validate_token()
+            self.authnz = self.process_token_and_extract_claims()
             engine = sqlite_init(self.project_dir, name=self.db_name, builtin=True)
             data = sqlite_update_data(engine, table_name, self.request.uri)
             self.set_status(200)
@@ -1424,7 +1431,7 @@ class GenericTableHandler(AuthRequestHandler):
 
     def delete(self, pnum, table_name):
         try:
-            self.authnz = self.validate_token()
+            self.authnz = self.process_token_and_extract_claims()
             engine = sqlite_init(self.project_dir, name=self.db_name, builtin=True)
             data = sqlite_delete_data(engine, table_name, self.request.uri)
             self.set_status(200)
