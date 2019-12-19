@@ -328,7 +328,6 @@ class FileStreamerHandler(AuthRequestHandler):
         try:
             try:
                 self.authnz = self.validate_token()
-                self.user = self.authnz['claims']['user']
             except Exception:
                 if not self.message:
                     self.message = 'Not authorized to export data'
@@ -439,7 +438,6 @@ class FileStreamerHandler(AuthRequestHandler):
         try:
             try:
                 self.authnz = self.validate_token()
-                self.user = self.authnz['claims']['user']
             except Exception:
                 if not self.message:
                     self.message = 'Not authorized to export data'
