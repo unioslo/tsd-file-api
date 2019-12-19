@@ -69,7 +69,7 @@ from tornado.web import Application, RequestHandler, stream_request_body, \
 from auth import process_access_token
 from utils import call_request_hook, project_sns_dir, \
                   IS_VALID_GROUPNAME, check_filename, _IS_VALID_UUID, \
-                  md5sum, pnum_from_url, create_cluster_dir_if_not_exists
+                  md5sum, tenant_from_url, create_cluster_dir_if_not_exists
 from db import sqlite_insert, sqlite_init, \
                sqlite_list_tables, sqlite_get_data, sqlite_update_data, \
                sqlite_delete_data
@@ -176,7 +176,7 @@ class AuthRequestHandler(RequestHandler):
                 self.set_status(400)
                 raise Exception('Authorization not possible: malformed header')
             try:
-                pnum = pnum_from_url(self.request.uri)
+                pnum = tenant_from_url(self.request.uri)
                 assert _VALID_TENANT.match(pnum)
                 self.pnum = pnum
             except AssertionError as e:
@@ -214,7 +214,7 @@ class FileStreamerHandler(AuthRequestHandler):
 
     def initialize(self, backend):
         try:
-            pnum = pnum_from_url(self.request.uri)
+            pnum = tenant_from_url(self.request.uri)
             assert _VALID_TENANT.match(pnum)
             self.backend_paths = CONFIG['backends']['disk'][backend]
             self.export_path_pattern = self.backend_paths['export_path']
@@ -551,7 +551,7 @@ class GenericFormDataHandler(AuthRequestHandler):
 
     def initialize(self, backend):
         try:
-            pnum = pnum_from_url(self.request.uri)
+            pnum = tenant_from_url(self.request.uri)
             assert _VALID_TENANT.match(pnum)
             self.project_dir_pattern = CONFIG['backends']['disk'][backend]['import_path']
             self.tsd_hidden_folder = None
@@ -728,7 +728,7 @@ class ResumablesHandler(AuthRequestHandler):
 
     def initialize(self, backend):
         try:
-            pnum = pnum_from_url(self.request.uri)
+            pnum = tenant_from_url(self.request.uri)
             assert _VALID_TENANT.match(pnum)
             # can deprecate once rsync is in place for cluster software install
             key = 'admin_path' if (backend == 'cluster' and pnum == 'p01') else 'import_path'
@@ -928,7 +928,7 @@ class StreamHandler(AuthRequestHandler):
 
     def initialize(self, backend, request_hook_enabled=False):
         try:
-            pnum = pnum_from_url(self.request.uri)
+            pnum = tenant_from_url(self.request.uri)
             assert _VALID_TENANT.match(pnum)
             key = 'admin_path' if (backend == 'cluster' and pnum == 'p01') else 'import_path'
             self.import_dir = CONFIG['backends']['disk'][backend][key]
@@ -975,7 +975,7 @@ class StreamHandler(AuthRequestHandler):
                 raise Exception
             try:
                 try:
-                    pnum = pnum_from_url(self.request.uri)
+                    pnum = tenant_from_url(self.request.uri)
                     self.pnum = pnum
                     assert _VALID_TENANT.match(pnum)
                 except AssertionError as e:
@@ -1258,7 +1258,7 @@ class ProxyHandler(AuthRequestHandler):
                 raise e
             # 3. Validate project number in URI
             try:
-                pnum = pnum_from_url(self.request.uri)
+                pnum = tenant_from_url(self.request.uri)
                 assert _VALID_TENANT.match(pnum)
             except AssertionError as e:
                 logging.error('URI does not contain a valid pnum')
@@ -1422,7 +1422,7 @@ class GenericTableHandler(AuthRequestHandler):
             self.datatype = 'metadata'
         else:
             self.datatype = 'data'
-        pnum = pnum_from_url(self.request.uri)
+        pnum = tenant_from_url(self.request.uri)
         assert _VALID_TENANT.match(pnum)
         self.import_dir = CONFIG['backends']['sqlite'][app]['db_path']
         self.project_dir = self.import_dir.replace('pXX', pnum)

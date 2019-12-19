@@ -28,7 +28,7 @@ class IllegalFilenameException(Exception):
     message = 'Filename not allowed'
 
 
-def pnum_from_url(url):
+def tenant_from_url(url):
     if 'v1' in url:
         idx = 2
     else:
