@@ -21,14 +21,14 @@ def extract_claims(token):
     return claims
 
 
-def process_access_token(auth_header, pnum, check_tenant, check_exp):
+def process_access_token(auth_header, tenant, check_tenant, check_exp, tenant_claim_name):
     """
     Extract claims, check tenant access, and expiry.
 
     Parameters
     ----------
     auth_header: string (HTTP header)
-    pnum: string
+    tenant: string
 
     Returns
     -------
@@ -43,8 +43,8 @@ def process_access_token(auth_header, pnum, check_tenant, check_exp):
         logging.error(e.message)
         failure_message['reason'] = e.message
         return failure_message
-    if claims['proj'] != pnum:
-        logging.error('Access denied to project - mismatch in project numbers')
+    if claims[tenant_claim_name] != tenant:
+        logging.error('Access denied to tenant')
         return failure_message
     if int(time.time()) > int(claims['exp']):
         logging.error('JWT expired')

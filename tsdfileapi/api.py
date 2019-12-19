@@ -105,6 +105,7 @@ define('check_tenant', CONFIG['token_check_tenant'])
 define('check_exp', CONFIG['token_check_exp'])
 define('start_chars', CONFIG['disallowed_start_chars'])
 define('requestor_claim_name', CONFIG['requestor_claim_name'])
+define('tenant_claim_name', CONFIG['tenant_claim_name'])
 
 
 class AuthRequestHandler(RequestHandler):
@@ -137,7 +138,9 @@ class AuthRequestHandler(RequestHandler):
 
     """
 
-    def process_token_and_extract_claims(self, check_tenant=options.check_tenant, check_exp=options.check_exp):
+    def process_token_and_extract_claims(self, check_tenant=options.check_tenant,
+                                         check_exp=options.check_exp,
+                                         tenant_claim_name=options.tenant_claim_name):
         """
         When performing requests against the API, JWT access tokens are presented
         in the Authorization header of the HTTP request as a Bearer token. Before
@@ -182,7 +185,9 @@ class AuthRequestHandler(RequestHandler):
                 self.set_status(400)
                 raise e
             try:
-                authnz = process_access_token(auth_header, pnum, check_tenant, check_exp)
+                authnz = process_access_token(auth_header, pnum,
+                                              check_tenant, check_exp,
+                                              tenant_claim_name)
                 self.claims = authnz['claims']
                 self.requestor = self.claims[options.requestor_claim_name]
                 if not authnz['status']:
