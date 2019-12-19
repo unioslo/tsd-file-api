@@ -158,8 +158,8 @@ class TestFileApi(unittest.TestCase):
         cls.resumables = cls.base_url + '/files/resumables'
         cls.cluster = cls.base_url + '/cluster/stream'
         cls.export_cluster = cls.base_url + '/cluster/export'
-        cls.publication_import = cls.base_url + '/publication/import'
-        cls.publication_export = cls.base_url + '/publication/export'
+        cls.store_import = cls.base_url + '/store/import'
+        cls.store_export = cls.base_url + '/store/export'
         cls.test_project = cls.test_project
 
         # auth tokens
@@ -1230,16 +1230,16 @@ class TestFileApi(unittest.TestCase):
         resp2 = requests.get(url, headers=headers)
         self.assertEqual(resp2.status_code, 200)
 
-    # TODO: publication system backend
+    # TODO: store system backend
 
-    def test_ZZg_publication_import_and_export(self):
+    def test_ZZg_store_import_and_export(self):
         headers = {'Authorization': 'Bearer ' + TEST_TOKENS['VALID']}
-        resp = requests.put(self.publication_import + '/' + url_escape('så_søt(1).txt'),
+        resp = requests.put(self.store_import + '/' + url_escape('så_søt(1).txt'),
                             data=lazy_file_reader(self.so_sweet),
                             headers=headers)
         self.assertEqual(resp.status_code, 201)
         headers = {'Authorization': 'Bearer ' + TEST_TOKENS['EXPORT']}
-        resp = requests.get(self.publication_export + '/' + url_escape('så_søt(1).txt'), headers=headers)
+        resp = requests.get(self.store_export + '/' + url_escape('så_søt(1).txt'), headers=headers)
         self.assertEqual(resp.status_code, 200)
 
 
@@ -1314,8 +1314,8 @@ def main():
         'test_Zb_stream_tar_with_custom_content_type_untar_works',
         'test_Zc_stream_tar_gz_with_custom_content_type_untar_works',
         'test_Zg_stream_gz_with_custom_header_decompress_works',
-        # publication backend
-        'test_ZZg_publication_import_and_export',
+        # store backend
+        'test_ZZg_store_import_and_export',
     ]
     gpg_related = [
         'test_Zd_stream_aes_with_custom_content_type_decrypt_works',

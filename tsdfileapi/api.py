@@ -21,7 +21,7 @@ one another due the use cases they need to support. The use cases are as follows
 /sns            - store files (uploaded as form-encoded) on network disk
                   (also no end-user POSIX permissions, and specificaly
                    designed for the UiO Nettskjema service integration)
-/publication    - store files on disk, no end-user POSIX permissions,
+/store          - store files on disk, no end-user POSIX permissions,
                   but intended for API-only usage (upload and download)
                   so can support access control via integration with another
                   system
@@ -31,7 +31,7 @@ with and authentication and authorization framework: for authenticated requests,
 you MUST use JWT, most probably with an OAUTH2.0 Authorization Server, and the JWTs
 MUST be used as Bearer tokens.
 
-Note: /files, and /publication use the same RequestHandler(s), the only difference
+Note: /files, and /store use the same RequestHandler(s), the only difference
 if that the /files backend, calls a request hook after data processing is finished.
 This request hook, sets the end-user POSIX permissions.
 
@@ -181,7 +181,6 @@ class AuthRequestHandler(RequestHandler):
                 authnz = process_access_token(auth_header, pnum, check_tenant, check_exp)
                 self.claims = authnz['claims']
                 self.requestor = self.claims[options.requestor_claim_name]
-                # TODO: if no identifier is provided use api user
                 if not authnz['status']:
                     self.set_status(401)
                     raise Exception('JWT verification failed')
@@ -1536,15 +1535,15 @@ def main():
         # form data
         ('/v1/(.*)/files/upload', FormDataHandler, dict(backend='form_data')),
         ('/v1/(.*)/sns/(.*)/(.*)', SnsFormDataHandler, dict(backend='sns')),
-        # publication system
-        ('/v1/(.*)/publication/upload_stream', StreamHandler, dict(backend='publication', request_hook_enabled=False)),
-        ('/v1/(.*)/publication/upload_stream/(.*)', StreamHandler, dict(backend='publication', request_hook_enabled=False)),
-        ('/v1/(.*)/publication/import', ProxyHandler, dict(backend='publication')),
-        ('/v1/(.*)/publication/import/(.*)', ProxyHandler, dict(backend='publication')),
-        ('/v1/(.*)/publication/resumables', ResumablesHandler, dict(backend='publication')),
-        ('/v1/(.*)/publication/resumables/(.*)', ResumablesHandler, dict(backend='publication')),
-        ('/v1/(.*)/publication/export', FileStreamerHandler, dict(backend='publication')),
-        ('/v1/(.*)/publication/export/(.*)', FileStreamerHandler, dict(backend='publication')),
+        # store system
+        ('/v1/(.*)/store/upload_stream', StreamHandler, dict(backend='store', request_hook_enabled=False)),
+        ('/v1/(.*)/store/upload_stream/(.*)', StreamHandler, dict(backend='store', request_hook_enabled=False)),
+        ('/v1/(.*)/store/import', ProxyHandler, dict(backend='store')),
+        ('/v1/(.*)/store/import/(.*)', ProxyHandler, dict(backend='store')),
+        ('/v1/(.*)/store/resumables', ResumablesHandler, dict(backend='store')),
+        ('/v1/(.*)/store/resumables/(.*)', ResumablesHandler, dict(backend='store')),
+        ('/v1/(.*)/store/export', FileStreamerHandler, dict(backend='store')),
+        ('/v1/(.*)/store/export/(.*)', FileStreamerHandler, dict(backend='store')),
     ], debug=options.debug)
     app.listen(options.port)
     IOLoop.instance().start()
