@@ -122,7 +122,7 @@ class AuthRequestHandler(RequestHandler):
     When called, the method will set the following properties:
 
         self.jwt
-        self.pnum
+        self.tenant
         self.claims
         self.requestor
 
@@ -176,16 +176,16 @@ class AuthRequestHandler(RequestHandler):
                 self.set_status(400)
                 raise Exception('Authorization not possible: malformed header')
             try:
-                pnum = tenant_from_url(self.request.uri)
-                assert _VALID_TENANT.match(pnum)
-                self.pnum = pnum
+                tenant = tenant_from_url(self.request.uri)
+                assert _VALID_TENANT.match(tenant)
+                self.tenant = tenant
             except AssertionError as e:
                 logging.error(e.message)
-                logging.error('pnum invalid')
+                logging.error('tenant invalid')
                 self.set_status(400)
                 raise e
             try:
-                authnz = process_access_token(auth_header, pnum,
+                authnz = process_access_token(auth_header, tenant,
                                               check_tenant, check_exp,
                                               tenant_claim_name)
                 self.claims = authnz['claims']
@@ -214,20 +214,20 @@ class FileStreamerHandler(AuthRequestHandler):
 
     def initialize(self, backend):
         try:
-            pnum = tenant_from_url(self.request.uri)
-            assert _VALID_TENANT.match(pnum)
+            tenant = tenant_from_url(self.request.uri)
+            assert _VALID_TENANT.match(tenant)
             self.backend_paths = CONFIG['backends']['disk'][backend]
             self.export_path_pattern = self.backend_paths['export_path']
-            self.export_dir = self.export_path_pattern.replace('pXX', pnum)
+            self.export_dir = self.export_path_pattern.replace('pXX', tenant)
             self.backend = backend
             self.export_policy = CONFIG['backends']['disk'][backend]['export_policy']
         except (AssertionError, Exception) as e:
             self.backend = None
             logging.error(e)
-            logging.error('Maybe the URI does not contain a valid pnum')
+            logging.error('Maybe the URI does not contain a valid tenant')
             raise e
 
-    def enforce_export_policy(self, policy_config, filename, pnum, size, mime_type):
+    def enforce_export_policy(self, policy_config, filename, tenant, size, mime_type):
         """
         Check file to ensure it meets the requirements of the export policy
 
@@ -252,8 +252,8 @@ class FileStreamerHandler(AuthRequestHandler):
             self.message = 'Illegal export filename: %s' % file
             logging.error(self.message)
             return status
-        if pnum in policy_config.keys():
-            policy = policy_config[pnum]
+        if tenant in policy_config.keys():
+            policy = policy_config[tenant]
         else:
             policy = policy_config['default']
         if not policy['enabled']:
@@ -268,7 +268,7 @@ class FileStreamerHandler(AuthRequestHandler):
                 logging.error(self.message)
         if policy['max_size'] and size > policy['max_size']:
             logging.error('%s tried to export a file exceeding the maximum size limit', self.requestor)
-            self.message = 'File size exceeds maximum allowed for %s' % pnum
+            self.message = 'File size exceeds maximum allowed for %s' % tenant
             status = False
         return status
 
@@ -283,7 +283,7 @@ class FileStreamerHandler(AuthRequestHandler):
         return size, mime_type
 
 
-    def list_files(self, path, pnum):
+    def list_files(self, path, tenant):
         """
         Lists files in the export directory.
 
@@ -317,7 +317,7 @@ class FileStreamerHandler(AuthRequestHandler):
                     self.message = 'exporting from directories not supported yet'
                 else:
                     size, mime_type = self.get_file_metadata(filepath)
-                    status = self.enforce_export_policy(self.export_policy, filepath, pnum, size, mime_type)
+                    status = self.enforce_export_policy(self.export_policy, filepath, tenant, size, mime_type)
                 if status:
                     reason = None
                 else:
@@ -372,12 +372,12 @@ class FileStreamerHandler(AuthRequestHandler):
 
 
     @gen.coroutine
-    def get(self, pnum, filename=None):
+    def get(self, tenant, filename=None):
         """
         List the export dir, or serve a file, asynchronously.
 
         1. check token claims
-        2. check the pnum
+        2. check the tenant
 
         If listing the dir:
 
@@ -402,10 +402,10 @@ class FileStreamerHandler(AuthRequestHandler):
                     self.message = 'Not authorized to export data'
                 self.set_status(401)
                 raise Exception
-            assert _VALID_TENANT.match(pnum)
+            assert _VALID_TENANT.match(tenant)
             self.path = self.export_dir
             if not filename:
-                self.list_files(self.path, pnum)
+                self.list_files(self.path, tenant)
                 return
             try:
                 secured_filename = check_filename(url_unescape(filename),
@@ -424,7 +424,7 @@ class FileStreamerHandler(AuthRequestHandler):
                 raise Exception
             try:
                 size, mime_type = self.get_file_metadata(self.filepath)
-                status = self.enforce_export_policy(self.export_policy, self.filepath, pnum, size, mime_type)
+                status = self.enforce_export_policy(self.export_policy, self.filepath, tenant, size, mime_type)
                 assert status
             except (Exception, AssertionError) as e:
                 logging.error(e)
@@ -498,7 +498,7 @@ class FileStreamerHandler(AuthRequestHandler):
             self.finish()
 
 
-    def head(self, pnum, filename):
+    def head(self, tenant, filename):
         """
         Return information about a specific file.
 
@@ -512,7 +512,7 @@ class FileStreamerHandler(AuthRequestHandler):
                     self.message = 'Not authorized to export data'
                 self.set_status(401)
                 raise Exception
-            assert _VALID_TENANT.match(pnum)
+            assert _VALID_TENANT.match(tenant)
             self.path = self.export_dir
             if not filename:
                 raise Exception('No info to report')
@@ -533,7 +533,7 @@ class FileStreamerHandler(AuthRequestHandler):
                 self.message = 'File does not exist'
                 raise Exception
             size, mime_type = self.get_file_metadata(self.filepath)
-            status = self.enforce_export_policy(self.export_policy, self.filepath, pnum, size, mime_type)
+            status = self.enforce_export_policy(self.export_policy, self.filepath, tenant, size, mime_type)
             assert status
             logging.info('user: %s, checked file: %s , with MIME type: %s', self.requestor, self.filepath, mime_type)
             self.set_header('Content-Length', size)
@@ -551,8 +551,8 @@ class GenericFormDataHandler(AuthRequestHandler):
 
     def initialize(self, backend):
         try:
-            pnum = tenant_from_url(self.request.uri)
-            assert _VALID_TENANT.match(pnum)
+            tenant = tenant_from_url(self.request.uri)
+            assert _VALID_TENANT.match(tenant)
             self.project_dir_pattern = CONFIG['backends']['disk'][backend]['import_path']
             self.tsd_hidden_folder = None
             self.backend = backend
@@ -576,7 +576,7 @@ class GenericFormDataHandler(AuthRequestHandler):
                 self.set_status(400)
             self.finish({'message': 'request failed'})
 
-    def write_files(self, filemode, pnum):
+    def write_files(self, filemode, tenant):
         try:
             for i in range(len(self.request.files['file'])):
                 filename = check_filename(self.request.files['file'][i]['filename'],
@@ -587,7 +587,7 @@ class GenericFormDataHandler(AuthRequestHandler):
                     raise Exception('EmptyFileBodyError')
                 # add all optional parameters to file writer
                 # this is used for nettskjema specific backend
-                written = self.write_file(filemode, filename, filebody, pnum)
+                written = self.write_file(filemode, filename, filebody, tenant)
                 assert written
             return True
         except Exception as e:
@@ -596,13 +596,13 @@ class GenericFormDataHandler(AuthRequestHandler):
             return False
 
 
-    def write_file(self, filemode, filename, filebody, pnum):
+    def write_file(self, filemode, filename, filebody, tenant):
         try:
             if self.backend == 'sns':
-                tsd_hidden_folder = project_sns_dir(self.tsd_hidden_folder_pattern, pnum, self.request.uri)
-                project_dir = project_sns_dir(self.project_dir_pattern, pnum, self.request.uri)
+                tsd_hidden_folder = project_sns_dir(self.tsd_hidden_folder_pattern, tenant, self.request.uri)
+                project_dir = project_sns_dir(self.project_dir_pattern, tenant, self.request.uri)
             else:
-                project_dir = self.project_dir_pattern.replace('pXX', pnum)
+                project_dir = self.project_dir_pattern.replace('pXX', tenant)
             self.path = os.path.normpath(project_dir + '/' + filename)
             # add the partial file indicator, check existence
             self.path_part = self.path + '.' + str(uuid4()) + '.part'
@@ -637,49 +637,49 @@ class GenericFormDataHandler(AuthRequestHandler):
 
 class FormDataHandler(GenericFormDataHandler):
 
-    def handle_data(self, filemode, pnum):
+    def handle_data(self, filemode, tenant):
         try:
-            assert self.write_files(filemode, pnum)
+            assert self.write_files(filemode, tenant)
             self.set_status(201)
             self.write({'message': 'data uploaded'})
         except Exception:
             self.set_status(400)
             self.write({'message': 'could not upload data'})
 
-    def post(self, pnum):
-        self.handle_data('ab+', pnum)
+    def post(self, tenant):
+        self.handle_data('ab+', tenant)
 
-    def patch(self, pnum):
-        self.handle_data('ab+', pnum)
+    def patch(self, tenant):
+        self.handle_data('ab+', tenant)
 
-    def put(self, pnum):
-        self.handle_data('wb+', pnum)
+    def put(self, tenant):
+        self.handle_data('wb+', tenant)
 
-    def head(self, pnum):
+    def head(self, tenant):
         self.set_status(201)
 
 
 class SnsFormDataHandler(GenericFormDataHandler):
 
-    def handle_data(self, filemode, pnum):
+    def handle_data(self, filemode, tenant):
         try:
-            assert self.write_files(filemode, pnum)
+            assert self.write_files(filemode, tenant)
             self.set_status(201)
             self.write({'message': 'data uploaded'})
         except Exception:
             self.set_status(400)
             self.write({'message': 'could not upload data'})
 
-    def post(self, pnum, keyid, formid):
-        self.handle_data('ab+', pnum)
+    def post(self, tenant, keyid, formid):
+        self.handle_data('ab+', tenant)
 
-    def patch(self, pnum, keyid, formid):
-        self.handle_data('ab+', pnum)
+    def patch(self, tenant, keyid, formid):
+        self.handle_data('ab+', tenant)
 
-    def put(self, pnum, keyid, formid):
-        self.handle_data('wb+', pnum)
+    def put(self, tenant, keyid, formid):
+        self.handle_data('wb+', tenant)
 
-    def head(self, pnum, keyid, formid):
+    def head(self, tenant, keyid, formid):
         self.set_status(201)
 
 
@@ -728,14 +728,14 @@ class ResumablesHandler(AuthRequestHandler):
 
     def initialize(self, backend):
         try:
-            pnum = tenant_from_url(self.request.uri)
-            assert _VALID_TENANT.match(pnum)
+            tenant = tenant_from_url(self.request.uri)
+            assert _VALID_TENANT.match(tenant)
             # can deprecate once rsync is in place for cluster software install
-            key = 'admin_path' if (backend == 'cluster' and pnum == 'p01') else 'import_path'
+            key = 'admin_path' if (backend == 'cluster' and tenant == 'p01') else 'import_path'
             self.import_dir = CONFIG['backends']['disk']['files'][key]
-            if backend == 'cluster' and pnum != 'p01':
-                assert create_cluster_dir_if_not_exists(self.import_dir, pnum)
-            self.project_dir = self.import_dir.replace('pXX', pnum)
+            if backend == 'cluster' and tenant != 'p01':
+                assert create_cluster_dir_if_not_exists(self.import_dir, tenant)
+            self.project_dir = self.import_dir.replace('pXX', tenant)
         except AssertionError as e:
             raise e
 
@@ -748,7 +748,7 @@ class ResumablesHandler(AuthRequestHandler):
             raise e
 
 
-    def get(self, pnum, filename=None):
+    def get(self, tenant, filename=None):
         self.message = {'filename': filename, 'id': None, 'chunk_size': None, 'max_chunk': None}
         upload_id = None
         try:
@@ -776,7 +776,7 @@ class ResumablesHandler(AuthRequestHandler):
             self.write(self.message)
 
 
-    def delete(self, pnum, filename):
+    def delete(self, tenant, filename):
         self.message = {'message': 'cannot delete resumable'}
         try:
             try:
@@ -928,13 +928,13 @@ class StreamHandler(AuthRequestHandler):
 
     def initialize(self, backend, request_hook_enabled=False):
         try:
-            pnum = tenant_from_url(self.request.uri)
-            assert _VALID_TENANT.match(pnum)
-            key = 'admin_path' if (backend == 'cluster' and pnum == 'p01') else 'import_path'
+            tenant = tenant_from_url(self.request.uri)
+            assert _VALID_TENANT.match(tenant)
+            key = 'admin_path' if (backend == 'cluster' and tenant == 'p01') else 'import_path'
             self.import_dir = CONFIG['backends']['disk'][backend][key]
-            if backend == 'cluster' and pnum != 'p01':
-                assert create_cluster_dir_if_not_exists(self.import_dir, pnum)
-            self.project_dir = self.import_dir.replace('pXX', pnum)
+            if backend == 'cluster' and tenant != 'p01':
+                assert create_cluster_dir_if_not_exists(self.import_dir, tenant)
+            self.project_dir = self.import_dir.replace('pXX', tenant)
             self.backend = backend
             self.request_hook_enabled = request_hook_enabled
             if request_hook_enabled:
@@ -942,7 +942,7 @@ class StreamHandler(AuthRequestHandler):
                 self.hook_sudo = CONFIG['backends']['disk'][backend]['request_hook']['sudo']
         except AssertionError as e:
             self.backend = backend
-            logging.error('URI does not contain a valid pnum')
+            logging.error('URI does not contain a valid tenant')
             raise e
 
 
@@ -975,16 +975,16 @@ class StreamHandler(AuthRequestHandler):
                 raise Exception
             try:
                 try:
-                    pnum = tenant_from_url(self.request.uri)
-                    self.pnum = pnum
-                    assert _VALID_TENANT.match(pnum)
+                    tenant = tenant_from_url(self.request.uri)
+                    self.tenant = tenant
+                    assert _VALID_TENANT.match(tenant)
                 except AssertionError as e:
-                    logging.error('URI does not contain a valid pnum')
+                    logging.error('URI does not contain a valid tenant')
                     raise e
                 try:
                     self.group_name = url_unescape(self.get_query_argument('group'))
                 except Exception:
-                    self.group_name = pnum + '-member-group'
+                    self.group_name = tenant + '-member-group'
                 filemode = filemodes[self.request.method]
                 try:
                     content_type = self.request.headers['Content-Type']
@@ -1099,7 +1099,7 @@ class StreamHandler(AuthRequestHandler):
 
 
     # TODO: check for errors
-    def post(self, pnum, uri_filename=None):
+    def post(self, tenant, uri_filename=None):
         if not self.custom_content_type:
             self.target_file.close()
             os.rename(self.path, self.path_part)
@@ -1125,7 +1125,7 @@ class StreamHandler(AuthRequestHandler):
 
 
     # TODO: check for errors
-    def put(self, pnum, uri_filename=None):
+    def put(self, tenant, uri_filename=None):
         if not self.custom_content_type:
             self.target_file.close()
             os.rename(self.path, self.path_part)
@@ -1150,7 +1150,7 @@ class StreamHandler(AuthRequestHandler):
         self.write({'message': 'data streamed'})
 
 
-    def patch(self, pnum, uri_filename=None):
+    def patch(self, tenant, uri_filename=None):
         if not self.completed_resumable_file:
             self.res.close_file(self.target_file)
             # if the path to which we want to rename the file exists
@@ -1170,7 +1170,7 @@ class StreamHandler(AuthRequestHandler):
         self.write({'filename': filename, 'id': self.upload_id, 'max_chunk': self.chunk_num})
 
 
-    def head(self, pnum, uri_filename=None):
+    def head(self, tenant, uri_filename=None):
         self.set_status(201)
 
 
@@ -1196,7 +1196,7 @@ class StreamHandler(AuthRequestHandler):
                     path, path_part = self.path_part, self.path
                 else:
                     path = self.completed_resumable_filename
-                if self.backend == 'cluster' and self.pnum != 'p01': # TODO: remove special case
+                if self.backend == 'cluster' and self.tenant != 'p01': # TODO: remove special case
                     pass
                 else:
                     if self.request_hook_enabled:
@@ -1217,7 +1217,7 @@ class StreamHandler(AuthRequestHandler):
             if not self.target_file.closed:
                 self.target_file.close()
                 path = self.path
-                if self.backend == 'cluster' and pnum != 'p01':  # TODO: remove special case
+                if self.backend == 'cluster' and tenant != 'p01':  # TODO: remove special case
                     pass
                 else:
                     if self.request_hook_enabled:
@@ -1258,10 +1258,10 @@ class ProxyHandler(AuthRequestHandler):
                 raise e
             # 3. Validate project number in URI
             try:
-                pnum = tenant_from_url(self.request.uri)
-                assert _VALID_TENANT.match(pnum)
+                tenant = tenant_from_url(self.request.uri)
+                assert _VALID_TENANT.match(tenant)
             except AssertionError as e:
-                logging.error('URI does not contain a valid pnum')
+                logging.error('URI does not contain a valid tenant')
                 raise e
             # 4. Set the filename
             try:
@@ -1286,12 +1286,12 @@ class ProxyHandler(AuthRequestHandler):
                     group_name = url_unescape(self.get_query_argument('group'))
                 except Exception as e:
                     logging.info('no group specified - choosing default: member-group')
-                    group_name = pnum + '-member-group'
+                    group_name = tenant + '-member-group'
             except Exception as e:
                 logging.info('Could not get group info from JWT - choosing default: member-group')
                 # this happens with basic auth, anonymous end-users
                 # then we only allow upload the member group
-                group_name = pnum + '-member-group'
+                group_name = tenant + '-member-group'
                 group_memberships = [group_name]
             try:
                 assert IS_VALID_GROUPNAME.match(group_name)
@@ -1299,9 +1299,9 @@ class ProxyHandler(AuthRequestHandler):
                 logging.error('invalid group name: %s', group_name)
                 raise e
             try:
-                assert pnum == group_name.split('-')[0]
+                assert tenant == group_name.split('-')[0]
             except AssertionError as e:
-                logging.error('pnum in url: %s and group name: %s do not match', self.request.uri, group_name)
+                logging.error('tenant in url: %s and group name: %s do not match', self.request.uri, group_name)
                 raise e
             try:
                 assert group_name in group_memberships
@@ -1335,7 +1335,7 @@ class ProxyHandler(AuthRequestHandler):
             params = '?group=%s&chunk=%s&id=%s' % (group_name, chunk_num, upload_id)
             filename = url_escape(self.filename)
             internal_url = 'http://localhost:%d/v1/%s/%s/upload_stream/%s%s' % \
-                (options.port, pnum, self.storage_backend, filename, params)
+                (options.port, tenant, self.storage_backend, filename, params)
             # 8. Do async request to handle incoming data
             try:
                 self.fetch_future = AsyncHTTPClient().fetch(
@@ -1365,7 +1365,7 @@ class ProxyHandler(AuthRequestHandler):
         yield self.chunks.put(chunk)
 
     @gen.coroutine
-    def post(self, pnum, filename=None):
+    def post(self, tenant, filename=None):
         """Called after entire body has been read."""
         yield self.chunks.put(None)
         # wait for request to finish.
@@ -1374,7 +1374,7 @@ class ProxyHandler(AuthRequestHandler):
         self.write(response.body)
 
     @gen.coroutine
-    def put(self, pnum, filename=None):
+    def put(self, tenant, filename=None):
         """Called after entire body has been read."""
         yield self.chunks.put(None)
         # wait for request to finish.
@@ -1383,7 +1383,7 @@ class ProxyHandler(AuthRequestHandler):
         self.write(response.body)
 
     @gen.coroutine
-    def patch(self, pnum, filename=None):
+    def patch(self, tenant, filename=None):
         """Called after entire body has been read."""
         yield self.chunks.put(None)
         # wait for request to finish.
@@ -1400,7 +1400,7 @@ class ProxyHandler(AuthRequestHandler):
         self.set_status(code)
         self.write(body)
 
-    def head(self, pnum, filename=None):
+    def head(self, tenant, filename=None):
         self.set_status(201)
 
 
@@ -1422,13 +1422,13 @@ class GenericTableHandler(AuthRequestHandler):
             self.datatype = 'metadata'
         else:
             self.datatype = 'data'
-        pnum = tenant_from_url(self.request.uri)
-        assert _VALID_TENANT.match(pnum)
+        tenant = tenant_from_url(self.request.uri)
+        assert _VALID_TENANT.match(tenant)
         self.import_dir = CONFIG['backends']['sqlite'][app]['db_path']
-        self.project_dir = self.import_dir.replace('pXX', pnum)
+        self.project_dir = self.import_dir.replace('pXX', tenant)
 
 
-    def get(self, pnum, table_name=None):
+    def get(self, tenant, table_name=None):
         try:
             if not table_name:
                 self.authnz = self.process_token_and_extract_claims()
@@ -1459,7 +1459,7 @@ class GenericTableHandler(AuthRequestHandler):
             self.write({'message': 'error'})
 
 
-    def put(self, pnum, table_name):
+    def put(self, tenant, table_name):
         try:
             self.authnz = self.process_token_and_extract_claims()
             data = json_decode(self.request.body)
@@ -1478,7 +1478,7 @@ class GenericTableHandler(AuthRequestHandler):
             self.write({'message': 'error'})
 
 
-    def patch(self, pnum, table_name):
+    def patch(self, tenant, table_name):
         try:
             self.authnz = self.process_token_and_extract_claims()
             engine = sqlite_init(self.project_dir, name=self.db_name, builtin=True)
@@ -1491,7 +1491,7 @@ class GenericTableHandler(AuthRequestHandler):
             self.write({'message': 'error'})
 
 
-    def delete(self, pnum, table_name):
+    def delete(self, tenant, table_name):
         try:
             self.authnz = self.process_token_and_extract_claims()
             engine = sqlite_init(self.project_dir, name=self.db_name, builtin=True)
@@ -1506,7 +1506,7 @@ class GenericTableHandler(AuthRequestHandler):
 
 class HealthCheckHandler(RequestHandler):
 
-    def head(self, pnum):
+    def head(self, tenant):
         self.set_status(200)
         self.write({'message': 'healthy'})
 
