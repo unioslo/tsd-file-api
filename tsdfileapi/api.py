@@ -120,7 +120,7 @@ class AuthRequestHandler(RequestHandler):
             try:
                 authnz = process_access_token(auth_header, pnum, check_tenant, check_exp)
                 self.claims = authnz['claims']
-                self.user = self.claims['user']
+                self.requestor = self.claims['user']
                 if not authnz['status']:
                     self.set_status(401)
                     raise Exception('JWT verification failed')
@@ -198,7 +198,7 @@ class FileStreamerHandler(AuthRequestHandler):
                 self.message = 'not allowed to export file with MIME type: %s' % mime_type
                 logging.error(self.message)
         if policy['max_size'] and size > policy['max_size']:
-            logging.error('%s tried to export a file exceeding the maximum size limit', self.user)
+            logging.error('%s tried to export a file exceeding the maximum size limit', self.requestor)
             self.message = 'File size exceeds maximum allowed for %s' % pnum
             status = False
         return status
@@ -273,7 +273,7 @@ class FileStreamerHandler(AuthRequestHandler):
                               'reason': r,
                               'mime-type': m,
                               'owner': o})
-        logging.info('%s listed %s', self.user, path)
+        logging.info('%s listed %s', self.requestor, path)
         self.write({'files': file_info})
 
 
@@ -343,13 +343,13 @@ class FileStreamerHandler(AuthRequestHandler):
                                                   disallowed_start_chars=options.start_chars)
             except Exception as e:
                 logging.error(e)
-                logging.error('%s tried to access files in sub-directories', self.user)
+                logging.error('%s tried to access files in sub-directories', self.requestor)
                 self.set_status(403)
                 self.message = 'Not allowed to access files in sub-directories, create a zip archive'
                 raise Exception
             self.filepath = '%s/%s' % (self.path, secured_filename)
             if not os.path.lexists(self.filepath):
-                logging.error('%s tried to access a file that does not exist', self.user)
+                logging.error('%s tried to access a file that does not exist', self.requestor)
                 self.set_status(404)
                 self.message = 'File does not exist'
                 raise Exception
@@ -416,7 +416,7 @@ class FileStreamerHandler(AuthRequestHandler):
                     data = fd.read(self.CHUNK_SIZE)
                     sent = sent + self.CHUNK_SIZE
                 fd.close()
-            logging.info('user: %s, exported file: %s , with MIME type: %s', self.user, self.filepath, mime_type)
+            logging.info('user: %s, exported file: %s , with MIME type: %s', self.requestor, self.filepath, mime_type)
         except Exception as e:
             logging.error(e)
             logging.error(self.message)
@@ -452,21 +452,21 @@ class FileStreamerHandler(AuthRequestHandler):
                                                   disallowed_start_chars=options.start_chars)
             except Exception as e:
                 logging.error(e)
-                logging.error('%s tried to access files in sub-directories', self.user)
+                logging.error('%s tried to access files in sub-directories', self.requestor)
                 self.set_status(403)
                 self.message = 'Not allowed to access files in sub-directories, create a zip archive'
                 raise Exception
             self.filepath = '%s/%s' % (self.path, secured_filename)
             if not os.path.lexists(self.filepath):
                 logging.error(self.filepath)
-                logging.error('%s tried to access a file that does not exist', self.user)
+                logging.error('%s tried to access a file that does not exist', self.requestor)
                 self.set_status(404)
                 self.message = 'File does not exist'
                 raise Exception
             size, mime_type = self.get_file_metadata(self.filepath)
             status = self.enforce_export_policy(self.export_policy, self.filepath, pnum, size, mime_type)
             assert status
-            logging.info('user: %s, checked file: %s , with MIME type: %s', self.user, self.filepath, mime_type)
+            logging.info('user: %s, checked file: %s , with MIME type: %s', self.requestor, self.filepath, mime_type)
             self.set_header('Content-Length', size)
             self.set_header('Accept-Ranges', 'bytes')
             self.set_status(200)
@@ -694,11 +694,11 @@ class ResumablesHandler(AuthRequestHandler):
                 upload_id = url_unescape(self.get_query_argument('id'))
             except Exception:
                 pass
-            res = SerialResumable(self.project_dir, self.user)
+            res = SerialResumable(self.project_dir, self.requestor)
             if not filename:
-                info = res.list_all(self.project_dir, self.user)
+                info = res.list_all(self.project_dir, self.requestor)
             else:
-                info = res.info(self.project_dir, secured_filename, upload_id, self.user)
+                info = res.info(self.project_dir, secured_filename, upload_id, self.requestor)
             self.set_status(200)
             self.write(info)
         except Exception as e:
@@ -720,8 +720,8 @@ class ResumablesHandler(AuthRequestHandler):
                 upload_id = url_unescape(self.get_query_argument('id'))
             except Exception:
                 raise Exception('upload id required to delete resumable')
-            res = SerialResumable(self.project_dir, self.user)
-            assert res.delete(self.project_dir, filename, upload_id, self.user)
+            res = SerialResumable(self.project_dir, self.requestor)
+            assert res.delete(self.project_dir, filename, upload_id, self.requestor)
             self.set_status(200)
             self.write({'message': 'resumable deleted'})
         except Exception as e:
@@ -923,7 +923,7 @@ class StreamHandler(AuthRequestHandler):
                     filename = check_filename(url_unescape(uri_filename),
                                               disallowed_start_chars=options.start_chars)
                     if self.request.method == 'PATCH':
-                        self.res = SerialResumable(self.project_dir, self.user)
+                        self.res = SerialResumable(self.project_dir, self.requestor)
                         url_chunk_num = url_unescape(self.get_query_argument('chunk'))
                         url_upload_id = url_unescape(self.get_query_argument('id'))
                         url_group = url_unescape(self.get_query_argument('group'))
@@ -933,7 +933,7 @@ class StreamHandler(AuthRequestHandler):
                             self.chunk_order_correct, \
                             filename = self.res.prepare(self.project_dir, filename,
                                                          url_chunk_num, url_upload_id,
-                                                         url_group, self.user)
+                                                         url_group, self.requestor)
                         if not self.chunk_order_correct:
                             raise Exception
                     # ensure we do not write to active file
@@ -1090,12 +1090,12 @@ class StreamHandler(AuthRequestHandler):
             if not os.path.lexists(self.path_part):
                 os.rename(self.path, self.path_part)
                 filename = os.path.basename(self.path_part).split('.chunk')[0]
-                self.res.merge_chunk(self.project_dir, os.path.basename(self.path_part), self.upload_id, self.user)
+                self.res.merge_chunk(self.project_dir, os.path.basename(self.path_part), self.upload_id, self.requestor)
             else:
                 self.write({'message': 'chunk_order_incorrect'})
         else:
             self.completed_resumable_filename = self.res.finalise(self.project_dir, os.path.basename(self.path_part),
-                                                                   self.upload_id, self.user)
+                                                                   self.upload_id, self.requestor)
             filename = os.path.basename(self.completed_resumable_filename)
         self.set_status(201)
         self.write({'filename': filename, 'id': self.upload_id, 'max_chunk': self.chunk_num})
@@ -1132,7 +1132,7 @@ class StreamHandler(AuthRequestHandler):
                 else:
                     if self.request_hook_enabled:
                         call_request_hook(self.hook_path,
-                                          [path, self.user, options.api_user, self.group_name],
+                                          [path, self.requestor, options.api_user, self.group_name],
                                           as_sudo=self.hook_sudo)
             except Exception as e:
                 logging.info('could not change file mode or owner for some reason')
@@ -1153,7 +1153,7 @@ class StreamHandler(AuthRequestHandler):
                 else:
                     if self.request_hook_enabled:
                         call_request_hook(self.hook_path,
-                                          [path, self.user, options.api_user, self.group_name],
+                                          [path, self.requestor, options.api_user, self.group_name],
                                           as_sudo=self.hook_sudo)
                 logging.info('StreamHandler: Closed file after client closed connection')
         except AttributeError as e:
