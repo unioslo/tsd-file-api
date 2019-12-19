@@ -1,10 +1,41 @@
 
-"""API for uploading files and data streams to TSD."""
+"""
 
-# tornado RequestHandler classes are simple enough to grok
-# pylint: disable=attribute-defined-outside-init
-# pylint tends to be too pedantic regarding docstrings - we can decide in code review
-# pylint: disable=missing-docstring
+tsd-file-api
+------------
+
+A multi-tenent API for uploading and downloading files
+and JSON data, designed for the University of Oslo's Services for Sensitive Data (TSD).
+
+Endpoints
+---------
+
+The following classes of endpoints are available, and they differ from
+one another due the use cases they need to support. The use cases are as follows:
+
+/cluster        - store files on the HPC cluster's disk, with POSIX permissions
+/files          - store files on network disk, with POSIX permissions
+/tables         - store data in sqlite tables, no permissions
+/files/upload   - store files (uploaded as form-encoded) on network disk
+                  (currently no end-user POSIX permissions)
+/sns            - store files (uploaded as form-encoded) on network disk
+                  (also no end-user POSIX permissions, and specificaly
+                   designed for the UiO Nettskjema service integration)
+/publication    - store files on disk, no end-user POSIX permissions,
+                  but intended for API-only usage (upload and download)
+                  so can support access control via integration with another
+                  system
+
+All this implies the following for using the API, in terms of it's integration
+with and authentication and authorization framework: for authenticated requests,
+you MUST use JWT, most probably with an OAUTH2.0 Authorization Server, and the JWTs
+MUST be used as Bearer tokens.
+
+Note: /files, and /publication use the same RequestHandler(s), the only difference
+if that the /files backend, calls a request hook after data processing is finished.
+This request hook, sets the end-user POSIX permissions.
+
+"""
 
 import base64
 import logging
@@ -75,8 +106,30 @@ define('requestor_claim_name', CONFIG['requestor_claim_name'])
 class AuthRequestHandler(RequestHandler):
 
     """
-    All RequestHandler(s) in the API inherit from this one, thereby
-    giving them access to the process_token_and_extract_claims method.
+    All RequestHandler(s), with the exception of the HealthCheckHandler
+    inherit from this one, giving them access to the
+    process_token_and_extract_claims method.
+
+    The purpose of this method is to allow a measure of authentication
+    and authorization - just enough to be able to enforce access control
+    on a per request basis, where necessary.
+
+    When called, the method will set the following properties:
+
+        self.jwt
+        self.pnum
+        self.claims
+        self.requestor
+
+    Subsequent request handlers (HTTP method implementations), use these properties
+    for request processing, and enforcement of access control where needed.
+    The API can be configured to check whether the tenant identifier in the URL
+    matches the tenant identifier in the claims. It can also be configured
+    to check the token expiry. These are not mandatory.
+
+    To decide what is right for your use case read the module level docstring
+    about the different endpoints, and use cases underpinning their design
+    and implementation.
 
     """
 
@@ -128,6 +181,7 @@ class AuthRequestHandler(RequestHandler):
                 authnz = process_access_token(auth_header, pnum, check_tenant, check_exp)
                 self.claims = authnz['claims']
                 self.requestor = self.claims[options.requestor_claim_name]
+                # TODO: if no identifier is provided use api user
                 if not authnz['status']:
                     self.set_status(401)
                     raise Exception('JWT verification failed')
