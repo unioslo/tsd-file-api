@@ -95,7 +95,7 @@ except Exception as e:
     raise e
 
 
-_VALID_PNUM = re.compile(r'^[0-9a-z]+$')
+_VALID_TENANT = re.compile(r'{}'.format(CONFIG['valid_tenant_regex']))
 
 
 define('port', default=CONFIG['port'])
@@ -174,7 +174,7 @@ class AuthRequestHandler(RequestHandler):
                 raise Exception('Authorization not possible: malformed header')
             try:
                 pnum = pnum_from_url(self.request.uri)
-                assert _VALID_PNUM.match(pnum)
+                assert _VALID_TENANT.match(pnum)
                 self.pnum = pnum
             except AssertionError as e:
                 logging.error(e.message)
@@ -210,7 +210,7 @@ class FileStreamerHandler(AuthRequestHandler):
     def initialize(self, backend):
         try:
             pnum = pnum_from_url(self.request.uri)
-            assert _VALID_PNUM.match(pnum)
+            assert _VALID_TENANT.match(pnum)
             self.backend_paths = CONFIG['backends']['disk'][backend]
             self.export_path_pattern = self.backend_paths['export_path']
             self.export_dir = self.export_path_pattern.replace('pXX', pnum)
@@ -397,7 +397,7 @@ class FileStreamerHandler(AuthRequestHandler):
                     self.message = 'Not authorized to export data'
                 self.set_status(401)
                 raise Exception
-            assert _VALID_PNUM.match(pnum)
+            assert _VALID_TENANT.match(pnum)
             self.path = self.export_dir
             if not filename:
                 self.list_files(self.path, pnum)
@@ -507,7 +507,7 @@ class FileStreamerHandler(AuthRequestHandler):
                     self.message = 'Not authorized to export data'
                 self.set_status(401)
                 raise Exception
-            assert _VALID_PNUM.match(pnum)
+            assert _VALID_TENANT.match(pnum)
             self.path = self.export_dir
             if not filename:
                 raise Exception('No info to report')
@@ -547,7 +547,7 @@ class GenericFormDataHandler(AuthRequestHandler):
     def initialize(self, backend):
         try:
             pnum = pnum_from_url(self.request.uri)
-            assert _VALID_PNUM.match(pnum)
+            assert _VALID_TENANT.match(pnum)
             self.project_dir_pattern = CONFIG['backends']['disk'][backend]['import_path']
             self.tsd_hidden_folder = None
             self.backend = backend
@@ -724,7 +724,7 @@ class ResumablesHandler(AuthRequestHandler):
     def initialize(self, backend):
         try:
             pnum = pnum_from_url(self.request.uri)
-            assert _VALID_PNUM.match(pnum)
+            assert _VALID_TENANT.match(pnum)
             # can deprecate once rsync is in place for cluster software install
             key = 'admin_path' if (backend == 'cluster' and pnum == 'p01') else 'import_path'
             self.import_dir = CONFIG['backends']['disk']['files'][key]
@@ -924,7 +924,7 @@ class StreamHandler(AuthRequestHandler):
     def initialize(self, backend, request_hook_enabled=False):
         try:
             pnum = pnum_from_url(self.request.uri)
-            assert _VALID_PNUM.match(pnum)
+            assert _VALID_TENANT.match(pnum)
             key = 'admin_path' if (backend == 'cluster' and pnum == 'p01') else 'import_path'
             self.import_dir = CONFIG['backends']['disk'][backend][key]
             if backend == 'cluster' and pnum != 'p01':
@@ -972,7 +972,7 @@ class StreamHandler(AuthRequestHandler):
                 try:
                     pnum = pnum_from_url(self.request.uri)
                     self.pnum = pnum
-                    assert _VALID_PNUM.match(pnum)
+                    assert _VALID_TENANT.match(pnum)
                 except AssertionError as e:
                     logging.error('URI does not contain a valid pnum')
                     raise e
@@ -1254,7 +1254,7 @@ class ProxyHandler(AuthRequestHandler):
             # 3. Validate project number in URI
             try:
                 pnum = pnum_from_url(self.request.uri)
-                assert _VALID_PNUM.match(pnum)
+                assert _VALID_TENANT.match(pnum)
             except AssertionError as e:
                 logging.error('URI does not contain a valid pnum')
                 raise e
@@ -1418,7 +1418,7 @@ class GenericTableHandler(AuthRequestHandler):
         else:
             self.datatype = 'data'
         pnum = pnum_from_url(self.request.uri)
-        assert _VALID_PNUM.match(pnum)
+        assert _VALID_TENANT.match(pnum)
         self.import_dir = CONFIG['backends']['sqlite'][app]['db_path']
         self.project_dir = self.import_dir.replace('pXX', pnum)
 
