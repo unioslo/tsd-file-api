@@ -66,9 +66,6 @@ except Exception as e:
 
 define('port', default=CONFIG['port'])
 define('debug', default=CONFIG['debug'])
-define('server_delay', default=CONFIG['server_delay'])
-define('num_chunks', default=CONFIG['num_chunks'])
-define('max_body_size', CONFIG['max_body_size'])
 define('api_user', CONFIG['api_user'])
 define('check_tenant', CONFIG['token_check_tenant'])
 define('check_exp', CONFIG['token_check_exp'])
@@ -1486,7 +1483,7 @@ def main():
         ('/v1/(.*)/publication/export', FileStreamerHandler, dict(backend='publication')),
         ('/v1/(.*)/publication/export/(.*)', FileStreamerHandler, dict(backend='publication')),
     ], debug=options.debug)
-    app.listen(options.port, max_body_size=options.max_body_size)
+    app.listen(options.port)
     IOLoop.instance().start()
 
 
