@@ -106,6 +106,7 @@ define('check_exp', CONFIG['token_check_exp'])
 define('start_chars', CONFIG['disallowed_start_chars'])
 define('requestor_claim_name', CONFIG['requestor_claim_name'])
 define('tenant_claim_name', CONFIG['tenant_claim_name'])
+define('tenant_string_pattern', CONFIG['tenant_string_pattern'])
 
 
 class AuthRequestHandler(RequestHandler):
@@ -218,7 +219,7 @@ class FileStreamerHandler(AuthRequestHandler):
             assert _VALID_TENANT.match(tenant)
             self.backend_paths = CONFIG['backends']['disk'][backend]
             self.export_path_pattern = self.backend_paths['export_path']
-            self.export_dir = self.export_path_pattern.replace('pXX', tenant)
+            self.export_dir = self.export_path_pattern.replace(options.tenant_string_pattern, tenant)
             self.backend = backend
             self.export_policy = CONFIG['backends']['disk'][backend]['export_policy']
         except (AssertionError, Exception) as e:
@@ -602,7 +603,7 @@ class GenericFormDataHandler(AuthRequestHandler):
                 tsd_hidden_folder = project_sns_dir(self.tsd_hidden_folder_pattern, tenant, self.request.uri)
                 project_dir = project_sns_dir(self.project_dir_pattern, tenant, self.request.uri)
             else:
-                project_dir = self.project_dir_pattern.replace('pXX', tenant)
+                project_dir = self.project_dir_pattern.replace(options.tenant_string_pattern, tenant)
             self.path = os.path.normpath(project_dir + '/' + filename)
             # add the partial file indicator, check existence
             self.path_part = self.path + '.' + str(uuid4()) + '.part'
@@ -734,8 +735,8 @@ class ResumablesHandler(AuthRequestHandler):
             key = 'admin_path' if (backend == 'cluster' and tenant == 'p01') else 'import_path'
             self.import_dir = CONFIG['backends']['disk']['files'][key]
             if backend == 'cluster' and tenant != 'p01':
-                assert create_cluster_dir_if_not_exists(self.import_dir, tenant)
-            self.project_dir = self.import_dir.replace('pXX', tenant)
+                assert create_cluster_dir_if_not_exists(self.import_dir, tenant, options.tenant_string_pattern)
+            self.project_dir = self.import_dir.replace(options.tenant_string_pattern, tenant)
         except AssertionError as e:
             raise e
 
@@ -933,8 +934,8 @@ class StreamHandler(AuthRequestHandler):
             key = 'admin_path' if (backend == 'cluster' and tenant == 'p01') else 'import_path'
             self.import_dir = CONFIG['backends']['disk'][backend][key]
             if backend == 'cluster' and tenant != 'p01':
-                assert create_cluster_dir_if_not_exists(self.import_dir, tenant)
-            self.project_dir = self.import_dir.replace('pXX', tenant)
+                assert create_cluster_dir_if_not_exists(self.import_dir, tenant, options.tenant_string_pattern)
+            self.project_dir = self.import_dir.replace(options.tenant_string_pattern, tenant)
             self.backend = backend
             self.request_hook_enabled = request_hook_enabled
             if request_hook_enabled:
@@ -1425,7 +1426,7 @@ class GenericTableHandler(AuthRequestHandler):
         tenant = tenant_from_url(self.request.uri)
         assert _VALID_TENANT.match(tenant)
         self.import_dir = CONFIG['backends']['sqlite'][app]['db_path']
-        self.project_dir = self.import_dir.replace('pXX', tenant)
+        self.project_dir = self.import_dir.replace(options.tenant_string_pattern, tenant)
 
 
     def get(self, tenant, table_name=None):
