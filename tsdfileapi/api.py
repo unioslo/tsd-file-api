@@ -72,6 +72,7 @@ define('max_body_size', CONFIG['max_body_size'])
 define('api_user', CONFIG['api_user'])
 define('check_tenant', CONFIG['token_check_tenant'])
 define('check_exp', CONFIG['token_check_exp'])
+define('start_chars', CONFIG['disallowed_start_chars'])
 
 
 class AuthRequestHandler(RequestHandler):
@@ -181,7 +182,7 @@ class FileStreamerHandler(AuthRequestHandler):
         status = False # until proven otherwise
         try:
             file = os.path.basename(filename)
-            check_filename(file)
+            check_filename(file, disallowed_start_chars=options.start_chars)
         except Exception as e:
             self.message = 'Illegal export filename: %s' % file
             logging.error(self.message)
@@ -343,7 +344,8 @@ class FileStreamerHandler(AuthRequestHandler):
                 self.list_files(self.path, pnum)
                 return
             try:
-                secured_filename = check_filename(url_unescape(filename))
+                secured_filename = check_filename(url_unescape(filename),
+                                                  disallowed_start_chars=options.start_chars)
             except Exception as e:
                 logging.error(e)
                 logging.error('%s tried to access files in sub-directories', self.user)
@@ -452,7 +454,8 @@ class FileStreamerHandler(AuthRequestHandler):
             if not filename:
                 raise Exception('No info to report')
             try:
-                secured_filename = check_filename(url_unescape(filename))
+                secured_filename = check_filename(url_unescape(filename),
+                                                  disallowed_start_chars=options.start_chars)
             except Exception as e:
                 logging.error(e)
                 logging.error('%s tried to access files in sub-directories', self.user)
@@ -513,7 +516,8 @@ class GenericFormDataHandler(AuthRequestHandler):
     def write_files(self, filemode, pnum):
         try:
             for i in range(len(self.request.files['file'])):
-                filename = check_filename(self.request.files['file'][i]['filename'])
+                filename = check_filename(self.request.files['file'][i]['filename'],
+                                          disallowed_start_chars=options.start_chars)
                 filebody = self.request.files['file'][i]['body']
                 if len(filebody) == 0:
                     logging.error('Trying to upload an empty file: %s - not allowed, since nonsensical', filename)
@@ -687,7 +691,8 @@ class ResumablesHandler(AuthRequestHandler):
         try:
             try:
                 if filename:
-                    secured_filename = check_filename(url_unescape(filename))
+                    secured_filename = check_filename(url_unescape(filename),
+                                                      disallowed_start_chars=options.start_chars)
             except Exception:
                 logging.error('not able to check for resumable due to bad input')
                 raise Exception
@@ -712,7 +717,8 @@ class ResumablesHandler(AuthRequestHandler):
         self.message = {'message': 'cannot delete resumable'}
         try:
             try:
-                secured_filename = check_filename(url_unescape(filename))
+                secured_filename = check_filename(url_unescape(filename),
+                                                  disallowed_start_chars=options.start_chars)
             except Exception:
                 logging.error('not able to check for resumable due to bad input')
                 raise Exception
@@ -919,7 +925,8 @@ class StreamHandler(AuthRequestHandler):
                 try:
                     content_type = self.request.headers['Content-Type']
                     uri_filename = self.request.uri.split('?')[0].split('/')[-1]
-                    filename = check_filename(url_unescape(uri_filename))
+                    filename = check_filename(url_unescape(uri_filename),
+                                              disallowed_start_chars=options.start_chars)
                     if self.request.method == 'PATCH':
                         self.res = SerialResumable(self.project_dir, self.user)
                         url_chunk_num = url_unescape(self.get_query_argument('chunk'))
@@ -1195,10 +1202,12 @@ class ProxyHandler(AuthRequestHandler):
                 if len(uri_parts) >= 6:
                     basename = uri_parts[-1]
                     filename = basename.split('?')[0]
-                    self.filename = check_filename(url_unescape(filename))
+                    self.filename = check_filename(url_unescape(filename),
+                                                   disallowed_start_chars=options.start_chars)
                 else:
                     # TODO: deprecate this once transitioned to URI scheme
-                    self.filename = check_filename(self.request.headers['Filename'])
+                    self.filename = check_filename(self.request.headers['Filename'],
+                                                   disallowed_start_chars=options.start_chars)
             except KeyError:
                 self.filename = datetime.datetime.now().isoformat() + '.txt'
                 logging.info("filename not found - setting filename to: %s", self.filename)

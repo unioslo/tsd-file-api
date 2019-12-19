@@ -91,7 +91,7 @@ pretty_bad_protocol._parsers.Verify.TRUST_LEVELS["ENCRYPTION_COMPLIANCE_MODE"] =
 from tokens import gen_test_tokens, get_test_token_for_p12, gen_test_token_for_user
 from db import session_scope, sqlite_init
 from resumables import SerialResumable
-from utils import project_sns_dir, md5sum, check_filename, IllegalFilenameException
+from utils import project_sns_dir, md5sum, IllegalFilenameException
 from pgp import _import_keys
 
 

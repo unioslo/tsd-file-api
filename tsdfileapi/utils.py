@@ -15,8 +15,11 @@ IS_VALID_GROUPNAME = re.compile(r'p+[0-9]+-[a-z-]')
 _IS_VALID_UUID = re.compile(r'([a-f\d0-9-]{32,36})')
 
 
-def call_request_hook(path, params):
-    cmd = ['sudo']
+def call_request_hook(path, params, as_sudo=True):
+    if as_sudo:
+        cmd = ['sudo']
+    else:
+        cmd = []
     cmd.append(shlex.quote(path))
     cmd.extend(params)
     subprocess.call(cmd)
@@ -34,8 +37,7 @@ def pnum_from_url(url):
     return url.split('/')[idx]
 
 
-def check_filename(filename):
-    disallowed_start_chars = ['~', '.']
+def check_filename(filename, disallowed_start_chars=[]):
     try: # py2/3 compat
         if isinstance(filename, unicode):
             filename = filename.encode('utf-8')
@@ -46,9 +48,10 @@ def check_filename(filename):
             logging.error('Filename not a basename')
             raise Exception
         start_char = filename[0]
-        if start_char in disallowed_start_chars:
-            logging.error('Filename has illegal start character: {0}'.format(start_char))
-            raise Exception
+        if disallowed_start_chars:
+            if start_char in disallowed_start_chars:
+                logging.error('Filename has illegal start character: {0}'.format(start_char))
+                raise Exception
     except Exception:
         raise IllegalFilenameException
     for sep in os.path.sep, os.path.altsep:
