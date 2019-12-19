@@ -34,7 +34,6 @@ from tornado.options import parse_command_line, define, options
 from tornado.web import Application, RequestHandler, stream_request_body, \
                         HTTPError, MissingArgumentError
 
-# pylint: disable=relative-import
 from auth import process_access_token
 from utils import call_request_hook, project_sns_dir, \
                   IS_VALID_GROUPNAME, check_filename, _IS_VALID_UUID, \
@@ -873,6 +872,7 @@ class StreamHandler(AuthRequestHandler):
             self.request_hook_enabled = request_hook_enabled
             if request_hook_enabled:
                 self.hook_path = CONFIG['backends']['disk'][backend]['request_hook']['path']
+                self.hook_sudo = CONFIG['backends']['disk'][backend]['request_hook']['sudo']
         except AssertionError as e:
             self.backend = backend
             logging.error('URI does not contain a valid pnum')
@@ -1133,7 +1133,9 @@ class StreamHandler(AuthRequestHandler):
                     pass
                 else:
                     if self.request_hook_enabled:
-                        call_request_hook(self.hook_path, [path, self.user, options.api_user, self.group_name])
+                        call_request_hook(self.hook_path,
+                                          [path, self.user, options.api_user, self.group_name],
+                                          as_sudo=self.hook_sudo)
             except Exception as e:
                 logging.info('could not change file mode or owner for some reason')
                 logging.info(e)
@@ -1152,7 +1154,9 @@ class StreamHandler(AuthRequestHandler):
                     pass
                 else:
                     if self.request_hook_enabled:
-                        call_request_hook(self.hook_path, [path, self.user, options.api_user, self.group_name])
+                        call_request_hook(self.hook_path,
+                                          [path, self.user, options.api_user, self.group_name],
+                                          as_sudo=self.hook_sudo)
                 logging.info('StreamHandler: Closed file after client closed connection')
         except AttributeError as e:
             logging.info(e)
