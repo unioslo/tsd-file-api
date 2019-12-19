@@ -48,6 +48,7 @@ import stat
 import shutil
 import fileinput
 import json
+import re
 
 from uuid import uuid4
 from sys import argv
@@ -69,7 +70,7 @@ from auth import process_access_token
 from utils import call_request_hook, project_sns_dir, \
                   IS_VALID_GROUPNAME, check_filename, _IS_VALID_UUID, \
                   md5sum, pnum_from_url, create_cluster_dir_if_not_exists
-from db import sqlite_insert, sqlite_init, _VALID_PNUM, \
+from db import sqlite_insert, sqlite_init, \
                sqlite_list_tables, sqlite_get_data, sqlite_update_data, \
                sqlite_delete_data
 from resumables import SerialResumable
@@ -92,6 +93,9 @@ try:
 except Exception as e:
     logging.error(e)
     raise e
+
+
+_VALID_PNUM = re.compile(r'^[0-9a-z]+$')
 
 
 define('port', default=CONFIG['port'])

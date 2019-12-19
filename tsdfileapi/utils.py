@@ -8,7 +8,6 @@ import subprocess
 import shlex
 
 
-_VALID_PNUM = re.compile(r'^[0-9a-z]+$')
 _VALID_FORMID = re.compile(r'^[0-9]+$')
 _IS_REALISTIC_PGP_KEY_FINGERPRINT = re.compile(r'^[0-9A-Z]{16}$')
 IS_VALID_GROUPNAME = re.compile(r'p+[0-9]+-[a-z-]')

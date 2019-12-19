@@ -19,7 +19,6 @@ from utils import check_filename, IllegalFilenameException
 from parser import SqlStatement
 
 
-_VALID_PNUM = re.compile(r'([0-9a-z])')
 _VALID_COLNAME = re.compile(r'([0-9a-z])')
 _VALID_TABLE_NAME = re.compile(r'([0-9a-z_])')
 
