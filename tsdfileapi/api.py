@@ -87,29 +87,31 @@ def read_config(filename):
     return conf
 
 
-try:
-    CONFIG_FILE = argv[1]
-    CONFIG = read_config(CONFIG_FILE)
-except Exception as e:
-    logging.error(e)
-    raise e
+def set_config():
+    try:
+        _config = read_config(argv[1])
+    except Exception as e:
+        logging.error(e)
+        raise e
+    define('config', _config)
+    define('port', _config['port'])
+    define('debug', _config['debug'])
+    define('api_user', _config['api_user'])
+    define('check_tenant', _config['token_check_tenant'])
+    define('check_exp', _config['token_check_exp'])
+    define('start_chars', _config['disallowed_start_chars'])
+    define('requestor_claim_name', _config['requestor_claim_name'])
+    define('tenant_claim_name', _config['tenant_claim_name'])
+    define('tenant_string_pattern', _config['tenant_string_pattern'])
+    define('export_chunk_size', _config['export_chunk_size'])
+    define('valid_tenant', re.compile(r'{}'.format(_config['valid_tenant_regex'])))
 
 
-define('config', CONFIG)
-define('port', default=CONFIG['port'])
-define('debug', default=CONFIG['debug'])
-define('api_user', CONFIG['api_user'])
-define('check_tenant', CONFIG['token_check_tenant'])
-define('check_exp', CONFIG['token_check_exp'])
-define('start_chars', CONFIG['disallowed_start_chars'])
-define('requestor_claim_name', CONFIG['requestor_claim_name'])
-define('tenant_claim_name', CONFIG['tenant_claim_name'])
-define('tenant_string_pattern', CONFIG['tenant_string_pattern'])
-define('export_chunk_size', CONFIG['export_chunk_size'])
-define('valid_tenant', re.compile(r'{}'.format(CONFIG['valid_tenant_regex'])))
+set_config()
 
 
 class AuthRequestHandler(RequestHandler):
+
 
     """
     All RequestHandler(s), with the exception of the HealthCheckHandler
