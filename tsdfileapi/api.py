@@ -95,6 +95,7 @@ except Exception as e:
     raise e
 
 
+define('config', CONFIG)
 define('port', default=CONFIG['port'])
 define('debug', default=CONFIG['debug'])
 define('api_user', CONFIG['api_user'])
@@ -216,11 +217,11 @@ class FileStreamerHandler(AuthRequestHandler):
             self.CHUNK_SIZE = options.export_chunk_size
             tenant = tenant_from_url(self.request.uri)
             assert options.valid_tenant.match(tenant)
-            self.backend_paths = CONFIG['backends']['disk'][backend]
+            self.backend_paths = options.config['backends']['disk'][backend]
             self.export_path_pattern = self.backend_paths['export_path']
             self.export_dir = self.export_path_pattern.replace(options.tenant_string_pattern, tenant)
             self.backend = backend
-            self.export_policy = CONFIG['backends']['disk'][backend]['export_policy']
+            self.export_policy = options.config['backends']['disk'][backend]['export_policy']
         except (AssertionError, Exception) as e:
             self.backend = None
             logging.error(e)
@@ -294,7 +295,7 @@ class FileStreamerHandler(AuthRequestHandler):
         """
         dir_map = os.listdir(path)
         files = list(dir_map)
-        if len(files) > CONFIG['export_max_num_list']:
+        if len(files) > options.config['export_max_num_list']:
             self.set_status(400)
             self.message = 'too many files, create a zip archive'
             raise Exception
@@ -553,11 +554,11 @@ class GenericFormDataHandler(AuthRequestHandler):
         try:
             tenant = tenant_from_url(self.request.uri)
             assert options.valid_tenant.match(tenant)
-            self.project_dir_pattern = CONFIG['backends']['disk'][backend]['import_path']
+            self.project_dir_pattern = options.config['backends']['disk'][backend]['import_path']
             self.tsd_hidden_folder = None
             self.backend = backend
             if backend == 'sns': # hope to deprecate this with new nettskjema integration
-                self.tsd_hidden_folder_pattern = CONFIG['backends']['disk'][backend]['subfolder_path']
+                self.tsd_hidden_folder_pattern = options.config['backends']['disk'][backend]['subfolder_path']
         except (Exception, AssertionError) as e:
             logging.error('could not initalize form data handler')
 
@@ -732,7 +733,7 @@ class ResumablesHandler(AuthRequestHandler):
             assert options.valid_tenant.match(tenant)
             # can deprecate once rsync is in place for cluster software install
             key = 'admin_path' if (backend == 'cluster' and tenant == 'p01') else 'import_path'
-            self.import_dir = CONFIG['backends']['disk']['files'][key]
+            self.import_dir = options.config['backends']['disk']['files'][key]
             if backend == 'cluster' and tenant != 'p01':
                 assert create_cluster_dir_if_not_exists(self.import_dir, tenant, options.tenant_string_pattern)
             self.project_dir = self.import_dir.replace(options.tenant_string_pattern, tenant)
@@ -850,7 +851,7 @@ class StreamHandler(AuthRequestHandler):
     """
 
     def decrypt_aes_key(self, b64encoded_pgpencrypted_key):
-        gpg = _import_keys(CONFIG)
+        gpg = _import_keys(options.config)
         key = base64.b64decode(b64encoded_pgpencrypted_key)
         decr_aes_key = str(gpg.decrypt(key)).strip()
         return decr_aes_key
@@ -931,15 +932,15 @@ class StreamHandler(AuthRequestHandler):
             tenant = tenant_from_url(self.request.uri)
             assert options.valid_tenant.match(tenant)
             key = 'admin_path' if (backend == 'cluster' and tenant == 'p01') else 'import_path'
-            self.import_dir = CONFIG['backends']['disk'][backend][key]
+            self.import_dir = options.config['backends']['disk'][backend][key]
             if backend == 'cluster' and tenant != 'p01':
                 assert create_cluster_dir_if_not_exists(self.import_dir, tenant, options.tenant_string_pattern)
             self.project_dir = self.import_dir.replace(options.tenant_string_pattern, tenant)
             self.backend = backend
             self.request_hook_enabled = request_hook_enabled
             if request_hook_enabled:
-                self.hook_path = CONFIG['backends']['disk'][backend]['request_hook']['path']
-                self.hook_sudo = CONFIG['backends']['disk'][backend]['request_hook']['sudo']
+                self.hook_path = options.config['backends']['disk'][backend]['request_hook']['path']
+                self.hook_sudo = options.config['backends']['disk'][backend]['request_hook']['sudo']
         except AssertionError as e:
             self.backend = backend
             logging.error('URI does not contain a valid tenant')
@@ -1424,7 +1425,7 @@ class GenericTableHandler(AuthRequestHandler):
             self.datatype = 'data'
         tenant = tenant_from_url(self.request.uri)
         assert options.valid_tenant.match(tenant)
-        self.import_dir = CONFIG['backends']['sqlite'][app]['db_path']
+        self.import_dir = options.config['backends']['sqlite'][app]['db_path']
         self.project_dir = self.import_dir.replace(options.tenant_string_pattern, tenant)
 
 
