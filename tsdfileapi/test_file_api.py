@@ -146,7 +146,7 @@ class TestFileApi(unittest.TestCase):
         cls.test_sns_dir = cls.config['backends']['disk']['sns']['import_path']
         cls.test_formid = cls.config['test_formid']
         cls.test_keyid = cls.config['test_keyid']
-        cls.sns_uploads_folder = project_sns_dir(cls.test_sns_dir, cls.config['test_project'], cls.test_sns_url, test=True)
+        cls.sns_uploads_folder = project_sns_dir(cls.test_sns_dir, cls.config['test_project'], cls.test_sns_url, cls.config['tenant_string_pattern'], test=True)
 
         # endpoints
         cls.upload = cls.base_url + '/files/upload'
@@ -161,6 +161,7 @@ class TestFileApi(unittest.TestCase):
         cls.store_import = cls.base_url + '/store/import'
         cls.store_export = cls.base_url + '/store/export'
         cls.test_project = cls.test_project
+        cls.tenant_string_pattern = cls.config['tenant_string_pattern']
 
         # auth tokens
         global TEST_TOKENS
@@ -779,15 +780,15 @@ class TestFileApi(unittest.TestCase):
     def test_ZB_sns_folder_logic_is_correct(self):
         # lowercase in key id
         self.assertRaises(Exception, project_sns_dir, self.test_sns_dir,
-                         'p11', '/v1/p11/sns/255cE5ED50A7558B/98765')
+                         'p11', '/v1/p11/sns/255cE5ED50A7558B/98765', self.tenant_string_pattern)
         # too long but still valid key id
         self.assertRaises(Exception, project_sns_dir, self.test_sns_dir,
-                         'p11', '/v1/p11/sns/255CE5ED50A7558BXIJIJ87878/98765')
+                         'p11', '/v1/p11/sns/255CE5ED50A7558BXIJIJ87878/98765', self.tenant_string_pattern)
         # non-numeric formid
         self.assertRaises(Exception, project_sns_dir, self.test_sns_dir,
-                         'p11', '255CE5ED50A7558B', '99999-%$%&*')
+                         'p11', '255CE5ED50A7558B', '99999-%$%&*', self.tenant_string_pattern)
         # note: /tsd/p11/data/durable _must_ exist for this test to pass
-        self.assertEqual(project_sns_dir(self.test_sns_dir, 'p11', self.test_sns_url),
+        self.assertEqual(project_sns_dir(self.test_sns_dir, 'p11', self.test_sns_url, self.tenant_string_pattern),
                          '/tsd/p11/data/durable/nettskjema-submissions/{0}/{1}'.format(self.test_keyid, self.test_formid))
         try:
             os.rmdir('/tsd/p11/data/durable/nettskjema-submissions/255CE5ED50A7558B/98765')

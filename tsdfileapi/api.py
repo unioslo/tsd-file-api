@@ -600,8 +600,8 @@ class GenericFormDataHandler(AuthRequestHandler):
     def write_file(self, filemode, filename, filebody, tenant):
         try:
             if self.backend == 'sns':
-                tsd_hidden_folder = project_sns_dir(self.tsd_hidden_folder_pattern, tenant, self.request.uri)
-                project_dir = project_sns_dir(self.project_dir_pattern, tenant, self.request.uri)
+                tsd_hidden_folder = project_sns_dir(self.tsd_hidden_folder_pattern, tenant, self.request.uri, options.tenant_string_pattern)
+                project_dir = project_sns_dir(self.project_dir_pattern, tenant, self.request.uri, options.tenant_string_pattern)
             else:
                 project_dir = self.project_dir_pattern.replace(options.tenant_string_pattern, tenant)
             self.path = os.path.normpath(project_dir + '/' + filename)

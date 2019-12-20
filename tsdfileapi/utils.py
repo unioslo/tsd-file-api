@@ -72,7 +72,7 @@ def create_cluster_dir_if_not_exists(path, tenant, tenant_string_pattern):
         raise Exception('{0} does not have a cluster disk space'.format(tenant))
 
 
-def project_sns_dir(base_pattern, tenant, uri, test=False):
+def project_sns_dir(base_pattern, tenant, uri, tenant_string_pattern, test=False):
     """
     Construct a path for sns uploads.
 
@@ -94,7 +94,7 @@ def project_sns_dir(base_pattern, tenant, uri, test=False):
         keyid = uri_parts[-2]
         assert _VALID_FORMID.match(formid)
         assert _IS_REALISTIC_PGP_KEY_FINGERPRINT.match(keyid)
-        folder = base_pattern.replace('pXX', tenant).replace('KEYID', keyid).replace('FORMID', formid)
+        folder = base_pattern.replace(tenant_string_pattern, tenant).replace('KEYID', keyid).replace('FORMID', formid)
         _path = os.path.normpath(folder)
         if test:
             return _path
