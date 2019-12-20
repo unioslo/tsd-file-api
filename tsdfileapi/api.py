@@ -67,7 +67,7 @@ from tornado.web import Application, RequestHandler, stream_request_body, \
                         HTTPError, MissingArgumentError
 
 from auth import process_access_token
-from utils import call_request_hook, project_sns_dir, \
+from utils import call_request_hook, sns_dir, \
                   IS_VALID_GROUPNAME, check_filename, _IS_VALID_UUID, \
                   md5sum, tenant_from_url, create_cluster_dir_if_not_exists
 from db import sqlite_insert, sqlite_init, \
@@ -236,8 +236,8 @@ class FileStreamerHandler(AuthRequestHandler):
 
         Checks
         ------
-        1. For all projects, check that the file name follows conventions
-        2. For the given project, if a policy is specified and enabled check:
+        1. For all tenants, check that the file name follows conventions
+        2. For the given tenant, if a policy is specified and enabled check:
             - file size does not exceed max allowed for export
             - MIME types conform to allowed types, if policy enabled
 
@@ -556,7 +556,7 @@ class GenericFormDataHandler(AuthRequestHandler):
         try:
             tenant = tenant_from_url(self.request.uri)
             assert options.valid_tenant.match(tenant)
-            self.project_dir_pattern = options.config['backends']['disk'][backend]['import_path']
+            self.tenant_dir_pattern = options.config['backends']['disk'][backend]['import_path']
             self.tsd_hidden_folder = None
             self.backend = backend
             if backend == 'sns': # hope to deprecate this with new nettskjema integration
@@ -602,11 +602,11 @@ class GenericFormDataHandler(AuthRequestHandler):
     def write_file(self, filemode, filename, filebody, tenant):
         try:
             if self.backend == 'sns':
-                tsd_hidden_folder = project_sns_dir(self.tsd_hidden_folder_pattern, tenant, self.request.uri, options.tenant_string_pattern)
-                project_dir = project_sns_dir(self.project_dir_pattern, tenant, self.request.uri, options.tenant_string_pattern)
+                tsd_hidden_folder = sns_dir(self.tsd_hidden_folder_pattern, tenant, self.request.uri, options.tenant_string_pattern)
+                tenant_dir = sns_dir(self.tenant_dir_pattern, tenant, self.request.uri, options.tenant_string_pattern)
             else:
-                project_dir = self.project_dir_pattern.replace(options.tenant_string_pattern, tenant)
-            self.path = os.path.normpath(project_dir + '/' + filename)
+                tenant_dir = self.tenant_dir_pattern.replace(options.tenant_string_pattern, tenant)
+            self.path = os.path.normpath(tenant_dir + '/' + filename)
             # add the partial file indicator, check existence
             self.path_part = self.path + '.' + str(uuid4()) + '.part'
             if os.path.lexists(self.path_part):
@@ -738,7 +738,7 @@ class ResumablesHandler(AuthRequestHandler):
             self.import_dir = options.config['backends']['disk']['files'][key]
             if backend == 'cluster' and tenant != 'p01':
                 assert create_cluster_dir_if_not_exists(self.import_dir, tenant, options.tenant_string_pattern)
-            self.project_dir = self.import_dir.replace(options.tenant_string_pattern, tenant)
+            self.tenant_dir = self.import_dir.replace(options.tenant_string_pattern, tenant)
         except AssertionError as e:
             raise e
 
@@ -766,11 +766,11 @@ class ResumablesHandler(AuthRequestHandler):
                 upload_id = url_unescape(self.get_query_argument('id'))
             except Exception:
                 pass
-            res = SerialResumable(self.project_dir, self.requestor)
+            res = SerialResumable(self.tenant_dir, self.requestor)
             if not filename:
-                info = res.list_all(self.project_dir, self.requestor)
+                info = res.list_all(self.tenant_dir, self.requestor)
             else:
-                info = res.info(self.project_dir, secured_filename, upload_id, self.requestor)
+                info = res.info(self.tenant_dir, secured_filename, upload_id, self.requestor)
             self.set_status(200)
             self.write(info)
         except Exception as e:
@@ -792,8 +792,8 @@ class ResumablesHandler(AuthRequestHandler):
                 upload_id = url_unescape(self.get_query_argument('id'))
             except Exception:
                 raise Exception('upload id required to delete resumable')
-            res = SerialResumable(self.project_dir, self.requestor)
-            assert res.delete(self.project_dir, filename, upload_id, self.requestor)
+            res = SerialResumable(self.tenant_dir, self.requestor)
+            assert res.delete(self.tenant_dir, filename, upload_id, self.requestor)
             self.set_status(200)
             self.write({'message': 'resumable deleted'})
         except Exception as e:
@@ -891,24 +891,24 @@ class StreamHandler(AuthRequestHandler):
         self.proc = self.start_openssl_proc(output_file=self.path, base64=False)
 
 
-    def handle_tar(self, content_type, project_dir):
+    def handle_tar(self, content_type, tenant_dir):
         if 'gz' in content_type:
             tarflags = '-xzf'
         else:
             tarflags = '-xf'
         self.custom_content_type = content_type
-        self.proc = subprocess.Popen(['tar', '-C', project_dir, tarflags, '-'],
+        self.proc = subprocess.Popen(['tar', '-C', tenant_dir, tarflags, '-'],
                                       stdin=subprocess.PIPE)
 
 
-    def handle_tar_aes(self, content_type, project_dir):
+    def handle_tar_aes(self, content_type, tenant_dir):
         if 'gz' in content_type:
             tarflags = '-xzf'
         else:
             tarflags = '-xf'
         self.custom_content_type = content_type
         self.openssl_proc = self.start_openssl_proc()
-        self.tar_proc = subprocess.Popen(['tar', '-C', project_dir, tarflags, '-'],
+        self.tar_proc = subprocess.Popen(['tar', '-C', tenant_dir, tarflags, '-'],
                                  stdin=self.openssl_proc.stdout)
 
 
@@ -937,7 +937,7 @@ class StreamHandler(AuthRequestHandler):
             self.import_dir = options.config['backends']['disk'][backend][key]
             if backend == 'cluster' and tenant != 'p01':
                 assert create_cluster_dir_if_not_exists(self.import_dir, tenant, options.tenant_string_pattern)
-            self.project_dir = self.import_dir.replace(options.tenant_string_pattern, tenant)
+            self.tenant_dir = self.import_dir.replace(options.tenant_string_pattern, tenant)
             self.backend = backend
             self.request_hook_enabled = request_hook_enabled
             if request_hook_enabled:
@@ -995,7 +995,7 @@ class StreamHandler(AuthRequestHandler):
                     filename = check_filename(url_unescape(uri_filename),
                                               disallowed_start_chars=options.start_chars)
                     if self.request.method == 'PATCH':
-                        self.res = SerialResumable(self.project_dir, self.requestor)
+                        self.res = SerialResumable(self.tenant_dir, self.requestor)
                         url_chunk_num = url_unescape(self.get_query_argument('chunk'))
                         url_upload_id = url_unescape(self.get_query_argument('id'))
                         url_group = url_unescape(self.get_query_argument('group'))
@@ -1003,13 +1003,13 @@ class StreamHandler(AuthRequestHandler):
                             self.upload_id, \
                             self.completed_resumable_file, \
                             self.chunk_order_correct, \
-                            filename = self.res.prepare(self.project_dir, filename,
+                            filename = self.res.prepare(self.tenant_dir, filename,
                                                          url_chunk_num, url_upload_id,
                                                          url_group, self.requestor)
                         if not self.chunk_order_correct:
                             raise Exception
                     # ensure we do not write to active file
-                    self.path = os.path.normpath(self.project_dir + '/' + filename)
+                    self.path = os.path.normpath(self.tenant_dir + '/' + filename)
                     self.path_part = self.path + '.' + str(uuid4()) + '.part'
                     if os.path.lexists(self.path_part):
                         logging.error('trying to write to partial file - killing request')
@@ -1029,9 +1029,9 @@ class StreamHandler(AuthRequestHandler):
                     elif content_type == 'application/aes-octet-stream':
                         self.handle_aes_octet_stream(content_type)
                     elif content_type in ['application/tar', 'application/tar.gz']:
-                        self.handle_tar(content_type, self.project_dir)
+                        self.handle_tar(content_type, self.tenant_dir)
                     elif content_type in ['application/tar.aes', 'application/tar.gz.aes']:
-                        self.handle_tar_aes(content_type, self.project_dir)
+                        self.handle_tar_aes(content_type, self.tenant_dir)
                     elif content_type == 'application/gz':
                         self.handle_gz(content_type, filemode)
                     elif content_type == 'application/gz.aes':
@@ -1162,11 +1162,11 @@ class StreamHandler(AuthRequestHandler):
             if not os.path.lexists(self.path_part):
                 os.rename(self.path, self.path_part)
                 filename = os.path.basename(self.path_part).split('.chunk')[0]
-                self.res.merge_chunk(self.project_dir, os.path.basename(self.path_part), self.upload_id, self.requestor)
+                self.res.merge_chunk(self.tenant_dir, os.path.basename(self.path_part), self.upload_id, self.requestor)
             else:
                 self.write({'message': 'chunk_order_incorrect'})
         else:
-            self.completed_resumable_filename = self.res.finalise(self.project_dir, os.path.basename(self.path_part),
+            self.completed_resumable_filename = self.res.finalise(self.tenant_dir, os.path.basename(self.path_part),
                                                                    self.upload_id, self.requestor)
             filename = os.path.basename(self.completed_resumable_filename)
         self.set_status(201)
@@ -1259,7 +1259,7 @@ class ProxyHandler(AuthRequestHandler):
             except Exception as e:
                 logging.error('Access token invalid')
                 raise e
-            # 3. Validate project number in URI
+            # 3. Validate tenant number in URI
             try:
                 tenant = tenant_from_url(self.request.uri)
                 assert options.valid_tenant.match(tenant)
@@ -1428,20 +1428,20 @@ class GenericTableHandler(AuthRequestHandler):
         tenant = tenant_from_url(self.request.uri)
         assert options.valid_tenant.match(tenant)
         self.import_dir = options.config['backends']['sqlite'][app]['db_path']
-        self.project_dir = self.import_dir.replace(options.tenant_string_pattern, tenant)
+        self.tenant_dir = self.import_dir.replace(options.tenant_string_pattern, tenant)
 
 
     def get(self, tenant, table_name=None):
         try:
             if not table_name:
                 self.authnz = self.process_token_and_extract_claims()
-                engine = sqlite_init(self.project_dir, name=self.db_name)
+                engine = sqlite_init(self.tenant_dir, name=self.db_name)
                 tables = sqlite_list_tables(engine)
                 self.set_status(200)
                 self.write({'tables': tables})
             else:
                 self.authnz = self.process_token_and_extract_claims()
-                engine = sqlite_init(self.project_dir, name=self.db_name, builtin=True)
+                engine = sqlite_init(self.tenant_dir, name=self.db_name, builtin=True)
                 data = sqlite_get_data(engine, table_name, self.request.uri)
                 if 'Accept' in self.request.headers:
                     if self.request.headers['Accept'] == 'text/csv':
@@ -1467,9 +1467,9 @@ class GenericTableHandler(AuthRequestHandler):
             self.authnz = self.process_token_and_extract_claims()
             data = json_decode(self.request.body)
             try:
-                engine = sqlite_init(self.project_dir, name=self.db_name)
+                engine = sqlite_init(self.tenant_dir, name=self.db_name)
                 sqlite_insert(engine, table_name, data)
-                os.chmod(self.project_dir + '/' + self.db_name, _RW______)
+                os.chmod(self.tenant_dir + '/' + self.db_name, _RW______)
                 self.set_status(201)
                 self.write({'message': 'data stored'})
             except Exception as e:
@@ -1484,7 +1484,7 @@ class GenericTableHandler(AuthRequestHandler):
     def patch(self, tenant, table_name):
         try:
             self.authnz = self.process_token_and_extract_claims()
-            engine = sqlite_init(self.project_dir, name=self.db_name, builtin=True)
+            engine = sqlite_init(self.tenant_dir, name=self.db_name, builtin=True)
             data = sqlite_update_data(engine, table_name, self.request.uri)
             self.set_status(200)
             self.write({'data': data})
@@ -1497,7 +1497,7 @@ class GenericTableHandler(AuthRequestHandler):
     def delete(self, tenant, table_name):
         try:
             self.authnz = self.process_token_and_extract_claims()
-            engine = sqlite_init(self.project_dir, name=self.db_name, builtin=True)
+            engine = sqlite_init(self.tenant_dir, name=self.db_name, builtin=True)
             data = sqlite_delete_data(engine, table_name, self.request.uri)
             self.set_status(200)
             self.write({'data': data})

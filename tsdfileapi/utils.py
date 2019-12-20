@@ -72,7 +72,7 @@ def create_cluster_dir_if_not_exists(path, tenant, tenant_string_pattern):
         raise Exception('{0} does not have a cluster disk space'.format(tenant))
 
 
-def project_sns_dir(base_pattern, tenant, uri, tenant_string_pattern, test=False):
+def sns_dir(base_pattern, tenant, uri, tenant_string_pattern, test=False):
     """
     Construct a path for sns uploads.
 

@@ -91,7 +91,7 @@ pretty_bad_protocol._parsers.Verify.TRUST_LEVELS["ENCRYPTION_COMPLIANCE_MODE"] =
 from tokens import gen_test_tokens, get_test_token_for_p12, gen_test_token_for_user
 from db import session_scope, sqlite_init
 from resumables import SerialResumable
-from utils import project_sns_dir, md5sum, IllegalFilenameException
+from utils import sns_dir, md5sum, IllegalFilenameException
 from pgp import _import_keys
 
 
@@ -146,7 +146,7 @@ class TestFileApi(unittest.TestCase):
         cls.test_sns_dir = cls.config['backends']['disk']['sns']['import_path']
         cls.test_formid = cls.config['test_formid']
         cls.test_keyid = cls.config['test_keyid']
-        cls.sns_uploads_folder = project_sns_dir(cls.test_sns_dir, cls.config['test_project'], cls.test_sns_url, cls.config['tenant_string_pattern'], test=True)
+        cls.sns_uploads_folder = sns_dir(cls.test_sns_dir, cls.config['test_project'], cls.test_sns_url, cls.config['tenant_string_pattern'], test=True)
 
         # endpoints
         cls.upload = cls.base_url + '/files/upload'
@@ -779,16 +779,16 @@ class TestFileApi(unittest.TestCase):
 
     def test_ZB_sns_folder_logic_is_correct(self):
         # lowercase in key id
-        self.assertRaises(Exception, project_sns_dir, self.test_sns_dir,
+        self.assertRaises(Exception, sns_dir, self.test_sns_dir,
                          'p11', '/v1/p11/sns/255cE5ED50A7558B/98765', self.tenant_string_pattern)
         # too long but still valid key id
-        self.assertRaises(Exception, project_sns_dir, self.test_sns_dir,
+        self.assertRaises(Exception, sns_dir, self.test_sns_dir,
                          'p11', '/v1/p11/sns/255CE5ED50A7558BXIJIJ87878/98765', self.tenant_string_pattern)
         # non-numeric formid
-        self.assertRaises(Exception, project_sns_dir, self.test_sns_dir,
+        self.assertRaises(Exception, sns_dir, self.test_sns_dir,
                          'p11', '255CE5ED50A7558B', '99999-%$%&*', self.tenant_string_pattern)
         # note: /tsd/p11/data/durable _must_ exist for this test to pass
-        self.assertEqual(project_sns_dir(self.test_sns_dir, 'p11', self.test_sns_url, self.tenant_string_pattern),
+        self.assertEqual(sns_dir(self.test_sns_dir, 'p11', self.test_sns_url, self.tenant_string_pattern),
                          '/tsd/p11/data/durable/nettskjema-submissions/{0}/{1}'.format(self.test_keyid, self.test_formid))
         try:
             os.rmdir('/tsd/p11/data/durable/nettskjema-submissions/255CE5ED50A7558B/98765')
