@@ -95,9 +95,6 @@ except Exception as e:
     raise e
 
 
-_VALID_TENANT = re.compile(r'{}'.format(CONFIG['valid_tenant_regex']))
-
-
 define('port', default=CONFIG['port'])
 define('debug', default=CONFIG['debug'])
 define('api_user', CONFIG['api_user'])
@@ -107,6 +104,8 @@ define('start_chars', CONFIG['disallowed_start_chars'])
 define('requestor_claim_name', CONFIG['requestor_claim_name'])
 define('tenant_claim_name', CONFIG['tenant_claim_name'])
 define('tenant_string_pattern', CONFIG['tenant_string_pattern'])
+define('export_chunk_size', CONFIG['export_chunk_size'])
+define('valid_tenant', re.compile(r'{}'.format(CONFIG['valid_tenant_regex'])))
 
 
 class AuthRequestHandler(RequestHandler):
@@ -178,7 +177,7 @@ class AuthRequestHandler(RequestHandler):
                 raise Exception('Authorization not possible: malformed header')
             try:
                 tenant = tenant_from_url(self.request.uri)
-                assert _VALID_TENANT.match(tenant)
+                assert options.valid_tenant.match(tenant)
                 self.tenant = tenant
             except AssertionError as e:
                 logging.error(e.message)
@@ -211,12 +210,12 @@ class FileStreamerHandler(AuthRequestHandler):
 
     """List the export directory, or serve files from it."""
 
-    CHUNK_SIZE = CONFIG['export_chunk_size']
 
     def initialize(self, backend):
         try:
+            self.CHUNK_SIZE = options.export_chunk_size
             tenant = tenant_from_url(self.request.uri)
-            assert _VALID_TENANT.match(tenant)
+            assert options.valid_tenant.match(tenant)
             self.backend_paths = CONFIG['backends']['disk'][backend]
             self.export_path_pattern = self.backend_paths['export_path']
             self.export_dir = self.export_path_pattern.replace(options.tenant_string_pattern, tenant)
@@ -403,7 +402,7 @@ class FileStreamerHandler(AuthRequestHandler):
                     self.message = 'Not authorized to export data'
                 self.set_status(401)
                 raise Exception
-            assert _VALID_TENANT.match(tenant)
+            assert options.valid_tenant.match(tenant)
             self.path = self.export_dir
             if not filename:
                 self.list_files(self.path, tenant)
@@ -513,7 +512,7 @@ class FileStreamerHandler(AuthRequestHandler):
                     self.message = 'Not authorized to export data'
                 self.set_status(401)
                 raise Exception
-            assert _VALID_TENANT.match(tenant)
+            assert options.valid_tenant.match(tenant)
             self.path = self.export_dir
             if not filename:
                 raise Exception('No info to report')
@@ -553,7 +552,7 @@ class GenericFormDataHandler(AuthRequestHandler):
     def initialize(self, backend):
         try:
             tenant = tenant_from_url(self.request.uri)
-            assert _VALID_TENANT.match(tenant)
+            assert options.valid_tenant.match(tenant)
             self.project_dir_pattern = CONFIG['backends']['disk'][backend]['import_path']
             self.tsd_hidden_folder = None
             self.backend = backend
@@ -730,7 +729,7 @@ class ResumablesHandler(AuthRequestHandler):
     def initialize(self, backend):
         try:
             tenant = tenant_from_url(self.request.uri)
-            assert _VALID_TENANT.match(tenant)
+            assert options.valid_tenant.match(tenant)
             # can deprecate once rsync is in place for cluster software install
             key = 'admin_path' if (backend == 'cluster' and tenant == 'p01') else 'import_path'
             self.import_dir = CONFIG['backends']['disk']['files'][key]
@@ -930,7 +929,7 @@ class StreamHandler(AuthRequestHandler):
     def initialize(self, backend, request_hook_enabled=False):
         try:
             tenant = tenant_from_url(self.request.uri)
-            assert _VALID_TENANT.match(tenant)
+            assert options.valid_tenant.match(tenant)
             key = 'admin_path' if (backend == 'cluster' and tenant == 'p01') else 'import_path'
             self.import_dir = CONFIG['backends']['disk'][backend][key]
             if backend == 'cluster' and tenant != 'p01':
@@ -978,7 +977,7 @@ class StreamHandler(AuthRequestHandler):
                 try:
                     tenant = tenant_from_url(self.request.uri)
                     self.tenant = tenant
-                    assert _VALID_TENANT.match(tenant)
+                    assert options.valid_tenant.match(tenant)
                 except AssertionError as e:
                     logging.error('URI does not contain a valid tenant')
                     raise e
@@ -1260,7 +1259,7 @@ class ProxyHandler(AuthRequestHandler):
             # 3. Validate project number in URI
             try:
                 tenant = tenant_from_url(self.request.uri)
-                assert _VALID_TENANT.match(tenant)
+                assert options.valid_tenant.match(tenant)
             except AssertionError as e:
                 logging.error('URI does not contain a valid tenant')
                 raise e
@@ -1424,7 +1423,7 @@ class GenericTableHandler(AuthRequestHandler):
         else:
             self.datatype = 'data'
         tenant = tenant_from_url(self.request.uri)
-        assert _VALID_TENANT.match(tenant)
+        assert options.valid_tenant.match(tenant)
         self.import_dir = CONFIG['backends']['sqlite'][app]['db_path']
         self.project_dir = self.import_dir.replace(options.tenant_string_pattern, tenant)
 
