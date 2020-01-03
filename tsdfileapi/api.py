@@ -970,6 +970,7 @@ class StreamHandler(AuthRequestHandler):
             self.path = None
             self.path_part = None
             self.chunk_order_correct = True
+            self.chunk_num = None
             filemodes = {'POST': 'ab+', 'PUT': 'wb+', 'PATCH': 'wb+'}
             try:
                 self.authnz = self.process_token_and_extract_claims()
@@ -1239,7 +1240,8 @@ class ProxyHandler(AuthRequestHandler):
         self.storage_backend = backend
         try:
             disabled_group_config = {
-                'default_url_group': None,
+                'enabled': False,
+                'default_url_group': '',
                 'default_memberships': [],
                 'ensure_tenant_in_group_name': False,
                 'valid_group_regex': None,
@@ -1251,13 +1253,15 @@ class ProxyHandler(AuthRequestHandler):
         except Exception as e:
             self.group_config = disabled_group_config
 
-    def get_group_info(self, tenant, group_config):
+    def get_group_info(self, tenant, group_config, authnz_status):
         """
         Set intended group owner of resource, and extract memberships
         of the requestor, falling back to configured defaults, depending
         on the backend.
 
         """
+        if not group_config['enabled']:
+            return group_config['default_url_group'], group_config['default_memberships']
         try:
             group_name = url_unescape(self.get_query_argument('group'))
         except Exception as e:
@@ -1293,19 +1297,19 @@ class ProxyHandler(AuthRequestHandler):
             if group_config['valid_group_regex']:
                 is_valid_groupname = re.compile(r'{}'.format(group_config['valid_group_regex']))
                 assert is_valid_groupname.match(group_name)
-        except AssertionError as e:
+        except (AssertionError, Exception) as e:
             logging.error('invalid group name: %s', group_name)
             raise e
         try:
             if group_config['ensure_tenant_in_group_name']:
                 assert tenant in group_name
-        except AssertionError as e:
+        except (AssertionError, Exception) as e:
             logging.error('tenant %s not in group name: %s', tenant, group_name)
             raise e
         try:
             if group_config['enforce_membership']:
                 assert group_name in group_memberships
-        except AssertionError as e:
+        except (AssertionError, Exception) as e:
            logging.error('user not member of group')
            raise e
 
@@ -1353,8 +1357,13 @@ class ProxyHandler(AuthRequestHandler):
                 self.filename = datetime.datetime.now().isoformat() + '.txt'
                 logging.info("filename not found - setting filename to: %s", self.filename)
             # 5. Validate groups
-            group_name, group_memberships = self.get_group_info(tenant, self.group_config)
-            self.enforce_group_logic(group_name, group_memberships, tenant, self.group_config)
+            try:
+                group_name, group_memberships = self.get_group_info(tenant, self.group_config, authnz_status)
+                self.enforce_group_logic(group_name, group_memberships, tenant, self.group_config)
+            except Exception as e:
+                logging.error(e)
+                logging.error('could not perform group checks')
+                raise e
             # 6. Set headers for internal request
             try:
                 if 'Content-Type' not in self.request.headers.keys():
