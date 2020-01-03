@@ -1238,11 +1238,18 @@ class ProxyHandler(AuthRequestHandler):
     def initialize(self, backend):
         self.storage_backend = backend
         try:
+            disabled_group_config = {
+                'default_url_group': None,
+                'default_memberships': [],
+                'ensure_tenant_in_group_name': False,
+                'valid_group_regex': None,
+                'enforce_membership': False
+            }
             self.group_config = options.config['backends']['disk'][backend]['group_logic']
+            if not self.group_config['enabled']:
+                self.group_config = disabled_group_config
         except Exception as e:
-            # TODO: also use this when group logic is not enabled
-            # use api user group if nothing is provided
-            self.group_config = {'default_url_group': None, 'default_membership': []}
+            self.group_config = disabled_group_config
 
     def get_group_info(self, tenant, group_config):
         """
