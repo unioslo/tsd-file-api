@@ -998,14 +998,13 @@ class StreamHandler(AuthRequestHandler):
                         self.res = SerialResumable(self.tenant_dir, self.requestor)
                         url_chunk_num = url_unescape(self.get_query_argument('chunk'))
                         url_upload_id = url_unescape(self.get_query_argument('id'))
-                        url_group = url_unescape(self.get_query_argument('group'))
                         self.chunk_num, \
                             self.upload_id, \
                             self.completed_resumable_file, \
                             self.chunk_order_correct, \
                             filename = self.res.prepare(self.tenant_dir, filename,
-                                                         url_chunk_num, url_upload_id,
-                                                         url_group, self.requestor)
+                                                        url_chunk_num, url_upload_id,
+                                                        self.group_name, self.requestor)
                         if not self.chunk_order_correct:
                             raise Exception
                     # ensure we do not write to active file
@@ -1243,7 +1242,7 @@ class ProxyHandler(AuthRequestHandler):
         except Exception as e:
             # TODO: also use this when group logic is not enabled
             # use api user group if nothing is provided
-            self.group_config = {'default_url_group': None, 'default_membership': None}
+            self.group_config = {'default_url_group': None, 'default_membership': []}
 
     def get_group_info(self, tenant, group_config):
         """
