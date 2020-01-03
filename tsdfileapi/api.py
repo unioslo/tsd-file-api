@@ -1239,6 +1239,39 @@ class ProxyHandler(AuthRequestHandler):
     def initialize(self, backend):
         self.storage_backend = backend
 
+
+    def get_group_info(self, tenant):
+        try:
+            group_name = url_unescape(self.get_query_argument('group'))
+        except Exception as e:
+            logging.info('no group specified - choosing default: member-group')
+            group_name = tenant + '-member-group'
+        # get group memberships, default
+        try:
+            group_memberships = authnz_status['claims']['groups']
+        except Exception as e:
+            logging.info('Could not get group info from JWT - choosing default: member-group')
+            default_membership = tenant + '-member-group'
+            group_memberships = [default_membership]
+        return group_name, group_memberships
+
+    def validate_group_info(self, group_name, group_memberships, tenant):
+        try:
+            assert IS_VALID_GROUPNAME.match(group_name)
+        except AssertionError as e:
+            logging.error('invalid group name: %s', group_name)
+            raise e
+        try:
+            assert tenant == group_name.split('-')[0]
+        except AssertionError as e:
+            logging.error('tenant in url: %s and group name: %s do not match', self.request.uri, group_name)
+            raise e
+        try:
+            assert group_name in group_memberships
+        except AssertionError as e:
+           logging.error('user not member of group')
+           raise e
+
     @gen.coroutine
     def prepare(self):
         """Called after headers have been read."""
@@ -1282,35 +1315,9 @@ class ProxyHandler(AuthRequestHandler):
             except KeyError:
                 self.filename = datetime.datetime.now().isoformat() + '.txt'
                 logging.info("filename not found - setting filename to: %s", self.filename)
-            # 5. Validate group name
-            try:
-                group_memberships = authnz_status['claims']['groups']
-                try:
-                    group_name = url_unescape(self.get_query_argument('group'))
-                except Exception as e:
-                    logging.info('no group specified - choosing default: member-group')
-                    group_name = tenant + '-member-group'
-            except Exception as e:
-                logging.info('Could not get group info from JWT - choosing default: member-group')
-                # this happens with basic auth, anonymous end-users
-                # then we only allow upload the member group
-                group_name = tenant + '-member-group'
-                group_memberships = [group_name]
-            try:
-                assert IS_VALID_GROUPNAME.match(group_name)
-            except AssertionError as e:
-                logging.error('invalid group name: %s', group_name)
-                raise e
-            try:
-                assert tenant == group_name.split('-')[0]
-            except AssertionError as e:
-                logging.error('tenant in url: %s and group name: %s do not match', self.request.uri, group_name)
-                raise e
-            try:
-                assert group_name in group_memberships
-            except AssertionError as e:
-               logging.error('user not member of group')
-               raise e
+            # 5. Validate groups
+            group_name, group_memberships = self.get_group_info(tenant)
+            self.validate_group_info(group_name, group_memberships, tenant)
             # 6. Set headers for internal request
             try:
                 if 'Content-Type' not in self.request.headers.keys():

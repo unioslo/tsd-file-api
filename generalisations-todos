@@ -1,0 +1,24 @@
+todos
+-----
+
+configurable group logic
+    - option to enforce group membership
+    - only relevant if posix backend
+    - should be done along with new url which will replace /stream
+
+possibility to run without authz, defaulting to api user
+    - for api only usage, e.g.
+
+optional hooks for form-data
+    - for consistency
+
+chowner
+    - generalise
+    - own repo
+
+resumables
+    - own repo
+
+update docs
+    - that api needs sudo on chmod
+    - etc
