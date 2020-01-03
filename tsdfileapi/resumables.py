@@ -156,7 +156,9 @@ class SerialResumable(AbstractResumable):
     def _init_db(self, owner, work_dir):
         dbname = '{0}{1}{2}'.format('.resumables-', owner, '.db')
         rdb = db_init(work_dir, name=dbname)
-        os.chmod('{0}/{1}'.format(work_dir, dbname), _RW______)
+        db_path = '{0}/{1}'.format(work_dir, dbname)
+        if os.path.lexists(db_path):
+            os.chmod(db_path, _RW______)
         return rdb
 
     def prepare(self, work_dir, in_filename, url_chunk_num, url_upload_id, url_group, owner):
