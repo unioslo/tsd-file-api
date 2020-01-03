@@ -68,7 +68,7 @@ from tornado.web import Application, RequestHandler, stream_request_body, \
 
 from auth import process_access_token
 from utils import call_request_hook, sns_dir, \
-                  IS_VALID_GROUPNAME, check_filename, _IS_VALID_UUID, \
+                  check_filename, _IS_VALID_UUID, \
                   md5sum, tenant_from_url, create_cluster_dir_if_not_exists
 from db import sqlite_insert, sqlite_init, \
                sqlite_list_tables, sqlite_get_data, sqlite_update_data, \
@@ -1238,36 +1238,67 @@ class ProxyHandler(AuthRequestHandler):
 
     def initialize(self, backend):
         self.storage_backend = backend
+        try:
+            self.group_config = options.config['backends']['disk'][backend]['group_logic']
+        except Exception as e:
+            # TODO: also use this when group logic is not enabled
+            # use api user group if nothing is provided
+            self.group_config = {'default_url_group': None, 'default_membership': None}
 
+    def get_group_info(self, tenant, group_config):
+        """
+        Set intended group owner of resource, and extract memberships
+        of the requestor, falling back to configured defaults, depending
+        on the backend.
 
-    def get_group_info(self, tenant):
+        """
         try:
             group_name = url_unescape(self.get_query_argument('group'))
         except Exception as e:
-            logging.info('no group specified - choosing default: member-group')
-            group_name = tenant + '-member-group'
-        # get group memberships, default
+            default_url_group = group_config['default_url_group']
+            if options.tenant_string_pattern in default_url_group:
+                group_name = default_url_group.replace(options.tenant_string_pattern, tenant)
+            logging.info('no group owner specified - defaulting to %s', group_name)
         try:
             group_memberships = authnz_status['claims']['groups']
         except Exception as e:
-            logging.info('Could not get group info from JWT - choosing default: member-group')
-            default_membership = tenant + '-member-group'
-            group_memberships = [default_membership]
+            logging.info('Could not get group memberships - choosing default memberships')
+            default_membership = group_config['default_memberships']
+            group_memberships = []
+            for group in default_membership:
+                if options.tenant_string_pattern in group:
+                    new = group.replace(options.tenant_string_pattern, tenant)
+                else:
+                    new = group
+                group_memberships.append(new)
         return group_name, group_memberships
 
-    def validate_group_info(self, group_name, group_memberships, tenant):
+    def enforce_group_logic(self, group_name, group_memberships, tenant, group_config):
+        """
+        Optionally check that:
+            - provided group name matches group name regex pattern
+            - tenant name contained in provided group name
+            - requestor is member of provided group name
+
+        """
+        if not group_config['enabled']:
+            return
         try:
-            assert IS_VALID_GROUPNAME.match(group_name)
+            if group_config['valid_group_regex']:
+                is_valid_groupname = re.compile(r'{}'.format(group_config['valid_group_regex']))
+                assert is_valid_groupname.match(group_name)
         except AssertionError as e:
             logging.error('invalid group name: %s', group_name)
             raise e
         try:
-            assert tenant == group_name.split('-')[0]
+            if group_config['ensure_tenant_in_group_name']:
+                assert tenant in group_name
         except AssertionError as e:
-            logging.error('tenant in url: %s and group name: %s do not match', self.request.uri, group_name)
+            logging.error('tenant %s not in group name: %s', tenant, group_name)
             raise e
         try:
-            assert group_name in group_memberships
+            if group_config['enforce_membership']:
+                assert group_name in group_memberships
         except AssertionError as e:
            logging.error('user not member of group')
            raise e
@@ -1316,8 +1347,8 @@ class ProxyHandler(AuthRequestHandler):
                 self.filename = datetime.datetime.now().isoformat() + '.txt'
                 logging.info("filename not found - setting filename to: %s", self.filename)
             # 5. Validate groups
-            group_name, group_memberships = self.get_group_info(tenant)
-            self.validate_group_info(group_name, group_memberships, tenant)
+            group_name, group_memberships = self.get_group_info(tenant, self.group_config)
+            self.enforce_group_logic(group_name, group_memberships, tenant, self.group_config)
             # 6. Set headers for internal request
             try:
                 if 'Content-Type' not in self.request.headers.keys():
