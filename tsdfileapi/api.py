@@ -561,6 +561,7 @@ class GenericFormDataHandler(AuthRequestHandler):
             self.backend = backend
             if backend == 'sns': # hope to deprecate this with new nettskjema integration
                 self.tsd_hidden_folder_pattern = options.config['backends']['disk'][backend]['subfolder_path']
+            self.request_hook = options.config['backends']['disk'][backend]['request_hook']
         except (Exception, AssertionError) as e:
             logging.error('could not initalize form data handler')
 
@@ -636,6 +637,17 @@ class GenericFormDataHandler(AuthRequestHandler):
             logging.error(e)
             logging.error('Could not write to file')
             return False
+
+    def on_finish(self):
+        if self.request.method in ('PUT','POST', 'PATCH'):
+            try:
+                if self.request_hook['enabled']:
+                    call_request_hook(self.request_hook['path'],
+                                      [path, self.requestor, options.api_user, self.group_name],
+                                      as_sudo=self.request_hook['sudo'])
+            except Exception as e:
+                logging.error(e)
+
 
 
 class FormDataHandler(GenericFormDataHandler):
