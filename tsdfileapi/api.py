@@ -941,7 +941,7 @@ class StreamHandler(AuthRequestHandler):
                                              stdout=self.target_file)
 
 
-    def initialize(self, backend, request_hook_enabled=False):
+    def initialize(self, backend):
         try:
             tenant = tenant_from_url(self.request.uri)
             assert options.valid_tenant.match(tenant)
@@ -951,10 +951,7 @@ class StreamHandler(AuthRequestHandler):
                 assert create_cluster_dir_if_not_exists(self.import_dir, tenant, options.tenant_string_pattern)
             self.tenant_dir = self.import_dir.replace(options.tenant_string_pattern, tenant)
             self.backend = backend
-            self.request_hook_enabled = request_hook_enabled
-            if request_hook_enabled:
-                self.hook_path = options.config['backends']['disk'][backend]['request_hook']['path']
-                self.hook_sudo = options.config['backends']['disk'][backend]['request_hook']['sudo']
+            self.request_hook = options.config['backends']['disk'][backend]['request_hook']
         except AssertionError as e:
             self.backend = backend
             logging.error('URI does not contain a valid tenant')
@@ -1214,10 +1211,10 @@ class StreamHandler(AuthRequestHandler):
                 if self.backend == 'cluster' and self.tenant != 'p01': # TODO: remove special case
                     pass
                 else:
-                    if self.request_hook_enabled:
-                        call_request_hook(self.hook_path,
+                    if self.request_hook['enabled']:
+                        call_request_hook(self.request_hook['path'],
                                           [path, self.requestor, options.api_user, self.group_name],
-                                          as_sudo=self.hook_sudo)
+                                          as_sudo=self.request_hook['sudo'])
             except Exception as e:
                 logging.info('could not change file mode or owner for some reason')
                 logging.info(e)
@@ -1235,10 +1232,10 @@ class StreamHandler(AuthRequestHandler):
                 if self.backend == 'cluster' and tenant != 'p01':  # TODO: remove special case
                     pass
                 else:
-                    if self.request_hook_enabled:
-                        call_request_hook(self.hook_path,
+                    if self.request_hook['enabled']:
+                        call_request_hook(self.request_hook['path'],
                                           [path, self.requestor, options.api_user, self.group_name],
-                                          as_sudo=self.hook_sudo)
+                                          as_sudo=self.request_hook['sudo'])
                 logging.info('StreamHandler: Closed file after client closed connection')
         except AttributeError as e:
             logging.info(e)
@@ -1585,8 +1582,8 @@ def main():
         # Note: the name of the storage backend is the same as the URL fragment
         ('/v1/(.*)/files/health', HealthCheckHandler),
         # hpc storage
-        ('/v1/(.*)/cluster/upload_stream', StreamHandler, dict(backend='cluster', request_hook_enabled=True)),
-        ('/v1/(.*)/cluster/upload_stream/(.*)', StreamHandler, dict(backend='cluster', request_hook_enabled=True)),
+        ('/v1/(.*)/cluster/upload_stream', StreamHandler, dict(backend='cluster')),
+        ('/v1/(.*)/cluster/upload_stream/(.*)', StreamHandler, dict(backend='cluster')),
         ('/v1/(.*)/cluster/stream', ProxyHandler, dict(backend='cluster')),
         ('/v1/(.*)/cluster/stream/(.*)', ProxyHandler, dict(backend='cluster')),
         ('/v1/(.*)/cluster/resumables', ResumablesHandler, dict(backend='cluster')),
@@ -1594,8 +1591,8 @@ def main():
         ('/v1/(.*)/cluster/export', FileStreamerHandler, dict(backend='cluster')),
         ('/v1/(.*)/cluster/export/(.*)', FileStreamerHandler, dict(backend='cluster')),
         # project storage
-        ('/v1/(.*)/files/upload_stream', StreamHandler, dict(backend='files', request_hook_enabled=True)),
-        ('/v1/(.*)/files/upload_stream/(.*)', StreamHandler, dict(backend='files', request_hook_enabled=True)),
+        ('/v1/(.*)/files/upload_stream', StreamHandler, dict(backend='files')),
+        ('/v1/(.*)/files/upload_stream/(.*)', StreamHandler, dict(backend='files')),
         ('/v1/(.*)/files/stream', ProxyHandler, dict(backend='files')),
         ('/v1/(.*)/files/stream/(.*)', ProxyHandler, dict(backend='files')),
         ('/v1/(.*)/files/resumables', ResumablesHandler, dict(backend='files')),
@@ -1613,8 +1610,8 @@ def main():
         ('/v1/(.*)/files/upload', FormDataHandler, dict(backend='form_data')),
         ('/v1/(.*)/sns/(.*)/(.*)', SnsFormDataHandler, dict(backend='sns')),
         # store system
-        ('/v1/(.*)/store/upload_stream', StreamHandler, dict(backend='store', request_hook_enabled=False)),
-        ('/v1/(.*)/store/upload_stream/(.*)', StreamHandler, dict(backend='store', request_hook_enabled=False)),
+        ('/v1/(.*)/store/upload_stream', StreamHandler, dict(backend='store')),
+        ('/v1/(.*)/store/upload_stream/(.*)', StreamHandler, dict(backend='store')),
         ('/v1/(.*)/store/import', ProxyHandler, dict(backend='store')),
         ('/v1/(.*)/store/import/(.*)', ProxyHandler, dict(backend='store')),
         ('/v1/(.*)/store/resumables', ResumablesHandler, dict(backend='store')),
