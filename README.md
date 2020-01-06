@@ -5,9 +5,6 @@ A REST API for upload and streaming of files to TSD.
 
 ## Dev environment
 
-1) Install the Auth API
-2) Install the File API
-
 ```bash
 git clone ssh://git@bitbucket.usit.uio.no:7999/tsd/tsd-file-api.git
 cd tsd-file-api
@@ -20,7 +17,8 @@ gpg --import tsdfileapi/keys/private.pem
 mkdir -p /tmp/p12/data/durable/api
 mkdir -p /tmp/p11/fx/import_alt/lanthir
 mkdir -p /tmp/p11/fx/import/sns-test
-# create config files, see tsdfileapi/config/file-api-config.yaml.example
+# create a config file,
+# see tsdfileapi/config/example-file-api-config.yaml
 python3 tsdfileapi/api.py test-config.yaml
 python3 tsdfileapi/test_file_api.py test-config.yaml
 ```
