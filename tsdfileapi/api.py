@@ -562,6 +562,8 @@ class GenericFormDataHandler(AuthRequestHandler):
             if backend == 'sns': # hope to deprecate this with new nettskjema integration
                 self.tsd_hidden_folder_pattern = options.config['backends']['disk'][backend]['subfolder_path']
             self.request_hook = options.config['backends']['disk'][backend]['request_hook']
+            # TODO: decide about this:
+            self.group_name = None # this handler does not (yet) have any notion of a group
         except (Exception, AssertionError) as e:
             logging.error('could not initalize form data handler')
 
