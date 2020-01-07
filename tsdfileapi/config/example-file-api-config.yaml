@@ -2,7 +2,7 @@
 # API wide
 port: 3003
 debug: True
-api_user: 'leondutoit'
+api_user: 'nobody'
 token_check_tenant: True
 token_check_exp: True
 disallowed_start_chars: ''
@@ -103,7 +103,7 @@ data_folder: '~/tsd-file-api/tsdfileapi/data'
 test_project: 'p11'
 test_keyid: '264CE5ED60A7548B'
 test_formid: '123456'
-test_user: 'p11-leoncd'
+test_user: 'p11-nobody'
 test_group: 'p11-some-group'
 public_key_id: '264CE5ED60A7548B'
 gpg_binary: '/usr/local/bin/gpg'

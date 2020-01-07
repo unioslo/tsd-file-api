@@ -1,10 +1,7 @@
 #!/bin env python
 
 """
-Called with sudo as a sub-process by the file-api once the data
-is written, to move the data to a group folder and to set the
-permissions (user:group) to the identity of the authenticated user
-and the group.
+Called in a sub-process by the file-api as a request hook:
 
 subprocess.call(['sudo', '/bin/chowner', 'path-to-file', 'username', api_user, group_name])
 
@@ -12,8 +9,8 @@ Setup
 -----
 visudo -f /etc/sudoers.d/<fileapiuser>
 
-Defaults:fileapi            !requiretty
-fileapi ALL = (ALL) NOPASSWD: <path/to/executable>
+Defaults:fileapiuser            !requiretty
+fileapiuser ALL = (ALL) NOPASSWD: <path/to/executable>
 
 """
 
