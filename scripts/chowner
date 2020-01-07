@@ -24,7 +24,7 @@ import shutil
 import glob
 import stat
 
-IS_VALID_USERNAME = re.compile(r'p[0-9]+-[A-Za-z0-9]+$')
+IS_VALID_USERNAME = re.compile(r'p[0-9]+-[A-Za-z0-9_]+$')
 IS_VALID_GROUPNAME = re.compile(r'p[0-9]+-[a-z-]+-group$')
 
 def pnum_is_consistent_in_user_input(path, user_name, group_name=None):

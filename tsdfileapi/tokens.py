@@ -9,7 +9,6 @@ import time
 from datetime import datetime, timedelta
 
 from jwcrypto import jwt, jwk
-from structlog import get_logger
 
 def rand_gen():
     alt1 = string.ascii_letters[random.randint(0, len(string.ascii_letters) - 1)]
