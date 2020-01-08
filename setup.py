@@ -28,5 +28,5 @@ setup(
             'config/file-api.service',
         ]
     },
-    scripts=['scripts/fileapi', 'scripts/chowner']
+    scripts=['scripts/fileapi', 'scripts/generic-chowner']
 )
