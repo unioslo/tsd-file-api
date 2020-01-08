@@ -3,7 +3,7 @@
 """
 Called in a sub-process by the file-api as a request hook:
 
-subprocess.call(['sudo', '/bin/chowner', 'path-to-file', 'username', api_user, group_name])
+subprocess.call(['sudo', '/bin/generic-chowner', 'path-to-file', 'username', api_user, group_name])
 
 Setup
 -----
