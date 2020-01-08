@@ -569,6 +569,7 @@ class GenericFormDataHandler(AuthRequestHandler):
 
     def prepare(self):
         try:
+            self.new_paths = []
             self.authnz = self.process_token_and_extract_claims()
             if not self.authnz:
                 self.set_status(401)
@@ -625,11 +626,13 @@ class GenericFormDataHandler(AuthRequestHandler):
                 f.write(filebody)
                 os.rename(self.path, self.path_part)
                 os.chmod(self.path_part, _RW_RW___)
+            self.new_paths.append(self.path_part)
             if self.backend == 'sns':
                 subfolder_path = os.path.normpath(tsd_hidden_folder + '/' + filename)
                 try:
                     shutil.copy(self.path_part, subfolder_path)
                     os.chmod(subfolder_path, _RW_RW___)
+                    self.new_paths.append(subfolder_path)
                 except Exception as e:
                     logging.error(e)
                     logging.error('Could not copy file %s to .tsd folder', self.path_part)
@@ -644,9 +647,10 @@ class GenericFormDataHandler(AuthRequestHandler):
         if self.request.method in ('PUT','POST', 'PATCH'):
             try:
                 if self.request_hook['enabled']:
-                    call_request_hook(self.request_hook['path'],
-                                      [path, self.requestor, options.api_user, self.group_name],
-                                      as_sudo=self.request_hook['sudo'])
+                    for path in self.new_paths:
+                        call_request_hook(self.request_hook['path'],
+                                          [path, self.requestor, options.api_user, self.group_name],
+                                          as_sudo=self.request_hook['sudo'])
             except Exception as e:
                 logging.error(e)
 
