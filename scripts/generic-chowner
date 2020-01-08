@@ -24,32 +24,6 @@ import shutil
 import glob
 import stat
 
-IS_VALID_USERNAME = re.compile(r'p[0-9]+-[A-Za-z0-9_]+$')
-IS_VALID_GROUPNAME = re.compile(r'p[0-9]+-[a-z-]+-group$')
-
-def pnum_is_consistent_in_user_input(path, user_name, group_name=None):
-    try:
-        if path.startswith('/cluster'):
-            pnum_idx = 3
-        else:
-            pnum_idx = 2
-        path_pnum = path.split('/')[pnum_idx]
-        username_pnum = user_name.split('-')[0]
-    except IndexError:
-        logging.error('malformed path: %s or username: %s', path, user_name)
-        return False
-    if group_name:
-        groupname_pnum = group_name.split('-')[0]
-        if path_pnum == username_pnum == groupname_pnum:
-            return True
-        else:
-            logging.error('pnum in path %s, username %s and group_name %s do not match', path_pnum, username_pnum, groupname_pnum)
-            return False
-    if path_pnum == username_pnum:
-        return True
-    else:
-        logging.error('pnum in path: %s does not match pnum in username: %s', path, user_name)
-        return False
 
 def recursive_chown_and_chmod(path, uid, gid, mode):
     for item in glob.glob(path + '/*'):
@@ -189,9 +163,6 @@ def main():
     group_name = argv[4]
     try:
         assert os.path.isabs(path)
-        assert IS_VALID_USERNAME.match(user_name)
-        assert IS_VALID_GROUPNAME.match(group_name)
-        assert pnum_is_consistent_in_user_input(path, user_name, group_name)
         new_path = move_data_to_group_folder(path, group_name, api_user)
         assert new_path
         assert change_owner_and_mode(new_path, user_name, api_user, group_name)
