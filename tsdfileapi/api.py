@@ -268,6 +268,7 @@ class AuthRequestHandler(RequestHandler):
            logging.error('user not member of group')
            raise e
 
+
 class FileStreamerHandler(AuthRequestHandler):
 
     """List the export directory, or serve files from it."""
@@ -621,14 +622,27 @@ class GenericFormDataHandler(AuthRequestHandler):
             if backend == 'sns': # hope to deprecate this with new nettskjema integration
                 self.tsd_hidden_folder_pattern = options.config['backends']['disk'][backend]['subfolder_path']
             self.request_hook = options.config['backends']['disk'][backend]['request_hook']
-            # TODO: decide about this:
-            self.group_name = None # this handler does not (yet) have any notion of a group
+            try:
+                disabled_group_config = {
+                    'enabled': False,
+                    'default_url_group': '',
+                    'default_memberships': [],
+                    'ensure_tenant_in_group_name': False,
+                    'valid_group_regex': None,
+                    'enforce_membership': False
+                }
+                self.group_config = options.config['backends']['disk'][backend]['group_logic']
+                if not self.group_config['enabled']:
+                    self.group_config = disabled_group_config
+            except Exception as e:
+                self.group_config = disabled_group_config
         except (Exception, AssertionError) as e:
             logging.error('could not initalize form data handler')
 
     def prepare(self):
         try:
             self.new_paths = []
+            self.group_name = None
             self.authnz = self.process_token_and_extract_claims()
             if not self.authnz:
                 self.set_status(401)
@@ -637,6 +651,16 @@ class GenericFormDataHandler(AuthRequestHandler):
                 logging.error('No file(s) supplied with upload request')
                 self.set_status(400)
                 raise Exception
+            # check group logic here
+            try:
+                authnz_status = self.authnz
+                tenant = tenant_from_url(self.request.uri)
+                group_name, group_memberships = self.get_group_info(tenant, self.group_config, authnz_status)
+                self.enforce_group_logic(group_name, group_memberships, tenant, self.group_config)
+            except Exception as e:
+                logging.error(e)
+                logging.error('group checks failed')
+                raise e
         except Exception as e:
             if self._status_code != 401:
                 self.set_status(400)
