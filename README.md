@@ -14,9 +14,8 @@ pip3 install -r requirements.txt
 gpg --import tsdfileapi/keys/public.pem
 gpg --import tsdfileapi/keys/private.pem
 # create local upload dirs
+mkdir -p /tmp/p11/data/durable/api
 mkdir -p /tmp/p12/data/durable/api
-mkdir -p /tmp/p11/fx/import_alt/lanthir
-mkdir -p /tmp/p11/fx/import/sns-test
 # create a config file,
 # see tsdfileapi/config/example-file-api-config.yaml
 python3 tsdfileapi/api.py test-config.yaml
