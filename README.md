@@ -30,5 +30,14 @@ git clone ssh://git@bitbucket.usit.uio.no:7999/tsd/tsd-file-api.git
 cd tsd-file-api
 ./buid.sh
 ```
-
 New rpms will be in `tsd-file-api/dist`.
+
+## Notes
+
+The API calls `chmod` on uploaded files, so will need the following entry in `/etc/sudoers.d/fileapiuser`:
+
+```txt
+fileapiuser ALL = (ALL) NOPASSWD: /usr/bin/chmod
+```
+
+And similar entries for any other scripts which may be called as request hooks, as sudo.
