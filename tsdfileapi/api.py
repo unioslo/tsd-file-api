@@ -208,6 +208,65 @@ class AuthRequestHandler(RequestHandler):
                 self.set_status(401)
             raise Exception
 
+    def get_group_info(self, tenant, group_config, authnz_status):
+        """
+        Set intended group owner of resource, and extract memberships
+        of the requestor, falling back to configured defaults, depending
+        on the backend.
+
+        """
+        if not group_config['enabled']:
+            return group_config['default_url_group'], group_config['default_memberships']
+        try:
+            group_name = url_unescape(self.get_query_argument('group'))
+        except Exception as e:
+            default_url_group = group_config['default_url_group']
+            if options.tenant_string_pattern in default_url_group:
+                group_name = default_url_group.replace(options.tenant_string_pattern, tenant)
+            logging.info('no group owner specified - defaulting to %s', group_name)
+        try:
+            group_memberships = authnz_status['claims']['groups']
+        except Exception as e:
+            logging.info('Could not get group memberships - choosing default memberships')
+            default_membership = group_config['default_memberships']
+            group_memberships = []
+            for group in default_membership:
+                if options.tenant_string_pattern in group:
+                    new = group.replace(options.tenant_string_pattern, tenant)
+                else:
+                    new = group
+                group_memberships.append(new)
+        return group_name, group_memberships
+
+    def enforce_group_logic(self, group_name, group_memberships, tenant, group_config):
+        """
+        Optionally check that:
+            - provided group name matches group name regex pattern
+            - tenant name contained in provided group name
+            - requestor is member of provided group name
+
+        """
+        if not group_config['enabled']:
+            return
+        try:
+            if group_config['valid_group_regex']:
+                is_valid_groupname = re.compile(r'{}'.format(group_config['valid_group_regex']))
+                assert is_valid_groupname.match(group_name)
+        except (AssertionError, Exception) as e:
+            logging.error('invalid group name: %s', group_name)
+            raise e
+        try:
+            if group_config['ensure_tenant_in_group_name']:
+                assert tenant in group_name
+        except (AssertionError, Exception) as e:
+            logging.error('tenant %s not in group name: %s', tenant, group_name)
+            raise e
+        try:
+            if group_config['enforce_membership']:
+                assert group_name in group_memberships
+        except (AssertionError, Exception) as e:
+           logging.error('user not member of group')
+           raise e
 
 class FileStreamerHandler(AuthRequestHandler):
 
@@ -1268,65 +1327,6 @@ class ProxyHandler(AuthRequestHandler):
         except Exception as e:
             self.group_config = disabled_group_config
 
-    def get_group_info(self, tenant, group_config, authnz_status):
-        """
-        Set intended group owner of resource, and extract memberships
-        of the requestor, falling back to configured defaults, depending
-        on the backend.
-
-        """
-        if not group_config['enabled']:
-            return group_config['default_url_group'], group_config['default_memberships']
-        try:
-            group_name = url_unescape(self.get_query_argument('group'))
-        except Exception as e:
-            default_url_group = group_config['default_url_group']
-            if options.tenant_string_pattern in default_url_group:
-                group_name = default_url_group.replace(options.tenant_string_pattern, tenant)
-            logging.info('no group owner specified - defaulting to %s', group_name)
-        try:
-            group_memberships = authnz_status['claims']['groups']
-        except Exception as e:
-            logging.info('Could not get group memberships - choosing default memberships')
-            default_membership = group_config['default_memberships']
-            group_memberships = []
-            for group in default_membership:
-                if options.tenant_string_pattern in group:
-                    new = group.replace(options.tenant_string_pattern, tenant)
-                else:
-                    new = group
-                group_memberships.append(new)
-        return group_name, group_memberships
-
-    def enforce_group_logic(self, group_name, group_memberships, tenant, group_config):
-        """
-        Optionally check that:
-            - provided group name matches group name regex pattern
-            - tenant name contained in provided group name
-            - requestor is member of provided group name
-
-        """
-        if not group_config['enabled']:
-            return
-        try:
-            if group_config['valid_group_regex']:
-                is_valid_groupname = re.compile(r'{}'.format(group_config['valid_group_regex']))
-                assert is_valid_groupname.match(group_name)
-        except (AssertionError, Exception) as e:
-            logging.error('invalid group name: %s', group_name)
-            raise e
-        try:
-            if group_config['ensure_tenant_in_group_name']:
-                assert tenant in group_name
-        except (AssertionError, Exception) as e:
-            logging.error('tenant %s not in group name: %s', tenant, group_name)
-            raise e
-        try:
-            if group_config['enforce_membership']:
-                assert group_name in group_memberships
-        except (AssertionError, Exception) as e:
-           logging.error('user not member of group')
-           raise e
 
     @gen.coroutine
     def prepare(self):
