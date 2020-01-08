@@ -1,7 +1,7 @@
 
 # tsd-file-api
 
-A REST API for upload and streaming of files to TSD.
+A REST API for upload and download of files and JSON data.
 
 ## Dev environment
 
@@ -33,6 +33,8 @@ New rpms will be in `tsd-file-api/dist`.
 
 ## Notes
 
+### Permissions
+
 The API calls `chmod` on uploaded files, so will need the following entry in `/etc/sudoers.d/fileapiuser`:
 
 ```txt
@@ -40,3 +42,7 @@ fileapiuser ALL = (ALL) NOPASSWD: /usr/bin/chmod
 ```
 
 And similar entries for any other scripts which may be called as request hooks, as sudo.
+
+### Dependencies
+
+You need `sqlite3` installed, compiled with the `json1` extension.
