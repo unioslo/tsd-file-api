@@ -6,7 +6,7 @@ A REST API for upload and download of files and JSON data.
 ## Dev environment
 
 ```bash
-git clone ssh://git@bitbucket.usit.uio.no:7999/tsd/tsd-file-api.git
+# clone the repo
 cd tsd-file-api
 pip3 install -r requirements.txt
 # make sure you have gpg installed
@@ -25,7 +25,7 @@ python3 tsdfileapi/test_file_api.py test-config.yaml
 ## Build and release
 
 ```bash
-git clone ssh://git@bitbucket.usit.uio.no:7999/tsd/tsd-file-api.git
+# clone the repo
 cd tsd-file-api
 ./buid.sh
 ```
