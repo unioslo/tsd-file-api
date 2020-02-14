@@ -105,6 +105,7 @@ def set_config():
     define('tenant_string_pattern', _config['tenant_string_pattern'])
     define('export_chunk_size', _config['export_chunk_size'])
     define('valid_tenant', re.compile(r'{}'.format(_config['valid_tenant_regex'])))
+    define('max_body_size', _config['max_body_size'])
 
 
 set_config()
@@ -1649,7 +1650,7 @@ def main():
         ('/v1/(.*)/store/export', FileStreamerHandler, dict(backend='store')),
         ('/v1/(.*)/store/export/(.*)', FileStreamerHandler, dict(backend='store')),
     ], debug=options.debug)
-    app.listen(options.port)
+    app.listen(options.port, max_body_size=options.max_body_size)
     IOLoop.instance().start()
 
 
