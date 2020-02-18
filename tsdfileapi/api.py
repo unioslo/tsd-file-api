@@ -1298,7 +1298,7 @@ class StreamHandler(AuthRequestHandler):
                     path, path_part = self.path_part, self.path
                 else:
                     path = self.completed_resumable_filename
-                if self.backend == 'cluster' and self.tenant != 'p01': # TODO: remove special case
+                if self.backend == 'cluster' and self.tenant == 'p01': # TODO: remove special case
                     pass
                 else:
                     if self.request_hook['enabled']:
@@ -1319,7 +1319,7 @@ class StreamHandler(AuthRequestHandler):
             if not self.target_file.closed:
                 self.target_file.close()
                 path = self.path
-                if self.backend == 'cluster' and tenant != 'p01':  # TODO: remove special case
+                if self.backend == 'cluster' and self.tenant == 'p01':  # TODO: remove special case
                     pass
                 else:
                     if self.request_hook['enabled']:
