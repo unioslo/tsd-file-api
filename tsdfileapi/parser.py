@@ -67,6 +67,9 @@ class SqlStatement(object):
         stmt_order = "order by %(ordering)s " % {'ordering': self.query_ordering} if self.query_ordering else None
         query = stmt_select + stmt_from + stmt_where
         if stmt_order:
+            # given the correct usage of json_object for selection
+            # and the necessary use of json_extract in order clauses
+            # this is not longer necessary
             query = "select * from (%s)a " % query + stmt_order
         return query
 
@@ -105,13 +108,40 @@ class SqlStatement(object):
 
 
     def build_delete_query(self, uri):
+        # seems broken too
         if '?' not in uri:
-            return None
-        table_name = os.path.basename(uri.split('?')[0])
+            table_name =  uri.split('/')[-1]
+            return "delete from %(table_name)s" % {'table_name': table_name}
+        uri_path = uri.split('?')[0]
+        table_name = os.path.basename(uri_path.split('/')[-1])
         stmt_delete = "delete from %(table_name)s " % {'table_name': table_name}
         stmt_where = "where %(conditions)s " % {'conditions': self.query_conditions} if self.query_conditions else ''
         query = stmt_delete + stmt_where
         return query
+
+
+    def parse_nested_column_selection(self, name):
+        nested_extract_col_str = "\"%s\", json_extract(data, '$.%s')"
+        nested_cols = name.split('.')
+        # quote cols for value extraction
+        quoted_nested_cols = []
+        for col in nested_cols:
+            if col.startswith('"') and col.endswith('"'):
+                quoted_nested_cols.append(col)
+            else:
+                col = '"%s"' % col
+                quoted_nested_cols.append(col)
+        quoted_name = '.'.join(quoted_nested_cols)
+        # data selection piece
+        inner_col = nested_cols[-1]
+        selection_extract = nested_extract_col_str % (inner_col, quoted_name)
+        # now reconstruct the origin shape
+        quoted_nested_cols.reverse()
+        current_inner = selection_extract
+        for col in quoted_nested_cols[1:]: # already have the last one
+            current_inner = "%s, json_object(%s)" % (col, current_inner)
+        extract = current_inner
+        return extract
 
 
     def parse_columns(self, uri):
@@ -123,16 +153,32 @@ class SqlStatement(object):
         for part in parts:
             if part.startswith('select'):
                 columns = part.split('=')[-1]
-        fmt_str = "json_object(\"%s\", json_extract(data, '$.\"%s\"')) as \"%s\""
+        # TODO (question): support x.y[1] ?
+        extract_col_str = "\"%s\", json_extract(data, '$.\"%s\"')"
+        fmt_str = "json_object(%s)"
         if ',' in columns:
             names = columns.split(',')
+            inner_cols = ''
+            first = True
             for name in names:
-                quoted_column = fmt_str % (name, name, name)
-                columns = columns.replace(name, quoted_column)
+                if '.' in name:
+                    extract = self.parse_nested_column_selection(name)
+                else:
+                    extract = extract_col_str % (name, name)
+                if first:
+                    inner_cols += extract
+                else:
+                    inner_cols += ', %s' % extract
+                first = False
+            columns = fmt_str % (inner_cols)
         else:
             if columns != '*':
                 name = columns
-                columns = fmt_str % (name, name, name)
+                if '.' in name:
+                    extract = self.parse_nested_column_selection(name)
+                else:
+                    extract = extract_col_str % (name, name)
+                columns = fmt_str % (extract)
         return columns
 
 
@@ -185,6 +231,8 @@ class SqlStatement(object):
         return conditions
 
 
+    # needs to be: order by json_extract(data, '$."x"') desc, e.g.
+    #
     def construct_safe_order_clause(self, part):
         targets = part.replace('order=', '')
         tokens = targets.split('.')
@@ -208,13 +256,38 @@ class SqlStatement(object):
 
 
 if __name__ == '__main__':
-    uris = ['/mytable?select=x,y&z=eq.5&y=gt.4&order=x.desc',
-            '/mytable?x=not.like.*zap&y=not.is.null',
-            '/mytable?set=x.5,y.6&z=eq.5',
-            '/mytable?set=x.5&z=eq.5',
-            '/mytable?z=not.is.null']
+    test_data = [
+        {'x': 0, 'y': 1, 'z': 5},
+        {'y': 11, 'z': 1},
+        {'a': {'k1': {'r1': [1, 2], 'r2': 2}, 'k2': ['val', 9]}},
+    ]
+    from db import sqlite_init, sqlite_insert, sqlite_get_data, sqlite_delete_data
+    create_engine = sqlite_init('/tmp', name='file-api-test.db')
+    query_engine = sqlite_init('/tmp', name= 'file-api-test.db', builtin=True)
+    sqlite_delete_data(query_engine, 'mytable', '/mytable')
+    sqlite_insert(create_engine, 'mytable', test_data)
+    uris = [
+        '/mytable', # simple select *
+        '/mytable?select=x', # simple select col
+        '/mytable?select=x&z=eq.5&y=gt.0', # select col with conditions
+        '/mytable?select=x,y', # select two cols
+        '/mytable?select=x,a.k1', # nested json key selection (1-level), all with shape preservation
+        '/mytable?select=x,a.k1.r1', # nested json key selection (n-level)
+        '/mytable?select=a.k1.r1', # nested selection, on one column
+        # TODO
+        #'/mytable?x=not.like.*zap&y=not.is.null',
+        #'/mytable?set=x.5,y.6&z=eq.5',
+        #'/mytable?set=x.5&z=eq.5',
+        #'/mytable?z=not.is.null'
+    ]
     for uri in uris:
-        sql = SqlStatement(uri)
-        print(sql.select_query)
-        print(sql.update_query)
-        print(sql.delete_query)
+        try:
+            print(uri)
+            query_engine = sqlite_init('/tmp', name= 'file-api-test.db', builtin=True)
+            print(sqlite_get_data(query_engine, 'mytable', uri, verbose=True))
+            print()
+        except Exception:
+            pass
+        # TODO
+        #print(sql.update_query)
+        #print(sql.delete_query)
