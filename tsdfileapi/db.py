@@ -101,10 +101,10 @@ def sqlite_insert(engine, table_name, data):
                         {'values': json.dumps(row)})
         return True
     except IntegrityError as e:
-        logging.error(e.message)
+        logging.error(e)
         raise DuplicateRowException
     except (OperationalError, StatementError) as e:
-        logging.error(e.message)
+        logging.error(e)
         raise InsertException
     except Exception as e:
         logging.error(e)
@@ -134,7 +134,7 @@ def conditionally_create_generic_table(engine, table_name):
         with session_scope(engine) as session:
             session.execute('create table if not exists %s (data json unique not null)' % table_name)
     except Exception as e:
-        logging.error(e.message)
+        logging.error(e)
         raise TableCreationException
     return True
 
@@ -152,12 +152,15 @@ def sqlite_list_tables(engine):
         return out
 
 
-def sqlite_get_data(engine, table_name, uri):
+def sqlite_get_data(engine, table_name, uri, verbose=False):
     sql = SqlStatement(uri)
+    if verbose:
+        print(sql.select_query)
     try:
         session = engine.cursor()
         res = session.execute(sql.select_query).fetchall()
-    except Exception:
+    except Exception as e:
+        logging.error(e)
         raise Exception('Could not fetch data')
     finally:
         session.close()
@@ -169,8 +172,10 @@ def sqlite_get_data(engine, table_name, uri):
     return data
 
 
-def sqlite_update_data(engine, table_name, uri):
+def sqlite_update_data(engine, table_name, uri, verbose=False):
     sql = SqlStatement(uri)
+    if verbose:
+        print(sql.update_query)
     try:
         session = engine.cursor()
         session.execute(sql.update_query)
@@ -186,8 +191,10 @@ def sqlite_update_data(engine, table_name, uri):
     return True
 
 
-def sqlite_delete_data(engine, table_name, uri):
+def sqlite_delete_data(engine, table_name, uri, verbose=False):
     sql = SqlStatement(uri)
+    if verbose:
+        print(sql.delete_query)
     try:
         session = engine.cursor()
         session.execute(sql.delete_query)
