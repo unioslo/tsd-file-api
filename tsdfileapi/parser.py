@@ -67,9 +67,6 @@ class SqlStatement(object):
         stmt_order = "order by %(ordering)s " % {'ordering': self.query_ordering} if self.query_ordering else None
         query = stmt_select + stmt_from + stmt_where
         if stmt_order:
-            # given the correct usage of json_object for selection
-            # and the necessary use of json_extract in order clauses
-            # this is not longer necessary
             query = "select * from (%s)a " % query + stmt_order
         return query
 
@@ -153,7 +150,6 @@ class SqlStatement(object):
         for part in parts:
             if part.startswith('select'):
                 columns = part.split('=')[-1]
-        # TODO (question): support x.y[1] ?
         extract_col_str = "\"%s\", json_extract(data, '$.\"%s\"')"
         fmt_str = "json_object(%s)"
         if ',' in columns:
@@ -231,14 +227,13 @@ class SqlStatement(object):
         return conditions
 
 
-    # needs to be: order by json_extract(data, '$."x"') desc, e.g.
-    #
+    # suport nesting? order by x.z.desc
     def construct_safe_order_clause(self, part):
         targets = part.replace('order=', '')
         tokens = targets.split('.')
         col = tokens[0]
-        direction = tokens[1]
-        ordering = '"%s" %s' % (col, direction)
+        direction = tokens[-1]
+        ordering = "json_extract(data, '$.\"%s\"') %s" % (col, direction)
         return ordering
 
 
@@ -267,17 +262,22 @@ if __name__ == '__main__':
     sqlite_delete_data(query_engine, 'mytable', '/mytable')
     sqlite_insert(create_engine, 'mytable', test_data)
     uris = [
+        # selections
         '/mytable', # simple select *
         '/mytable?select=x', # simple select col
-        '/mytable?select=x&z=eq.5&y=gt.0', # select col with conditions
         '/mytable?select=x,y', # select two cols
         '/mytable?select=x,a.k1', # nested json key selection (1-level), all with shape preservation
         '/mytable?select=x,a.k1.r1', # nested json key selection (n-level)
         '/mytable?select=a.k1.r1', # nested selection, on one column
-        # TODO
-        #'/mytable?x=not.like.*zap&y=not.is.null',
+        # filtering
+        '/mytable?select=x&z=eq.5&y=gt.0', # select col with conditions
+        '/mytable?x=not.like.*zap&y=not.is.null', # elaborate filtering
+        # ordering
+        '/mytable?order=y.desc'
+        # updates
         #'/mytable?set=x.5,y.6&z=eq.5',
         #'/mytable?set=x.5&z=eq.5',
+        # deletion
         #'/mytable?z=not.is.null'
     ]
     for uri in uris:
@@ -288,6 +288,3 @@ if __name__ == '__main__':
             print()
         except Exception:
             pass
-        # TODO
-        #print(sql.update_query)
-        #print(sql.delete_query)
