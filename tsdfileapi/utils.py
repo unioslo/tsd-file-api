@@ -1,12 +1,12 @@
 # -*- coding: utf-8 -*-
 
+import hashlib
+import logging
 import os
 import re
-import logging
-import hashlib
-import subprocess
 import shlex
-
+import subprocess
+from pathlib import Path
 
 _VALID_FORMID = re.compile(r'^[0-9]+$')
 _IS_REALISTIC_PGP_KEY_FINGERPRINT = re.compile(r'^[0-9A-Z]{16}$')
@@ -65,7 +65,8 @@ def create_cluster_dir_if_not_exists(path, tenant, tenant_string_pattern):
     target = path.replace(tenant_string_pattern, tenant)
     if os.path.lexists(base):
         if not os.path.lexists(target):
-            os.makedirs(target)
+            logging.info('Creating directory %s', target)
+            Path(target).mkdir(mode=0o770, exist_ok=True)
         return target
     else:
         raise Exception('{0} does not have a cluster disk space'.format(tenant))
@@ -99,7 +100,7 @@ def sns_dir(base_pattern, tenant, uri, tenant_string_pattern, test=False):
             return _path
         if not os.path.lexists(_path):
             logging.info('Creating %s', _path)
-            os.makedirs(_path, mode=0o770)
+            Path(_path).mkdir(mode=0o770, exist_ok=True)
         return _path
     except Exception as e:
         logging.error(e)
