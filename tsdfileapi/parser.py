@@ -193,13 +193,13 @@ class SqlStatement(object):
             op = op_and_val.split('.')[1]
             val = op_and_val.split('.')[2]
             if 'is' in op_and_val:
-                col_and_opt_str = "json_extract(data, '$.\"%(col)s\"') %(op)s not"
+                col_and_opt_str = "json_extract(data, '$.%(col)s') %(op)s not"
             else:
-                col_and_opt_str = "json_extract(data, '$.\"%(col)s\"') not %(op)s"
+                col_and_opt_str = "json_extract(data, '$.%(col)s') not %(op)s"
         else:
             op = op_and_val.split('.')[0]
             val = op_and_val.split('.')[1]
-            col_and_opt_str = "json_extract(data, '$.\"%(col)s\"') %(op)s"
+            col_and_opt_str = "json_extract(data, '$.%(col)s') %(op)s"
         try:
             assert op in self.operators.keys()
         except AssertionError:
@@ -212,7 +212,8 @@ class SqlStatement(object):
             if op == 'like' or op == 'ilike':
                 val = val.replace('*', '%')
         final = col_and_opt_str + val_str
-        safe_part = final % {'col': col, 'op': op, 'val': val}
+        quoted_col, _ = self.quote_column_selection(col)
+        safe_part = final % {'col': quoted_col, 'op': op, 'val': val}
         if num_part > 0:
             safe_part = ' and ' + safe_part
         return safe_part
@@ -282,7 +283,7 @@ if __name__ == '__main__':
         # filtering - TODO: support nesting, and slicing
         '/mytable?select=x&z=eq.5&y=gt.0',
         '/mytable?x=not.like.*zap&y=not.is.null',
-        '/mytable?select=x&a.k1.r2=eq.2', # FIXME
+        '/mytable?select=z&a.k1.r2=eq.2',
         # ordering - TODO: support nesting, and slicing
         '/mytable?order=y.desc',
     ]
