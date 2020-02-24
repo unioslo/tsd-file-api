@@ -71,6 +71,7 @@ class SqlStatement(object):
         return query
 
 
+    # TODO: support nesting, and slicing
     def build_update_query(self, uri):
         if '?' not in uri:
             return None
@@ -116,9 +117,8 @@ class SqlStatement(object):
         query = stmt_delete + stmt_where
         return query
 
-
-    def parse_nested_column_selection(self, name):
-        nested_extract_col_str = "\"%s\", json_extract(data, '$.%s')"
+    # todo: support slicing
+    def quote_column_selection(self, name):
         nested_cols = name.split('.')
         # quote cols for value extraction
         quoted_nested_cols = []
@@ -129,8 +129,14 @@ class SqlStatement(object):
                 col = '"%s"' % col
                 quoted_nested_cols.append(col)
         quoted_name = '.'.join(quoted_nested_cols)
+        return quoted_name, quoted_nested_cols
+
+
+    def parse_nested_column_selection(self, name):
+        nested_extract_col_str = "%s, json_extract(data, '$.%s')"
+        quoted_name, quoted_nested_cols = self.quote_column_selection(name)
         # data selection piece
-        inner_col = nested_cols[-1]
+        inner_col = quoted_nested_cols[-1]
         selection_extract = nested_extract_col_str % (inner_col, quoted_name)
         # now reconstruct the origin shape
         quoted_nested_cols.reverse()
@@ -150,7 +156,7 @@ class SqlStatement(object):
         for part in parts:
             if part.startswith('select'):
                 columns = part.split('=')[-1]
-        extract_col_str = "\"%s\", json_extract(data, '$.\"%s\"')"
+        extract_col_str = "%s, json_extract(data, '$.%s')"
         fmt_str = "json_object(%s)"
         if ',' in columns:
             names = columns.split(',')
@@ -160,7 +166,8 @@ class SqlStatement(object):
                 if '.' in name:
                     extract = self.parse_nested_column_selection(name)
                 else:
-                    extract = extract_col_str % (name, name)
+                    quoted_name, _ = self.quote_column_selection(name)
+                    extract = extract_col_str % (quoted_name, quoted_name)
                 if first:
                     inner_cols += extract
                 else:
@@ -170,10 +177,11 @@ class SqlStatement(object):
         else:
             if columns != '*':
                 name = columns
+                quoted_name, _ = self.quote_column_selection(name)
                 if '.' in name:
                     extract = self.parse_nested_column_selection(name)
                 else:
-                    extract = extract_col_str % (name, name)
+                    extract = extract_col_str % (quoted_name, quoted_name)
                 columns = fmt_str % (extract)
         return columns
 
@@ -192,7 +200,10 @@ class SqlStatement(object):
             op = op_and_val.split('.')[0]
             val = op_and_val.split('.')[1]
             col_and_opt_str = "json_extract(data, '$.\"%(col)s\"') %(op)s"
-        assert op in self.operators.keys()
+        try:
+            assert op in self.operators.keys()
+        except AssertionError:
+            raise Exception('operator not found/supported')
         try:
             int(val)
             val_str = ' %(val)s'
@@ -227,7 +238,6 @@ class SqlStatement(object):
         return conditions
 
 
-    # suport nesting? order by x.z.desc
     def construct_safe_order_clause(self, part):
         targets = part.replace('order=', '')
         tokens = targets.split('.')
@@ -254,37 +264,52 @@ if __name__ == '__main__':
     test_data = [
         {'x': 0, 'y': 1, 'z': 5},
         {'y': 11, 'z': 1},
-        {'a': {'k1': {'r1': [1, 2], 'r2': 2}, 'k2': ['val', 9]}},
+        {'a': {'k1': {'r1': [1, 2], 'r2': 2}, 'k2': ['val', 9]}, 'z': 0},
     ]
-    from db import sqlite_init, sqlite_insert, sqlite_get_data, sqlite_delete_data
+    from db import sqlite_init, sqlite_insert, sqlite_get_data, sqlite_update_data, sqlite_delete_data
     create_engine = sqlite_init('/tmp', name='file-api-test.db')
     query_engine = sqlite_init('/tmp', name= 'file-api-test.db', builtin=True)
     sqlite_delete_data(query_engine, 'mytable', '/mytable')
     sqlite_insert(create_engine, 'mytable', test_data)
-    uris = [
-        # selections
-        '/mytable', # simple select *
-        '/mytable?select=x', # simple select col
-        '/mytable?select=x,y', # select two cols
-        '/mytable?select=x,a.k1', # nested json key selection (1-level), all with shape preservation
-        '/mytable?select=x,a.k1.r1', # nested json key selection (n-level)
-        '/mytable?select=a.k1.r1', # nested selection, on one column
-        # filtering
-        '/mytable?select=x&z=eq.5&y=gt.0', # select col with conditions
-        '/mytable?x=not.like.*zap&y=not.is.null', # elaborate filtering
-        # ordering
-        '/mytable?order=y.desc'
+    select_uris = [
+        # selections - TODO: support slicing (shape preservation?)
+        '/mytable',
+        '/mytable?select=x',
+        '/mytable?select=x,y',
+        '/mytable?select=x,a.k1',
+        '/mytable?select=x,a.k1.r1',
+        '/mytable?select=a.k1.r1',
+        # filtering - TODO: support nesting, and slicing
+        '/mytable?select=x&z=eq.5&y=gt.0',
+        '/mytable?x=not.like.*zap&y=not.is.null',
+        '/mytable?select=x&a.k1.r2=eq.2', # FIXME
+        # ordering - TODO: support nesting, and slicing
+        '/mytable?order=y.desc',
+    ]
+    update_uris = [
         # updates
-        #'/mytable?set=x.5,y.6&z=eq.5',
-        #'/mytable?set=x.5&z=eq.5',
+        '/mytable?set=x.5,y.6&z=eq.5',
+        '/mytable?set=a.k1.r2.5&z=eq.0', # need slicing here
+    ]
+    delete_uris = [
         # deletion
         #'/mytable?z=not.is.null'
     ]
-    for uri in uris:
+    for uri in select_uris:
         try:
             print(uri)
             query_engine = sqlite_init('/tmp', name= 'file-api-test.db', builtin=True)
             print(sqlite_get_data(query_engine, 'mytable', uri, verbose=True))
+            print()
+        except Exception:
+            pass
+    for uri in update_uris:
+        try:
+            print(uri)
+            query_engine = sqlite_init('/tmp', name= 'file-api-test.db', builtin=True)
+            print(sqlite_update_data(query_engine, 'mytable', uri, verbose=True))
+            query_engine = sqlite_init('/tmp', name= 'file-api-test.db', builtin=True)
+            print(sqlite_get_data(query_engine, 'mytable', '/mytable'))
             print()
         except Exception:
             pass
