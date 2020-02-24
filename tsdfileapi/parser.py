@@ -4,6 +4,7 @@
 import os
 import logging
 import json
+import re
 
 
 class SqlStatement(object):
@@ -123,11 +124,15 @@ class SqlStatement(object):
         # quote cols for value extraction
         quoted_nested_cols = []
         for col in nested_cols:
-            if col.startswith('"') and col.endswith('"'):
-                quoted_nested_cols.append(col)
-            else:
+            parts = None
+            if re.match(r'(.+)\[[0-9]\]', col):
+                parts = col.split('[')
+                col = parts[0]
+            if not (col.startswith('"') and col.endswith('"')):
                 col = '"%s"' % col
-                quoted_nested_cols.append(col)
+            if parts:
+                col = '%s[%s' % (col, parts[1])
+            quoted_nested_cols.append(col)
         quoted_name = '.'.join(quoted_nested_cols)
         return quoted_name, quoted_nested_cols
 
@@ -138,7 +143,7 @@ class SqlStatement(object):
         # data selection piece
         inner_col = quoted_nested_cols[-1]
         selection_extract = nested_extract_col_str % (inner_col, quoted_name)
-        # now reconstruct the origin shape
+        # now reconstruct the original shape
         quoted_nested_cols.reverse()
         current_inner = selection_extract
         for col in quoted_nested_cols[1:]: # already have the last one
@@ -263,9 +268,10 @@ class SqlStatement(object):
 
 if __name__ == '__main__':
     test_data = [
-        {'x': 0, 'y': 1, 'z': 5},
+        {'x': 0, 'y': 1, 'z': 5, 'b':[1, 2, 5, 1]},
         {'y': 11, 'z': 1},
         {'a': {'k1': {'r1': [1, 2], 'r2': 2}, 'k2': ['val', 9]}, 'z': 0},
+        {'a': {'k1': {'r1': [33, 200], 'r2': 90}, 'k2': ['val222', 90]}, 'z': 10},
     ]
     from db import sqlite_init, sqlite_insert, sqlite_get_data, sqlite_update_data, sqlite_delete_data
     create_engine = sqlite_init('/tmp', name='file-api-test.db')
@@ -274,16 +280,21 @@ if __name__ == '__main__':
     sqlite_insert(create_engine, 'mytable', test_data)
     select_uris = [
         # selections - TODO: support slicing (shape preservation?)
+        # note: slicing only supports one index at a time
+        # maybe have an option &simplify=true for optional result simplification
+        # then need to choose the default
         '/mytable',
         '/mytable?select=x',
         '/mytable?select=x,y',
         '/mytable?select=x,a.k1',
         '/mytable?select=x,a.k1.r1',
         '/mytable?select=a.k1.r1',
-        # filtering - TODO: support nesting, and slicing
+        '/mytable?select=a.k1.r1',
+        # filtering - with nesting, and slicing
         '/mytable?select=x&z=eq.5&y=gt.0',
         '/mytable?x=not.like.*zap&y=not.is.null',
         '/mytable?select=z&a.k1.r2=eq.2',
+        '/mytable?select=z&a.k1.r1[0]=eq.1',
         # ordering - TODO: support nesting, and slicing
         '/mytable?order=y.desc',
     ]
