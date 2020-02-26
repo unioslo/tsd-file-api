@@ -4,7 +4,7 @@ from setuptools import setup
 
 setup(
     name='tsd-file-api',
-    version='1.7.9',
+    version='1.7.10',
     description='A REST API for handling files and json',
     author='Leon du Toit',
     author_email='l.c.d.toit@usit.uio.no',
