@@ -837,7 +837,7 @@ class ResumablesHandler(AuthRequestHandler):
             assert options.valid_tenant.match(tenant)
             # can deprecate once rsync is in place for cluster software install
             key = 'admin_path' if (backend == 'cluster' and tenant == 'p01') else 'import_path'
-            self.import_dir = options.config['backends']['disk']['files'][key]
+            self.import_dir = options.config['backends']['disk'][backend][key]
             if backend == 'cluster' and tenant != 'p01':
                 assert create_cluster_dir_if_not_exists(self.import_dir, tenant, options.tenant_string_pattern)
             self.tenant_dir = self.import_dir.replace(options.tenant_string_pattern, tenant)
