@@ -268,10 +268,47 @@ class SqlStatement(object):
 
 if __name__ == '__main__':
     test_data = [
-        {'x': 0, 'y': 1, 'z': 5, 'b':[1, 2, 5, 1]},
-        {'y': 11, 'z': 1},
-        {'a': {'k1': {'r1': [1, 2], 'r2': 2}, 'k2': ['val', 9]}, 'z': 0},
-        {'a': {'k1': {'r1': [33, 200], 'r2': 90}, 'k2': ['val222', 90]}, 'z': 10},
+        {
+            'x': 0,
+            'y': 1,
+            'z': 5,
+            'b':[1, 2, 5, 1],
+            'c': None
+        },
+        {
+            'y': 11,
+            'z': 1,
+            'c': [
+                {
+                    'h': 3,
+                    'p': 99
+                },
+                {
+                    'h': 32,
+                    'p': False
+                }
+            ]
+        },
+        {
+            'a': {
+                'k1': {
+                    'r1': [1, 2],
+                    'r2': 2
+                },
+                'k2': ['val', 9]
+            },
+            'z': 0
+        },
+        {
+            'a': {
+                'k1': {
+                    'r1': [33, 200],
+                    'r2': 90
+                },
+                'k2': ['val222', 90]
+            },
+            'z': 10
+        },
     ]
     from db import sqlite_init, sqlite_insert, sqlite_get_data, sqlite_update_data, sqlite_delete_data
     create_engine = sqlite_init('/tmp', name='file-api-test.db')
@@ -283,6 +320,8 @@ if __name__ == '__main__':
         # note: slicing only supports one index at a time
         # maybe have an option &simplify=true for optional result simplification
         # then need to choose the default
+        # need to figure out how to implement selecting [#].key
+        # so we can select d[#].k1,d[#].k2 etc
         '/mytable',
         '/mytable?select=x',
         '/mytable?select=x,y',
@@ -290,11 +329,13 @@ if __name__ == '__main__':
         '/mytable?select=x,a.k1.r1',
         '/mytable?select=a.k1.r1',
         '/mytable?select=a.k1.r1',
+        '/mytable?select=b[1]', # FIXME - solution depends on simplification strategy
         # filtering - with nesting, and slicing
         '/mytable?select=x&z=eq.5&y=gt.0',
         '/mytable?x=not.like.*zap&y=not.is.null',
         '/mytable?select=z&a.k1.r2=eq.2',
         '/mytable?select=z&a.k1.r1[0]=eq.1',
+        # '/mytable?select=z&a.k1.r1[0].h=eq.3', TODO: get working
         # ordering - TODO: support nesting, and slicing
         '/mytable?order=y.desc',
     ]
