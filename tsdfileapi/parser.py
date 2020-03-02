@@ -36,6 +36,8 @@ class SqlStatement(object):
     """
 
     def __init__(self, uri):
+        self.specific_idx_selection = re.compile(r'(.+)\[[0-9]\]')
+        self.all_idxs_selection = re.compile(r'(.+)\[[#]\]')
         self.operators = {
             'eq': '=',
             'gt': '>',
@@ -118,15 +120,14 @@ class SqlStatement(object):
         query = stmt_delete + stmt_where
         return query
 
-    # todo: support slicing
+
     def quote_column_selection(self, name):
         nested_cols = name.split('.')
         # quote cols for value extraction
         quoted_nested_cols = []
         for col in nested_cols:
             parts = None
-            specific_idx_selection = re.match(r'(.+)\[[0-9]\]', col)
-            if specific_idx_selection:
+            if self.specific_idx_selection.match(col):
                 parts = col.split('[')
                 col = parts[0]
             if not (col.startswith('"') and col.endswith('"')):
@@ -143,9 +144,13 @@ class SqlStatement(object):
         # if ^ replace # with %
         # construct tree query
         nested_extract_col_str = "%s, json_extract(data, '$.%s')"
+        nested_extract_col_str_with_slice = "%s, json_array(json_extract(data, '$.%s'))"
         quoted_name, quoted_nested_cols = self.quote_column_selection(name)
         if '.' not in name:
-            return nested_extract_col_str % (quoted_name, quoted_name)
+            if self.specific_idx_selection.match(name):
+                return nested_extract_col_str_with_slice % (quoted_name.split('[')[0], quoted_name)
+            else:
+                return nested_extract_col_str % (quoted_name, quoted_name)
         # data selection piece
         inner_col = quoted_nested_cols[-1]
         selection_extract = nested_extract_col_str % (inner_col, quoted_name)
@@ -153,7 +158,6 @@ class SqlStatement(object):
         quoted_nested_cols.reverse()
         current_inner = selection_extract
         for col in quoted_nested_cols[1:]: # already have the last one
-            print(current_inner)
             current_inner = "%s, json_object(%s)" % (col, current_inner)
         extract = current_inner
         return extract
@@ -168,7 +172,6 @@ class SqlStatement(object):
         for part in parts:
             if part.startswith('select'):
                 columns = part.split('=')[-1]
-        extract_col_str = "%s, json_extract(data, '$.%s')"
         fmt_str = "json_object(%s)"
         if ',' in columns:
             names = columns.split(',')
@@ -348,7 +351,7 @@ if __name__ == '__main__':
         '/mytable?select=x,a.k1.r1',
         '/mytable?select=a.k1.r1',
         '/mytable?select=a.k1.r1',
-        '/mytable?select=b[1]', # FIXME - without simplification (array reconstruction)
+        '/mytable?select=b[1]',
         # filtering - with nesting, and slicing
         '/mytable?select=x&z=eq.5&y=gt.0',
         '/mytable?x=not.like.*zap&y=not.is.null',
