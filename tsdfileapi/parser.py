@@ -125,7 +125,8 @@ class SqlStatement(object):
         quoted_nested_cols = []
         for col in nested_cols:
             parts = None
-            if re.match(r'(.+)\[[0-9]\]', col):
+            specific_idx_selection = re.match(r'(.+)\[[0-9]\]', col)
+            if specific_idx_selection:
                 parts = col.split('[')
                 col = parts[0]
             if not (col.startswith('"') and col.endswith('"')):
@@ -137,9 +138,14 @@ class SqlStatement(object):
         return quoted_name, quoted_nested_cols
 
 
-    def parse_nested_column_selection(self, name):
+    def parse_column_selection(self, name):
+        # all_idxs_selection = re.match(r'(.+)\[[#]\]', col)
+        # if ^ replace # with %
+        # construct tree query
         nested_extract_col_str = "%s, json_extract(data, '$.%s')"
         quoted_name, quoted_nested_cols = self.quote_column_selection(name)
+        if '.' not in name:
+            return nested_extract_col_str % (quoted_name, quoted_name)
         # data selection piece
         inner_col = quoted_nested_cols[-1]
         selection_extract = nested_extract_col_str % (inner_col, quoted_name)
@@ -147,6 +153,7 @@ class SqlStatement(object):
         quoted_nested_cols.reverse()
         current_inner = selection_extract
         for col in quoted_nested_cols[1:]: # already have the last one
+            print(current_inner)
             current_inner = "%s, json_object(%s)" % (col, current_inner)
         extract = current_inner
         return extract
@@ -168,11 +175,7 @@ class SqlStatement(object):
             inner_cols = ''
             first = True
             for name in names:
-                if '.' in name:
-                    extract = self.parse_nested_column_selection(name)
-                else:
-                    quoted_name, _ = self.quote_column_selection(name)
-                    extract = extract_col_str % (quoted_name, quoted_name)
+                extract = self.parse_column_selection(name)
                 if first:
                     inner_cols += extract
                 else:
@@ -182,11 +185,7 @@ class SqlStatement(object):
         else:
             if columns != '*':
                 name = columns
-                quoted_name, _ = self.quote_column_selection(name)
-                if '.' in name:
-                    extract = self.parse_nested_column_selection(name)
-                else:
-                    extract = extract_col_str % (quoted_name, quoted_name)
+                extract = self.parse_column_selection(name)
                 columns = fmt_str % (extract)
         return columns
 
@@ -281,11 +280,16 @@ if __name__ == '__main__':
             'c': [
                 {
                     'h': 3,
-                    'p': 99
+                    'p': 99,
+                    'w': False
                 },
                 {
                     'h': 32,
-                    'p': False
+                    'p': False,
+                    'w': True,
+                    'i': {
+                        't': [1,2,3]
+                    }
                 }
             ]
         },
@@ -316,12 +320,27 @@ if __name__ == '__main__':
     sqlite_delete_data(query_engine, 'mytable', '/mytable')
     sqlite_insert(create_engine, 'mytable', test_data)
     select_uris = [
-        # selections - TODO: support slicing (shape preservation?)
-        # note: slicing only supports one index at a time
-        # maybe have an option &simplify=true for optional result simplification
-        # then need to choose the default
-        # need to figure out how to implement selecting [#].key
-        # so we can select d[#].k1,d[#].k2 etc
+        # selections
+        #
+        # TODO: shape
+        # add &simplify=true for optional result simplification
+        # default to shape preservation
+        #
+        # TODO: slicing
+        # d[1]
+        # d[1].k1
+        # d[1].k1,k2
+        # d[#]
+        # d[#].k1
+        # d[#].k1,k2
+        #
+        # POC: map selection of two keys over a whole array
+        # select json_group_array(target) from
+        #   (select path, json_group_object(key, value) as target from
+        #       (select key, value, fullkey, path from
+        #           mytable, json_tree(mytable.data)
+        #           where fullkey like '$.c[%].h' or fullkey like '$.c[%].p')
+        #        group by path);
         '/mytable',
         '/mytable?select=x',
         '/mytable?select=x,y',
@@ -329,7 +348,7 @@ if __name__ == '__main__':
         '/mytable?select=x,a.k1.r1',
         '/mytable?select=a.k1.r1',
         '/mytable?select=a.k1.r1',
-        '/mytable?select=b[1]', # FIXME - solution depends on simplification strategy
+        '/mytable?select=b[1]', # FIXME - without simplification (array reconstruction)
         # filtering - with nesting, and slicing
         '/mytable?select=x&z=eq.5&y=gt.0',
         '/mytable?x=not.like.*zap&y=not.is.null',
