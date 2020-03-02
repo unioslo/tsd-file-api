@@ -143,17 +143,22 @@ class SqlStatement(object):
         # all_idxs_selection = re.match(r'(.+)\[[#]\]', col)
         # if ^ replace # with %
         # construct tree query
+        # try to make this dryer
         nested_extract_col_str = "%s, json_extract(data, '$.%s')"
         nested_extract_col_str_with_slice = "%s, json_array(json_extract(data, '$.%s'))"
         quoted_name, quoted_nested_cols = self.quote_column_selection(name)
+        print(quoted_name, quoted_nested_cols)
         if '.' not in name:
             if self.specific_idx_selection.match(name):
                 return nested_extract_col_str_with_slice % (quoted_name.split('[')[0], quoted_name)
             else:
                 return nested_extract_col_str % (quoted_name, quoted_name)
-        # data selection piece
+        # data selection piece - could be a slice...
         inner_col = quoted_nested_cols[-1]
-        selection_extract = nested_extract_col_str % (inner_col, quoted_name)
+        if self.specific_idx_selection.match(inner_col):
+            selection_extract = nested_extract_col_str_with_slice % (inner_col.split('[')[0], quoted_name)
+        else:
+            selection_extract = nested_extract_col_str % (inner_col, quoted_name)
         # now reconstruct the original shape
         quoted_nested_cols.reverse()
         current_inner = selection_extract
@@ -330,7 +335,8 @@ if __name__ == '__main__':
         # default to shape preservation
         #
         # TODO: slicing
-        # d[1]
+        # d[1] - done
+        # r.d[1]
         # d[1].k1
         # d[1].k1,k2
         # d[#]
@@ -352,6 +358,7 @@ if __name__ == '__main__':
         '/mytable?select=a.k1.r1',
         '/mytable?select=a.k1.r1',
         '/mytable?select=b[1]',
+        '/mytable?select=a.k1.r1[0]', # fixme
         # filtering - with nesting, and slicing
         '/mytable?select=x&z=eq.5&y=gt.0',
         '/mytable?x=not.like.*zap&y=not.is.null',
