@@ -36,6 +36,36 @@ class SqlStatement(object):
     """
 
     def __init__(self, uri):
+        """
+        Regexes to determine data selection type for a specific nested column,
+        which is a combination of two things:
+
+        1) slicing
+        2) column sub-selection
+
+        example         slice   sub-selection
+        -------         -----   -------------
+        x[1]            single  none
+        x[1:3]          range   none
+        x[1].k          single  single
+        x[1:3].k        range   single
+        x[1].(k,d)      single  multiple
+        x[1:3].(k,d)    range   multiple
+        x               all     none
+        x[#].y          all     single
+        x[#].(y,z)      all     multiple
+
+        where (...) is a group.
+
+        """
+        self.idx_present = re.compile(r'(.+)\[[0-9#]\](.*)')
+        self.idx_single = re.compile(r'(.+)\[[0-9]+\](.*)') # technically, dont need this
+        self.idx_range = re.compile(r'(.+)\[[0-9]+:[0-9]+\](.*)')
+        self.idx_all = re.compile(r'(.+)\[[#]\](.*)')
+        self.subselect_present = re.compile(r'(.+)\[[0-9#]\].(.+)')
+        self.subselect_single = re.compile(r'(.+)\[[0-9#]\].(.+') # technically, don't need this
+        self.subselect_multiple = re.compile(r'(.+)\[[0-9#]\].\((.+),(.+)\)$')
+
         self.specific_idx_selection = re.compile(r'(.+)\[[0-9]\]')
         self.all_idxs_selection = re.compile(r'(.+)\[[#]\]')
         self.operators = {
@@ -139,26 +169,41 @@ class SqlStatement(object):
         return quoted_name, quoted_nested_cols
 
 
+    def construct_data_selection_str(self, inner_col, table_name):
+        pass
+
     def parse_column_selection(self, name):
         # all_idxs_selection = re.match(r'(.+)\[[#]\]', col)
         # if ^ replace # with %
         # construct tree query
         # try to make this dryer
-        nested_extract_col_str = "%s, json_extract(data, '$.%s')"
-        nested_extract_col_str_with_slice = "%s, json_array(json_extract(data, '$.%s'))"
+        data_select_str = "%s, json_extract(data, '$.%s')"
+        data_select_str_with_slice = "%s, json_array(json_extract(data, '$.%s'))"
+        data_select_str_with_slice_and_select = """
+            select json_group_array(target) from
+                (select path, json_group_object(key, value) as target from
+                    (select key, value, fullkey, path from
+                     %(table_name)s, json_tree(%(table_name)s.data)
+                     where %(where_clause)s))
+                 group by path)""" # table
+        slide_and_select_where_clause = "fullkey like '$.%(slice_and_select)s'" # '$.c[idx].h' where idx == % forall
+        # need to support having one or more where conditions
+        # and need to use unquoted selections
+        # and need support for selecting more than one column
+        # and for either a specific index, or all
         quoted_name, quoted_nested_cols = self.quote_column_selection(name)
         print(quoted_name, quoted_nested_cols)
-        if '.' not in name:
-            if self.specific_idx_selection.match(name):
-                return nested_extract_col_str_with_slice % (quoted_name.split('[')[0], quoted_name)
-            else:
-                return nested_extract_col_str % (quoted_name, quoted_name)
         # data selection piece - could be a slice...
         inner_col = quoted_nested_cols[-1]
         if self.specific_idx_selection.match(inner_col):
-            selection_extract = nested_extract_col_str_with_slice % (inner_col.split('[')[0], quoted_name)
+            selection_extract = data_select_str_with_slice % (inner_col.split('[')[0], quoted_name)
+        # if the parent selection is a slice...
+        elif self.specific_idx_selection.match(inner_col):
+            print('!!!!!! detected selection on a slice')
+            # will need to decide if this is done recursively
+            # will have to in order to support [0].k.r[0] etc
         else:
-            selection_extract = nested_extract_col_str % (inner_col, quoted_name)
+            selection_extract = data_select_str % (inner_col, quoted_name)
         # now reconstruct the original shape
         quoted_nested_cols.reverse()
         current_inner = selection_extract
@@ -271,127 +316,3 @@ class SqlStatement(object):
                 safe_part = self.construct_safe_order_clause(part)
                 ordering += safe_part
         return ordering if len(ordering) > 0 else None
-
-
-if __name__ == '__main__':
-    test_data = [
-        {
-            'x': 0,
-            'y': 1,
-            'z': 5,
-            'b':[1, 2, 5, 1],
-            'c': None
-        },
-        {
-            'y': 11,
-            'z': 1,
-            'c': [
-                {
-                    'h': 3,
-                    'p': 99,
-                    'w': False
-                },
-                {
-                    'h': 32,
-                    'p': False,
-                    'w': True,
-                    'i': {
-                        't': [1,2,3]
-                    }
-                }
-            ]
-        },
-        {
-            'a': {
-                'k1': {
-                    'r1': [1, 2],
-                    'r2': 2
-                },
-                'k2': ['val', 9]
-            },
-            'z': 0
-        },
-        {
-            'a': {
-                'k1': {
-                    'r1': [33, 200],
-                    'r2': 90
-                },
-                'k2': ['val222', 90]
-            },
-            'z': 10
-        },
-    ]
-    from db import sqlite_init, sqlite_insert, sqlite_get_data, sqlite_update_data, sqlite_delete_data
-    create_engine = sqlite_init('/tmp', name='file-api-test.db')
-    query_engine = sqlite_init('/tmp', name= 'file-api-test.db', builtin=True)
-    sqlite_delete_data(query_engine, 'mytable', '/mytable')
-    sqlite_insert(create_engine, 'mytable', test_data)
-    select_uris = [
-        # selections
-        #
-        # TODO: shape
-        # add &simplify=true for optional result simplification
-        # default to shape preservation
-        #
-        # TODO: slicing
-        # d[1] - done
-        # r.d[1]
-        # d[1].k1
-        # d[1].k1,k2
-        # d[#]
-        # d[#].k1
-        # d[#].k1,k2
-        #
-        # POC: map selection of two keys over a whole array
-        # select json_group_array(target) from
-        #   (select path, json_group_object(key, value) as target from
-        #       (select key, value, fullkey, path from
-        #           mytable, json_tree(mytable.data)
-        #           where fullkey like '$.c[%].h' or fullkey like '$.c[%].p')
-        #        group by path);
-        '/mytable',
-        '/mytable?select=x',
-        '/mytable?select=x,y',
-        '/mytable?select=x,a.k1',
-        '/mytable?select=x,a.k1.r1',
-        '/mytable?select=a.k1.r1',
-        '/mytable?select=a.k1.r1',
-        '/mytable?select=b[1]',
-        '/mytable?select=a.k1.r1[0]', # fixme
-        # filtering - with nesting, and slicing
-        '/mytable?select=x&z=eq.5&y=gt.0',
-        '/mytable?x=not.like.*zap&y=not.is.null',
-        '/mytable?select=z&a.k1.r2=eq.2',
-        '/mytable?select=z&a.k1.r1[0]=eq.1',
-        # '/mytable?select=z&a.k1.r1[0].h=eq.3', TODO: get working
-        # ordering - TODO: support nesting, and slicing
-        '/mytable?order=y.desc',
-    ]
-    update_uris = [
-        # updates
-        '/mytable?set=x.5,y.6&z=eq.5',
-        '/mytable?set=a.k1.r2.5&z=eq.0', # need slicing here
-    ]
-    delete_uris = [
-        # deletion
-        #'/mytable?z=not.is.null'
-    ]
-    for uri in select_uris:
-        try:
-            print(uri)
-            query_engine = sqlite_init('/tmp', name= 'file-api-test.db', builtin=True)
-            print(sqlite_get_data(query_engine, 'mytable', uri, verbose=True))
-            print()
-        except Exception:
-            pass
-    for uri in update_uris:
-        try:
-            print(uri)
-            query_engine = sqlite_init('/tmp', name= 'file-api-test.db', builtin=True)
-            print(sqlite_update_data(query_engine, 'mytable', uri, verbose=True))
-            query_engine = sqlite_init('/tmp', name= 'file-api-test.db', builtin=True)
-            print(sqlite_get_data(query_engine, 'mytable', '/mytable'))
-            print()
-        except Exception:
-            pass
