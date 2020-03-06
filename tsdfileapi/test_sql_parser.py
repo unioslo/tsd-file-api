@@ -1,5 +1,6 @@
 
 from db import sqlite_init, sqlite_insert, sqlite_get_data, sqlite_update_data, sqlite_delete_data
+from parser import SqlStatement
 
 if __name__ == '__main__':
     test_data = [
@@ -110,6 +111,39 @@ if __name__ == '__main__':
         # deletion
         #'/mytable?z=not.is.null'
     ]
+    # test regexes for single column selection strategies
+    sql = SqlStatement('')
+    # slice present
+    assert not sql.idx_present.match('x')
+    assert sql.idx_present.match('x[11]')
+    assert sql.idx_present.match('x[1]')
+    assert sql.idx_present.match('x[1:3]')
+    assert sql.idx_present.match('x[#]')
+    assert sql.idx_present.match('x[1:3].y')
+    assert sql.idx_present.match('x[1:3].(y,z)')
+    # single slice
+    assert not sql.idx_single.match('x[1:3]')
+    assert not sql.idx_single.match('x[#]')
+    assert sql.idx_single.match('x[1]')
+    assert sql.idx_single.match('x[12]')
+    # range slice
+    assert not sql.idx_range.match('x[1]')
+    assert not sql.idx_range.match('x[#]')
+    assert sql.idx_range.match('x[1:3]')
+    # all slice
+    assert not sql.idx_all.match('x[1]')
+    assert not sql.idx_all.match('x[1:10]')
+    assert sql.idx_all.match('x[#]')
+    # subselect present
+    assert not sql.subselect_present.match('x[1]')
+    assert sql.subselect_present.match('x[#].k')
+    assert sql.subselect_present.match('x[1:9].(k,j)')
+    # subselect single
+    assert not sql.subselect_single.match('x[1:9].(k,j)')
+    assert sql.subselect_single.match('x[#].k')
+    # subselect mutliple
+    assert not sql.subselect_multiple.match('x[#].k')
+    assert sql.subselect_multiple.match('x[1:9].(k,j)')
     for uri in select_uris:
         try:
             print(uri)

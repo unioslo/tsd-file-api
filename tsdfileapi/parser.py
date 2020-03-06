@@ -55,16 +55,14 @@ class SqlStatement(object):
         x[#].y          all     single
         x[#].(y,z)      all     multiple
 
-        where (...) is a group.
-
         """
-        self.idx_present = re.compile(r'(.+)\[[0-9#]\](.*)')
-        self.idx_single = re.compile(r'(.+)\[[0-9]+\](.*)') # technically, dont need this
+        self.idx_present = re.compile(r'(.+)\[[0-9#:]+\](.*)')
+        self.idx_single = re.compile(r'(.+)\[[0-9]+\](.*)')
         self.idx_range = re.compile(r'(.+)\[[0-9]+:[0-9]+\](.*)')
         self.idx_all = re.compile(r'(.+)\[[#]\](.*)')
-        self.subselect_present = re.compile(r'(.+)\[[0-9#]\].(.+)')
-        self.subselect_single = re.compile(r'(.+)\[[0-9#]\].(.+') # technically, don't need this
-        self.subselect_multiple = re.compile(r'(.+)\[[0-9#]\].\((.+),(.+)\)$')
+        self.subselect_present = re.compile(r'(.+)\[[0-9#:]+\].(.+)$')
+        self.subselect_single = re.compile(r'(.+)\[[0-9#:]+\].([^,])$')
+        self.subselect_multiple = re.compile(r'(.+)\[[0-9#:]+\].\((.+),(.+)\)$')
 
         self.specific_idx_selection = re.compile(r'(.+)\[[0-9]\]')
         self.all_idxs_selection = re.compile(r'(.+)\[[#]\]')
