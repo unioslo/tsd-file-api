@@ -36,6 +36,7 @@ class SqlStatement(object):
     """
 
     def __init__(self, uri):
+        # base regexes to identify data selections
         self.idx_present = re.compile(r'(.+)\[[0-9#:]+\](.*)')
         self.idx_single = re.compile(r'(.+)\[[0-9]+\](.*)')
         self.idx_range = re.compile(r'(.+)\[[0-9]+:[0-9]+\](.*)')
@@ -234,7 +235,7 @@ class SqlStatement(object):
         return quoted_name, quoted_name.split('.'), name
 
 
-    def construct_data_selection_str(self, inner_col, quoted_name, table_name):
+    def construct_data_selection_str(self, inner_col, quoted_name, unquoted_name, table_name):
         """
         Regexes to determine data selection type for a specific nested column,
         which is a combination of two things:
@@ -256,39 +257,60 @@ class SqlStatement(object):
         x[#].(y,z)      all     multiple
 
         """
-        # NA, NA
-        if '[' not in inner_col and ']' not in inner_col:
+        def extract_idx_range(selection):
+            range_re = r'(.*)\[([0-9]+):([0-9]+)\](.*)'
+            lower = re.sub(range_re, r'\2', inner_col)
+            upper = re.sub(range_re, r'\3', inner_col)
+            return lower, upper
+        def destructure_grouped_selection(selection):
+            out = []
+            res = selection.split('(')
+            base = res[0].replace(')', '')
+            group = res[1].replace(')', '')
+            elements = group.split(',')
+            for element in elements:
+                out.append(f'{base}{element}')
+            return out
+        # composite regex conditions
+        na_na = ('[' not in inner_col and ']' not in inner_col)
+        single_none = (self.idx_single.match(inner_col) and not self.subselect_present.match(inner_col))
+        range_none = (self.idx_range.match(inner_col) and not self.subselect_present.match(inner_col))
+        single_single = (self.idx_single.match(inner_col) and self.subselect_single.match(inner_col))
+        range_single = (self.idx_range.match(inner_col) and self.subselect_single.match(inner_col))
+        single_multiple = (self.idx_single.match(inner_col) and self.subselect_multiple.match(inner_col))
+        range_multiple = (self.idx_range.match(inner_col) and self.subselect_multiple.match(inner_col))
+        all_none = (self.idx_all.match(inner_col) and not self.subselect_present.match(inner_col))
+        all_single = (self.idx_all.match(inner_col) and self.subselect_single.match(inner_col))
+        all_multiple = (self.idx_all.match(inner_col) and self.subselect_multiple.match(inner_col))
+        if na_na:
             data_select_str = "%s, json_extract(data, '$.%s')"
             return data_select_str % (inner_col, quoted_name)
-        # single, none
-        if self.idx_single.match(inner_col) and not self.subselect_present.match(inner_col):
+        if single_none:
             data_select_str = "%s, json_array(json_extract(data, '$.%s'))"
             return data_select_str % (inner_col.split('[')[0], quoted_name)
-        # range, none
-        if self.idx_range.match(inner_col) and not self.subselect_present.match(inner_col):
-            return ('range, none')
-        # single, single
-        if self.idx_single.match(inner_col) and self.subselect_single.match(inner_col):
+        if range_none:
+            lower, upper = extract_idx_range(inner_col)
+            return (f'range {lower} {upper}, none')
+        if single_single:
             return ('single, single')
-        # range, single
-        if self.idx_range.match(inner_col) and self.subselect_single.match(inner_col):
-            return ('range, single')
-        # single, multiple
-        if self.idx_single.match(inner_col) and self.subselect_multiple.match(inner_col):
-            return ('single, multiple')
-        # range, multiple
-        if self.idx_range.match(inner_col) and self.subselect_multiple.match(inner_col):
-            return ('range, multiple')
-        # replace # with %
-        # all, none
-        if self.idx_all.match(inner_col) and not self.subselect_present.match(inner_col):
-            return ('all, none')
-        # all, single
-        if self.idx_all.match(inner_col) and self.subselect_single.match(inner_col):
-            return ('all, single')
-        # all, multiple
-        if self.idx_all.match(inner_col) and self.subselect_multiple.match(inner_col):
-            return ('all, multiple')
+        if range_single:
+            lower, upper = extract_idx_range(inner_col)
+            return (f'range {lower} {upper}, single')
+        if single_multiple:
+            multiples = destructure_grouped_selection(unquoted_name)
+            return (f'single, multiple - multiples | {multiples}')
+        if range_multiple:
+            lower, upper = extract_idx_range(inner_col)
+            multiples = destructure_grouped_selection(unquoted_name)
+            return (f'range {lower} {upper}, multiple - | {multiples}')
+        unquoted_name = unquoted_name.replace('#', '%')
+        if all_none:
+            return (f'all, none - target | {unquoted_name}')
+        if all_single:
+            return (f'all, single - target | {unquoted_name}')
+        if all_multiple:
+            multiples = destructure_grouped_selection(unquoted_name)
+            return (f'all, multiple - targets | {unquoted_name}, multiple - | {multiples}')
         # construct tree query
         #data_select_str_with_slice_and_select = """
          #   select json_group_array(target) from
@@ -306,10 +328,10 @@ class SqlStatement(object):
         # will have to in order to support [0].k.r[0] etc
 
     def parse_column_selection(self, name):
-        quoted_name, quoted_nested_cols, unquoted = self.quote_column_selection(name)
+        quoted_name, quoted_nested_cols, unquoted_name = self.quote_column_selection(name)
         inner_col = quoted_nested_cols[-1]
         table_name = None
-        selection_extract = self.construct_data_selection_str(inner_col, quoted_name, table_name)
+        selection_extract = self.construct_data_selection_str(inner_col, quoted_name, unquoted_name, table_name)
         # now reconstruct the original shape
         quoted_nested_cols.reverse()
         current_inner = selection_extract
