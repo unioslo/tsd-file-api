@@ -255,13 +255,6 @@ class SqlStatement(object):
         x[#].y          all     single
         x[#].(y,z)      all     multiple
 
-        self.idx_present = re.compile(r'(.+)\[[0-9#:]+\](.*)')
-        self.idx_single = re.compile(r'(.+)\[[0-9]+\](.*)')
-        self.idx_range = re.compile(r'(.+)\[[0-9]+:[0-9]+\](.*)')
-        self.idx_all = re.compile(r'(.+)\[[#]\](.*)')
-        self.subselect_present = re.compile(r'(.+)\[[0-9#:]+\].(.+)$')
-        self.subselect_single = re.compile(r'(.+)\[[0-9#:]+\].([^,])$')
-        self.subselect_multiple = re.compile(r'(.+)\[[0-9#:]+\].\((.+),(.+)\)$')
         """
         # NA, NA
         if '[' not in inner_col and ']' not in inner_col:
@@ -271,9 +264,32 @@ class SqlStatement(object):
         if self.idx_single.match(inner_col) and not self.subselect_present.match(inner_col):
             data_select_str = "%s, json_array(json_extract(data, '$.%s'))"
             return data_select_str % (inner_col.split('[')[0], quoted_name)
+        # range, none
+        if self.idx_range.match(inner_col) and not self.subselect_present.match(inner_col):
+            return ('range, none')
+        # single, single
+        if self.idx_single.match(inner_col) and self.subselect_single.match(inner_col):
+            return ('single, single')
+        # range, single
+        if self.idx_range.match(inner_col) and self.subselect_single.match(inner_col):
+            return ('range, single')
+        # single, multiple
+        if self.idx_single.match(inner_col) and self.subselect_multiple.match(inner_col):
+            return ('single, multiple')
+        # range, multiple
+        if self.idx_range.match(inner_col) and self.subselect_multiple.match(inner_col):
+            return ('range, multiple')
         # replace # with %
+        # all, none
+        if self.idx_all.match(inner_col) and not self.subselect_present.match(inner_col):
+            return ('all, none')
+        # all, single
+        if self.idx_all.match(inner_col) and self.subselect_single.match(inner_col):
+            return ('all, single')
+        # all, multiple
+        if self.idx_all.match(inner_col) and self.subselect_multiple.match(inner_col):
+            return ('all, multiple')
         # construct tree query
-        # try to make this dryer
         #data_select_str_with_slice_and_select = """
          #   select json_group_array(target) from
           #      (select path, json_group_object(key, value) as target from
