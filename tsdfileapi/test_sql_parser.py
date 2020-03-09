@@ -163,7 +163,7 @@ if __name__ == '__main__':
     for selection in example_data_selections:
         quoted_name = sql.quote_column(selection)
         table_name = None # todo
-        print(selection, '|', sql.construct_data_selection_str(selection, quoted_name, table_name))
+        print(selection, '|', sql.construct_data_selection_str(selection, quoted_name, selection, table_name))
     for uri in select_uris:
         try:
             print(uri)
