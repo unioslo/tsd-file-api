@@ -148,6 +148,22 @@ if __name__ == '__main__':
     print(sql.quote_column('erd.ys[1].z'))
     print(sql.quote_column('"erd"."ys"[1]."z"'))
     #print(sql.quote_column(',x,y[1].(z,a)')) - should error
+    example_data_selections = [
+        'x',            # NA      NA
+        'x[1]',         # single  none
+        'x[1:3]',       # range   none
+        'x[1].k',       # single  single
+        'x[1:3].k',     # range   single
+        'x[1].(k,d)',   # single  multiple
+        'x[1:3].(k,d)', # range   multiple
+        'x[#]',         # all     none
+        'x[#].y',       # all     single
+        'x[#].(y,z)',   # all     multiple
+    ]
+    for selection in example_data_selections:
+        quoted_name = sql.quote_column(selection)
+        table_name = None # todo
+        print(selection, '|', sql.construct_data_selection_str(selection, quoted_name, table_name))
     for uri in select_uris:
         try:
             print(uri)
