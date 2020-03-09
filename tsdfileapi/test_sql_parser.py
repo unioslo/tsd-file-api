@@ -58,19 +58,6 @@ if __name__ == '__main__':
     sqlite_insert(create_engine, 'mytable', test_data)
     select_uris = [
         # selections
-        #
-        # TODO: shape
-        # add &simplify=true for optional result simplification
-        # default to shape preservation
-        #
-        # TODO: slicing, use ; to leave space for future range slices
-        # d[1] - done
-        # r.d[1] - done
-        # d[1;k1]
-        # d[1;k1,k2]
-        # d[1:2]
-        # d[1:2;k1,k2]
-        #
         # POC: map selection of two keys over a whole array
         # select json_group_array(target) from
         #   (select path, json_group_object(key, value) as target from
@@ -88,14 +75,20 @@ if __name__ == '__main__':
         '/mytable?select=b[1]',
         '/mytable?select=a,b[1]',
         '/mytable?select=a.k1.r1[0]',
-        # more slices, and subselects
+        # with slices
+        #'/mytable?select=c[0:1]',
+        #'/mytable?select=c[#]',
+        # with slices, and subselects
         #'/mytable?select=c[0].h',
+        #'/mytable?select=c[0:1].h',
+        #'/mytable?select=c[0:1].(h,p)',
+        #'/mytable?select=c[#].(h,p)',
         # conditional filtering
         '/mytable?select=x&z=eq.5&y=gt.0',
         '/mytable?x=not.like.*zap&y=not.is.null',
         '/mytable?select=z&a.k1.r2=eq.2',
         '/mytable?select=z&a.k1.r1[0]=eq.1',
-        '/mytable?select=z&a.k3[0].h=eq.0', # works - but this is unfortunately inconsistent with selection syntax - can we live with it?
+        '/mytable?select=z&a.k3[0].h=eq.0',
         # ordering - TODO: support nesting, and slicing
         '/mytable?order=y.desc',
         # todo add
@@ -144,6 +137,17 @@ if __name__ == '__main__':
     # subselect mutliple
     assert not sql.subselect_multiple.match('x[#].k')
     assert sql.subselect_multiple.match('x[1:9].(k,j)')
+    # column quoting
+    print(sql.quote_column_selection('x'))
+    print(sql.quote_column_selection('x.y'))
+    print(sql.quote_column_selection('y[1]'))
+    print(sql.quote_column_selection('y[1].z'))
+    print(sql.quote_column_selection('y[1:3].z'))
+    print(sql.quote_column_selection('y[1].(z,a)'))
+    print(sql.quote_column('erd.ys[1].(z,a)'))
+    print(sql.quote_column('erd.ys[1].z'))
+    print(sql.quote_column('"erd"."ys"[1]."z"'))
+    #print(sql.quote_column(',x,y[1].(z,a)')) - should error
     for uri in select_uris:
         try:
             print(uri)

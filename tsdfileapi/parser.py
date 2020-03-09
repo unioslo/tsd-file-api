@@ -36,26 +36,6 @@ class SqlStatement(object):
     """
 
     def __init__(self, uri):
-        """
-        Regexes to determine data selection type for a specific nested column,
-        which is a combination of two things:
-
-        1) slicing
-        2) column sub-selection
-
-        example         slice   sub-selection
-        -------         -----   -------------
-        x[1]            single  none
-        x[1:3]          range   none
-        x[1].k          single  single
-        x[1:3].k        range   single
-        x[1].(k,d)      single  multiple
-        x[1:3].(k,d)    range   multiple
-        x               all     none
-        x[#].y          all     single
-        x[#].(y,z)      all     multiple
-
-        """
         self.idx_present = re.compile(r'(.+)\[[0-9#:]+\](.*)')
         self.idx_single = re.compile(r'(.+)\[[0-9]+\](.*)')
         self.idx_range = re.compile(r'(.+)\[[0-9]+:[0-9]+\](.*)')
@@ -63,9 +43,6 @@ class SqlStatement(object):
         self.subselect_present = re.compile(r'(.+)\[[0-9#:]+\].(.+)$')
         self.subselect_single = re.compile(r'(.+)\[[0-9#:]+\].([^,])$')
         self.subselect_multiple = re.compile(r'(.+)\[[0-9#:]+\].\((.+),(.+)\)$')
-
-        self.specific_idx_selection = re.compile(r'(.+)\[[0-9]\]')
-        self.all_idxs_selection = re.compile(r'(.+)\[[#]\]')
         self.operators = {
             'eq': '=',
             'gt': '>',
@@ -149,59 +126,174 @@ class SqlStatement(object):
         return query
 
 
+    def quote_column(self, name):
+        out = ''
+        quote = '"'
+        key_in = '.'
+        slice_open = '['
+        slice_close = ']'
+        grouped_keys_start = '('
+        grouped_keys_end = ')'
+        grouped_keys_sep = ','
+        tokens = [key_in, slice_open, slice_close,
+                  grouped_keys_start, grouped_keys_end, grouped_keys_sep]
+        # in general a selection has...
+        for idx, char_curr in enumerate(name):
+            char_prev = name[idx - 1] if idx > 0 else None
+            char_next = name[idx + 1] if idx < (len(name) - 1) else None
+            # pad start
+            if idx == 0:
+                if char_curr in tokens:
+                    err = f'format error - cannot start selection with: "{char_curr}"'
+                    raise Exception(err)
+                if char_curr == quote:
+                    out += char_curr
+                    continue
+                else:
+                    out += quote
+                    out += char_curr
+                    if not char_next: # then len == 1
+                        out += quote
+                    continue
+            # pad end
+            if idx == len(name) - 1:
+                if char_curr == grouped_keys_end:
+                    if char_prev != quote:
+                        out += quote
+                    out += char_curr
+                    continue
+                elif char_curr == slice_close:
+                    out += char_curr
+                    continue
+                else:
+                    if char_curr == quote:
+                        out += char_curr
+                        continue
+                    else:
+                        out += char_curr
+                        out += quote
+                        continue
+            # handle rest
+            # chars
+            if char_curr not in tokens:
+                out += char_curr
+                continue
+            # then one or more .
+            if char_curr == key_in:
+                if char_prev == slice_close:
+                    out += char_curr # then do not quote before .
+                    if char_next == grouped_keys_start:
+                        continue
+                    if char_next != quote:
+                        out += quote
+                    continue
+                if char_prev and char_prev != quote:
+                    out += quote
+                    out += char_curr
+                elif char_prev and char_prev == quote:
+                    out += char_curr
+                if char_next != quote:
+                    out += quote
+                    continue
+            # followed by more chars
+            # until maybe [
+            if char_curr == slice_open:
+                if char_prev != quote:
+                    out += quote
+                    out += char_curr
+                    continue
+                else:
+                    out += char_curr
+                    continue
+            # until ]
+            if char_curr == slice_close:
+                out += char_curr
+            # optionally followed by . handed above
+            # then either chars or (
+            if char_curr == grouped_keys_start:
+                out += char_curr
+                if char_next != quote:
+                    out += quote
+                continue
+            # after which chars handled above or ,
+            if char_curr == grouped_keys_sep:
+                if char_prev != quote:
+                    out += quote
+                    out += char_curr
+                else:
+                    out += char_curr
+                if char_next != quote:
+                    out += quote
+                continue
+            # and eventually ) - last char, handled above
+        return out
+
+
     def quote_column_selection(self, name):
-        nested_cols = name.split('.')
-        # quote cols for value extraction
-        quoted_nested_cols = []
-        for col in nested_cols:
-            parts = None
-            if self.specific_idx_selection.match(col):
-                parts = col.split('[')
-                col = parts[0]
-            if not (col.startswith('"') and col.endswith('"')):
-                col = '"%s"' % col
-            if parts:
-                col = '%s[%s' % (col, parts[1])
-            quoted_nested_cols.append(col)
-        quoted_name = '.'.join(quoted_nested_cols)
-        return quoted_name, quoted_nested_cols
+        quoted_name = self.quote_column(name)
+        return quoted_name, quoted_name.split('.'), name
 
 
-    def construct_data_selection_str(self, inner_col, table_name):
-        pass
+    def construct_data_selection_str(self, inner_col, quoted_name, table_name):
+        """
+        Regexes to determine data selection type for a specific nested column,
+        which is a combination of two things:
 
-    def parse_column_selection(self, name):
-        # all_idxs_selection = re.match(r'(.+)\[[#]\]', col)
-        # if ^ replace # with %
+        1) slicing
+        2) column sub-selection
+
+        example         slice   sub-selection
+        -------         -----   -------------
+        x               NA      NA
+        x[1]            single  none
+        x[1:3]          range   none
+        x[1].k          single  single
+        x[1:3].k        range   single
+        x[1].(k,d)      single  multiple
+        x[1:3].(k,d)    range   multiple
+        x[#]            all     none
+        x[#].y          all     single
+        x[#].(y,z)      all     multiple
+
+        self.idx_present = re.compile(r'(.+)\[[0-9#:]+\](.*)')
+        self.idx_single = re.compile(r'(.+)\[[0-9]+\](.*)')
+        self.idx_range = re.compile(r'(.+)\[[0-9]+:[0-9]+\](.*)')
+        self.idx_all = re.compile(r'(.+)\[[#]\](.*)')
+        self.subselect_present = re.compile(r'(.+)\[[0-9#:]+\].(.+)$')
+        self.subselect_single = re.compile(r'(.+)\[[0-9#:]+\].([^,])$')
+        self.subselect_multiple = re.compile(r'(.+)\[[0-9#:]+\].\((.+),(.+)\)$')
+        """
+        # NA, NA
+        if '[' not in inner_col and ']' not in inner_col:
+            data_select_str = "%s, json_extract(data, '$.%s')"
+            return data_select_str % (inner_col, quoted_name)
+        # single, none
+        if self.idx_single.match(inner_col) and not self.subselect_present.match(inner_col):
+            data_select_str = "%s, json_array(json_extract(data, '$.%s'))"
+            return data_select_str % (inner_col.split('[')[0], quoted_name)
+        # replace # with %
         # construct tree query
         # try to make this dryer
-        data_select_str = "%s, json_extract(data, '$.%s')"
-        data_select_str_with_slice = "%s, json_array(json_extract(data, '$.%s'))"
-        data_select_str_with_slice_and_select = """
-            select json_group_array(target) from
-                (select path, json_group_object(key, value) as target from
-                    (select key, value, fullkey, path from
-                     %(table_name)s, json_tree(%(table_name)s.data)
-                     where %(where_clause)s))
-                 group by path)""" # table
-        slide_and_select_where_clause = "fullkey like '$.%(slice_and_select)s'" # '$.c[idx].h' where idx == % forall
+        #data_select_str_with_slice_and_select = """
+         #   select json_group_array(target) from
+          #      (select path, json_group_object(key, value) as target from
+           #         (select key, value, fullkey, path from
+            #         %(table_name)s, json_tree(%(table_name)s.data)
+             #        where %(where_clause)s))
+              #   group by path)""" # table
+        #slide_and_select_where_clause = "fullkey like '$.%(slice_and_select)s'" # '$.c[idx].h' where idx == % forall
         # need to support having one or more where conditions
         # and need to use unquoted selections
         # and need support for selecting more than one column
         # and for either a specific index, or all
-        quoted_name, quoted_nested_cols = self.quote_column_selection(name)
-        print(quoted_name, quoted_nested_cols)
-        # data selection piece - could be a slice...
+        # will need to decide if this is done recursively
+        # will have to in order to support [0].k.r[0] etc
+
+    def parse_column_selection(self, name):
+        quoted_name, quoted_nested_cols, unquoted = self.quote_column_selection(name)
         inner_col = quoted_nested_cols[-1]
-        if self.specific_idx_selection.match(inner_col):
-            selection_extract = data_select_str_with_slice % (inner_col.split('[')[0], quoted_name)
-        # if the parent selection is a slice...
-        elif self.specific_idx_selection.match(inner_col):
-            print('!!!!!! detected selection on a slice')
-            # will need to decide if this is done recursively
-            # will have to in order to support [0].k.r[0] etc
-        else:
-            selection_extract = data_select_str % (inner_col, quoted_name)
+        table_name = None
+        selection_extract = self.construct_data_selection_str(inner_col, quoted_name, table_name)
         # now reconstruct the original shape
         quoted_nested_cols.reverse()
         current_inner = selection_extract
@@ -267,7 +359,7 @@ class SqlStatement(object):
             if op == 'like' or op == 'ilike':
                 val = val.replace('*', '%')
         final = col_and_opt_str + val_str
-        quoted_col, _ = self.quote_column_selection(col)
+        quoted_col, _, _ = self.quote_column_selection(col)
         safe_part = final % {'col': quoted_col, 'op': op, 'val': val}
         if num_part > 0:
             safe_part = ' and ' + safe_part
