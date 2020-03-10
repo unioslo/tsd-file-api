@@ -58,13 +58,6 @@ if __name__ == '__main__':
     sqlite_insert(create_engine, 'mytable', test_data)
     select_uris = [
         # selections
-        # POC: map selection of two keys over a whole array
-        # select json_group_array(target) from
-        #   (select path, json_group_object(key, value) as target from
-        #       (select key, value, fullkey, path from
-        #           mytable, json_tree(mytable.data)
-        #           where fullkey like '$.c[%].h' or fullkey like '$.c[%].p')
-        #        group by path);
         '/mytable',
         '/mytable?select=x',
         '/mytable?select=x,y',
@@ -76,10 +69,9 @@ if __name__ == '__main__':
         '/mytable?select=a,b[1]',
         '/mytable?select=a.k1.r1[0]',
         # with slices
+        '/mytable?select=c[0].h',
         #'/mytable?select=c[0:1]',
         #'/mytable?select=c[#]',
-        # with slices, and subselects
-        #'/mytable?select=c[0].h',
         #'/mytable?select=c[0:1].h',
         #'/mytable?select=c[0:1].(h,p)',
         #'/mytable?select=c[#].(h,p)',
@@ -147,6 +139,8 @@ if __name__ == '__main__':
     print(sql.quote_column('erd.ys[1].(z,a)'))
     print(sql.quote_column('erd.ys[1].z'))
     print(sql.quote_column('"erd"."ys"[1]."z"'))
+    print(sql.smart_split('x,y[1].(f,m,l),z')) # desired: ['x', 'y[1].(f,m,l)', 'z']
+    print(sql.smart_split('x,y[1].k'))
     #print(sql.quote_column(',x,y[1].(z,a)')) - should error
     example_data_selections = [
         'x',            # NA      NA
@@ -162,7 +156,7 @@ if __name__ == '__main__':
     ]
     for selection in example_data_selections:
         quoted_name = sql.quote_column(selection)
-        table_name = None # todo
+        table_name = 'mytable'
         print(selection, '|', sql.construct_data_selection_str(selection, quoted_name, selection, table_name))
     for uri in select_uris:
         try:
