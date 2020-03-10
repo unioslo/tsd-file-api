@@ -70,6 +70,7 @@ if __name__ == '__main__':
         '/mytable?select=a.k1.r1[0]',
         # with slices
         '/mytable?select=c[0].h',
+        '/mytable?select=a.k3[0].h',
         #'/mytable?select=c[0:1]',
         #'/mytable?select=c[#]',
         #'/mytable?select=c[0:1].h',
