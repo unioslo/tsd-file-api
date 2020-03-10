@@ -334,13 +334,17 @@ class SqlStatement(object):
         quoted_name, quoted_nested_cols, unquoted_name = self.quote_column_selection(name)
         inner_col = quoted_nested_cols[-1]
         selection_extract, tree_builder = self.construct_data_selection_str(inner_col, quoted_name, unquoted_name, table_name)
-        if tree_builder:
-            return selection_extract
-        # now reconstruct the original shape
         quoted_nested_cols.reverse()
         current_inner = selection_extract
-        for col in quoted_nested_cols[1:]: # already have the last one
-            current_inner = "%s, json_object(%s)" % (col, current_inner)
+        remaining_cols = quoted_nested_cols[1:]
+        for idx, col in enumerate(remaining_cols): # already have the last one
+            if re.match(r'.+\[.+\]', col):
+                if idx == 0:
+                    continue # this is part of the data selection
+                else:
+                    current_inner = "json_object(%s, %s)" % (col, current_inner)
+            else:
+                current_inner = "%s, json_object(%s)" % (col, current_inner)
         extract = current_inner
         return extract
 
@@ -381,7 +385,6 @@ class SqlStatement(object):
             # need to ensure we do not split on the comma between ()
             # if there is a sub-select inside an array
             names = self.smart_split(columns)
-            print(names)
             inner_cols = ''
             first = True
             for name in names:
