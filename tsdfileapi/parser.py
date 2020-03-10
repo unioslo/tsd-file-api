@@ -232,7 +232,8 @@ class SqlStatement(object):
 
     def quote_column_selection(self, name):
         quoted_name = self.quote_column(name)
-        return quoted_name, quoted_name.split('.'), name
+        quoted_name_list = quoted_name.split('.')
+        return quoted_name, quoted_name_list, name
 
 
     def construct_data_selection_str(self, inner_col, quoted_name, unquoted_name, table_name):
@@ -259,8 +260,8 @@ class SqlStatement(object):
         """
         def extract_idx_range(selection):
             range_re = r'(.*)\[([0-9]+):([0-9]+)\](.*)'
-            lower = re.sub(range_re, r'\2', inner_col)
-            upper = re.sub(range_re, r'\3', inner_col)
+            lower = re.sub(range_re, r'\2', unquoted_name)
+            upper = re.sub(range_re, r'\3', unquoted_name)
             return lower, upper
         def destructure_grouped_selection(selection):
             out = []
@@ -272,27 +273,42 @@ class SqlStatement(object):
                 out.append(f'{base}{element}')
             return out
         # composite regex conditions
-        na_na = ('[' not in inner_col and ']' not in inner_col)
-        single_none = (self.idx_single.match(inner_col) and not self.subselect_present.match(inner_col))
-        range_none = (self.idx_range.match(inner_col) and not self.subselect_present.match(inner_col))
-        single_single = (self.idx_single.match(inner_col) and self.subselect_single.match(inner_col))
-        range_single = (self.idx_range.match(inner_col) and self.subselect_single.match(inner_col))
-        single_multiple = (self.idx_single.match(inner_col) and self.subselect_multiple.match(inner_col))
-        range_multiple = (self.idx_range.match(inner_col) and self.subselect_multiple.match(inner_col))
-        all_none = (self.idx_all.match(inner_col) and not self.subselect_present.match(inner_col))
-        all_single = (self.idx_all.match(inner_col) and self.subselect_single.match(inner_col))
-        all_multiple = (self.idx_all.match(inner_col) and self.subselect_multiple.match(inner_col))
+        na_na = ('[' not in unquoted_name and ']' not in unquoted_name)
+        single_none = (self.idx_single.match(unquoted_name) and not self.subselect_present.match(unquoted_name))
+        range_none = (self.idx_range.match(unquoted_name) and not self.subselect_present.match(unquoted_name))
+        single_single = (self.idx_single.match(unquoted_name) and self.subselect_single.match(unquoted_name))
+        range_single = (self.idx_range.match(unquoted_name) and self.subselect_single.match(unquoted_name))
+        single_multiple = (self.idx_single.match(unquoted_name) and self.subselect_multiple.match(unquoted_name))
+        range_multiple = (self.idx_range.match(unquoted_name) and self.subselect_multiple.match(unquoted_name))
+        all_none = (self.idx_all.match(unquoted_name) and not self.subselect_present.match(unquoted_name))
+        all_single = (self.idx_all.match(unquoted_name) and self.subselect_single.match(unquoted_name))
+        all_multiple = (self.idx_all.match(unquoted_name) and self.subselect_multiple.match(unquoted_name))
+        sliced_select_str = """
+            %(col)s,
+            (case when json_extract(data, '$.%(data_selection)s') is not null then (
+                select json_group_array(json_object(key, value)) from (
+                select key, value, fullkey, path from %(table_name)s, json_tree(%(table_name)s.data)
+                where %(where_condition)s)
+                group by path)
+             else null end)"""
         if na_na:
             data_select_str = "%s, json_extract(data, '$.%s')"
-            return data_select_str % (inner_col, quoted_name)
+            return data_select_str % (inner_col, quoted_name), False
         if single_none:
             data_select_str = "%s, json_array(json_extract(data, '$.%s'))"
-            return data_select_str % (inner_col.split('[')[0], quoted_name)
+            return data_select_str % (inner_col.split('[')[0], quoted_name), False
         if range_none:
             lower, upper = extract_idx_range(inner_col)
             return (f'range {lower} {upper}, none')
         if single_single:
-            return ('single, single')
+            selection_on = quoted_name.split('[')[0].split('.')[-1]
+            params = {
+                'col': selection_on,
+                'data_selection': unquoted_name,
+                'table_name': table_name,
+                'where_condition': "fullkey like '$.%s'" % unquoted_name
+                }
+            return sliced_select_str % params, True
         if range_single:
             lower, upper = extract_idx_range(inner_col)
             return (f'range {lower} {upper}, single')
@@ -311,27 +327,15 @@ class SqlStatement(object):
         if all_multiple:
             multiples = destructure_grouped_selection(unquoted_name)
             return (f'all, multiple - targets | {unquoted_name}, multiple - | {multiples}')
-        # construct tree query
-        #data_select_str_with_slice_and_select = """
-         #   select json_group_array(target) from
-          #      (select path, json_group_object(key, value) as target from
-           #         (select key, value, fullkey, path from
-            #         %(table_name)s, json_tree(%(table_name)s.data)
-             #        where %(where_clause)s))
-              #   group by path)""" # table
-        #slide_and_select_where_clause = "fullkey like '$.%(slice_and_select)s'" # '$.c[idx].h' where idx == % forall
-        # need to support having one or more where conditions
-        # and need to use unquoted selections
-        # and need support for selecting more than one column
-        # and for either a specific index, or all
-        # will need to decide if this is done recursively
-        # will have to in order to support [0].k.r[0] etc
+        # where fullkey like '$.c[%].h' or fullkey like '$.c[%].p'
 
-    def parse_column_selection(self, name):
+
+    def parse_column_selection(self, name, table_name):
         quoted_name, quoted_nested_cols, unquoted_name = self.quote_column_selection(name)
         inner_col = quoted_nested_cols[-1]
-        table_name = None
-        selection_extract = self.construct_data_selection_str(inner_col, quoted_name, unquoted_name, table_name)
+        selection_extract, tree_builder = self.construct_data_selection_str(inner_col, quoted_name, unquoted_name, table_name)
+        if tree_builder:
+            return selection_extract
         # now reconstruct the original shape
         quoted_nested_cols.reverse()
         current_inner = selection_extract
@@ -341,10 +345,32 @@ class SqlStatement(object):
         return extract
 
 
+    def smart_split(self, columns):
+        has_group = r'(.+),(.+)\[(.+)\].(.+,).*'
+        if re.match(has_group, columns):
+            out = []
+            acc = ''
+            inside_group = False
+            for char in columns:
+                if char == '(':
+                    inside_group = True
+                if char == ')':
+                    inside_group = False
+                if not inside_group and char == ',':
+                    acc += '|'
+                    continue
+                acc += char
+            return acc.split('|')
+        else:
+            return columns.split(',')
+
+
     def parse_columns(self, uri):
         if '?' not in uri:
             return '*'
-        uri_query = uri.split('?')[-1]
+        uri_parts = uri.split('?')
+        uri_query = uri_parts[-1]
+        table_name = os.path.basename(uri_parts[0].split('/')[-1])
         columns = '*'
         parts = uri_query.split('&')
         for part in parts:
@@ -352,11 +378,14 @@ class SqlStatement(object):
                 columns = part.split('=')[-1]
         fmt_str = "json_object(%s)"
         if ',' in columns:
-            names = columns.split(',')
+            # need to ensure we do not split on the comma between ()
+            # if there is a sub-select inside an array
+            names = self.smart_split(columns)
+            print(names)
             inner_cols = ''
             first = True
             for name in names:
-                extract = self.parse_column_selection(name)
+                extract = self.parse_column_selection(name, table_name)
                 if first:
                     inner_cols += extract
                 else:
@@ -366,7 +395,7 @@ class SqlStatement(object):
         else:
             if columns != '*':
                 name = columns
-                extract = self.parse_column_selection(name)
+                extract = self.parse_column_selection(name, table_name)
                 columns = fmt_str % (extract)
         return columns
 
