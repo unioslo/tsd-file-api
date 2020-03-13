@@ -27,6 +27,9 @@ if __name__ == '__main__':
                     'i': {
                         't': [1,2,3]
                     }
+                },
+                {
+                    'h': 0
                 }
             ]
         },
@@ -71,10 +74,8 @@ if __name__ == '__main__':
         # with slices
         '/mytable?select=c[0].h',
         '/mytable?select=a.k3[0].h',
-        #'/mytable?select=c[0:1]',
+        '/mytable?select=x,y,c[0].h,b[1]'
         #'/mytable?select=c[#]',
-        #'/mytable?select=c[0:1].h',
-        #'/mytable?select=c[0:1].(h,p)',
         #'/mytable?select=c[#].(h,p)',
         # conditional filtering
         '/mytable?select=x&z=eq.5&y=gt.0',
@@ -103,39 +104,24 @@ if __name__ == '__main__':
     assert not sql.idx_present.match('x')
     assert sql.idx_present.match('x[11]')
     assert sql.idx_present.match('x[1]')
-    assert sql.idx_present.match('x[1:3]')
     assert sql.idx_present.match('x[#]')
-    assert sql.idx_present.match('x[1:3].y')
-    assert sql.idx_present.match('x[1:3].(y,z)')
     # single slice
-    assert not sql.idx_single.match('x[1:3]')
     assert not sql.idx_single.match('x[#]')
     assert sql.idx_single.match('x[1]')
     assert sql.idx_single.match('x[12]')
-    # range slice
-    assert not sql.idx_range.match('x[1]')
-    assert not sql.idx_range.match('x[#]')
-    assert sql.idx_range.match('x[1:3]')
-    # all slice
-    assert not sql.idx_all.match('x[1]')
-    assert not sql.idx_all.match('x[1:10]')
-    assert sql.idx_all.match('x[#]')
     # subselect present
     assert not sql.subselect_present.match('x[1]')
     assert sql.subselect_present.match('x[#].k')
     assert sql.subselect_present.match('x[1:9].(k,j)')
     # subselect single
-    assert not sql.subselect_single.match('x[1:9].(k,j)')
     assert sql.subselect_single.match('x[#].k')
     # subselect mutliple
     assert not sql.subselect_multiple.match('x[#].k')
-    assert sql.subselect_multiple.match('x[1:9].(k,j)')
     # column quoting
     print(sql.quote_column_selection('x'))
     print(sql.quote_column_selection('x.y'))
     print(sql.quote_column_selection('y[1]'))
     print(sql.quote_column_selection('y[1].z'))
-    print(sql.quote_column_selection('y[1:3].z'))
     print(sql.quote_column_selection('y[1].(z,a)'))
     print(sql.quote_column('erd.ys[1].(z,a)'))
     print(sql.quote_column('erd.ys[1].z'))
@@ -146,12 +132,8 @@ if __name__ == '__main__':
     example_data_selections = [
         'x',            # NA      NA
         'x[1]',         # single  none
-        'x[1:3]',       # range   none
         'x[1].k',       # single  single
-        'x[1:3].k',     # range   single
-        'x[1].(k,d)',   # single  multiple
-        'x[1:3].(k,d)', # range   multiple
-        'x[#]',         # all     none
+        'x[1].(k,d)',   # single  multipl
         'x[#].y',       # all     single
         'x[#].(y,z)',   # all     multiple
     ]
