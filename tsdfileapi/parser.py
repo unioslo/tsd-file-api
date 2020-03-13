@@ -39,7 +39,6 @@ class SqlStatement(object):
         # base regexes to identify data selections
         self.idx_present = re.compile(r'(.+)\[[0-9#:]+\](.*)')
         self.idx_single = re.compile(r'(.+)\[[0-9]+\](.*)')
-        self.idx_range = re.compile(r'(.+)\[[0-9]+:[0-9]+\](.*)')
         self.idx_all = re.compile(r'(.+)\[[#]\](.*)')
         self.subselect_present = re.compile(r'(.+)\[[0-9#:]+\].(.+)$')
         self.subselect_single = re.compile(r'(.+)\[[0-9#:]+\].([^,])$')
@@ -248,21 +247,12 @@ class SqlStatement(object):
         -------         -----   -------------
         x               NA      NA
         x[1]            single  none
-        x[1:3]          range   none
         x[1].k          single  single
-        x[1:3].k        range   single
         x[1].(k,d)      single  multiple
-        x[1:3].(k,d)    range   multiple
-        x[#]            all     none
         x[#].y          all     single
         x[#].(y,z)      all     multiple
 
         """
-        def extract_idx_range(selection):
-            range_re = r'(.*)\[([0-9]+):([0-9]+)\](.*)'
-            lower = re.sub(range_re, r'\2', unquoted_name)
-            upper = re.sub(range_re, r'\3', unquoted_name)
-            return lower, upper
         def destructure_grouped_selection(selection):
             out = []
             res = selection.split('(')
@@ -275,12 +265,8 @@ class SqlStatement(object):
         # composite regex conditions
         na_na = ('[' not in unquoted_name and ']' not in unquoted_name)
         single_none = (self.idx_single.match(unquoted_name) and not self.subselect_present.match(unquoted_name))
-        range_none = (self.idx_range.match(unquoted_name) and not self.subselect_present.match(unquoted_name))
         single_single = (self.idx_single.match(unquoted_name) and self.subselect_single.match(unquoted_name))
-        range_single = (self.idx_range.match(unquoted_name) and self.subselect_single.match(unquoted_name))
         single_multiple = (self.idx_single.match(unquoted_name) and self.subselect_multiple.match(unquoted_name))
-        range_multiple = (self.idx_range.match(unquoted_name) and self.subselect_multiple.match(unquoted_name))
-        all_none = (self.idx_all.match(unquoted_name) and not self.subselect_present.match(unquoted_name))
         all_single = (self.idx_all.match(unquoted_name) and self.subselect_single.match(unquoted_name))
         all_multiple = (self.idx_all.match(unquoted_name) and self.subselect_multiple.match(unquoted_name))
         sliced_select_str = """
@@ -297,9 +283,6 @@ class SqlStatement(object):
         if single_none:
             data_select_str = "%s, json_array(json_extract(data, '$.%s'))"
             return data_select_str % (inner_col.split('[')[0], quoted_name), False
-        if range_none:
-            lower, upper = extract_idx_range(inner_col)
-            return (f'range {lower} {upper}, none')
         if single_single:
             selection_on = quoted_name.split('[')[0].split('.')[-1]
             params = {
@@ -307,27 +290,18 @@ class SqlStatement(object):
                 'data_selection': unquoted_name,
                 'table_name': table_name,
                 'where_condition': "fullkey like '$.%s'" % unquoted_name
-                }
+            }
             return sliced_select_str % params, True
-        if range_single:
-            lower, upper = extract_idx_range(inner_col)
-            return (f'range {lower} {upper}, single')
         if single_multiple:
             multiples = destructure_grouped_selection(unquoted_name)
             return (f'single, multiple - multiples | {multiples}')
-        if range_multiple:
-            lower, upper = extract_idx_range(inner_col)
-            multiples = destructure_grouped_selection(unquoted_name)
-            return (f'range {lower} {upper}, multiple - | {multiples}')
-        unquoted_name = unquoted_name.replace('#', '%')
-        if all_none:
-            return (f'all, none - target | {unquoted_name}')
+        unquoted_name = unquoted_name.replace('#', '%') # this may not work...
         if all_single:
             return (f'all, single - target | {unquoted_name}')
         if all_multiple:
             multiples = destructure_grouped_selection(unquoted_name)
             return (f'all, multiple - targets | {unquoted_name}, multiple - | {multiples}')
-        # where fullkey like '$.c[%].h' or fullkey like '$.c[%].p'
+        # where fullkey like '$.c[%].h' or fullkey like '$.c[%].p';
 
 
     def parse_column_selection(self, name, table_name):
