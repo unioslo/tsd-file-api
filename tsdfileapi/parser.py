@@ -263,20 +263,48 @@ class SqlStatement(object):
                 out.append(f'{base}{element}')
             return out
         # composite regex conditions
-        na_na = ('[' not in unquoted_name and ']' not in unquoted_name)
-        single_none = (self.idx_single.match(unquoted_name) and not self.subselect_present.match(unquoted_name))
-        single_single = (self.idx_single.match(unquoted_name) and self.subselect_single.match(unquoted_name))
-        single_multiple = (self.idx_single.match(unquoted_name) and self.subselect_multiple.match(unquoted_name))
-        all_single = (self.idx_all.match(unquoted_name) and self.subselect_single.match(unquoted_name))
-        all_multiple = (self.idx_all.match(unquoted_name) and self.subselect_multiple.match(unquoted_name))
+        na_na = (
+            '[' not in unquoted_name and ']' not in unquoted_name
+        )
+        single_none = (
+            self.idx_single.match(unquoted_name) and
+            not self.subselect_present.match(unquoted_name)
+        )
+        single_single = (
+            self.idx_single.match(unquoted_name) and
+            self.subselect_single.match(unquoted_name)
+        )
+        single_multiple = (
+            self.idx_single.match(unquoted_name) and
+            self.subselect_multiple.match(unquoted_name)
+        )
+        all_single = (
+            self.idx_all.match(unquoted_name) and
+            self.subselect_single.match(unquoted_name)
+        )
+        all_multiple = (
+            self.idx_all.match(unquoted_name) and
+            self.subselect_multiple.match(unquoted_name)
+        )
         sliced_select_str = """
             %(col)s,
-            (case when json_extract(data, '$.%(data_selection)s') is not null then (
-                select json_group_array(json_object(key, value)) from (
-                select key, value, fullkey, path from %(table_name)s, json_tree(%(table_name)s.data)
-                where %(where_condition)s)
-                group by path)
-             else null end)"""
+            (
+                case when json_extract(data, '$.%(data_selection)s') is not null then
+                    (
+                        select json_group_array(json_object(key, value)) from
+                            (
+                                select
+                                    key,
+                                    value,
+                                    fullkey,
+                                    path
+                                from %(table_name)s, json_tree(%(table_name)s.data)
+                                where %(where_condition)s
+                            )
+                        group by path
+                    )
+                else null end
+            )"""
         if na_na:
             data_select_str = "%s, json_extract(data, '$.%s')"
             return data_select_str % (inner_col, quoted_name), False
@@ -294,7 +322,18 @@ class SqlStatement(object):
             return sliced_select_str % params, True
         if single_multiple:
             multiples = destructure_grouped_selection(unquoted_name)
-            return (f'single, multiple - multiples | {multiples}')
+            selection_on = quoted_name.split('[')[0].split('.')[-1]
+            keys = []
+            for multiple in multiples:
+                keys.append("fullkey = '$.%s'" % multiple)
+            where_condition = ' or '.join(keys)
+            params = {
+                'col': selection_on,
+                'data_selection': selection_on,
+                'table_name': table_name,
+                'where_condition': where_condition
+            }
+            return sliced_select_str % params, True
         unquoted_name = unquoted_name.replace('#', '%') # this may not work...
         if all_single:
             return (f'all, single - target | {unquoted_name}')
@@ -324,7 +363,7 @@ class SqlStatement(object):
 
 
     def smart_split(self, columns):
-        has_group = r'(.+),(.+)\[(.+)\].(.+,).*'
+        has_group = r'(.+)\[(.+)\].(.+,).*'
         if re.match(has_group, columns):
             out = []
             acc = ''
