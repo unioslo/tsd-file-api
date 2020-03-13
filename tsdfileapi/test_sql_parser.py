@@ -74,8 +74,10 @@ if __name__ == '__main__':
         # with slices
         '/mytable?select=c[0].h',
         '/mytable?select=a.k3[0].h',
-        '/mytable?select=x,y,c[0].h,b[1]'
-        #'/mytable?select=c[#]',
+        '/mytable?select=x,y,c[0].h,b[1]',
+        # TODO: impl
+        '/mytable?select=c[0].(h,p)',
+        #'/mytable?select=c[#].h',
         #'/mytable?select=c[#].(h,p)',
         # conditional filtering
         '/mytable?select=x&z=eq.5&y=gt.0',
