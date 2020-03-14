@@ -77,7 +77,7 @@ if __name__ == '__main__':
         '/mytable?select=x,y,c[0].h,b[1]',
         # TODO: impl
         '/mytable?select=c[0].(h,p)',
-        #'/mytable?select=c[#].h',
+        '/mytable?select=c[#].h',
         #'/mytable?select=c[#].(h,p)',
         # conditional filtering
         '/mytable?select=x&z=eq.5&y=gt.0',

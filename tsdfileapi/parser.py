@@ -262,7 +262,6 @@ class SqlStatement(object):
             for element in elements:
                 out.append(f'{base}{element}')
             return out
-        # composite regex conditions
         na_na = (
             '[' not in unquoted_name and ']' not in unquoted_name
         )
@@ -299,7 +298,7 @@ class SqlStatement(object):
                                     fullkey,
                                     path
                                 from %(table_name)s, json_tree(%(table_name)s.data)
-                                where %(where_condition)s
+                                    where %(where_condition)s
                             )
                         group by path
                     )
@@ -309,6 +308,7 @@ class SqlStatement(object):
             data_select_str = "%s, json_extract(data, '$.%s')"
             return data_select_str % (inner_col, quoted_name), False
         if single_none:
+            # TODO: add case when so we dont return [None], but None
             data_select_str = "%s, json_array(json_extract(data, '$.%s'))"
             return data_select_str % (inner_col.split('[')[0], quoted_name), False
         if single_single:
@@ -334,9 +334,17 @@ class SqlStatement(object):
                 'where_condition': where_condition
             }
             return sliced_select_str % params, True
-        unquoted_name = unquoted_name.replace('#', '%') # this may not work...
+        unquoted_name = unquoted_name.replace('#', '%')
         if all_single:
-            return (f'all, single - target | {unquoted_name}')
+            print(f'all, single - target | {unquoted_name}')
+            selection_on = quoted_name.split('[')[0].split('.')[-1]
+            params = {
+                'col': selection_on,
+                'data_selection': selection_on,
+                'table_name': table_name,
+                'where_condition': "fullkey like '$.%s'" % unquoted_name
+            }
+            return sliced_select_str % params, True
         if all_multiple:
             multiples = destructure_grouped_selection(unquoted_name)
             return (f'all, multiple - targets | {unquoted_name}, multiple - | {multiples}')
