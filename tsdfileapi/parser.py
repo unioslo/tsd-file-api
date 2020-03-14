@@ -308,9 +308,13 @@ class SqlStatement(object):
             data_select_str = "%s, json_extract(data, '$.%s')"
             return data_select_str % (inner_col, quoted_name), False
         if single_none:
-            # TODO: add case when so we dont return [None], but None
-            data_select_str = "%s, json_array(json_extract(data, '$.%s'))"
-            return data_select_str % (inner_col.split('[')[0], quoted_name), False
+            data_select_str = """
+                %s,
+                case when json_extract(data, '$.%s') is not null then
+                    json_array(json_extract(data, '$.%s'))
+                else null end
+                """
+            return data_select_str % (inner_col.split('[')[0], quoted_name, quoted_name), False
         if single_single:
             selection_on = quoted_name.split('[')[0].split('.')[-1]
             params = {
@@ -336,7 +340,6 @@ class SqlStatement(object):
             return sliced_select_str % params, True
         unquoted_name = unquoted_name.replace('#', '%')
         if all_single:
-            print(f'all, single - target | {unquoted_name}')
             selection_on = quoted_name.split('[')[0].split('.')[-1]
             params = {
                 'col': selection_on,
