@@ -71,25 +71,22 @@ if __name__ == '__main__':
         '/mytable?select=b[1]',
         '/mytable?select=a,b[1]',
         '/mytable?select=a.k1.r1[0]',
-        # with slices
         '/mytable?select=c[0].h',
         '/mytable?select=a.k3[0].h',
         '/mytable?select=x,y,c[0].h,b[1]',
-        # TODO: impl
         '/mytable?select=c[0].(h,p)',
         '/mytable?select=c[#].h',
-        #'/mytable?select=c[#].(h,p)',
-        # conditional filtering
+        '/mytable?select=c[#].(h,p)', # fixme
+        # with filtering
         '/mytable?select=x&z=eq.5&y=gt.0',
         '/mytable?x=not.like.*zap&y=not.is.null',
         '/mytable?select=z&a.k1.r2=eq.2',
         '/mytable?select=z&a.k1.r1[0]=eq.1',
         '/mytable?select=z&a.k3[0].h=eq.0',
-        # ordering - TODO: support nesting, and slicing
+        # with ordering - TODO: support nesting, and slicing
         '/mytable?order=y.desc',
-        # todo add
+        # with range
         # range=20.100 - limit 100 offset 20; - for pagination
-        # simplify
     ]
     update_uris = [
         # updates
