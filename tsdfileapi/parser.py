@@ -333,6 +333,7 @@ class SqlStatement(object):
                 """
             return data_select_str % (inner_col.split('[')[0], quoted_name, quoted_name), False
         if single_single:
+            # TODO: use sliced_select_str_mult
             selection_on = quoted_name.split('[')[0].split('.')[-1]
             params = {
                 'col': selection_on,
@@ -342,22 +343,29 @@ class SqlStatement(object):
             }
             return sliced_select_str % params, True
         if single_multiple:
-            # wrong aggregation
             multiples = destructure_grouped_selection(unquoted_name)
-            selection_on = quoted_name.split('[')[0].split('.')[-1]
+            selection_on = unquoted_name.split('[')[0].split('.')[-1]
             keys = []
             for multiple in multiples:
-                keys.append("fullkey = '$.%s'" % multiple)
-            where_condition = ' or '.join(keys)
+                keys.append("\"%s\", json_extract(value, '$.%s')" % (
+                    multiple.split('.')[-1],
+                    re.sub(r'(.+)\[.+\].(.+)', r'\2', multiple)))
+            sub_selections = ','.join(keys)
             params = {
                 'col': selection_on,
                 'data_selection': selection_on,
                 'table_name': table_name,
-                'where_condition': where_condition
+                'sub_selections': sub_selections,
+                'path': selection_on,
+                'idx': "and fullkey = '$.%s'" % (
+                    # TODO: include in refactor
+                    re.sub(r'(.+\[.+\]).(.+)', r'\1', unquoted_name)
+                )
             }
-            return sliced_select_str % params, True
+            return sliced_select_str_mult % params, True
         unquoted_name = unquoted_name.replace('#', '%')
         if all_single:
+            # TODO: use sliced_select_str_mult
             selection_on = quoted_name.split('[')[0].split('.')[-1]
             params = {
                 'col': selection_on,
