@@ -285,6 +285,7 @@ class SqlStatement(object):
             self.idx_all.match(unquoted_name) and
             self.subselect_multiple.match(unquoted_name)
         )
+        # this is only correct with single selections
         sliced_select_str = """
             %(col)s,
             (
@@ -304,6 +305,22 @@ class SqlStatement(object):
                     )
                 else null end
             )"""
+        sliced_select_str_mult = """
+                "%(col)s",
+                (case when json_extract(data, '$.%(data_selection)s') is not null then (
+                    select json_group_array(vals) from (
+                        select json_object(
+                            %(sub_selections)s) as vals
+                        from (
+                            select key, value, fullkey, path
+                            from %(table_name)s, json_tree(%(table_name)s.data)
+                            where path = '$.%(path)s'
+                            %(idx)s
+                            )
+                        )
+                    )
+                else null end)
+        """
         if na_na:
             data_select_str = "%s, json_extract(data, '$.%s')"
             return data_select_str % (inner_col, quoted_name), False
@@ -325,6 +342,7 @@ class SqlStatement(object):
             }
             return sliced_select_str % params, True
         if single_multiple:
+            # wrong aggregation
             multiples = destructure_grouped_selection(unquoted_name)
             selection_on = quoted_name.split('[')[0].split('.')[-1]
             keys = []
@@ -349,9 +367,24 @@ class SqlStatement(object):
             }
             return sliced_select_str % params, True
         if all_multiple:
+            # todo refactor to simplify interface
             multiples = destructure_grouped_selection(unquoted_name)
-            return (f'all, multiple - targets | {unquoted_name}, multiple - | {multiples}')
-        # where fullkey like '$.c[%].h' or fullkey like '$.c[%].p';
+            selection_on = unquoted_name.split('[')[0].split('.')[-1]
+            keys = []
+            for multiple in multiples:
+                keys.append("\"%s\", json_extract(value, '$.%s')" % (
+                    multiple.split('.')[-1],
+                    re.sub(r'(.+)\[.+\].(.+)', r'\2', multiple)))
+            sub_selections = ','.join(keys)
+            params = {
+                'col': selection_on,
+                'data_selection': selection_on,
+                'table_name': table_name,
+                'sub_selections': sub_selections,
+                'path': selection_on,
+                'idx': ''
+            }
+            return sliced_select_str_mult % params, True
 
 
     def parse_column_selection(self, name, table_name):

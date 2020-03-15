@@ -76,7 +76,8 @@ if __name__ == '__main__':
         '/mytable?select=x,y,c[0].h,b[1]',
         '/mytable?select=c[0].(h,p)',
         '/mytable?select=c[#].h',
-        '/mytable?select=c[#].(h,p)', # fixme
+        '/mytable?select=c[#].(h,p)',
+        '/mytable?select=y,c[#].(h,i)',
         # with filtering
         '/mytable?select=x&z=eq.5&y=gt.0',
         '/mytable?x=not.like.*zap&y=not.is.null',
