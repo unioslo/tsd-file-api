@@ -254,6 +254,9 @@ class SqlStatement(object):
 
         """
         def destructure_grouped_selection(selection):
+            """
+            E.g. x[1].(k,d) -> [x[1].k, x[1].d]
+            """
             out = []
             res = selection.split('(')
             base = res[0].replace(')', '')
@@ -279,13 +282,16 @@ class SqlStatement(object):
                     )
                 else null end)
             """
-            multiples = destructure_grouped_selection(unquoted_name)
-            selection_on = unquoted_name.split('[')[0].split('.')[-1]
+            if '(' not in unquoted_name and ')' not in unquoted_name:
+                multiples = [unquoted_name]
+            else:
+                multiples = destructure_grouped_selection(unquoted_name)
+            selection_on = unquoted_name.split('[')[0]
             keys = []
             for multiple in multiples:
-                keys.append("\"%s\", json_extract(value, '$.%s')" % (
-                    multiple.split('.')[-1],
-                    re.sub(r'(.+)\[.+\].(.+)', r'\2', multiple)))
+                key = multiple.split('.')[-1]
+                subkey = re.sub(r'(.+)\[.+\].(.+)', r'\2', multiple)
+                keys.append("\"%s\", json_extract(value, '$.%s')" % (key, subkey))
             sub_selections = ','.join(keys)
             params = {
                 'col': selection_on,
@@ -319,26 +325,7 @@ class SqlStatement(object):
             self.idx_all.match(unquoted_name) and
             self.subselect_multiple.match(unquoted_name)
         )
-        # this is only correct with single selections
-        sliced_select_str = """
-            %(col)s,
-            (
-                case when json_extract(data, '$.%(data_selection)s') is not null then
-                    (
-                        select json_group_array(json_object(key, value)) from
-                            (
-                                select
-                                    key,
-                                    value,
-                                    fullkey,
-                                    path
-                                from %(table_name)s, json_tree(%(table_name)s.data)
-                                    where %(where_condition)s
-                            )
-                        group by path
-                    )
-                else null end
-            )"""
+        # three different SQL generation strategies
         if na_na:
             data_select_str = "%s, json_extract(data, '$.%s')"
             return data_select_str % (inner_col, quoted_name), False
@@ -350,35 +337,13 @@ class SqlStatement(object):
                 else null end
                 """
             return data_select_str % (inner_col.split('[')[0], quoted_name, quoted_name), False
-        if single_single:
-            # TODO: use sliced_select_str_mult
-            selection_on = quoted_name.split('[')[0].split('.')[-1]
-            params = {
-                'col': selection_on,
-                'data_selection': unquoted_name,
-                'table_name': table_name,
-                'where_condition': "fullkey like '$.%s'" % unquoted_name
-            }
-            return sliced_select_str % params, True
-        if single_multiple:
-            idx = "and fullkey = '$.%s'" % (
-                    re.sub(r'(.+\[.+\]).(.+)', r'\1', unquoted_name)
-                )
-            return gen_sliced_key_selection_sql(unquoted_name, table_name, idx)
-        unquoted_name = unquoted_name.replace('#', '%')
-        if all_single:
-            # TODO: use sliced_select_str_mult
-            selection_on = quoted_name.split('[')[0].split('.')[-1]
-            params = {
-                'col': selection_on,
-                'data_selection': selection_on,
-                'table_name': table_name,
-                'where_condition': "fullkey like '$.%s'" % unquoted_name
-            }
-            return sliced_select_str % params, True
-        if all_multiple:
+        if single_single or single_multiple:
+            slice_on = re.sub(r'(.+\[.+\]).(.+)', r'\1', unquoted_name)
+            idx = "and fullkey = '$.%s'" % slice_on
+        if all_single or all_multiple:
             idx = ''
-            return gen_sliced_key_selection_sql(unquoted_name, table_name, idx)
+            unquoted_name = unquoted_name.replace('#', '%')
+        return gen_sliced_key_selection_sql(unquoted_name, table_name, idx)
 
 
     def parse_column_selection(self, name, table_name):

@@ -129,18 +129,6 @@ if __name__ == '__main__':
     print(sql.smart_split('x,y[1].(f,m,l),z')) # desired: ['x', 'y[1].(f,m,l)', 'z']
     print(sql.smart_split('x,y[1].k'))
     #print(sql.quote_column(',x,y[1].(z,a)')) - should error
-    example_data_selections = [
-        'x',            # NA      NA
-        'x[1]',         # single  none
-        'x[1].k',       # single  single
-        'x[1].(k,d)',   # single  multipl
-        'x[#].y',       # all     single
-        'x[#].(y,z)',   # all     multiple
-    ]
-    for selection in example_data_selections:
-        quoted_name = sql.quote_column(selection)
-        table_name = 'mytable'
-        print(selection, '|', sql.construct_data_selection_str(selection, quoted_name, selection, table_name))
     for uri in select_uris:
         try:
             print(uri)
