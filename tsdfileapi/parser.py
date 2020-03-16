@@ -475,9 +475,9 @@ class SqlStatement(object):
     def construct_safe_order_clause(self, part):
         targets = part.replace('order=', '')
         tokens = targets.split('.')
-        col = tokens[0]
+        col = '.'.join(tokens[:-1])
         direction = tokens[-1]
-        ordering = "json_extract(data, '$.\"%s\"') %s" % (col, direction)
+        ordering = "json_extract(data, '$.%s') %s" % (self.quote_column(col), direction)
         return ordering
 
 
