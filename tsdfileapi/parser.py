@@ -58,6 +58,7 @@ class SqlStatement(object):
         self.query_columns = self.parse_columns(uri)
         self.query_conditions = self.parse_row_clauses(uri)
         self.query_ordering = self.parse_ordering_clause(uri)
+        self.query_range = self.parse_range_clause(uri)
         self.update_details = self.parse_update_clause(uri)
         self.select_query = self.build_select_query(uri)
         self.update_query = self.build_update_query(uri)
@@ -73,9 +74,12 @@ class SqlStatement(object):
         stmt_from = "from %(table_name)s " % {'table_name': table_name}
         stmt_where = "where %(conditions)s " % {'conditions': self.query_conditions} if self.query_conditions else ''
         stmt_order = "order by %(ordering)s " % {'ordering': self.query_ordering} if self.query_ordering else None
+        stmt_range = self.parse_range_clause(uri)
         query = stmt_select + stmt_from + stmt_where
         if stmt_order:
-            query = "select * from (%s)a " % query + stmt_order
+            query = "select * from (%s)a %s %s" % (query, stmt_order, stmt_range)
+        else:
+            query = query + stmt_range
         return query
 
 
@@ -460,7 +464,10 @@ class SqlStatement(object):
         num_part = 0
         parts = uri_query.split('&')
         for part in parts:
-            if (not part.startswith('select') and not part.startswith('order') and not part.startswith('set')):
+            if (not part.startswith('select') and
+                not part.startswith('order') and
+                not part.startswith('set') and
+                not part.startswith('range')):
                 safe_part = self.construct_safe_where_clause_part(part, num_part)
                 conditions += safe_part
                 num_part += 1
@@ -492,3 +499,16 @@ class SqlStatement(object):
                 safe_part = self.construct_safe_order_clause(part)
                 ordering += safe_part
         return ordering if len(ordering) > 0 else None
+
+    def parse_range_clause(self, uri):
+        range_clause = ''
+        if '?' not in uri:
+            return None
+        uri_query = uri.split('?')[-1]
+        parts = uri_query.split('&')
+        for part in parts:
+            if part.startswith('range'):
+                params = part.replace('range=', '')
+                start, end = params.split('.')
+                range_clause = " limit %s offset %s" % (end, start)
+        return range_clause
