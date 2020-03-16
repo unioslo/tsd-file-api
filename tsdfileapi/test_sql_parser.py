@@ -78,16 +78,22 @@ if __name__ == '__main__':
         '/mytable?select=c[#].h',
         '/mytable?select=c[#].(h,p)',
         '/mytable?select=y,c[#].(h,i)',
-        # with filtering
+        # filtering
         '/mytable?select=x&z=eq.5&y=gt.0',
         '/mytable?x=not.like.*zap&y=not.is.null',
         '/mytable?select=z&a.k1.r2=eq.2',
         '/mytable?select=z&a.k1.r1[0]=eq.1',
         '/mytable?select=z&a.k3[0].h=eq.0',
-        # with ordering - TODO: support nesting, and slicing
+        # ordering
         '/mytable?order=y.desc',
+        '/mytable?order=a.k1.r2.desc',
+        '/mytable?order=b[0].asc',
+        '/mytable?order=a.k3[0].h.asc',
+        '/mytable?order=a.k3[0].h.desc',
         # with range
-        # range=20.100 - limit 100 offset 20; - for pagination
+        # limit 100 offset 20; - for pagination
+        '/mytable?range=1.3' # fixme
+        # combined functionality
     ]
     update_uris = [
         # updates
