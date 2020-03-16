@@ -41,7 +41,8 @@ if __name__ == '__main__':
                 },
                 'k2': ['val', 9]
             },
-            'z': 0
+            'z': 0,
+            'x': 88
         },
         {
             'a': {
@@ -52,8 +53,12 @@ if __name__ == '__main__':
                 'k2': ['val222', 90],
                 'k3': [{'h': 0}]
             },
-            'z': 10
+            'z': 10,
+            'x': 107
         },
+        {
+            'x': 10
+        }
     ]
     create_engine = sqlite_init('/tmp', name='file-api-test.db')
     query_engine = sqlite_init('/tmp', name= 'file-api-test.db', builtin=True)
@@ -78,7 +83,7 @@ if __name__ == '__main__':
         '/mytable?select=c[#].h',
         '/mytable?select=c[#].(h,p)',
         '/mytable?select=y,c[#].(h,i)',
-        # filtering
+        # filtering - TODO: support OR, and grouped conditions
         '/mytable?select=x&z=eq.5&y=gt.0',
         '/mytable?x=not.like.*zap&y=not.is.null',
         '/mytable?select=z&a.k1.r2=eq.2',
@@ -94,6 +99,7 @@ if __name__ == '__main__':
         '/mytable?select=x&range=0.2',
         '/mytable?range=2.3',
         # combined functionality
+        '/mytable?select=x,c[#].(h,p),a.k1,b[0]&x=not.is.null&order=x.desc&range=1.2'
     ]
     update_uris = [
         # updates

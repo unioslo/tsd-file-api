@@ -77,7 +77,7 @@ class SqlStatement(object):
         stmt_range = self.parse_range_clause(uri)
         query = stmt_select + stmt_from + stmt_where
         if stmt_order:
-            query = "select * from (%s)a %s %s" % (query, stmt_order, stmt_range)
+            query = "%s %s %s" % (query, stmt_order, stmt_range)
         else:
             query = query + stmt_range
         return query
