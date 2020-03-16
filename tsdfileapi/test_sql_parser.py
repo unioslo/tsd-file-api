@@ -91,8 +91,8 @@ if __name__ == '__main__':
         '/mytable?order=a.k3[0].h.asc',
         '/mytable?order=a.k3[0].h.desc',
         # with range
-        # limit 100 offset 20; - for pagination
-        '/mytable?range=1.3' # fixme
+        '/mytable?select=x&range=0.2',
+        '/mytable?range=2.3',
         # combined functionality
     ]
     update_uris = [
