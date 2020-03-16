@@ -53,7 +53,8 @@ class SqlStatement(object):
             'like': 'like', # * replaces % in the URI
             'ilike': 'ilike', # * replaces % in the URI
             'not': 'not',
-            'is': 'is'
+            'is': 'is',
+            # TODO: add 'in': 'in'
         }
         self.query_columns = self.parse_columns(uri)
         self.query_conditions = self.parse_row_clauses(uri)
@@ -83,7 +84,6 @@ class SqlStatement(object):
         return query
 
 
-    # TODO: support nesting, and slicing
     def build_update_query(self, uri):
         if '?' not in uri:
             return None
@@ -445,7 +445,10 @@ class SqlStatement(object):
             int(val)
             val_str = ' %(val)s'
         except ValueError:
-            val_str = ' "%(val)s"'
+            if val == 'null':
+                val_str = ' %(val)s'
+            else:
+                val_str = ' "%(val)s"'
             if op == 'like' or op == 'ilike':
                 val = val.replace('*', '%')
         final = col_and_opt_str + val_str
