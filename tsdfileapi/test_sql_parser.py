@@ -83,9 +83,9 @@ if __name__ == '__main__':
         '/mytable?select=a.k3[0].h',
         '/mytable?select=x,y,c[0].h,b[1]',
         '/mytable?select=c[0].(h,p)',
-        '/mytable?select=c[#].h',
-        '/mytable?select=c[#].(h,p)',
-        '/mytable?select=y,c[#].(h,i)',
+        '/mytable?select=c[*].h',
+        '/mytable?select=c[*].(h,p)',
+        '/mytable?select=y,c[*].(h,i)',
         # filtering
         # TODO: consider supporting OR, and grouped conditions
         # possibile approach
@@ -109,7 +109,7 @@ if __name__ == '__main__':
         '/mytable?select=x&range=0.2',
         '/mytable?range=2.3',
         # combined functionality
-        '/mytable?select=x,c[#].(h,p),a.k1,b[0]&x=not.is.null&order=x.desc&range=1.2'
+        '/mytable?select=x,c[*].(h,p),a.k1,b[0]&x=not.is.null&order=x.desc&range=1.2'
     ]
     update_uris = [
         '/mytable?set=x.5,y.6&z=eq.5',
@@ -128,19 +128,19 @@ if __name__ == '__main__':
     assert not sql.idx_present.match('x')
     assert sql.idx_present.match('x[11]')
     assert sql.idx_present.match('x[1]')
-    assert sql.idx_present.match('x[#]')
+    assert sql.idx_present.match('x[*]')
     # single slice
-    assert not sql.idx_single.match('x[#]')
+    assert not sql.idx_single.match('x[*]')
     assert sql.idx_single.match('x[1]')
     assert sql.idx_single.match('x[12]')
     # subselect present
     assert not sql.subselect_present.match('x[1]')
-    assert sql.subselect_present.match('x[#].k')
+    assert sql.subselect_present.match('x[*].k')
     assert sql.subselect_present.match('x[1:9].(k,j)')
     # subselect single
-    assert sql.subselect_single.match('x[#].k')
+    assert sql.subselect_single.match('x[*].k')
     # subselect mutliple
-    assert not sql.subselect_multiple.match('x[#].k')
+    assert not sql.subselect_multiple.match('x[*].k')
     # column quoting
     print(sql.quote_column_selection('x'))
     print(sql.quote_column_selection('x.y'))
