@@ -37,12 +37,12 @@ class SqlStatement(object):
 
     def __init__(self, uri):
         # base regexes to identify data selections
-        self.idx_present = re.compile(r'(.+)\[[0-9#:]+\](.*)')
+        self.idx_present = re.compile(r'(.+)\[[0-9*:]+\](.*)')
         self.idx_single = re.compile(r'(.+)\[[0-9]+\](.*)')
-        self.idx_all = re.compile(r'(.+)\[[#]\](.*)')
-        self.subselect_present = re.compile(r'(.+)\[[0-9#:]+\].(.+)$')
-        self.subselect_single = re.compile(r'(.+)\[[0-9#:]+\].([^,])$')
-        self.subselect_multiple = re.compile(r'(.+)\[[0-9#:]+\].\((.+),(.+)\)$')
+        self.idx_all = re.compile(r'(.+)\[[*]\](.*)')
+        self.subselect_present = re.compile(r'(.+)\[[0-9*:]+\].(.+)$')
+        self.subselect_single = re.compile(r'(.+)\[[0-9*:]+\].([^,])$')
+        self.subselect_multiple = re.compile(r'(.+)\[[0-9*:]+\].\((.+),(.+)\)$')
         self.operators = {
             'eq': '=',
             'gt': '>',
@@ -253,8 +253,8 @@ class SqlStatement(object):
         x[1]            single  none
         x[1].k          single  single
         x[1].(k,d)      single  multiple
-        x[#].y          all     single
-        x[#].(y,z)      all     multiple
+        x[*].y          all     single
+        x[*].(y,z)      all     multiple
 
         """
         def destructure_grouped_selection(selection):
@@ -344,10 +344,13 @@ class SqlStatement(object):
         if single_single or single_multiple:
             slice_on = re.sub(r'(.+\[.+\]).(.+)', r'\1', unquoted_name)
             idx = "and fullkey = '$.%s'" % slice_on
+            return gen_sliced_key_selection_sql(unquoted_name, table_name, idx)
         if all_single or all_multiple:
             idx = ''
-            unquoted_name = unquoted_name.replace('#', '%')
-        return gen_sliced_key_selection_sql(unquoted_name, table_name, idx)
+            unquoted_name = unquoted_name.replace('*', '%')
+            return gen_sliced_key_selection_sql(unquoted_name, table_name, idx)
+        else:
+            raise Exception('Unsupported selection')
 
 
     def parse_column_selection(self, name, table_name):
