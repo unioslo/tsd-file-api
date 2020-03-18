@@ -106,6 +106,7 @@ def set_config():
     define('export_chunk_size', _config['export_chunk_size'])
     define('valid_tenant', re.compile(r'{}'.format(_config['valid_tenant_regex'])))
     define('max_body_size', _config['max_body_size'])
+    define('default_file_owner', _config['default_file_owner'])
 
 
 set_config()
@@ -368,11 +369,23 @@ class FileStreamerHandler(AuthRequestHandler):
         sizes = []
         mimes = []
         owners = []
+        default_owner = options.default_file_owner.replace(options.tenant_string_pattern, tenant)
         for file in files:
             filepath = os.path.normpath(path + '/' + file)
             path_stat = os.stat(filepath)
             latest = path_stat.st_mtime
-            owner = pwd.getpwuid(path_stat.st_uid).pw_name
+            try:
+                owner = pwd.getpwuid(path_stat.st_uid).pw_name
+            except KeyError:
+                try:
+                    default_owner_id = pwd.getpwnam(default_owner).pw_uid
+                    group_id = path_stat.st_gid
+                    os.chown(group_folder, file_api_user_id, group_id)
+                    owner = default_owner
+                except (KeyError, Exception) as e:
+                    logging.error(e)
+                    logging.error(f'could not reset owner of {filepath} to default')
+                    owner = 'nobody'
             date_time = str(datetime.datetime.fromtimestamp(latest).isoformat())
             times.append(date_time)
             try:
