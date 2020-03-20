@@ -107,6 +107,7 @@ def set_config():
     define('valid_tenant', re.compile(r'{}'.format(_config['valid_tenant_regex'])))
     define('max_body_size', _config['max_body_size'])
     define('default_file_owner', _config['default_file_owner'])
+    define('create_tenant_dir', _config['create_tenant_dir'])
 
 
 set_config()
@@ -1103,6 +1104,10 @@ class StreamHandler(AuthRequestHandler):
                     self.group_name = tenant + '-member-group'
                 filemode = filemodes[self.request.method]
                 try:
+                    # optionally create the tenant_dir
+                    if options.create_tenant_dir:
+                        if not os.path.lexists(self.tenant_dir):
+                            os.makedirs(self.tenant_dir)
                     content_type = self.request.headers['Content-Type']
                     uri_filename = self.request.uri.split('?')[0].split('/')[-1]
                     filename = check_filename(url_unescape(uri_filename),
