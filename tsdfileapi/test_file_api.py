@@ -140,8 +140,8 @@ class TestFileApi(unittest.TestCase):
             open(os.path.normpath(cls.data_folder + '/example-ns.json')).read())
         cls.test_user = cls.config['test_user']
         cls.test_group = cls.config['test_group']
-        cls.uploads_folder = project_import_dir(cls.config, cls.config['test_project'], backend='files', tenant_pattern=cls.config['tenant_string_pattern'])
-        cls.uploads_folder_p12 = project_import_dir(cls.config, 'p12', backend='files', tenant_pattern=cls.config['tenant_string_pattern'])
+        cls.uploads_folder = project_import_dir(cls.config, cls.config['test_project'], backend='files_import', tenant_pattern=cls.config['tenant_string_pattern'])
+        cls.uploads_folder_p12 = project_import_dir(cls.config, 'p12', backend='files_import', tenant_pattern=cls.config['tenant_string_pattern'])
         cls.test_sns_url = '/v1/{0}/sns/{1}/{2}'.format(cls.config['test_project'], cls.config['test_keyid'], cls.config['test_formid'])
         cls.test_sns_dir = cls.config['backends']['disk']['sns']['import_path']
         cls.test_formid = cls.config['test_formid']
@@ -858,7 +858,7 @@ class TestFileApi(unittest.TestCase):
 
     def test_ZJ_export_file_restrictions_enforced(self):
         headers={'Authorization': 'Bearer ' + TEST_TOKENS['EXPORT']}
-        for name in ['/bin/bash -c', '!#/bin/bash', '~!@#$%^&*()-+', '../../../p01/data/durable']:
+        for name in ['/bin/bash -c', '!#/bin/bash', '!@#$%^&*()-+', '../../../p01/data/durable']:
             resp = requests.get(self.export + '/' + name, headers=headers)
             self.assertTrue(resp.status_code in [403, 404])
 
