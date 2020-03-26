@@ -272,359 +272,6 @@ class AuthRequestHandler(RequestHandler):
            raise e
 
 
-class FileStreamerHandler(AuthRequestHandler):
-
-    """List the export directory, or serve files from it."""
-
-
-    def initialize(self, backend):
-        try:
-            self.CHUNK_SIZE = options.export_chunk_size
-            tenant = tenant_from_url(self.request.uri)
-            assert options.valid_tenant.match(tenant)
-            self.backend_paths = options.config['backends']['disk'][backend]
-            self.export_path_pattern = self.backend_paths['export_path']
-            self.export_dir = self.export_path_pattern.replace(options.tenant_string_pattern, tenant)
-            self.backend = backend
-            self.export_policy = options.config['backends']['disk'][backend]['export_policy']
-        except (AssertionError, Exception) as e:
-            self.backend = None
-            logging.error(e)
-            logging.error('Maybe the URI does not contain a valid tenant')
-            raise e
-
-    def enforce_export_policy(self, policy_config, filename, tenant, size, mime_type):
-        """
-        Check file to ensure it meets the requirements of the export policy
-
-        Checks
-        ------
-        1. For all tenants, check that the file name follows conventions
-        2. For the given tenant, if a policy is specified and enabled check:
-            - file size does not exceed max allowed for export
-            - MIME types conform to allowed types, if policy enabled
-
-        Returns
-        -------
-        (bool, <str,None>, <int,None>),
-        (is_conformant, mime-type, size)
-
-        """
-        status = False # until proven otherwise
-        try:
-            file = os.path.basename(filename)
-            check_filename(file, disallowed_start_chars=options.start_chars)
-        except Exception as e:
-            self.message = 'Illegal export filename: %s' % file
-            logging.error(self.message)
-            return status
-        if tenant in policy_config.keys():
-            policy = policy_config[tenant]
-        else:
-            policy = policy_config['default']
-        if not policy['enabled']:
-            status = True
-            return status
-        if '*' in policy['allowed_mime_types']:
-            status = True
-        else:
-            status = True if mime_type in policy['allowed_mime_types'] else False
-            if not status:
-                self.message = 'not allowed to export file with MIME type: %s' % mime_type
-                logging.error(self.message)
-        if policy['max_size'] and size > policy['max_size']:
-            logging.error('%s tried to export a file exceeding the maximum size limit', self.requestor)
-            self.message = 'File size exceeds maximum allowed for %s' % tenant
-            status = False
-        return status
-
-
-    def get_file_metadata(self, filename):
-        filename_raw_utf8 = filename.encode('utf-8')
-        if self.backend == 'files':
-            # only necessary for export folder
-            subprocess.call(['sudo', 'chmod', 'go+r', filename])
-        mime_type = magic.from_file(filename_raw_utf8, mime=True)
-        size = os.stat(filename).st_size
-        return size, mime_type
-
-
-    def list_files(self, path, tenant):
-        """
-        Lists files in the export directory.
-
-        Returns
-        -------
-        dict
-
-        """
-        dir_map = os.listdir(path)
-        files = list(dir_map)
-        if len(files) > options.config['export_max_num_list']:
-            self.set_status(400)
-            self.message = 'too many files, create a zip archive'
-            raise Exception
-        times = []
-        exportable = []
-        reasons = []
-        sizes = []
-        mimes = []
-        owners = []
-        default_owner = options.default_file_owner.replace(options.tenant_string_pattern, tenant)
-        for file in files:
-            filepath = os.path.normpath(path + '/' + file)
-            path_stat = os.stat(filepath)
-            latest = path_stat.st_mtime
-            try:
-                owner = pwd.getpwuid(path_stat.st_uid).pw_name
-            except KeyError:
-                try:
-                    default_owner_id = pwd.getpwnam(default_owner).pw_uid
-                    group_id = path_stat.st_gid
-                    os.chown(group_folder, file_api_user_id, group_id)
-                    owner = default_owner
-                except (KeyError, Exception) as e:
-                    logging.error(e)
-                    logging.error(f'could not reset owner of {filepath} to default')
-                    owner = 'nobody'
-            date_time = str(datetime.datetime.fromtimestamp(latest).isoformat())
-            times.append(date_time)
-            try:
-                if os.path.isdir(filepath):
-                    status, mime_type, size = None, None, None
-                    self.message = 'exporting from directories not supported yet'
-                else:
-                    size, mime_type = self.get_file_metadata(filepath)
-                    status = self.enforce_export_policy(self.export_policy, filepath, tenant, size, mime_type)
-                if status:
-                    reason = None
-                else:
-                    reason = self.message
-            except Exception as e:
-                logging.error(e)
-                logging.error('could not enforce export policy when listing dir')
-                raise Exception
-            exportable.append(status)
-            reasons.append(reason)
-            sizes.append(size)
-            mimes.append(mime_type)
-            owners.append(owner)
-        file_info = []
-        for f, t, e, r, s, m, o in zip(files, times, exportable, reasons, sizes, mimes, owners):
-            href = '%s/%s' % (self.request.uri, url_escape(f))
-            file_info.append({'filename': f,
-                              'size': s,
-                              'modified_date': t,
-                              'href': href,
-                              'exportable': e,
-                              'reason': r,
-                              'mime-type': m,
-                              'owner': o})
-        logging.info('%s listed %s', self.requestor, path)
-        self.write({'files': file_info})
-
-
-    def compute_etag(self):
-        """
-        If there is a file resource, compute the Etag header.
-        Custom values: md5sum of string value of last modified
-        time of file. Client can get this value before staring
-        a download, and then if they need to resume for some
-        reason, check that the resource has not changed in
-        the meantime. It is also cheap to compute.
-
-        Note, since this is a strong validator/Etag, nginx will
-        strip it from the headers if it has been configured with
-        gzip compression for HTTP responses.
-
-        """
-        try:
-            if self.filepath:
-                mtime = os.stat(self.filepath).st_mtime
-                etag = hashlib.md5(str(mtime).encode('utf-8')).hexdigest()
-                return etag
-        except (Exception, AttributeError) as e:
-            return None
-        else:
-            return None
-
-
-    @gen.coroutine
-    def get(self, tenant, filename=None):
-        """
-        List the export dir, or serve a file, asynchronously.
-
-        1. check token claims
-        2. check the tenant
-
-        If listing the dir:
-
-        3. run the list_files method
-
-        If serving a file:
-
-        3. check the filename
-        4. check that file exists
-        5. enforce the export policy
-        6. check if a byte range is being requested
-        6. set the mime type
-        7. serve the bytes requested (explicitly, or implicitly), chunked
-
-        """
-        self.message = 'Unknown error, please contact TSD'
-        try:
-            try:
-                self.authnz = self.process_token_and_extract_claims()
-            except Exception:
-                if not self.message:
-                    self.message = 'Not authorized to export data'
-                self.set_status(401)
-                raise Exception
-            assert options.valid_tenant.match(tenant)
-            self.path = self.export_dir
-            if not filename:
-                self.list_files(self.path, tenant)
-                return
-            try:
-                secured_filename = check_filename(url_unescape(filename),
-                                                  disallowed_start_chars=options.start_chars)
-            except Exception as e:
-                logging.error(e)
-                logging.error('%s tried to access files in sub-directories', self.requestor)
-                self.set_status(403)
-                self.message = 'Not allowed to access files in sub-directories, create a zip archive'
-                raise Exception
-            self.filepath = '%s/%s' % (self.path, secured_filename)
-            if not os.path.lexists(self.filepath):
-                logging.error('%s tried to access a file that does not exist', self.requestor)
-                self.set_status(404)
-                self.message = 'File does not exist'
-                raise Exception
-            try:
-                size, mime_type = self.get_file_metadata(self.filepath)
-                status = self.enforce_export_policy(self.export_policy, self.filepath, tenant, size, mime_type)
-                assert status
-            except (Exception, AssertionError) as e:
-                logging.error(e)
-                self.set_status(400)
-                raise Exception
-            self.set_header('Content-Type', mime_type)
-            if 'Range' not in self.request.headers:
-                self.set_header('Content-Length', size)
-                self.flush()
-                fd = open(self.filepath, "rb")
-                data = fd.read(self.CHUNK_SIZE)
-                while data:
-                    self.write(data)
-                    yield self.flush()
-                    data = fd.read(self.CHUNK_SIZE)
-                fd.close()
-            elif 'Range' in self.request.headers:
-                if 'If-Range' in self.request.headers:
-                    provided_etag = self.request.headers['If-Range']
-                    computed_etag = self.compute_etag()
-                    if provided_etag != computed_etag:
-                        self.message = 'The resource has changed, get everything from the start again'
-                        self.set_status(400)
-                        raise Exception(self.message)
-                # clients specify the range in terms of 0-based index numbers
-                # with an inclusive interval: [start, end]
-                client_byte_index_range = self.request.headers['Range']
-                full_file_size = os.stat(self.filepath).st_size
-                start_and_end = client_byte_index_range.split('=')[-1].split('-')
-                if ',' in start_and_end:
-                    self.set_status(405)
-                    self.message = 'Multipart byte range requests not supported'
-                    raise Exception(self.message)
-                client_start = int(start_and_end[0])
-                cursor_start = client_start
-                try:
-                    client_end = int(start_and_end[1])
-                except Exception as e:
-                    client_end = full_file_size - 1
-                if client_end > full_file_size:
-                    self.set_status(416)
-                    raise Exception('Range request exceeds byte range of resource')
-                # because clients provide 0-based byte indices
-                # we must add 1 to calculate the desired amount to read
-                bytes_to_read = client_end - client_start + 1
-                self.set_header('Content-Length', bytes_to_read)
-                self.flush()
-                fd = open(self.filepath, "rb")
-                fd.seek(cursor_start)
-                sent = 0
-                if self.CHUNK_SIZE > bytes_to_read:
-                    self.CHUNK_SIZE = bytes_to_read
-                data = fd.read(self.CHUNK_SIZE)
-                sent = sent + self.CHUNK_SIZE
-                while data and sent <= bytes_to_read:
-                    self.write(data)
-                    yield self.flush()
-                    data = fd.read(self.CHUNK_SIZE)
-                    sent = sent + self.CHUNK_SIZE
-                fd.close()
-            logging.info('user: %s, exported file: %s , with MIME type: %s', self.requestor, self.filepath, mime_type)
-        except Exception as e:
-            logging.error(e)
-            logging.error(self.message)
-            self.write({'message': self.message})
-        finally:
-            try:
-                fd.close()
-            except (OSError, UnboundLocalError) as e:
-                pass
-            self.finish()
-
-
-    def head(self, tenant, filename):
-        """
-        Return information about a specific file.
-
-        """
-        self.message = 'Unknown error, please contact TSD'
-        try:
-            try:
-                self.authnz = self.process_token_and_extract_claims()
-            except Exception:
-                if not self.message:
-                    self.message = 'Not authorized to export data'
-                self.set_status(401)
-                raise Exception
-            assert options.valid_tenant.match(tenant)
-            self.path = self.export_dir
-            if not filename:
-                raise Exception('No info to report')
-            try:
-                secured_filename = check_filename(url_unescape(filename),
-                                                  disallowed_start_chars=options.start_chars)
-            except Exception as e:
-                logging.error(e)
-                logging.error('%s tried to access files in sub-directories', self.requestor)
-                self.set_status(403)
-                self.message = 'Not allowed to access files in sub-directories, create a zip archive'
-                raise Exception
-            self.filepath = '%s/%s' % (self.path, secured_filename)
-            if not os.path.lexists(self.filepath):
-                logging.error(self.filepath)
-                logging.error('%s tried to access a file that does not exist', self.requestor)
-                self.set_status(404)
-                self.message = 'File does not exist'
-                raise Exception
-            size, mime_type = self.get_file_metadata(self.filepath)
-            status = self.enforce_export_policy(self.export_policy, self.filepath, tenant, size, mime_type)
-            assert status
-            logging.info('user: %s, checked file: %s , with MIME type: %s', self.requestor, self.filepath, mime_type)
-            self.set_header('Content-Length', size)
-            self.set_header('Accept-Ranges', 'bytes')
-            self.set_status(200)
-        except Exception as e:
-            logging.error(e)
-            logging.error(self.message)
-            self.write({'message': self.message})
-        finally:
-            self.finish()
-
-
 class GenericFormDataHandler(AuthRequestHandler):
 
     def initialize(self, backend):
@@ -1355,6 +1002,10 @@ class ProxyHandler(AuthRequestHandler):
 
     def initialize(self, backend):
         self.storage_backend = backend
+        self.namespace = options.config['backends']['disk'][backend]['namespace']
+        self.allow_export = options.config['backends']['disk'][backend]['allow_export']
+        self.allow_list = options.config['backends']['disk'][backend]['allow_list']
+        self.allow_info = options.config['backends']['disk'][backend]['allow_info']
         try:
             disabled_group_config = {
                 'enabled': False,
@@ -1367,6 +1018,14 @@ class ProxyHandler(AuthRequestHandler):
             self.group_config = options.config['backends']['disk'][backend]['group_logic']
             if not self.group_config['enabled']:
                 self.group_config = disabled_group_config
+            self.CHUNK_SIZE = options.export_chunk_size
+            tenant = tenant_from_url(self.request.uri)
+            assert options.valid_tenant.match(tenant)
+            self.backend_paths = options.config['backends']['disk'][backend]
+            self.export_path_pattern = self.backend_paths['export_path']
+            self.export_dir = self.export_path_pattern.replace(options.tenant_string_pattern, tenant)
+            self.backend = backend
+            self.export_policy = options.config['backends']['disk'][backend]['export_policy']
         except Exception as e:
             self.group_config = disabled_group_config
 
@@ -1449,15 +1108,18 @@ class ProxyHandler(AuthRequestHandler):
             params = '?group=%s&chunk=%s&id=%s' % (group_name, chunk_num, upload_id)
             filename = url_escape(self.filename)
             internal_url = 'http://localhost:%d/v1/%s/%s/upload_stream/%s%s' % \
-                (options.port, tenant, self.storage_backend, filename, params)
+                (options.port, tenant, self.namespace, filename, params)
             # 8. Do async request to handle incoming data
             try:
-                self.fetch_future = AsyncHTTPClient().fetch(
-                    internal_url,
-                    method=self.request.method,
-                    body_producer=body,
-                    request_timeout=12000.0, # 3 hours max
-                    headers=headers)
+                if self.request.method in ('PUT', 'POST', 'PATCH'):
+                    # otherwise we are serving something
+                    # so no need to pass data on
+                    self.fetch_future = AsyncHTTPClient().fetch(
+                        internal_url,
+                        method=self.request.method,
+                        body_producer=body,
+                        request_timeout=12000.0, # 3 hours max
+                        headers=headers)
             except Exception as e:
                 logging.error('Problem in async client')
                 logging.error(e)
@@ -1514,8 +1176,349 @@ class ProxyHandler(AuthRequestHandler):
         self.set_status(code)
         self.write(body)
 
-    def head(self, tenant, filename=None):
-        self.set_status(201)
+
+    def enforce_export_policy(self, policy_config, filename, tenant, size, mime_type):
+        """
+        Check file to ensure it meets the requirements of the export policy
+
+        Checks
+        ------
+        1. For all tenants, check that the file name follows conventions
+        2. For the given tenant, if a policy is specified and enabled check:
+            - file size does not exceed max allowed for export
+            - MIME types conform to allowed types, if policy enabled
+
+        Returns
+        -------
+        (bool, <str,None>, <int,None>),
+        (is_conformant, mime-type, size)
+
+        """
+        status = False # until proven otherwise
+        try:
+            file = os.path.basename(filename)
+            check_filename(file, disallowed_start_chars=options.start_chars)
+        except Exception as e:
+            self.message = 'Illegal export filename: %s' % file
+            logging.error(self.message)
+            return status
+        if tenant in policy_config.keys():
+            policy = policy_config[tenant]
+        else:
+            policy = policy_config['default']
+        if not policy['enabled']:
+            status = True
+            return status
+        if '*' in policy['allowed_mime_types']:
+            status = True
+        else:
+            status = True if mime_type in policy['allowed_mime_types'] else False
+            if not status:
+                self.message = 'not allowed to export file with MIME type: %s' % mime_type
+                logging.error(self.message)
+        if policy['max_size'] and size > policy['max_size']:
+            logging.error('%s tried to export a file exceeding the maximum size limit', self.requestor)
+            self.message = 'File size exceeds maximum allowed for %s' % tenant
+            status = False
+        return status
+
+
+    def get_file_metadata(self, filename):
+        filename_raw_utf8 = filename.encode('utf-8')
+        if self.backend == 'files':
+            # only necessary for export folder
+            subprocess.call(['sudo', 'chmod', 'go+r', filename])
+        mime_type = magic.from_file(filename_raw_utf8, mime=True)
+        size = os.stat(filename).st_size
+        return size, mime_type
+
+
+    def list_files(self, path, tenant):
+        """
+        Lists files in the export directory.
+
+        Returns
+        -------
+        dict
+
+        """
+        dir_map = os.listdir(path)
+        files = list(dir_map)
+        if len(files) > options.config['export_max_num_list']:
+            self.set_status(400)
+            self.message = 'too many files, create a zip archive'
+            raise Exception
+        times = []
+        exportable = []
+        reasons = []
+        sizes = []
+        mimes = []
+        owners = []
+        default_owner = options.default_file_owner.replace(options.tenant_string_pattern, tenant)
+        for file in files:
+            filepath = os.path.normpath(path + '/' + file)
+            path_stat = os.stat(filepath)
+            latest = path_stat.st_mtime
+            try:
+                owner = pwd.getpwuid(path_stat.st_uid).pw_name
+            except KeyError:
+                try:
+                    default_owner_id = pwd.getpwnam(default_owner).pw_uid
+                    group_id = path_stat.st_gid
+                    os.chown(group_folder, file_api_user_id, group_id)
+                    owner = default_owner
+                except (KeyError, Exception) as e:
+                    logging.error(e)
+                    logging.error(f'could not reset owner of {filepath} to default')
+                    owner = 'nobody'
+            date_time = str(datetime.datetime.fromtimestamp(latest).isoformat())
+            times.append(date_time)
+            try:
+                if os.path.isdir(filepath):
+                    status, mime_type, size = None, None, None
+                    self.message = 'exporting from directories not supported yet'
+                else:
+                    size, mime_type = self.get_file_metadata(filepath)
+                    status = self.enforce_export_policy(self.export_policy, filepath, tenant, size, mime_type)
+                if status:
+                    reason = None
+                else:
+                    reason = self.message
+            except Exception as e:
+                logging.error(e)
+                logging.error('could not enforce export policy when listing dir')
+                raise Exception
+            exportable.append(status)
+            reasons.append(reason)
+            sizes.append(size)
+            mimes.append(mime_type)
+            owners.append(owner)
+        file_info = []
+        for f, t, e, r, s, m, o in zip(files, times, exportable, reasons, sizes, mimes, owners):
+            href = '%s/%s' % (self.request.uri, url_escape(f))
+            file_info.append({'filename': f,
+                              'size': s,
+                              'modified_date': t,
+                              'href': href,
+                              'exportable': e,
+                              'reason': r,
+                              'mime-type': m,
+                              'owner': o})
+        logging.info('%s listed %s', self.requestor, path)
+        self.write({'files': file_info})
+
+
+    def compute_etag(self):
+        """
+        If there is a file resource, compute the Etag header.
+        Custom values: md5sum of string value of last modified
+        time of file. Client can get this value before staring
+        a download, and then if they need to resume for some
+        reason, check that the resource has not changed in
+        the meantime. It is also cheap to compute.
+
+        Note, since this is a strong validator/Etag, nginx will
+        strip it from the headers if it has been configured with
+        gzip compression for HTTP responses.
+
+        """
+        try:
+            if self.filepath:
+                mtime = os.stat(self.filepath).st_mtime
+                etag = hashlib.md5(str(mtime).encode('utf-8')).hexdigest()
+                return etag
+        except (Exception, AttributeError) as e:
+            return None
+        else:
+            return None
+
+
+    @gen.coroutine
+    def get(self, tenant, filename=None):
+        """
+        List the export dir, or serve a file, asynchronously.
+
+        1. check token claims
+        2. check the tenant
+
+        If listing the dir:
+
+        3. run the list_files method
+
+        If serving a file:
+
+        3. check the filename
+        4. check that file exists
+        5. enforce the export policy
+        6. check if a byte range is being requested
+        6. set the mime type
+        7. serve the bytes requested (explicitly, or implicitly), chunked
+
+        """
+        self.message = 'Unknown error, please contact TSD'
+        try:
+            try:
+                self.authnz = self.process_token_and_extract_claims()
+            except Exception:
+                if not self.message:
+                    self.message = 'Not authorized to export data'
+                self.set_status(401)
+                raise Exception
+            assert options.valid_tenant.match(tenant)
+            self.path = self.export_dir
+            if not filename:
+                if not self.allow_list:
+                    self.message = 'Method not allowed'
+                    self.set_status(403)
+                    raise Exception
+                self.list_files(self.path, tenant)
+                return
+            if not self.allow_export:
+                self.message = 'Method not allowed'
+                self.set_status(403)
+                raise Exception
+            try:
+                secured_filename = check_filename(url_unescape(filename),
+                                                  disallowed_start_chars=options.start_chars)
+            except Exception as e:
+                logging.error(e)
+                logging.error('%s tried to access files in sub-directories', self.requestor)
+                self.set_status(403)
+                self.message = 'Not allowed to access files in sub-directories, create a zip archive'
+                raise Exception
+            self.filepath = '%s/%s' % (self.path, secured_filename)
+            if not os.path.lexists(self.filepath):
+                logging.error('%s tried to access a file that does not exist', self.requestor)
+                self.set_status(404)
+                self.message = 'File does not exist'
+                raise Exception
+            try:
+                size, mime_type = self.get_file_metadata(self.filepath)
+                status = self.enforce_export_policy(self.export_policy, self.filepath, tenant, size, mime_type)
+                assert status
+            except (Exception, AssertionError) as e:
+                logging.error(e)
+                self.set_status(400)
+                raise Exception
+            self.set_header('Content-Type', mime_type)
+            if 'Range' not in self.request.headers:
+                self.set_header('Content-Length', size)
+                self.flush()
+                fd = open(self.filepath, "rb")
+                data = fd.read(self.CHUNK_SIZE)
+                while data:
+                    self.write(data)
+                    yield self.flush()
+                    data = fd.read(self.CHUNK_SIZE)
+                fd.close()
+            elif 'Range' in self.request.headers:
+                if 'If-Range' in self.request.headers:
+                    provided_etag = self.request.headers['If-Range']
+                    computed_etag = self.compute_etag()
+                    if provided_etag != computed_etag:
+                        self.message = 'The resource has changed, get everything from the start again'
+                        self.set_status(400)
+                        raise Exception(self.message)
+                # clients specify the range in terms of 0-based index numbers
+                # with an inclusive interval: [start, end]
+                client_byte_index_range = self.request.headers['Range']
+                full_file_size = os.stat(self.filepath).st_size
+                start_and_end = client_byte_index_range.split('=')[-1].split('-')
+                if ',' in start_and_end:
+                    self.set_status(405)
+                    self.message = 'Multipart byte range requests not supported'
+                    raise Exception(self.message)
+                client_start = int(start_and_end[0])
+                cursor_start = client_start
+                try:
+                    client_end = int(start_and_end[1])
+                except Exception as e:
+                    client_end = full_file_size - 1
+                if client_end > full_file_size:
+                    self.set_status(416)
+                    raise Exception('Range request exceeds byte range of resource')
+                # because clients provide 0-based byte indices
+                # we must add 1 to calculate the desired amount to read
+                bytes_to_read = client_end - client_start + 1
+                self.set_header('Content-Length', bytes_to_read)
+                self.flush()
+                fd = open(self.filepath, "rb")
+                fd.seek(cursor_start)
+                sent = 0
+                if self.CHUNK_SIZE > bytes_to_read:
+                    self.CHUNK_SIZE = bytes_to_read
+                data = fd.read(self.CHUNK_SIZE)
+                sent = sent + self.CHUNK_SIZE
+                while data and sent <= bytes_to_read:
+                    self.write(data)
+                    yield self.flush()
+                    data = fd.read(self.CHUNK_SIZE)
+                    sent = sent + self.CHUNK_SIZE
+                fd.close()
+            logging.info('user: %s, exported file: %s , with MIME type: %s', self.requestor, self.filepath, mime_type)
+        except Exception as e:
+            logging.error(e)
+            logging.error(self.message)
+            self.write({'message': self.message})
+        finally:
+            try:
+                fd.close()
+            except (OSError, UnboundLocalError) as e:
+                pass
+            self.finish()
+
+
+    def head(self, tenant, filename):
+        """
+        Return information about a specific file.
+
+        """
+        self.message = 'Unknown error, please contact TSD'
+        try:
+            if not self.allow_info:
+                self.message = 'Method not allowed'
+                self.set_status(403)
+                raise Exception
+            try:
+                self.authnz = self.process_token_and_extract_claims()
+            except Exception:
+                if not self.message:
+                    self.message = 'Not authorized to export data'
+                self.set_status(401)
+                raise Exception
+            assert options.valid_tenant.match(tenant)
+            self.path = self.export_dir
+            if not filename:
+                raise Exception('No info to report')
+            try:
+                secured_filename = check_filename(url_unescape(filename),
+                                                  disallowed_start_chars=options.start_chars)
+            except Exception as e:
+                logging.error(e)
+                logging.error('%s tried to access files in sub-directories', self.requestor)
+                self.set_status(403)
+                self.message = 'Not allowed to access files in sub-directories, create a zip archive'
+                raise Exception
+            self.filepath = '%s/%s' % (self.path, secured_filename)
+            if not os.path.lexists(self.filepath):
+                logging.error(self.filepath)
+                logging.error('%s tried to access a file that does not exist', self.requestor)
+                self.set_status(404)
+                self.message = 'File does not exist'
+                raise Exception
+            size, mime_type = self.get_file_metadata(self.filepath)
+            status = self.enforce_export_policy(self.export_policy, self.filepath, tenant, size, mime_type)
+            assert status
+            logging.info('user: %s, checked file: %s , with MIME type: %s', self.requestor, self.filepath, mime_type)
+            self.set_header('Content-Length', size)
+            self.set_header('Accept-Ranges', 'bytes')
+            self.set_status(200)
+        except Exception as e:
+            logging.error(e)
+            logging.error(self.message)
+            self.write({'message': self.message})
+        finally:
+            self.finish()
 
 
 class GenericTableHandler(AuthRequestHandler):
@@ -1637,17 +1640,17 @@ def main():
         ('/v1/(.*)/cluster/stream/(.*)', ProxyHandler, dict(backend='cluster')),
         ('/v1/(.*)/cluster/resumables', ResumablesHandler, dict(backend='cluster')),
         ('/v1/(.*)/cluster/resumables/(.*)', ResumablesHandler, dict(backend='cluster')),
-        ('/v1/(.*)/cluster/export', FileStreamerHandler, dict(backend='cluster')),
-        ('/v1/(.*)/cluster/export/(.*)', FileStreamerHandler, dict(backend='cluster')),
+        ('/v1/(.*)/cluster/export', ProxyHandler, dict(backend='cluster')),
+        ('/v1/(.*)/cluster/export/(.*)', ProxyHandler, dict(backend='cluster')),
         # project storage
-        ('/v1/(.*)/files/upload_stream', StreamHandler, dict(backend='files')),
-        ('/v1/(.*)/files/upload_stream/(.*)', StreamHandler, dict(backend='files')),
-        ('/v1/(.*)/files/stream', ProxyHandler, dict(backend='files')),
-        ('/v1/(.*)/files/stream/(.*)', ProxyHandler, dict(backend='files')),
-        ('/v1/(.*)/files/resumables', ResumablesHandler, dict(backend='files')),
-        ('/v1/(.*)/files/resumables/(.*)', ResumablesHandler, dict(backend='files')),
-        ('/v1/(.*)/files/export', FileStreamerHandler, dict(backend='files')),
-        ('/v1/(.*)/files/export/(.*)', FileStreamerHandler, dict(backend='files')),
+        ('/v1/(.*)/files/upload_stream', StreamHandler, dict(backend='files_import')),
+        ('/v1/(.*)/files/upload_stream/(.*)', StreamHandler, dict(backend='files_import')),
+        ('/v1/(.*)/files/stream', ProxyHandler, dict(backend='files_import')),
+        ('/v1/(.*)/files/stream/(.*)', ProxyHandler, dict(backend='files_import')),
+        ('/v1/(.*)/files/resumables', ResumablesHandler, dict(backend='files_import')),
+        ('/v1/(.*)/files/resumables/(.*)', ResumablesHandler, dict(backend='files_import')),
+        ('/v1/(.*)/files/export', ProxyHandler, dict(backend='files_export')),
+        ('/v1/(.*)/files/export/(.*)', ProxyHandler, dict(backend='files_export')),
         # sqlite backend
         ('/v1/(.*)/tables/generic/metadata/(.*)', GenericTableHandler, dict(app='generic')),
         ('/v1/(.*)/tables/generic/(.*)', GenericTableHandler, dict(app='generic')),
@@ -1665,8 +1668,8 @@ def main():
         ('/v1/(.*)/store/import/(.*)', ProxyHandler, dict(backend='store')),
         ('/v1/(.*)/store/resumables', ResumablesHandler, dict(backend='store')),
         ('/v1/(.*)/store/resumables/(.*)', ResumablesHandler, dict(backend='store')),
-        ('/v1/(.*)/store/export', FileStreamerHandler, dict(backend='store')),
-        ('/v1/(.*)/store/export/(.*)', FileStreamerHandler, dict(backend='store')),
+        ('/v1/(.*)/store/export', ProxyHandler, dict(backend='store')),
+        ('/v1/(.*)/store/export/(.*)', ProxyHandler, dict(backend='store')),
     ], debug=options.debug)
     app.listen(options.port, max_body_size=options.max_body_size)
     IOLoop.instance().start()
