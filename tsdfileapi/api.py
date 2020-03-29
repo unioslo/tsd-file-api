@@ -241,6 +241,7 @@ class AuthRequestHandler(RequestHandler):
                 group_memberships.append(new)
         return group_name, group_memberships
 
+    # consider passing uri here
     def enforce_group_logic(self, group_name, group_memberships, tenant, group_config):
         """
         Optionally check that:
@@ -270,6 +271,13 @@ class AuthRequestHandler(RequestHandler):
         except (AssertionError, Exception) as e:
            logging.error('user not member of group')
            raise e
+
+    def is_reserved_resource(self, uri):
+        # conditions: startswith, endswith
+        # startswith .
+        # isdir and name_is_uuid4 and contains(chunk)
+        # endswith (.part or .part.uuid4)
+        pass
 
 
 class GenericFormDataHandler(AuthRequestHandler):
@@ -738,6 +746,7 @@ class StreamHandler(AuthRequestHandler):
                 logging.error(e)
                 raise Exception
             try:
+                # 1. Check tenant reference
                 try:
                     tenant = tenant_from_url(self.request.uri)
                     self.tenant = tenant
@@ -745,20 +754,36 @@ class StreamHandler(AuthRequestHandler):
                 except AssertionError as e:
                     logging.error('URI does not contain a valid tenant')
                     raise e
+                # 2. get group param
                 try:
                     self.group_name = url_unescape(self.get_query_argument('group'))
                 except Exception:
                     self.group_name = tenant + '-member-group'
                 filemode = filemodes[self.request.method]
+                # 3. start processing the data
                 try:
-                    # optionally create the tenant_dir
-                    if options.create_tenant_dir:
-                        if not os.path.lexists(self.tenant_dir):
-                            os.makedirs(self.tenant_dir)
+                    # 3.1 extract info from uri
                     content_type = self.request.headers['Content-Type']
                     uri_filename = self.request.uri.split('?')[0].split('/')[-1]
                     filename = check_filename(url_unescape(uri_filename),
                                               disallowed_start_chars=options.start_chars)
+                    # 3.2 optionally create dirs
+                    # 3.2.1 tenant dir
+                    if options.create_tenant_dir:
+                        if not os.path.lexists(self.tenant_dir):
+                            os.makedirs(self.tenant_dir)
+                    # 3.2.2 destination dir
+                    self.resource_dir = None
+                    try:
+                        resource_references = self.request.uri.split('?')[0].split('/')[5:]
+                        url_dirs = url_unescape('/'.join(resource_references[:-1]))
+                        self.resource_dir = os.path.normpath(f'{self.tenant_dir}/{url_dirs}')
+                        if not os.path.lexists(self.resource_dir):
+                            logging.info(f'creating resource dir: {self.resource_dir}')
+                            os.makedirs(self.resource_dir)
+                    except Exception:
+                        pass
+                    # 3.3 handle resumable, if relavant
                     if self.request.method == 'PATCH':
                         self.res = SerialResumable(self.tenant_dir, self.requestor)
                         url_chunk_num = url_unescape(self.get_query_argument('chunk'))
@@ -772,12 +797,13 @@ class StreamHandler(AuthRequestHandler):
                                                         self.group_name, self.requestor)
                         if not self.chunk_order_correct:
                             raise Exception
-                    # ensure we do not write to active file
+                    # 3.4 ensure we do not write to active file
                     self.path = os.path.normpath(self.tenant_dir + '/' + filename)
                     self.path_part = self.path + '.' + str(uuid4()) + '.part'
                     if os.path.lexists(self.path_part):
                         logging.error('trying to write to partial file - killing request')
                         raise Exception
+                    # 3.5 ensure idempotency
                     if os.path.lexists(self.path):
                         if os.path.isdir(self.path):
                             logging.info('directory: %s already exists due to prior upload, removing', self.path)
@@ -787,7 +813,9 @@ class StreamHandler(AuthRequestHandler):
                             os.rename(self.path, self.path_part)
                             assert os.path.lexists(self.path_part)
                             assert not os.path.lexists(self.path)
+                    # 3.6 rename
                     self.path, self.path_part = self.path_part, self.path
+                    # 3.7 invoke custom content type handlers, if relevant
                     if content_type == 'application/aes':
                         self.handle_aes(content_type)
                     elif content_type == 'application/aes-octet-stream':
@@ -800,7 +828,7 @@ class StreamHandler(AuthRequestHandler):
                         self.handle_gz(content_type, filemode)
                     elif content_type == 'application/gz.aes':
                         self.handle_gz_aes(content_type, filemode)
-                    else: # no custom content type
+                    else: # 3.8 no custom content type
                         if self.request.method != 'PATCH':
                             self.custom_content_type = None
                             self.target_file = open(self.path, filemode)
@@ -811,6 +839,7 @@ class StreamHandler(AuthRequestHandler):
                                 self.target_file = self.res.open_file(self.path, filemode)
                 except KeyError:
                     raise Exception('No content-type - do not know what to do with data')
+            # 3.9 handle any errors
             except Exception as e:
                 logging.error(e)
                 try:
@@ -963,13 +992,17 @@ class StreamHandler(AuthRequestHandler):
                     path, path_part = self.path_part, self.path
                 else:
                     path = self.completed_resumable_filename
+                # need to move path into resource dir, if present
+                # then reassign that to path, and pass it to the request hook, if configured
+
                 if self.backend == 'cluster' and self.tenant == 'p01': # TODO: remove special case
                     pass
                 else:
-                    if self.request_hook['enabled']:
-                        call_request_hook(self.request_hook['path'],
-                                          [path, self.requestor, options.api_user, self.group_name],
-                                          as_sudo=self.request_hook['sudo'])
+                    pass
+                    #if self.request_hook['enabled']:
+                     #   call_request_hook(self.request_hook['path'],
+                      #                    [path, self.requestor, options.api_user, self.group_name],
+                       #                   as_sudo=self.request_hook['sudo'])
             except Exception as e:
                 logging.info('could not change file mode or owner for some reason')
                 logging.info(e)
@@ -987,10 +1020,11 @@ class StreamHandler(AuthRequestHandler):
                 if self.backend == 'cluster' and self.tenant == 'p01':  # TODO: remove special case
                     pass
                 else:
-                    if self.request_hook['enabled']:
-                        call_request_hook(self.request_hook['path'],
-                                          [path, self.requestor, options.api_user, self.group_name],
-                                          as_sudo=self.request_hook['sudo'])
+                    pass
+                    #if self.request_hook['enabled']:
+                     #   call_request_hook(self.request_hook['path'],
+                      #                    [path, self.requestor, options.api_user, self.group_name],
+                       #                   as_sudo=self.request_hook['sudo'])
                 logging.info('StreamHandler: Closed file after client closed connection')
         except AttributeError as e:
             logging.info(e)
@@ -1098,7 +1132,8 @@ class ProxyHandler(AuthRequestHandler):
             except Exception as e:
                 logging.error('Could not prepare headers for async request handling')
                 raise e
-            # 7. Build URL
+            # 7. Build URL, using default group (if not provided)
+            # /{version}/{tenant}/{namespace}/{endpoint}/{resource_reference}?{query}
             try:
                 upload_id, chunk_num = None, None
                 chunk_num = url_unescape(self.get_query_argument('chunk'))
@@ -1107,8 +1142,9 @@ class ProxyHandler(AuthRequestHandler):
                 pass
             params = '?group=%s&chunk=%s&id=%s' % (group_name, chunk_num, upload_id)
             filename = url_escape(self.filename)
-            internal_url = 'http://localhost:%d/v1/%s/%s/upload_stream/%s%s' % \
-                (options.port, tenant, self.namespace, filename, params)
+            endpoint = uri_parts[4]
+            new_uri = '{0}{1}'.format(self.request.uri.replace(endpoint, 'upload_stream'), params)
+            internal_url = f'http://localhost:{options.port}{new_uri}'
             # 8. Do async request to handle incoming data
             try:
                 if self.request.method in ('PUT', 'POST', 'PATCH'):

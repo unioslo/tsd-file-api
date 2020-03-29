@@ -1243,6 +1243,16 @@ class TestFileApi(unittest.TestCase):
         resp = requests.get(self.store_export + '/' + url_escape('så_søt(1).txt'), headers=headers)
         self.assertEqual(resp.status_code, 200)
 
+    # directories
+
+    def test_ZZZ_put_file_to_dir(self):
+        headers = {'Authorization': 'Bearer ' + TEST_TOKENS['VALID']}
+        resp = requests.put(self.stream + '/mydir1/mydir2/' + url_escape('file-should-be-in-mydir-ååå.txt'),
+                            data=lazy_file_reader(self.so_sweet),
+                            headers=headers)
+        print(resp.text)
+        # currently drops dir, in internal request
+
 
 def main():
     tests = []
@@ -1329,10 +1339,43 @@ def main():
         'test_Zh_stream_gz_aes_with_custom_header_decompress_works',
         'test_Zh0_stream_gz_with_iv_and_custom_header_decompress_works',
     ]
-    tests.extend(base)
+    dirs = [
+        # cases
+        # upload a file to a dir - put, patch (resumable)
+        #    - /import (with group restrictions, and permissions)
+        #    - /store (without group restrictions)
+        #       - both with reserved resource restrictions
+        'test_ZZZ_put_file_to_dir', # import, store
+        #'test_ZZZ_patch_resumable_file_to_dir', # import, store
+    ]
+    listing = [
+        # cases
+        # listing the export dir
+        #   - can list dirs, pagination
+        # listing the import dir
+        #   - group logic, in addition to pagination
+        #   - only dirs
+        # reserved resource restrictions on both
+        'test_ZZZ_listing_export_dirs',
+        'test_ZZZ_listing_import_dirs',
+        'test_ZZZ_listing_store_dirs',
+    ]
+    if len(sys.argv) == 2:
+        print('usage:')
+        print('python3 tsdfileapi/test_file_api.py config.yaml ARGS')
+        print('ARGS: all, base, gpg, dirs, listing')
+        sys.exit(0)
+    if 'all' in sys.argv:
+        tests.extend(base)
+        tests.extend(gpg_related)
+    if 'base' in sys.argv:
+        tests.extend(base)
     if 'gpg' in sys.argv:
         tests.extend(gpg_related)
+    if 'dirs' in sys.argv:
+        tests.extend(dirs)
     tests.sort()
+    # unique it ^
     suite = unittest.TestSuite()
     for test in tests:
         suite.addTest(TestFileApi(test))
