@@ -147,6 +147,7 @@ class TestFileApi(unittest.TestCase):
         cls.test_formid = cls.config['test_formid']
         cls.test_keyid = cls.config['test_keyid']
         cls.sns_uploads_folder = sns_dir(cls.test_sns_dir, cls.config['test_project'], cls.test_sns_url, cls.config['tenant_string_pattern'], test=True)
+        cls.store_import_folder = cls.config['backends']['disk']['store']['import_path'].replace('pXX', cls.config['test_project'])
 
         # endpoints
         cls.upload = cls.base_url + '/files/upload'
@@ -612,27 +613,24 @@ class TestFileApi(unittest.TestCase):
     # gz.aes        -> decrypt, uncompress
 
     def test_Za_stream_tar_without_custom_content_type_works(self):
-        headers = {'Authorization': 'Bearer ' + TEST_TOKENS['VALID'],
-                   'Filename': 'example.tar'}
-        resp1 = requests.put(self.stream, data=lazy_file_reader(self.example_tar),
+        headers = {'Authorization': 'Bearer ' + TEST_TOKENS['VALID']}
+        resp1 = requests.put(self.stream + '/example.tar', data=lazy_file_reader(self.example_tar),
                              headers=headers)
         self.assertEqual(resp1.status_code, 201)
         # checksum comparison
 
     def test_Zb_stream_tar_with_custom_content_type_untar_works(self):
         headers = {'Authorization': 'Bearer ' + TEST_TOKENS['VALID'],
-                   'Content-Type': 'application/tar',
-                   'Filename': 'totar'}
-        resp1 = requests.put(self.stream, data=lazy_file_reader(self.example_tar),
+                   'Content-Type': 'application/tar'}
+        resp1 = requests.put(self.stream + '/totar', data=lazy_file_reader(self.example_tar),
                              headers=headers)
         self.assertEqual(resp1.status_code, 201)
         # check contents
 
     def test_Zc_stream_tar_gz_with_custom_content_type_untar_works(self):
         headers = {'Authorization': 'Bearer ' + TEST_TOKENS['VALID'],
-                   'Content-Type': 'application/tar.gz',
-                   'Filename': 'totar2'}
-        resp1 = requests.put(self.stream, data=lazy_file_reader(self.example_tar_gz),
+                   'Content-Type': 'application/tar.gz'}
+        resp1 = requests.put(self.stream + '/totar2', data=lazy_file_reader(self.example_tar_gz),
                              headers=headers)
         self.assertEqual(resp1.status_code, 201)
         # check contents
@@ -640,9 +638,8 @@ class TestFileApi(unittest.TestCase):
     def test_Zd_stream_aes_with_custom_content_type_decrypt_works(self):
         headers = {'Authorization': 'Bearer ' + TEST_TOKENS['VALID'],
                    'Content-Type': 'application/aes',
-                   'Aes-Key': self.enc_symmetric_secret,
-                   'Filename': 'decrypted-aes.csv'}
-        resp1 = requests.put(self.stream, data=lazy_file_reader(self.example_aes),
+                   'Aes-Key': self.enc_symmetric_secret}
+        resp1 = requests.put(self.stream + '/decrypted-aes.csv', data=lazy_file_reader(self.example_aes),
                              headers=headers)
         self.assertEqual(resp1.status_code, 201)
         with open(self.uploads_folder + '/' + self.test_group + '/decrypted-aes.csv', 'r') as uploaded_file:
@@ -652,9 +649,8 @@ class TestFileApi(unittest.TestCase):
         headers = {'Authorization': 'Bearer ' + TEST_TOKENS['VALID'],
                    'Content-Type': 'application/aes',
                    'Aes-Key': self.enc_hex_aes_key,
-                   'Aes-Iv': self.hex_aes_iv,
-                   'Filename': 'decrypted-aes2.csv'}
-        resp1 = requests.put(self.stream,
+                   'Aes-Iv': self.hex_aes_iv}
+        resp1 = requests.put(self.stream + '/decrypted-aes2.csv',
                              data=lazy_file_reader(self.example_aes_with_key_and_iv),
                              headers=headers)
         self.assertEqual(resp1.status_code, 201)
@@ -665,9 +661,8 @@ class TestFileApi(unittest.TestCase):
         headers = {'Authorization': 'Bearer ' + TEST_TOKENS['VALID'],
                    'Content-Type': 'application/aes-octet-stream',
                    'Aes-Key': self.enc_hex_aes_key,
-                   'Aes-Iv': self.hex_aes_iv,
-                   'Filename': 'decrypted-binary-aes.csv'}
-        resp1 = requests.put(self.stream,
+                   'Aes-Iv': self.hex_aes_iv}
+        resp1 = requests.put(self.stream + '/decrypted-binary-aes.csv',
                              data=lazy_file_reader(self.example_binary_aes_with_key_and_iv),
                              headers=headers)
         self.assertEqual(resp1.status_code, 201)
@@ -677,9 +672,8 @@ class TestFileApi(unittest.TestCase):
     def test_Ze_stream_tar_aes_with_custom_content_type_decrypt_untar_works(self):
         headers = {'Authorization': 'Bearer ' + TEST_TOKENS['VALID'],
                    'Content-Type': 'application/tar.aes',
-                   'Aes-Key': self.enc_symmetric_secret,
-                   'Filename': 'totar3'}
-        resp1 = requests.put(self.stream, data=lazy_file_reader(self.example_tar_aes),
+                   'Aes-Key': self.enc_symmetric_secret}
+        resp1 = requests.put(self.stream + '/totar3', data=lazy_file_reader(self.example_tar_aes),
                              headers=headers)
         self.assertEqual(resp1.status_code, 201)
         # check contents
@@ -688,9 +682,9 @@ class TestFileApi(unittest.TestCase):
         headers = {'Authorization': 'Bearer ' + TEST_TOKENS['VALID'],
                    'Content-Type': 'application/tar.aes',
                    'Aes-Key': self.enc_hex_aes_key,
-                   'Aes-Iv': self.hex_aes_iv,
-                   'Filename': 'totar'}
-        resp1 = requests.put(self.stream, data=lazy_file_reader(self.example_tar_aes_with_key_and_iv),
+                   'Aes-Iv': self.hex_aes_iv}
+        resp1 = requests.put(self.stream+'/totar',
+                             data=lazy_file_reader(self.example_tar_aes_with_key_and_iv),
                              headers=headers)
         self.assertEqual(resp1.status_code, 201)
         # check contents
@@ -698,9 +692,8 @@ class TestFileApi(unittest.TestCase):
     def test_Zf_stream_tar_aes_with_custom_content_type_decrypt_untar_works(self):
         headers = {'Authorization': 'Bearer ' + TEST_TOKENS['VALID'],
                    'Content-Type': 'application/tar.gz.aes',
-                   'Aes-Key': self.enc_symmetric_secret,
-                   'Filename': 'totar4'}
-        resp1 = requests.put(self.stream, data=lazy_file_reader(self.example_tar_gz_aes),
+                   'Aes-Key': self.enc_symmetric_secret}
+        resp1 = requests.put(self.stream + '/totar4', data=lazy_file_reader(self.example_tar_gz_aes),
                              headers=headers)
         self.assertEqual(resp1.status_code, 201)
         # check contents
@@ -709,18 +702,16 @@ class TestFileApi(unittest.TestCase):
         headers = {'Authorization': 'Bearer ' + TEST_TOKENS['VALID'],
                    'Content-Type': 'application/tar.gz.aes',
                    'Aes-Key': self.enc_hex_aes_key,
-                   'Aes-Iv': self.hex_aes_iv,
-                   'Filename': 'totar2'}
-        resp1 = requests.put(self.stream, data=lazy_file_reader(self.example_tar_gz_aes_with_key_and_iv),
+                   'Aes-Iv': self.hex_aes_iv}
+        resp1 = requests.put(self.stream + '/totar2', data=lazy_file_reader(self.example_tar_gz_aes_with_key_and_iv),
                              headers=headers)
         self.assertEqual(resp1.status_code, 201)
         # check contents
 
     def test_Zg_stream_gz_with_custom_header_decompress_works(self):
         headers = {'Authorization': 'Bearer ' + TEST_TOKENS['VALID'],
-                   'Content-Type': 'application/gz',
-                   'Filename': 'ungz1'}
-        resp1 = requests.put(self.stream, data=lazy_file_reader(self.example_gz),
+                   'Content-Type': 'application/gz'}
+        resp1 = requests.put(self.stream + '/ungz1', data=lazy_file_reader(self.example_gz),
                              headers=headers)
         self.assertEqual(resp1.status_code, 201)
         with open(self.uploads_folder + '/' + self.test_group + '/ungz1', 'r') as uploaded_file:
@@ -730,9 +721,8 @@ class TestFileApi(unittest.TestCase):
     def test_Zh_stream_gz_aes_with_custom_header_decompress_works(self):
         headers = {'Authorization': 'Bearer ' + TEST_TOKENS['VALID'],
                    'Content-Type': 'application/gz.aes',
-                   'Filename': 'ungz-aes1',
                    'Aes-Key': self.enc_symmetric_secret}
-        resp1 = requests.put(self.stream, data=lazy_file_reader(self.example_gz_aes),
+        resp1 = requests.put(self.stream + '/ungz-aes1', data=lazy_file_reader(self.example_gz_aes),
                              headers=headers)
         self.assertEqual(resp1.status_code, 201)
         # This ought to work, but does not
@@ -743,10 +733,9 @@ class TestFileApi(unittest.TestCase):
     def test_Zh0_stream_gz_with_iv_and_custom_header_decompress_works(self):
         headers = {'Authorization': 'Bearer ' + TEST_TOKENS['VALID'],
                    'Content-Type': 'application/gz.aes',
-                   'Filename': 'ungz-aes1',
                    'Aes-Key': self.enc_hex_aes_key,
                    'Aes-Iv': self.hex_aes_iv}
-        resp1 = requests.put(self.stream, data=lazy_file_reader(self.example_gz_aes_with_key_and_iv),
+        resp1 = requests.put(self.stream + '/ungz-aes1', data=lazy_file_reader(self.example_gz_aes_with_key_and_iv),
                              headers=headers)
         self.assertEqual(resp1.status_code, 201)
 
@@ -885,11 +874,13 @@ class TestFileApi(unittest.TestCase):
 
 
     def start_new_resumable(self, filepath, chunksize=1, large_file=False, stop_at=None,
-                            token=None):
+                            token=None, endpoint=None, uploads_folder=None):
         if not token:
             token = TEST_TOKENS['VALID']
         filename = os.path.basename(filepath)
-        url = '%s/%s' % (self.stream, filename)
+        if not endpoint:
+            endpoint = self.stream
+        url = '%s/%s' % (endpoint, filename)
         resp = fileapi.initiate_resumable('', self.test_project, filepath,
                                           token, chunksize=chunksize, new=True, group=None,
                                           verify=False, dev_url=url, stop_at=stop_at)
@@ -899,8 +890,10 @@ class TestFileApi(unittest.TestCase):
         self.assertTrue(resp['id'] is not None)
         self.assertEqual(resp['filename'], filename)
         if not large_file:
+            if not uploads_folder:
+                uploads_folder = self.uploads_folder + '/' + self.test_group
             self.assertEqual(md5sum(filepath),
-                md5sum(self.uploads_folder + '/' + self.test_group + '/' + filename))
+                md5sum(uploads_folder + '/' + filename))
 
 
     def test_ZM_resume_new_upload_works_is_idempotent(self):
@@ -1243,6 +1236,65 @@ class TestFileApi(unittest.TestCase):
         resp = requests.get(self.store_export + '/' + url_escape('så_søt(1).txt'), headers=headers)
         self.assertEqual(resp.status_code, 200)
 
+    # directories
+
+    def test_ZZZ_put_file_to_dir(self):
+        # 1. backend where group logic is enabled
+        headers = {'Authorization': 'Bearer ' + TEST_TOKENS['VALID']}
+        # nested, not compliant with group requirements
+        file = url_escape('file-should-fail.txt')
+        resp = requests.put(
+            f'{self.stream}/mydir1/mydir2/{file}',
+            data=lazy_file_reader(self.so_sweet),
+            headers=headers)
+        self.assertEqual(resp.status_code, 401)
+        # nested, no group param
+        file = url_escape('file-should-be-in-mydir-ååå.txt')
+        resp = requests.put(f'{self.stream}/p11-member-group/mydir1/mydir2/{file}',
+                            data=lazy_file_reader(self.so_sweet),
+                            headers=headers)
+        self.assertEqual(resp.status_code, 201)
+        # not nested, no group info
+        file = url_escape('file-should-be-in-default-group-dir.txt')
+        resp = requests.put(f'{self.stream}/{file}',
+                            data=lazy_file_reader(self.so_sweet),
+                            headers=headers)
+        self.assertEqual(resp.status_code, 201)
+
+        # not nested, with group param
+        file = url_escape('file-should-be-in-default-group-dir2.txt')
+        resp = requests.put(f'{self.stream}/{file}?group=p11-member-group',
+                            data=lazy_file_reader(self.so_sweet),
+                            headers=headers)
+        self.assertEqual(resp.status_code, 201)
+        # inconsistent group info
+        file = url_escape('should-not-make-it.txt')
+        resp = requests.put(f'{self.stream}/p11-data-group/mydir1/mydir2/{file}?p11-member-group',
+                            data=lazy_file_reader(self.so_sweet),
+                            headers=headers)
+        self.assertEqual(resp.status_code, 401)
+        # with legacy Filename header
+        file = url_escape('should-make-it.txt')
+        legacy_headers = headers.copy()
+        legacy_headers['Filename'] = file
+        resp = requests.put(f'{self.stream}',
+                            data=lazy_file_reader(self.so_sweet),
+                            headers=legacy_headers)
+        self.assertEqual(resp.status_code, 201)
+        # 2. backend without group logic
+        file = url_escape('no-group-logic.txt')
+        resp = requests.put(f'{self.store_import}/dir1/{file}',
+                            data=lazy_file_reader(self.so_sweet),
+                            headers=headers)
+        self.assertEqual(resp.status_code, 201)
+        # 3. reserved resources
+
+
+    def test_ZZZ_patch_resumable_file_to_dir(self):
+        self.start_new_resumable(
+            self.resume_file1, chunksize=5, endpoint=f'{self.store_import}/dir77',
+            uploads_folder=f'{self.store_import_folder}/dir77')
+
 
 def main():
     tests = []
@@ -1262,9 +1314,6 @@ def main():
         'test_HA_put_multiple_files_multi_part_form_data',
         # sns
         'test_H4XX_when_no_keydir_exists',
-        # streaming
-        'test_I_put_file_to_streaming_endpoint_no_chunked_encoding_data_binary',
-        'test_K_put_stream_file_chunked_transfer_encoding',
         # head
         'test_N_head_on_uploads_fails_when_it_should',
         'test_O_head_on_uploads_succeeds_when_conditions_are_met',
@@ -1284,10 +1333,6 @@ def main():
         'test_ZF_stream_does_not_work_with_client_specified_group_wrong_tenant',
         'test_ZG_stream_does_not_work_with_client_specified_group_nonsense_input',
         'test_ZH_stream_does_not_work_with_client_specified_group_not_a_member',
-        # export
-        'test_ZJ_export_file_restrictions_enforced',
-        'test_ZK_export_list_dir_works',
-        'test_ZL_export_file_works',
         # resume
         'test_ZM_resume_new_upload_works_is_idempotent',
         'test_ZN_resume_works_with_upload_id_match',
@@ -1300,23 +1345,36 @@ def main():
         'test_ZU_sending_uneven_chunks_resume_works',
         'test_ZV_resume_chunk_order_enforced',
         'test_ZW_resumables_access_control',
+        # cluster
+        'test_ZZe_cluster_uploads_not_p01',
+        'test_ZZf_cluster_export_not_p01_works',
+        # store backend
+        'test_ZZg_store_import_and_export',
+    ]
+    names = [
+        'test_ZZe_filename_rules_with_uploads',
+    ]
+    basic_to_stream = [
+        'test_I_put_file_to_streaming_endpoint_no_chunked_encoding_data_binary',
+        'test_K_put_stream_file_chunked_transfer_encoding',
+    ]
+    export = [
+        # export
+        'test_ZJ_export_file_restrictions_enforced',
+        'test_ZK_export_list_dir_works',
+        'test_ZL_export_file_works',
         # resume export
         'test_ZX_head_for_export_resume_works',
         'test_ZY_get_specific_range_for_export',
         'test_ZZ_get_range_until_end_for_export',
         'test_ZZa_get_specific_range_conditional_on_etag',
         'test_ZZb_get_range_out_of_bounds_returns_correct_error',
-        'test_ZZe_filename_rules_with_uploads',
-        # cluster
-        'test_ZZe_cluster_uploads_not_p01',
-        'test_ZZf_cluster_export_not_p01_works',
-        # pipelines
+    ]
+    pipelines = [
         'test_Za_stream_tar_without_custom_content_type_works',
         'test_Zb_stream_tar_with_custom_content_type_untar_works',
         'test_Zc_stream_tar_gz_with_custom_content_type_untar_works',
         'test_Zg_stream_gz_with_custom_header_decompress_works',
-        # store backend
-        'test_ZZg_store_import_and_export',
     ]
     gpg_related = [
         'test_Zd_stream_aes_with_custom_content_type_decrypt_works',
@@ -1329,10 +1387,52 @@ def main():
         'test_Zh_stream_gz_aes_with_custom_header_decompress_works',
         'test_Zh0_stream_gz_with_iv_and_custom_header_decompress_works',
     ]
-    tests.extend(base)
+    dirs = [
+        # TODO: both with reserved resource restrictions
+        'test_ZZZ_put_file_to_dir', # import, store
+        'test_ZZZ_patch_resumable_file_to_dir', # store
+    ]
+    listing = [
+        # TODO
+        # listing the export dir
+        #   - can list dirs, pagination
+        # reserved resource restrictions
+        'test_ZZZ_listing_export_dirs',
+        'test_ZZZ_listing_store_dirs',
+    ]
+    delete = [
+        # TODO
+        # delete files in backends
+        # delete dirs?
+    ]
+    if len(sys.argv) == 2:
+        print('usage:')
+        print('python3 tsdfileapi/test_file_api.py config.yaml ARGS')
+        print('ARGS: all, base, names, pipelines, export, basic-stream, gpg, dirs, listing')
+        sys.exit(0)
+    if 'all' in sys.argv:
+        tests.extend(base)
+        tests.extend(pipelines)
+        tests.extend(gpg_related)
+        tests.extend(export)
+        tests.extend(basic_to_stream)
+        tests.extend(names)
+    if 'names' in sys.argv:
+        tests.extend(names)
+    if 'pipelines' in sys.argv:
+        tests.extend(pipelines)
+    if 'base' in sys.argv:
+        tests.extend(base)
     if 'gpg' in sys.argv:
         tests.extend(gpg_related)
+    if 'dirs' in sys.argv:
+        tests.extend(dirs)
+    if 'export' in sys.argv:
+        tests.extend(export)
+    if 'basic-stream' in sys.argv:
+        tests.extend(basic_to_stream)
     tests.sort()
+    # unique it ^
     suite = unittest.TestSuite()
     for test in tests:
         suite.addTest(TestFileApi(test))
