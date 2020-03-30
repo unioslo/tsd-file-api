@@ -6,6 +6,8 @@ import logging
 import hashlib
 import subprocess
 import shlex
+import re
+import shutil
 
 
 _VALID_FORMID = re.compile(r'^[0-9]+$')
@@ -99,7 +101,7 @@ def sns_dir(base_pattern, tenant, uri, tenant_string_pattern, test=False):
             return _path
         if not os.path.lexists(_path):
             logging.info('Creating %s', _path)
-            os.makedirs(_path, mode=0o770)
+            os.makedirs(_path)
         return _path
     except Exception as e:
         logging.error(e)
@@ -113,3 +115,37 @@ def md5sum(filename, blocksize=65536):
         for block in iter(lambda: f.read(blocksize), b""):
             _hash.update(block)
     return _hash.hexdigest()
+
+
+def move_data_to_folder(path, dest):
+    """
+    Move file/dir at path into and folder at dest.
+
+    Parameters
+    ----------
+    path: str, uploaded file or folder
+    dest: name of the destination folder
+
+    Returns
+    -------
+    boolean
+
+    """
+    try:
+        if not dest:
+            return path
+        filename = os.path.basename(path)
+        base_dir = path.replace(f'/{filename}', '')
+        new_path = os.path.normpath(dest + '/' + filename)
+        if os.path.isdir(path):
+            if os.path.lexists(new_path):
+                # idempotency
+                shutil.rmtree(new_path)
+            shutil.move(path, new_path)
+        else:
+            os.rename(path, new_path)
+        return new_path
+    except Exception as e:
+        logging.error(e)
+        logging.error('could not move file: %s', path)
+        return False
