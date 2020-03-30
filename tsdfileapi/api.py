@@ -69,7 +69,8 @@ from tornado.web import Application, RequestHandler, stream_request_body, \
 from auth import process_access_token
 from utils import call_request_hook, sns_dir, \
                   check_filename, _IS_VALID_UUID, \
-                  md5sum, tenant_from_url, create_cluster_dir_if_not_exists
+                  md5sum, tenant_from_url, create_cluster_dir_if_not_exists, \
+                  move_data_to_folder
 from db import sqlite_insert, sqlite_init, \
                sqlite_list_tables, sqlite_get_data, sqlite_update_data, \
                sqlite_delete_data
@@ -226,7 +227,6 @@ class AuthRequestHandler(RequestHandler):
             default_url_group = group_config['default_url_group']
             if options.tenant_string_pattern in default_url_group:
                 group_name = default_url_group.replace(options.tenant_string_pattern, tenant)
-            logging.info('no group owner specified - defaulting to %s', group_name)
         try:
             group_memberships = authnz_status['claims']['groups']
         except Exception as e:
@@ -241,6 +241,7 @@ class AuthRequestHandler(RequestHandler):
                 group_memberships.append(new)
         return group_name, group_memberships
 
+    # consider passing uri here
     def enforce_group_logic(self, group_name, group_memberships, tenant, group_config):
         """
         Optionally check that:
@@ -270,6 +271,13 @@ class AuthRequestHandler(RequestHandler):
         except (AssertionError, Exception) as e:
            logging.error('user not member of group')
            raise e
+
+    def is_reserved_resource(self, uri):
+        # conditions: startswith, endswith
+        # startswith .
+        # isdir and name_is_uuid4 and contains(chunk)
+        # endswith (.part or .part.uuid4)
+        pass
 
 
 class GenericFormDataHandler(AuthRequestHandler):
@@ -703,6 +711,7 @@ class StreamHandler(AuthRequestHandler):
             self.tenant_dir = self.import_dir.replace(options.tenant_string_pattern, tenant)
             self.backend = backend
             self.request_hook = options.config['backends']['disk'][backend]['request_hook']
+            self.group_config = options.config['backends']['disk'][backend]['group_logic']
         except AssertionError as e:
             self.backend = backend
             logging.error('URI does not contain a valid tenant')
@@ -738,6 +747,7 @@ class StreamHandler(AuthRequestHandler):
                 logging.error(e)
                 raise Exception
             try:
+                # 1. Check tenant reference
                 try:
                     tenant = tenant_from_url(self.request.uri)
                     self.tenant = tenant
@@ -745,20 +755,45 @@ class StreamHandler(AuthRequestHandler):
                 except AssertionError as e:
                     logging.error('URI does not contain a valid tenant')
                     raise e
+                # 2. get group param
                 try:
                     self.group_name = url_unescape(self.get_query_argument('group'))
                 except Exception:
                     self.group_name = tenant + '-member-group'
                 filemode = filemodes[self.request.method]
+                # 3. start processing the data
                 try:
-                    # optionally create the tenant_dir
-                    if options.create_tenant_dir:
-                        if not os.path.lexists(self.tenant_dir):
-                            os.makedirs(self.tenant_dir)
+                    # 3.1 extract info from uri
                     content_type = self.request.headers['Content-Type']
                     uri_filename = self.request.uri.split('?')[0].split('/')[-1]
                     filename = check_filename(url_unescape(uri_filename),
                                               disallowed_start_chars=options.start_chars)
+                    # 3.2 optionally create dirs
+                    # 3.2.1 tenant dir
+                    if options.create_tenant_dir:
+                        if not os.path.lexists(self.tenant_dir):
+                            os.makedirs(self.tenant_dir)
+                    # 3.2.2 destination dir
+                    self.resource_dir = None
+                    try:
+                        resource_references = self.request.uri.split('?')[0].split('/')[5:]
+                        url_dirs = url_unescape('/'.join(resource_references[:-1]))
+                        self.resource_dir = os.path.normpath(f'{self.tenant_dir}/{url_dirs}')
+                        if not os.path.lexists(self.resource_dir):
+                            logging.info(f'creating resource dir: {self.resource_dir}')
+                            os.makedirs(self.resource_dir)
+                            target = self.tenant_dir
+                            for _dir in url_dirs.split('/'):
+                                target += f'/{_dir}'
+                                try:
+                                    if self.group_config['enabled']:
+                                        subprocess.call(['chmod', '2770', target])
+                                        subprocess.call(['sudo', 'chown', self.group_name, target])
+                                except Exception:
+                                    pass # not fatal
+                    except Exception:
+                        pass
+                    # 3.3 handle resumable, if relavant
                     if self.request.method == 'PATCH':
                         self.res = SerialResumable(self.tenant_dir, self.requestor)
                         url_chunk_num = url_unescape(self.get_query_argument('chunk'))
@@ -772,12 +807,13 @@ class StreamHandler(AuthRequestHandler):
                                                         self.group_name, self.requestor)
                         if not self.chunk_order_correct:
                             raise Exception
-                    # ensure we do not write to active file
+                    # 3.4 ensure we do not write to active file
                     self.path = os.path.normpath(self.tenant_dir + '/' + filename)
                     self.path_part = self.path + '.' + str(uuid4()) + '.part'
                     if os.path.lexists(self.path_part):
                         logging.error('trying to write to partial file - killing request')
                         raise Exception
+                    # 3.5 ensure idempotency
                     if os.path.lexists(self.path):
                         if os.path.isdir(self.path):
                             logging.info('directory: %s already exists due to prior upload, removing', self.path)
@@ -787,7 +823,9 @@ class StreamHandler(AuthRequestHandler):
                             os.rename(self.path, self.path_part)
                             assert os.path.lexists(self.path_part)
                             assert not os.path.lexists(self.path)
+                    # 3.6 rename
                     self.path, self.path_part = self.path_part, self.path
+                    # 3.7 invoke custom content type handlers, if relevant
                     if content_type == 'application/aes':
                         self.handle_aes(content_type)
                     elif content_type == 'application/aes-octet-stream':
@@ -800,7 +838,7 @@ class StreamHandler(AuthRequestHandler):
                         self.handle_gz(content_type, filemode)
                     elif content_type == 'application/gz.aes':
                         self.handle_gz_aes(content_type, filemode)
-                    else: # no custom content type
+                    else: # 3.8 no custom content type
                         if self.request.method != 'PATCH':
                             self.custom_content_type = None
                             self.target_file = open(self.path, filemode)
@@ -811,6 +849,7 @@ class StreamHandler(AuthRequestHandler):
                                 self.target_file = self.res.open_file(self.path, filemode)
                 except KeyError:
                     raise Exception('No content-type - do not know what to do with data')
+            # 3.9 handle any errors
             except Exception as e:
                 logging.error(e)
                 try:
@@ -963,12 +1002,14 @@ class StreamHandler(AuthRequestHandler):
                     path, path_part = self.path_part, self.path
                 else:
                     path = self.completed_resumable_filename
+                # need to move path into resource dir, if present
+                resource_path = move_data_to_folder(path, self.resource_dir)
                 if self.backend == 'cluster' and self.tenant == 'p01': # TODO: remove special case
                     pass
                 else:
                     if self.request_hook['enabled']:
                         call_request_hook(self.request_hook['path'],
-                                          [path, self.requestor, options.api_user, self.group_name],
+                                          [resource_path, self.requestor, options.api_user, self.group_name],
                                           as_sudo=self.request_hook['sudo'])
             except Exception as e:
                 logging.info('could not change file mode or owner for some reason')
@@ -984,12 +1025,13 @@ class StreamHandler(AuthRequestHandler):
             if not self.target_file.closed:
                 self.target_file.close()
                 path = self.path
+                resource_path = move_data_to_folder(path, self.resource_dir)
                 if self.backend == 'cluster' and self.tenant == 'p01':  # TODO: remove special case
                     pass
                 else:
                     if self.request_hook['enabled']:
                         call_request_hook(self.request_hook['path'],
-                                          [path, self.requestor, options.api_user, self.group_name],
+                                          [resource_path, self.requestor, options.api_user, self.group_name],
                                           as_sudo=self.request_hook['sudo'])
                 logging.info('StreamHandler: Closed file after client closed connection')
         except AttributeError as e:
@@ -1007,7 +1049,7 @@ class ProxyHandler(AuthRequestHandler):
         self.allow_list = options.config['backends']['disk'][backend]['allow_list']
         self.allow_info = options.config['backends']['disk'][backend]['allow_info']
         try:
-            disabled_group_config = {
+            missing_group_config = {
                 'enabled': False,
                 'default_url_group': '',
                 'default_memberships': [],
@@ -1015,9 +1057,10 @@ class ProxyHandler(AuthRequestHandler):
                 'valid_group_regex': None,
                 'enforce_membership': False
             }
-            self.group_config = options.config['backends']['disk'][backend]['group_logic']
-            if not self.group_config['enabled']:
-                self.group_config = disabled_group_config
+            try:
+                self.group_config = options.config['backends']['disk'][backend]['group_logic']
+            except KeyError:
+                self.group_config = missing_group_config
             self.CHUNK_SIZE = options.export_chunk_size
             tenant = tenant_from_url(self.request.uri)
             assert options.valid_tenant.match(tenant)
@@ -1032,7 +1075,30 @@ class ProxyHandler(AuthRequestHandler):
 
     @gen.coroutine
     def prepare(self):
-        """Called after headers have been read."""
+        """
+        Initiate internal aync HTTP request to handle body.
+
+        There are many different types of URIs that are acceptable here,
+        but all of them MUST have the following base structure:
+
+            /{version}/{tenant}/{namespace}/{endpoint}
+
+        In addition to that, the recommended structure is:
+
+            /{version}/{tenant}/{namespace}/{endpoint}/{resource_reference}?{query=params}
+
+        Where resource_reference can be, e.g.:
+
+            filename
+            dirname/filename
+            dirname/anotherdirname/filename
+
+        A legacy version provides the resource_reference as the Filename header.
+
+        Depending on whether group logic is applied to the namespace,
+        there might be restrictions on the names of the resource_reference.
+
+        """
         try:
             # 1. Set up internal variables
             try:
@@ -1059,20 +1125,30 @@ class ProxyHandler(AuthRequestHandler):
                 raise e
             # 4. Set the filename
             try:
-                uri = self.request.uri
-                uri_parts = uri.split('/')
+                uri = self.request.uri.split('?')[0]
+                uri_parts = self.request.uri.split('?')[0].split('/')
                 if len(uri_parts) >= 6:
                     basename = uri_parts[-1]
                     filename = basename.split('?')[0]
                     self.filename = check_filename(url_unescape(filename),
                                                    disallowed_start_chars=options.start_chars)
                 else:
-                    # TODO: deprecate this once transitioned to URI scheme
-                    self.filename = check_filename(self.request.headers['Filename'],
-                                                   disallowed_start_chars=options.start_chars)
-            except KeyError:
-                self.filename = datetime.datetime.now().isoformat() + '.txt'
-                logging.info("filename not found - setting filename to: %s", self.filename)
+                    logging.warning('legacy Filename header used')
+                    try:
+                        self.filename = check_filename(self.request.headers['Filename'],
+                                                       disallowed_start_chars=options.start_chars)
+                    except KeyError:
+                        self.filename = datetime.datetime.now().isoformat() + '.txt'
+                    uri_parts.append(self.filename)
+                    # inject the filename into the uri
+                    if '?' in uri:
+                        uri = uri.replace('?', f'{self.filename}?')
+                    else:
+                        uri = f'{uri}/{self.filename}'
+            except Exception as e:
+                logging.error(e)
+                logging.error('could not process URI')
+                raise Exception
             # 5. Validate groups
             try:
                 group_name, group_memberships = self.get_group_info(tenant, self.group_config, authnz_status)
@@ -1099,16 +1175,28 @@ class ProxyHandler(AuthRequestHandler):
                 logging.error('Could not prepare headers for async request handling')
                 raise e
             # 7. Build URL
+            # 7.1 collect params
             try:
                 upload_id, chunk_num = None, None
                 chunk_num = url_unescape(self.get_query_argument('chunk'))
                 upload_id = url_unescape(self.get_query_argument('id'))
             except Exception:
                 pass
+            # 7.2 enfore group logic, if enabled
+            if self.group_config['enabled']:
+                # 7.2.1 if a directory is present, and not the same as the group
+                if url_unescape(uri_parts[5]) != self.filename and uri_parts[5] != group_name:
+                    logging.error('inconsistent group permissions')
+                    raise Exception
+                # 7.2.2 if group folder not in url, inject it from group_name
+                if url_unescape(uri_parts[5]) == self.filename:
+                    # inject appropriate value - until clients have transitioned
+                    uri = uri.replace(self.filename, f'{group_name}/{self.filename}')
+            # 7.3 build internal url
             params = '?group=%s&chunk=%s&id=%s' % (group_name, chunk_num, upload_id)
-            filename = url_escape(self.filename)
-            internal_url = 'http://localhost:%d/v1/%s/%s/upload_stream/%s%s' % \
-                (options.port, tenant, self.namespace, filename, params)
+            endpoint = uri_parts[4]
+            new_uri = '{0}{1}'.format(uri.replace(f'/{endpoint}/', '/upload_stream/'), params)
+            internal_url = f'http://localhost:{options.port}{new_uri}'
             # 8. Do async request to handle incoming data
             try:
                 if self.request.method in ('PUT', 'POST', 'PATCH'):
