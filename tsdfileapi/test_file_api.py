@@ -849,7 +849,7 @@ class TestFileApi(unittest.TestCase):
         headers={'Authorization': 'Bearer ' + TEST_TOKENS['EXPORT']}
         for name in ['/bin/bash -c', '!#/bin/bash', '!@#$%^&*()-+', '../../../p01/data/durable']:
             resp = requests.get(self.export + '/' + name, headers=headers)
-            self.assertTrue(resp.status_code in [403, 404])
+            self.assertTrue(resp.status_code in [403, 404, 401])
 
 
     def test_ZK_export_list_dir_works(self):
