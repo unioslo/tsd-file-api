@@ -1287,13 +1287,62 @@ class TestFileApi(unittest.TestCase):
                             data=lazy_file_reader(self.so_sweet),
                             headers=headers)
         self.assertEqual(resp.status_code, 201)
-        # 3. reserved resources
 
 
     def test_ZZZ_patch_resumable_file_to_dir(self):
         self.start_new_resumable(
             self.resume_file1, chunksize=5, endpoint=f'{self.store_import}/dir77',
             uploads_folder=f'{self.store_import_folder}/dir77')
+
+
+    def test_ZZZ_reserved_resources(self):
+        headers = {'Authorization': 'Bearer ' + TEST_TOKENS['VALID']}
+        # 1. hidden files
+        file = url_escape('.p11-user.db')
+        resp = requests.put(f'{self.store_import}/{file}',
+                            data=lazy_file_reader(self.so_sweet),
+                            headers=headers)
+        self.assertEqual(resp.status_code, 401)
+        # 2. resumable data folders
+        file = url_escape('myfile.chunk.2')
+        test_dir = str(uuid.uuid4())
+        test_res_dir = f'{self.store_import_folder}/{test_dir}'
+        os.makedirs(test_res_dir)
+        print(test_res_dir)
+        with open(f'{self.store_import_folder}/{test_dir}/{file}', 'w') as f:
+            f.write('some data')
+        resp = requests.put(f'{self.store_import}/{test_dir}/{file}',
+                            data=lazy_file_reader(self.so_sweet),
+                            headers=headers)
+        self.assertEqual(resp.status_code, 401)
+        try:
+            shutil.rmtree(f'{self.store_import_folder}/{test_dir}')
+        except OSError as e:
+            pass
+        # 3. merged resumable files
+        file = 'file.{0}'.format(str(uuid.uuid4()))
+        resp = requests.put(f'{self.store_import}/{test_dir}/{file}',
+                            data=lazy_file_reader(self.so_sweet),
+                            headers=headers)
+        self.assertEqual(resp.status_code, 401)
+        # 4. parial upload files
+        file = 'file.{0}.part'.format(str(uuid.uuid4()))
+        resp = requests.put(f'{self.store_import}/{test_dir}/{file}',
+                            data=lazy_file_reader(self.so_sweet),
+                            headers=headers)
+        self.assertEqual(resp.status_code, 401)
+        # 5. export
+        file = 'file.{0}.part'.format(str(uuid.uuid4()))
+        resp = requests.get(f'{self.store_import}/{test_dir}/{file}',
+                            data=lazy_file_reader(self.so_sweet),
+                            headers=headers)
+        self.assertEqual(resp.status_code, 401)
+        # 6. delete
+        file = 'file.{0}.part'.format(str(uuid.uuid4()))
+        resp = requests.delete(f'{self.store_import}/{test_dir}/{file}',
+                            data=lazy_file_reader(self.so_sweet),
+                            headers=headers)
+        self.assertEqual(resp.status_code, 401)
 
 
 def main():
@@ -1405,6 +1454,9 @@ def main():
         # delete files in backends
         # delete dirs?
     ]
+    reserved = [
+        'test_ZZZ_reserved_resources',
+    ]
     if len(sys.argv) == 2:
         print('usage:')
         print('python3 tsdfileapi/test_file_api.py config.yaml ARGS')
@@ -1431,6 +1483,8 @@ def main():
         tests.extend(export)
     if 'basic-stream' in sys.argv:
         tests.extend(basic_to_stream)
+    if 'reserved' in sys.argv:
+        tests.extend(reserved)
     tests.sort()
     # unique it ^
     suite = unittest.TestSuite()

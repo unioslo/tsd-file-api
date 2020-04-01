@@ -80,6 +80,7 @@ from pgp import _import_keys
 
 _RW______ = stat.S_IREAD | stat.S_IWRITE
 _RW_RW___ = stat.S_IREAD | stat.S_IWRITE | stat.S_IRGRP | stat.S_IWGRP
+_IS_VALID_UUID = re.compile(r'([a-f\d0-9-]{32,36})')
 
 
 def read_config(filename):
@@ -241,7 +242,6 @@ class AuthRequestHandler(RequestHandler):
                 group_memberships.append(new)
         return group_name, group_memberships
 
-    # consider passing uri here
     def enforce_group_logic(self, group_name, group_memberships, tenant, group_config):
         """
         Optionally check that:
@@ -272,12 +272,47 @@ class AuthRequestHandler(RequestHandler):
            logging.error('user not member of group')
            raise e
 
-    def is_reserved_resource(self, uri):
-        # conditions: startswith, endswith
-        # startswith .
-        # isdir and name_is_uuid4 and contains(chunk)
-        # endswith (.part or .part.uuid4)
-        pass
+    def is_reserved_resource(self, work_dir, resource):
+        """
+        Prevent access to API-owned resources.
+
+        Criteria
+        --------
+        One of either:
+
+        1. hidden files
+            - starting with .
+        2. merged resumable files
+            - endswith .uuid
+        3. partial upload files
+            - endswith .uuid.part
+        4. resumable data folders
+            - uuid4, has files inside with chunk.num
+
+        Returns
+        -------
+        bool
+
+        """
+        resource_dir = resource.split('/')[0]
+        if resource.startswith('.'):
+            logging.error('hidden files/folder not accessible')
+            return False
+        elif re.match(r'(.+).([a-f\d0-9-]{32,36})$', resource):
+            logging.error('merged resumable files not accessible')
+            return False
+        elif re.match(r'(.+).([a-f\d0-9-]{32,36}).part$', resource):
+            logging.error('partial upload files not accessible')
+            return False
+        elif _IS_VALID_UUID.match(resource_dir):
+            potential_target = os.path.normpath(f'{work_dir}/{resource_dir}')
+            if os.path.lexists(potential_target) and os.path.isdir(potential_target):
+                content = os.listdir(potential_target)
+                for entry in content:
+                    if re.match(r'(.+).chunk.[0-9]+$', entry):
+                        logging.error('resumable directories not accessible')
+                        return False
+        return True
 
 
 class GenericFormDataHandler(AuthRequestHandler):
@@ -851,7 +886,6 @@ class StreamHandler(AuthRequestHandler):
                     raise Exception('No content-type - do not know what to do with data')
             # 3.9 handle any errors
             except Exception as e:
-                logging.error(e)
                 try:
                     if self.target_file:
                         self.target_file.close()
@@ -859,6 +893,7 @@ class StreamHandler(AuthRequestHandler):
                 except AttributeError as e:
                     logging.error(e)
                     logging.error('No file to close after all - so nothing to worry about')
+                    raise e
         except Exception as e:
             logging.error('stream handler failed')
             info = 'stream processing failed'
@@ -1069,6 +1104,9 @@ class ProxyHandler(AuthRequestHandler):
             self.export_dir = self.export_path_pattern.replace(options.tenant_string_pattern, tenant)
             self.backend = backend
             self.export_policy = options.config['backends']['disk'][backend]['export_policy']
+            key = 'admin_path' if (backend == 'cluster' and tenant == 'p01') else 'import_path'
+            self.import_dir = options.config['backends']['disk'][backend][key]
+            self.import_dir = self.import_dir.replace(options.tenant_string_pattern, tenant)
         except Exception as e:
             self.group_config = disabled_group_config
 
@@ -1149,7 +1187,18 @@ class ProxyHandler(AuthRequestHandler):
                 logging.error(e)
                 logging.error('could not process URI')
                 raise Exception
-            # 5. Validate groups
+            # 5. ensure resource is not reserved
+            try:
+                resource = '/'.join(uri_parts[5:])
+                if self.request.method in ('GET', 'HEAD', 'DELETE'):
+                    work_dir = self.export_dir
+                elif self.request.method in ('PUT', 'POST', 'PATCH'):
+                    work_dir = self.import_dir
+                assert self.is_reserved_resource(work_dir, resource)
+            except (AssertionError, Exception) as e:
+                self.set_status(400)
+                raise Exception
+            # 6. Validate groups
             try:
                 group_name, group_memberships = self.get_group_info(tenant, self.group_config, authnz_status)
                 self.enforce_group_logic(group_name, group_memberships, tenant, self.group_config)
@@ -1157,7 +1206,7 @@ class ProxyHandler(AuthRequestHandler):
                 logging.error(e)
                 logging.error('could not perform group checks')
                 raise e
-            # 6. Set headers for internal request
+            # 7. Set headers for internal request
             try:
                 if 'Content-Type' not in self.request.headers.keys():
                     content_type = 'application/octet-stream'
@@ -1174,30 +1223,30 @@ class ProxyHandler(AuthRequestHandler):
             except Exception as e:
                 logging.error('Could not prepare headers for async request handling')
                 raise e
-            # 7. Build URL
-            # 7.1 collect params
+            # 8. Build URL
+            # 8.1 collect params
             try:
                 upload_id, chunk_num = None, None
                 chunk_num = url_unescape(self.get_query_argument('chunk'))
                 upload_id = url_unescape(self.get_query_argument('id'))
             except Exception:
                 pass
-            # 7.2 enfore group logic, if enabled
+            # 8.2 enfore group logic, if enabled
             if self.group_config['enabled']:
-                # 7.2.1 if a directory is present, and not the same as the group
+                # 8.2.1 if a directory is present, and not the same as the group
                 if url_unescape(uri_parts[5]) != self.filename and uri_parts[5] != group_name:
                     logging.error('inconsistent group permissions')
                     raise Exception
-                # 7.2.2 if group folder not in url, inject it from group_name
+                # 8.2.2 if group folder not in url, inject it from group_name
                 if url_unescape(uri_parts[5]) == self.filename:
                     # inject appropriate value - until clients have transitioned
                     uri = uri.replace(self.filename, f'{group_name}/{self.filename}')
-            # 7.3 build internal url
+            # 8.3 build internal url
             params = '?group=%s&chunk=%s&id=%s' % (group_name, chunk_num, upload_id)
             endpoint = uri_parts[4]
             new_uri = '{0}{1}'.format(uri.replace(f'/{endpoint}/', '/upload_stream/'), params)
             internal_url = f'http://localhost:{options.port}{new_uri}'
-            # 8. Do async request to handle incoming data
+            # 9. Do async request to handle incoming data
             try:
                 if self.request.method in ('PUT', 'POST', 'PATCH'):
                     # otherwise we are serving something
