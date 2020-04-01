@@ -1308,7 +1308,6 @@ class TestFileApi(unittest.TestCase):
         test_dir = str(uuid.uuid4())
         test_res_dir = f'{self.store_import_folder}/{test_dir}'
         os.makedirs(test_res_dir)
-        print(test_res_dir)
         with open(f'{self.store_import_folder}/{test_dir}/{file}', 'w') as f:
             f.write('some data')
         resp = requests.put(f'{self.store_import}/{test_dir}/{file}',
