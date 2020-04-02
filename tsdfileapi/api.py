@@ -97,7 +97,7 @@ def set_config():
         raise e
     try:
         if argv[2].startswith('--port:'):
-            port = argv[2].split(':')
+            port = argv[2].split(':')[1]
             define('port', int(port))
         else:
             define('port', _config['port'])
