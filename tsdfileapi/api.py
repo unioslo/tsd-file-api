@@ -830,7 +830,7 @@ class StreamHandler(AuthRequestHandler):
                                 try:
                                     if self.group_config['enabled']:
                                         subprocess.call(['chmod', '2770', target])
-                                        subprocess.call(['sudo', 'chown', self.group_name, target])
+                                        subprocess.call(['sudo', 'chown', f'{options.api_user}:{self.group_name}', target])
                                 except (Exception, OSError):
                                     logging.error('could not set permissions on upload directories')
                                     raise Exception

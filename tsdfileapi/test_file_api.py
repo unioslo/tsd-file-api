@@ -1460,19 +1460,12 @@ def main():
         print('python3 tsdfileapi/test_file_api.py config.yaml ARGS')
         print('ARGS: all, base, names, pipelines, export, basic-stream, gpg, dirs, listing')
         sys.exit(0)
-    if 'all' in sys.argv:
+    if 'base' in sys.argv:
         tests.extend(base)
-        tests.extend(pipelines)
-        tests.extend(gpg_related)
-        tests.extend(export)
-        tests.extend(basic_to_stream)
-        tests.extend(names)
     if 'names' in sys.argv:
         tests.extend(names)
     if 'pipelines' in sys.argv:
         tests.extend(pipelines)
-    if 'base' in sys.argv:
-        tests.extend(base)
     if 'gpg' in sys.argv:
         tests.extend(gpg_related)
     if 'dirs' in sys.argv:
@@ -1482,6 +1475,15 @@ def main():
     if 'basic-stream' in sys.argv:
         tests.extend(basic_to_stream)
     if 'reserved' in sys.argv:
+        tests.extend(reserved)
+    if 'all' in sys.argv:
+        tests.extend(base)
+        tests.extend(names)
+        tests.extend(pipelines)
+        tests.extend(gpg_related)
+        tests.extend(dirs)
+        tests.extend(export)
+        tests.extend(basic_to_stream)
         tests.extend(reserved)
     tests.sort()
     suite = unittest.TestSuite()
