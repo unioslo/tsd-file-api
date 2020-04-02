@@ -95,8 +95,15 @@ def set_config():
     except Exception as e:
         logging.error(e)
         raise e
+    try:
+        if argv[2].startswith('--port:'):
+            port = argv[2].split(':')
+            define('port', int(port))
+        else:
+            define('port', _config['port'])
+    except Exception:
+        define('port', _config['port'])
     define('config', _config)
-    define('port', _config['port'])
     define('debug', _config['debug'])
     define('api_user', _config['api_user'])
     define('check_tenant', _config['token_check_tenant'])
