@@ -1077,9 +1077,10 @@ class StreamHandler(AuthRequestHandler):
 @stream_request_body
 class ProxyHandler(AuthRequestHandler):
 
-    def initialize(self, backend):
-        self.storage_backend = backend
-        self.namespace = options.config['backends']['disk'][backend]['namespace']
+    def initialize(self, backend, namespace, endpoint):
+        self.backend = backend
+        self.namespace = namespace
+        self.endpoint = endpoint
         self.allow_export = options.config['backends']['disk'][backend]['allow_export']
         self.allow_list = options.config['backends']['disk'][backend]['allow_list']
         self.allow_info = options.config['backends']['disk'][backend]['allow_info']
@@ -1102,7 +1103,6 @@ class ProxyHandler(AuthRequestHandler):
             self.backend_paths = options.config['backends']['disk'][backend]
             self.export_path_pattern = self.backend_paths['export_path']
             self.export_dir = self.export_path_pattern.replace(options.tenant_string_pattern, tenant)
-            self.backend = backend
             self.export_policy = options.config['backends']['disk'][backend]['export_policy']
             key = 'admin_path' if (backend == 'cluster' and tenant == 'p01') else 'import_path'
             self.import_dir = options.config['backends']['disk'][backend][key]
@@ -1113,29 +1113,7 @@ class ProxyHandler(AuthRequestHandler):
 
     @gen.coroutine
     def prepare(self):
-        """
-        Initiate internal aync HTTP request to handle body.
-
-        There are many different types of URIs that are acceptable here,
-        but all of them MUST have the following base structure:
-
-            /{version}/{tenant}/{namespace}/{endpoint}
-
-        In addition to that, the recommended structure is:
-
-            /{version}/{tenant}/{namespace}/{endpoint}/{resource_reference}?{query=params}
-
-        Where resource_reference can be, e.g.:
-
-            filename
-            dirname/filename
-            dirname/anotherdirname/filename
-
-        A legacy version provides the resource_reference as the Filename header.
-
-        Depending on whether group logic is applied to the namespace,
-        there might be restrictions on the names of the resource_reference.
-
+        """Initiate internal async HTTP request to handle body.
         """
         try:
             # 1. Set up internal variables
@@ -1189,7 +1167,8 @@ class ProxyHandler(AuthRequestHandler):
                 raise Exception
             # 5. ensure resource is not reserved
             try:
-                resource = '/'.join(uri_parts[5:])
+                delimiter = self.endpoint if self.endpoint else self.namespace
+                resource = uri.split(delimiter)[-1]
                 if self.request.method in ('GET', 'HEAD', 'DELETE'):
                     work_dir = self.export_dir
                 elif self.request.method in ('PUT', 'POST', 'PATCH'):
@@ -1243,9 +1222,7 @@ class ProxyHandler(AuthRequestHandler):
                     uri = uri.replace(self.filename, f'{group_name}/{self.filename}')
             # 8.3 build internal url
             params = '?group=%s&chunk=%s&id=%s' % (group_name, chunk_num, upload_id)
-            endpoint = uri_parts[4]
-            new_uri = '{0}{1}'.format(uri.replace(f'/{endpoint}/', '/upload_stream/'), params)
-            internal_url = f'http://localhost:{options.port}{new_uri}'
+            internal_url = f'http://localhost:{options.port}/v1/{tenant}/{self.namespace}/upload_stream/{resource}{params}'
             # 9. Do async request to handle incoming data
             try:
                 if self.request.method in ('PUT', 'POST', 'PATCH'):
@@ -1773,21 +1750,21 @@ def main():
         # hpc storage
         ('/v1/(.*)/cluster/upload_stream', StreamHandler, dict(backend='cluster')),
         ('/v1/(.*)/cluster/upload_stream/(.*)', StreamHandler, dict(backend='cluster')),
-        ('/v1/(.*)/cluster/stream', ProxyHandler, dict(backend='cluster')),
-        ('/v1/(.*)/cluster/stream/(.*)', ProxyHandler, dict(backend='cluster')),
+        ('/v1/(.*)/cluster/stream', ProxyHandler, dict(backend='cluster', namespace='cluster', endpoint='stream')),
+        ('/v1/(.*)/cluster/stream/(.*)', ProxyHandler, dict(backend='cluster', namespace='cluster', endpoint='stream')),
         ('/v1/(.*)/cluster/resumables', ResumablesHandler, dict(backend='cluster')),
         ('/v1/(.*)/cluster/resumables/(.*)', ResumablesHandler, dict(backend='cluster')),
-        ('/v1/(.*)/cluster/export', ProxyHandler, dict(backend='cluster')),
-        ('/v1/(.*)/cluster/export/(.*)', ProxyHandler, dict(backend='cluster')),
+        ('/v1/(.*)/cluster/export', ProxyHandler, dict(backend='cluster', namespace='cluster', endpoint='export')),
+        ('/v1/(.*)/cluster/export/(.*)', ProxyHandler, dict(backend='cluster', namespace='cluster', endpoint='export')),
         # project storage
         ('/v1/(.*)/files/upload_stream', StreamHandler, dict(backend='files_import')),
         ('/v1/(.*)/files/upload_stream/(.*)', StreamHandler, dict(backend='files_import')),
-        ('/v1/(.*)/files/stream', ProxyHandler, dict(backend='files_import')),
-        ('/v1/(.*)/files/stream/(.*)', ProxyHandler, dict(backend='files_import')),
+        ('/v1/(.*)/files/stream', ProxyHandler, dict(backend='files_import', namespace='files', endpoint='stream')),
+        ('/v1/(.*)/files/stream/(.*)', ProxyHandler, dict(backend='files_import', namespace='files', endpoint='stream')),
         ('/v1/(.*)/files/resumables', ResumablesHandler, dict(backend='files_import')),
         ('/v1/(.*)/files/resumables/(.*)', ResumablesHandler, dict(backend='files_import')),
-        ('/v1/(.*)/files/export', ProxyHandler, dict(backend='files_export')),
-        ('/v1/(.*)/files/export/(.*)', ProxyHandler, dict(backend='files_export')),
+        ('/v1/(.*)/files/export', ProxyHandler, dict(backend='files_export', namespace='files', endpoint='export')),
+        ('/v1/(.*)/files/export/(.*)', ProxyHandler, dict(backend='files_export', namespace='files', endpoint='export')),
         # sqlite backend
         ('/v1/(.*)/tables/generic/metadata/(.*)', GenericTableHandler, dict(app='generic')),
         ('/v1/(.*)/tables/generic/(.*)', GenericTableHandler, dict(app='generic')),
@@ -1801,12 +1778,12 @@ def main():
         # store system
         ('/v1/(.*)/store/upload_stream', StreamHandler, dict(backend='store')),
         ('/v1/(.*)/store/upload_stream/(.*)', StreamHandler, dict(backend='store')),
-        ('/v1/(.*)/store/import', ProxyHandler, dict(backend='store')),
-        ('/v1/(.*)/store/import/(.*)', ProxyHandler, dict(backend='store')),
+        ('/v1/(.*)/store/import', ProxyHandler, dict(backend='store', namespace='store', endpoint='import')),
+        ('/v1/(.*)/store/import/(.*)', ProxyHandler, dict(backend='store', namespace='store', endpoint='import')),
         ('/v1/(.*)/store/resumables', ResumablesHandler, dict(backend='store')),
         ('/v1/(.*)/store/resumables/(.*)', ResumablesHandler, dict(backend='store')),
-        ('/v1/(.*)/store/export', ProxyHandler, dict(backend='store')),
-        ('/v1/(.*)/store/export/(.*)', ProxyHandler, dict(backend='store')),
+        ('/v1/(.*)/store/export', ProxyHandler, dict(backend='store', namespace='store', endpoint='export')),
+        ('/v1/(.*)/store/export/(.*)', ProxyHandler, dict(backend='store', namespace='store', endpoint='export')),
     ], debug=options.debug)
     app.listen(options.port, max_body_size=options.max_body_size)
     IOLoop.instance().start()
