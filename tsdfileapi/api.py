@@ -824,10 +824,12 @@ class StreamHandler(AuthRequestHandler):
                                     if self.group_config['enabled']:
                                         subprocess.call(['chmod', '2770', target])
                                         subprocess.call(['sudo', 'chown', self.group_name, target])
-                                except Exception:
-                                    pass # not fatal
-                    except Exception:
-                        pass
+                                except (Exception, OSError):
+                                    logging.error('could not set permissions on upload directories')
+                                    raise Exception
+                    except Exception as e:
+                        logging.error(e)
+                        raise Exception
                     # 3.3 handle resumable, if relavant
                     if self.request.method == 'PATCH':
                         self.res = SerialResumable(self.tenant_dir, self.requestor)
@@ -841,6 +843,7 @@ class StreamHandler(AuthRequestHandler):
                                                         url_chunk_num, url_upload_id,
                                                         self.group_name, self.requestor)
                         if not self.chunk_order_correct:
+                            logging.error('incorrect chunk order')
                             raise Exception
                     # 3.4 ensure we do not write to active file
                     self.path = os.path.normpath(self.tenant_dir + '/' + filename)
