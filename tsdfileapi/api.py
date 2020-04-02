@@ -1087,6 +1087,7 @@ class ProxyHandler(AuthRequestHandler):
         self.allow_export = options.config['backends']['disk'][backend]['allow_export']
         self.allow_list = options.config['backends']['disk'][backend]['allow_list']
         self.allow_info = options.config['backends']['disk'][backend]['allow_info']
+        self.export_max = options.config['backends']['disk'][backend]['export_max_num_list']
         try:
             missing_group_config = {
                 'enabled': False,
@@ -1361,7 +1362,7 @@ class ProxyHandler(AuthRequestHandler):
         """
         dir_map = os.listdir(path)
         files = list(dir_map)
-        if len(files) > options.config['export_max_num_list']:
+        if len(files) > self.export_max:
             self.set_status(400)
             self.message = 'too many files, create a zip archive'
             raise Exception
