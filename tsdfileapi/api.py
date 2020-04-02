@@ -1168,12 +1168,12 @@ class ProxyHandler(AuthRequestHandler):
             # 5. ensure resource is not reserved
             try:
                 delimiter = self.endpoint if self.endpoint else self.namespace
-                resource = uri.split(delimiter)[-1]
+                resource = uri.split(f'/{delimiter}/')[-1]
                 if self.request.method in ('GET', 'HEAD', 'DELETE'):
                     work_dir = self.export_dir
                 elif self.request.method in ('PUT', 'POST', 'PATCH'):
                     work_dir = self.import_dir
-                assert self.is_reserved_resource(work_dir, resource)
+                assert self.is_reserved_resource(work_dir, url_unescape(resource))
             except (AssertionError, Exception) as e:
                 self.set_status(400)
                 raise Exception
@@ -1219,7 +1219,8 @@ class ProxyHandler(AuthRequestHandler):
                 # 8.2.2 if group folder not in url, inject it from group_name
                 if url_unescape(uri_parts[5]) == self.filename:
                     # inject appropriate value - until clients have transitioned
-                    uri = uri.replace(self.filename, f'{group_name}/{self.filename}')
+                    file = url_escape(self.filename)
+                    resource = f'{group_name}/{file}'
             # 8.3 build internal url
             params = '?group=%s&chunk=%s&id=%s' % (group_name, chunk_num, upload_id)
             internal_url = f'http://localhost:{options.port}/v1/{tenant}/{self.namespace}/upload_stream/{resource}{params}'
