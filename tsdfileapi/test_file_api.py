@@ -1436,9 +1436,8 @@ def main():
         'test_Zh0_stream_gz_with_iv_and_custom_header_decompress_works',
     ]
     dirs = [
-        # TODO: both with reserved resource restrictions
-        'test_ZZZ_put_file_to_dir', # import, store
-        'test_ZZZ_patch_resumable_file_to_dir', # store
+        'test_ZZZ_put_file_to_dir',
+        'test_ZZZ_patch_resumable_file_to_dir',
     ]
     listing = [
         # TODO
@@ -1485,7 +1484,6 @@ def main():
     if 'reserved' in sys.argv:
         tests.extend(reserved)
     tests.sort()
-    # unique it ^
     suite = unittest.TestSuite()
     for test in tests:
         suite.addTest(TestFileApi(test))
