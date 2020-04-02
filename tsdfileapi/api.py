@@ -1343,8 +1343,7 @@ class ProxyHandler(AuthRequestHandler):
 
     def get_file_metadata(self, filename):
         filename_raw_utf8 = filename.encode('utf-8')
-        if self.backend == 'files':
-            # only necessary for export folder
+        if self.group_config['enabled']:
             subprocess.call(['sudo', 'chmod', 'go+r', filename])
         mime_type = magic.from_file(filename_raw_utf8, mime=True)
         size = os.stat(filename).st_size
