@@ -1376,66 +1376,104 @@ class ProxyHandler(AuthRequestHandler):
         dict
 
         """
-        dir_map = os.listdir(path)
-        files = list(dir_map)
-        if self.export_max and len(files) > self.export_max:
+        current_next = 0
+        try:
+            current_next = int(self.get_query_argument('next'))
+        except HTTPError as e:
+            pass # use default value
+        except ValueError:
             self.set_status(400)
-            self.message = 'too many files, create a zip archive'
+            self.message = 'next values must be integers'
             raise Exception
-        times = []
-        exportable = []
-        reasons = []
-        sizes = []
-        mimes = []
-        owners = []
-        default_owner = options.default_file_owner.replace(options.tenant_string_pattern, tenant)
-        for file in files:
-            filepath = os.path.normpath(path + '/' + file)
-            path_stat = os.stat(filepath)
-            latest = path_stat.st_mtime
-            date_time = str(datetime.datetime.fromtimestamp(latest).isoformat())
-            try:
-                owner = pwd.getpwuid(path_stat.st_uid).pw_name
-            except KeyError:
-                try:
-                    default_owner_id = pwd.getpwnam(default_owner).pw_uid
-                    group_id = path_stat.st_gid
-                    os.chown(group_folder, file_api_user_id, group_id)
-                    owner = default_owner
-                except (KeyError, Exception) as e:
-                    logging.error(e)
-                    logging.error(f'could not reset owner of {filepath} to default')
-                    owner = 'nobody'
-            try:
-                size, mime_type = self.get_file_metadata(filepath)
-                status = self.enforce_export_policy(self.export_policy, filepath, tenant, size, mime_type)
-                if status:
-                    reason = None
-                else:
-                    reason = self.message
-            except Exception as e:
-                logging.error(e)
-                logging.error('could not enforce export policy when listing dir')
+        if current_next < 0:
+            self.set_status(400)
+            self.message = 'next values are natural numbers'
+            raise Exception
+        # arbitrary order, but deterministic?
+        # if not, we need to sort it, but that may blow up if many files...
+        # could sample the dir first?
+        dir_map = os.listdir(path)
+        paginate = False
+        files = []
+        start_at = (current_next * 100) - 1
+        stop_at = start_at + 100
+        for num, entry in enumerate(dir_map):
+            if num <= start_at:
+                continue
+            elif num <= stop_at and num >= start_at:
+                files.append(entry)
+            elif num == stop_at + 1:
+                paginate = True
+                break # there is more
+        if len(files) == 0:
+            self.write({'files': [], 'next': None})
+        else:
+            if paginate and not current_next:
+                next_next = 1
+            elif paginate:
+                next_next = str(current_next) + 1
+            else:
+                next_next = None
+            baseuri = self.request.uri.split('?')[0]
+            nextref = f'{baseuri}?next={next_next}' if next_next else None
+            if self.export_max and len(files) > self.export_max:
+                self.set_status(400)
+                self.message = 'too many files, create a zip archive'
                 raise Exception
-            times.append(date_time)
-            exportable.append(status)
-            reasons.append(reason)
-            sizes.append(size)
-            mimes.append(mime_type)
-            owners.append(owner)
-        file_info = []
-        for f, t, e, r, s, m, o in zip(files, times, exportable, reasons, sizes, mimes, owners):
-            href = '%s/%s' % (self.request.uri, url_escape(f))
-            file_info.append({'filename': f,
-                              'size': s,
-                              'modified_date': t,
-                              'href': href,
-                              'exportable': e,
-                              'reason': r,
-                              'mime-type': m,
-                              'owner': o})
-        logging.info('%s listed %s', self.requestor, path)
-        self.write({'files': file_info})
+            times = []
+            exportable = []
+            reasons = []
+            sizes = []
+            mimes = []
+            owners = []
+            default_owner = options.default_file_owner.replace(options.tenant_string_pattern, tenant)
+            for file in files:
+                filepath = os.path.normpath(path + '/' + file)
+                path_stat = os.stat(filepath)
+                latest = path_stat.st_mtime
+                date_time = str(datetime.datetime.fromtimestamp(latest).isoformat())
+                try:
+                    owner = pwd.getpwuid(path_stat.st_uid).pw_name
+                except KeyError:
+                    try:
+                        default_owner_id = pwd.getpwnam(default_owner).pw_uid
+                        group_id = path_stat.st_gid
+                        os.chown(group_folder, file_api_user_id, group_id)
+                        owner = default_owner
+                    except (KeyError, Exception) as e:
+                        logging.error(e)
+                        logging.error(f'could not reset owner of {filepath} to default')
+                        owner = 'nobody'
+                try:
+                    size, mime_type = self.get_file_metadata(filepath)
+                    status = self.enforce_export_policy(self.export_policy, filepath, tenant, size, mime_type)
+                    if status:
+                        reason = None
+                    else:
+                        reason = self.message
+                except Exception as e:
+                    logging.error(e)
+                    logging.error('could not enforce export policy when listing dir')
+                    raise Exception
+                times.append(date_time)
+                exportable.append(status)
+                reasons.append(reason)
+                sizes.append(size)
+                mimes.append(mime_type)
+                owners.append(owner)
+            file_info = []
+            for f, t, e, r, s, m, o in zip(files, times, exportable, reasons, sizes, mimes, owners):
+                href = '%s/%s' % (self.request.uri, url_escape(f))
+                file_info.append({'filename': f,
+                                  'size': s,
+                                  'modified_date': t,
+                                  'href': href,
+                                  'exportable': e,
+                                  'reason': r,
+                                  'mime-type': m,
+                                  'owner': o})
+            logging.info('%s listed %s', self.requestor, path)
+            self.write({'files': file_info, 'next': nextref})
 
 
     def compute_etag(self):

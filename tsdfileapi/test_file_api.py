@@ -1350,11 +1350,64 @@ class TestFileApi(unittest.TestCase):
         self.assertEqual(resp.status_code, 200)
         resp = requests.get(self.store_export, headers=headers)
         self.assertEqual(resp.status_code, 200)
+        dirs = f'{self.store_import_folder}/topdir/bottomdir'
+        try:
+            os.makedirs(dirs)
+        except OSError:
+            pass
+        for i in range(101):
+            with open(f'{dirs}/file{i}', 'w') as f:
+                f.write(f'hi there number {i}')
         resp = requests.get(f'{self.store_export}/topdir', headers=headers)
         self.assertEqual(resp.status_code, 200)
         resp = requests.get(f'{self.store_export}/topdir/bottomdir', headers=headers)
         self.assertEqual(resp.status_code, 200)
-        # with pagination ?next=n ish
+        resp = requests.get(f'{self.store_export}/topdir/bottomdir?next=0', headers=headers)
+        self.assertEqual(resp.status_code, 200)
+        data1 = json.loads(resp.text)
+        resp = requests.get(f'{self.store_export}/topdir/bottomdir?next=1', headers=headers)
+        self.assertEqual(resp.status_code, 200)
+        data2 = json.loads(resp.text)
+        # should get the remaining file, left out by pagination
+        self.assertTrue(data2['files'][0] not in data1['files'])
+        # fail gracefully
+        resp = requests.get(f'{self.store_export}/topdir/bottomdir?next=-1', headers=headers)
+        self.assertEqual(resp.status_code, 400)
+        resp = requests.get(f'{self.store_export}/topdir/bottomdir?next=blabla', headers=headers)
+        self.assertEqual(resp.status_code, 400)
+        resp = requests.get(f'{self.store_export}/topdir/bottomdir?next=100', headers=headers)
+        self.assertEqual(resp.status_code, 200)
+        try:
+            shutil.rmtree(f'{dirs}')
+        except OSError as e:
+            pass
+
+
+    def test_ZZZ_get_file_from_dir(self):
+        headers = {'Authorization': 'Bearer ' + TEST_TOKENS['EXPORT']}
+        dirs = f'{self.store_import_folder}/topdir/bottomdir'
+        try:
+            os.makedirs(dirs)
+        except OSError:
+            pass
+        with open(f'{dirs}/file1', 'w') as f:
+            f.write('hi there')
+        with open(f'{dirs}/file2', 'w') as f:
+            f.write('how are you?')
+        resp = requests.get(f'{self.store_export}/topdir/bottomdir/file1', headers=headers)
+        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(resp.text, 'hi there')
+        try:
+            shutil.rmtree(f'{dirs}')
+        except OSError as e:
+            pass
+
+
+    def test_ZZZ_delete(self):
+        pass
+        # never a dir
+        # in store any file
+        # in export, only file owners
 
 
 def main():
@@ -1451,14 +1504,13 @@ def main():
     dirs = [
         'test_ZZZ_put_file_to_dir',
         'test_ZZZ_patch_resumable_file_to_dir',
+        'test_ZZZ_get_file_from_dir',
     ]
     listing = [
         'test_ZZZ_listing_dirs',
     ]
     delete = [
-        # TODO
-        # delete files in backends
-        # delete dirs?
+        'test_ZZZ_delete',
     ]
     reserved = [
         'test_ZZZ_reserved_resources',
@@ -1486,6 +1538,8 @@ def main():
         tests.extend(reserved)
     if 'listing' in sys.argv:
         tests.extend(listing)
+    if 'delete' in sys.argv:
+        tests.extend(delete)
     if 'all' in sys.argv:
         tests.extend(base)
         tests.extend(names)
@@ -1495,6 +1549,8 @@ def main():
         tests.extend(export)
         tests.extend(basic_to_stream)
         tests.extend(reserved)
+        tests.extend(listing)
+        tests.extend(delete)
     tests.sort()
     suite = unittest.TestSuite()
     for test in tests:
