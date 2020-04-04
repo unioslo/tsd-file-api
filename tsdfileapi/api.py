@@ -1160,18 +1160,21 @@ class ProxyHandler(AuthRequestHandler):
                     self.filename = check_filename(url_unescape(filename),
                                                    disallowed_start_chars=options.start_chars)
                 else:
-                    logging.warning('legacy Filename header used')
-                    try:
-                        self.filename = check_filename(self.request.headers['Filename'],
-                                                       disallowed_start_chars=options.start_chars)
-                    except KeyError:
-                        self.filename = datetime.datetime.now().isoformat() + '.txt'
-                    uri_parts.append(self.filename)
-                    # inject the filename into the uri
-                    if '?' in uri:
-                        uri = uri.replace('?', f'{self.filename}?')
+                    if self.request.method in ('PUT', 'POST', 'PATCH'):
+                        logging.warning('legacy Filename header used')
+                        try:
+                            self.filename = check_filename(self.request.headers['Filename'],
+                                                           disallowed_start_chars=options.start_chars)
+                        except KeyError:
+                            self.filename = datetime.datetime.now().isoformat() + '.txt'
+                        uri_parts.append(self.filename)
+                        # inject the filename into the uri
+                        if '?' in uri:
+                            uri = uri.replace('?', f'{self.filename}?')
+                        else:
+                            uri = f'{uri}/{self.filename}'
                     else:
-                        uri = f'{uri}/{self.filename}'
+                        pass
             except Exception as e:
                 logging.error(e)
                 logging.error('could not process URI')
@@ -1184,7 +1187,10 @@ class ProxyHandler(AuthRequestHandler):
                     work_dir = self.export_dir
                 elif self.request.method in ('PUT', 'POST', 'PATCH'):
                     work_dir = self.import_dir
-                assert self.is_reserved_resource(work_dir, url_unescape(resource))
+                if resource == uri:
+                    pass # cannot be reserved, no need to check
+                else:
+                    assert self.is_reserved_resource(work_dir, url_unescape(resource))
             except (AssertionError, Exception) as e:
                 self.set_status(400)
                 raise Exception

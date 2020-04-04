@@ -1344,6 +1344,11 @@ class TestFileApi(unittest.TestCase):
         self.assertEqual(resp.status_code, 401)
 
 
+    def test_ZZZ_listing_export_dirs(self):
+        headers = {'Authorization': 'Bearer ' + TEST_TOKENS['EXPORT']}
+        resp = requests.get(self.export, headers=headers)
+        print(resp.text)
+
 def main():
     tests = []
     base = [
@@ -1445,7 +1450,7 @@ def main():
         #   - can list dirs, pagination
         # reserved resource restrictions
         'test_ZZZ_listing_export_dirs',
-        'test_ZZZ_listing_store_dirs',
+        #'test_ZZZ_listing_store_dirs',
     ]
     delete = [
         # TODO
@@ -1476,6 +1481,8 @@ def main():
         tests.extend(basic_to_stream)
     if 'reserved' in sys.argv:
         tests.extend(reserved)
+    if 'listing' in sys.argv:
+        tests.extend(listing)
     if 'all' in sys.argv:
         tests.extend(base)
         tests.extend(names)
