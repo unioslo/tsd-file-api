@@ -38,15 +38,7 @@ def tenant_from_url(url):
 
 
 def check_filename(filename, disallowed_start_chars=[]):
-    try: # py2/3 compat
-        if isinstance(filename, unicode):
-            filename = filename.encode('utf-8')
-    except (Exception, NameError) as e:
-        pass
     try:
-        if os.path.basename(filename) != filename:
-            logging.error('Filename not a basename')
-            raise Exception
         start_char = filename[0]
         if disallowed_start_chars:
             if start_char in disallowed_start_chars:
@@ -54,10 +46,6 @@ def check_filename(filename, disallowed_start_chars=[]):
                 raise Exception
     except Exception:
         raise IllegalFilenameException
-    for sep in os.path.sep, os.path.altsep:
-        if sep and sep in filename:
-            logging.error('filename not a basename')
-            raise IllegalFilenameException
     return filename
 
 

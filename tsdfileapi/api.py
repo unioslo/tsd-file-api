@@ -1239,6 +1239,7 @@ class ProxyHandler(AuthRequestHandler):
                     file = url_escape(self.filename)
                     resource = f'{group_name}/{file}'
             # 8.3 build internal url
+            self.resource = resource
             params = '?group=%s&chunk=%s&id=%s' % (group_name, chunk_num, upload_id)
             internal_url = f'http://localhost:{options.port}/v1/{tenant}/{self.namespace}/upload_stream/{resource}{params}'
             # 9. Do async request to handle incoming data
@@ -1359,6 +1360,8 @@ class ProxyHandler(AuthRequestHandler):
         filename_raw_utf8 = filename.encode('utf-8')
         if self.group_config['enabled']:
             subprocess.call(['sudo', 'chmod', 'go+r', filename])
+        if os.path.isdir(filename):
+            return os.stat(filename).st_size, 'directory'
         mime_type = magic.from_file(filename_raw_utf8, mime=True)
         size = os.stat(filename).st_size
         return size, mime_type
@@ -1375,7 +1378,7 @@ class ProxyHandler(AuthRequestHandler):
         """
         dir_map = os.listdir(path)
         files = list(dir_map)
-        if len(files) > self.export_max:
+        if self.export_max and len(files) > self.export_max:
             self.set_status(400)
             self.message = 'too many files, create a zip archive'
             raise Exception
@@ -1390,6 +1393,7 @@ class ProxyHandler(AuthRequestHandler):
             filepath = os.path.normpath(path + '/' + file)
             path_stat = os.stat(filepath)
             latest = path_stat.st_mtime
+            date_time = str(datetime.datetime.fromtimestamp(latest).isoformat())
             try:
                 owner = pwd.getpwuid(path_stat.st_uid).pw_name
             except KeyError:
@@ -1402,15 +1406,9 @@ class ProxyHandler(AuthRequestHandler):
                     logging.error(e)
                     logging.error(f'could not reset owner of {filepath} to default')
                     owner = 'nobody'
-            date_time = str(datetime.datetime.fromtimestamp(latest).isoformat())
-            times.append(date_time)
             try:
-                if os.path.isdir(filepath):
-                    status, mime_type, size = None, None, None
-                    self.message = 'exporting from directories not supported yet'
-                else:
-                    size, mime_type = self.get_file_metadata(filepath)
-                    status = self.enforce_export_policy(self.export_policy, filepath, tenant, size, mime_type)
+                size, mime_type = self.get_file_metadata(filepath)
+                status = self.enforce_export_policy(self.export_policy, filepath, tenant, size, mime_type)
                 if status:
                     reason = None
                 else:
@@ -1419,6 +1417,7 @@ class ProxyHandler(AuthRequestHandler):
                 logging.error(e)
                 logging.error('could not enforce export policy when listing dir')
                 raise Exception
+            times.append(date_time)
             exportable.append(status)
             reasons.append(reason)
             sizes.append(size)
@@ -1497,11 +1496,13 @@ class ProxyHandler(AuthRequestHandler):
                 raise Exception
             assert options.valid_tenant.match(tenant)
             self.path = self.export_dir
-            if not filename:
+            if not filename or os.path.isdir(f'{self.path}/{self.resource}'):
                 if not self.allow_list:
                     self.message = 'Method not allowed'
                     self.set_status(403)
                     raise Exception
+                if filename and os.path.isdir(f'{self.path}/{self.resource}'):
+                    self.path += f'/{self.resource}'
                 self.list_files(self.path, tenant)
                 return
             if not self.allow_export:
@@ -1512,10 +1513,7 @@ class ProxyHandler(AuthRequestHandler):
                 secured_filename = check_filename(url_unescape(filename),
                                                   disallowed_start_chars=options.start_chars)
             except Exception as e:
-                logging.error(e)
-                logging.error('%s tried to access files in sub-directories', self.requestor)
                 self.set_status(403)
-                self.message = 'Not allowed to access files in sub-directories, create a zip archive'
                 raise Exception
             self.filepath = '%s/%s' % (self.path, secured_filename)
             if not os.path.lexists(self.filepath):

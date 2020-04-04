@@ -1344,10 +1344,18 @@ class TestFileApi(unittest.TestCase):
         self.assertEqual(resp.status_code, 401)
 
 
-    def test_ZZZ_listing_export_dirs(self):
+    def test_ZZZ_listing_dirs(self):
         headers = {'Authorization': 'Bearer ' + TEST_TOKENS['EXPORT']}
         resp = requests.get(self.export, headers=headers)
-        print(resp.text)
+        self.assertEqual(resp.status_code, 200)
+        resp = requests.get(self.store_export, headers=headers)
+        self.assertEqual(resp.status_code, 200)
+        resp = requests.get(f'{self.store_export}/topdir', headers=headers)
+        self.assertEqual(resp.status_code, 200)
+        resp = requests.get(f'{self.store_export}/topdir/bottomdir', headers=headers)
+        self.assertEqual(resp.status_code, 200)
+        # with pagination ?next=n ish
+
 
 def main():
     tests = []
@@ -1445,12 +1453,7 @@ def main():
         'test_ZZZ_patch_resumable_file_to_dir',
     ]
     listing = [
-        # TODO
-        # listing the export dir
-        #   - can list dirs, pagination
-        # reserved resource restrictions
-        'test_ZZZ_listing_export_dirs',
-        #'test_ZZZ_listing_store_dirs',
+        'test_ZZZ_listing_dirs',
     ]
     delete = [
         # TODO
