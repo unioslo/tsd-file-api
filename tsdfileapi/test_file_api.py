@@ -1400,6 +1400,10 @@ class TestFileApi(unittest.TestCase):
         resp = requests.get(f'{self.store_export}/topdir/bottomdir/file1', headers=headers)
         self.assertEqual(resp.status_code, 200)
         self.assertEqual(resp.text, 'hi there')
+        resp = requests.head(f'{self.store_export}/topdir/bottomdir/file1', headers=headers)
+        self.assertEqual(resp.status_code, 200)
+        resp = requests.head(f'{self.store_export}/topdir/bottomdir', headers=headers)
+        self.assertEqual(resp.status_code, 403)
         try:
             shutil.rmtree(f'{dirs}')
         except OSError as e:
