@@ -1658,7 +1658,6 @@ class ProxyHandler(AuthRequestHandler):
             self.finish()
 
 
-    # TODO: allow head inside dirs, but not on dirs
     def head(self, tenant, filename):
         """
         Return information about a specific file.
@@ -1685,10 +1684,6 @@ class ProxyHandler(AuthRequestHandler):
                 secured_filename = check_filename(url_unescape(filename),
                                                   disallowed_start_chars=options.start_chars)
             except Exception as e:
-                logging.error(e)
-                logging.error('%s tried to access files in sub-directories', self.requestor)
-                self.set_status(403)
-                self.message = 'Not allowed to access files in sub-directories, create a zip archive'
                 raise Exception
             self.filepath = '%s/%s' % (self.path, secured_filename)
             if not os.path.lexists(self.filepath):
@@ -1696,6 +1691,10 @@ class ProxyHandler(AuthRequestHandler):
                 logging.error('%s tried to access a file that does not exist', self.requestor)
                 self.set_status(404)
                 self.message = 'File does not exist'
+                raise Exception
+            if os.path.isdir(self.filepath):
+                self.set_status(403)
+                self.message = 'Cannot perform HEAD on directory'
                 raise Exception
             size, mime_type = self.get_file_metadata(self.filepath)
             status = self.enforce_export_policy(self.export_policy, self.filepath, tenant, size, mime_type)
