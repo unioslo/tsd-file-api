@@ -1377,10 +1377,10 @@ class ProxyHandler(AuthRequestHandler):
         dict
 
         """
-        current_next = 0
+        current_page = 0
         pagination_value = 100
         try:
-            current_next = int(self.get_query_argument('page'))
+            current_page = int(self.get_query_argument('page'))
             pagination_value = int(self.get_query_argument('per_page'))
         except HTTPError as e:
             pass # use default value
@@ -1388,7 +1388,7 @@ class ProxyHandler(AuthRequestHandler):
             self.set_status(400)
             self.message = 'next values must be integers'
             raise Exception
-        if current_next < 0:
+        if current_page < 0:
             self.set_status(400)
             self.message = 'next values are natural numbers'
             raise Exception
@@ -1402,7 +1402,7 @@ class ProxyHandler(AuthRequestHandler):
         dir_map = os.scandir(path)
         paginate = False
         files = []
-        start_at = (current_next * pagination_value) - 1
+        start_at = (current_page * pagination_value) - 1
         stop_at = start_at + pagination_value
         # only materialise the necessary entries
         for num, entry in enumerate(dir_map):
@@ -1416,14 +1416,14 @@ class ProxyHandler(AuthRequestHandler):
         if len(files) == 0:
             self.write({'files': [], 'page': None})
         else:
-            if paginate and not current_next:
-                next_next = 1
+            if paginate and not current_page:
+                next_page = 1
             elif paginate:
-                next_next = str(current_next) + 1
+                next_page = str(current_page) + 1
             else:
-                next_next = None
+                next_page = None
             baseuri = self.request.uri.split('?')[0]
-            nextref = f'{baseuri}?next={next_next}' if next_next else None
+            nextref = f'{baseuri}?next={next_page}' if next_page else None
             if self.export_max and len(files) > self.export_max:
                 self.set_status(400)
                 self.message = 'too many files, create a zip archive'
