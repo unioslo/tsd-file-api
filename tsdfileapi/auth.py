@@ -21,7 +21,13 @@ def extract_claims(token):
     return claims
 
 
-def process_access_token(auth_header, tenant, check_tenant, check_exp, tenant_claim_name):
+def process_access_token(
+        auth_header,
+        tenant,
+        check_tenant,
+        check_exp,
+        tenant_claim_name,
+        verify_with_secret=None):
     """
     Extract claims, check tenant access, and expiry.
 
@@ -38,7 +44,17 @@ def process_access_token(auth_header, tenant, check_tenant, check_exp, tenant_cl
     failure_message = {'message': 'Access forbidden', 'status': False, 'reason': None}
     try:
         raw_token = auth_header.split(' ')[1]
-        claims = extract_claims(raw_token)
+        if not verify_with_secret:
+            claims = extract_claims(raw_token)
+        else:
+            k = {'k': verify_with_secret, 'kty': 'oct'}
+            key = jwk.JWK(**k)
+            token = jwt.JWT(algs=['HS256'])
+            try:
+                token.deserialize(raw_token, key=key)
+                claims = json.loads(token.claims)
+            except jws.InvalidJWSSignature as e:
+                return failure_message
     except Exception as e:
         logging.error(e.message)
         failure_message['reason'] = e.message

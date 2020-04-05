@@ -117,7 +117,7 @@ def set_config():
     define('max_body_size', _config['max_body_size'])
     define('default_file_owner', _config['default_file_owner'])
     define('create_tenant_dir', _config['create_tenant_dir'])
-
+    define('jwt_secret', _config['jwt_secret'] if 'jwt_secret' in _config.keys() else None)
 
 set_config()
 
@@ -153,9 +153,12 @@ class AuthRequestHandler(RequestHandler):
 
     """
 
-    def process_token_and_extract_claims(self, check_tenant=options.check_tenant,
-                                         check_exp=options.check_exp,
-                                         tenant_claim_name=options.tenant_claim_name):
+    def process_token_and_extract_claims(
+            self,
+            check_tenant=options.check_tenant,
+            check_exp=options.check_exp,
+            tenant_claim_name=options.tenant_claim_name,
+            verify_with_secret=options.jwt_secret):
         """
         When performing requests against the API, JWT access tokens are presented
         in the Authorization header of the HTTP request as a Bearer token. Before
@@ -163,8 +166,10 @@ class AuthRequestHandler(RequestHandler):
 
         The process_access_token method will:
             - extract claims from the JWT
-            - OPTIONALLY check for consistent tenant access
-            - OPTIONALLY check for token expiry
+            - optionally check:
+                - consistent tenant access
+                - token expiry
+                - signature, if provided with a secret
 
         The latter checks are OPTIONAL since they SHOULD already have been
         performed by an authorization server _before_ the request is handled here.
@@ -200,9 +205,14 @@ class AuthRequestHandler(RequestHandler):
                 self.set_status(400)
                 raise e
             try:
-                authnz = process_access_token(auth_header, tenant,
-                                              check_tenant, check_exp,
-                                              tenant_claim_name)
+                authnz = process_access_token(
+                    auth_header,
+                    tenant,
+                    check_tenant,
+                    check_exp,
+                    tenant_claim_name,
+                    verify_with_secret
+                )
                 self.claims = authnz['claims']
                 self.requestor = self.claims[options.requestor_claim_name]
                 if not authnz['status']:
@@ -1648,6 +1658,7 @@ class ProxyHandler(AuthRequestHandler):
             self.finish()
 
 
+    # TODO: allow head inside dirs, but not on dirs
     def head(self, tenant, filename):
         """
         Return information about a specific file.
