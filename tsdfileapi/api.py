@@ -1095,6 +1095,7 @@ class ProxyHandler(AuthRequestHandler):
         self.allow_list = options.config['backends']['disk'][backend]['allow_list']
         self.allow_info = options.config['backends']['disk'][backend]['allow_info']
         self.export_max = options.config['backends']['disk'][backend]['export_max_num_list']
+        self.has_posix_ownership = options.config['backends']['disk'][backend]['has_posix_ownership']
         try:
             missing_group_config = {
                 'enabled': False,
@@ -1440,18 +1441,21 @@ class ProxyHandler(AuthRequestHandler):
                 path_stat = file.stat()
                 latest = path_stat.st_mtime
                 date_time = str(datetime.datetime.fromtimestamp(latest).isoformat())
-                try:
-                    owner = pwd.getpwuid(path_stat.st_uid).pw_name
-                except KeyError:
+                if self.has_posix_ownership:
                     try:
-                        default_owner_id = pwd.getpwnam(default_owner).pw_uid
-                        group_id = path_stat.st_gid
-                        os.chown(group_folder, file_api_user_id, group_id)
-                        owner = default_owner
-                    except (KeyError, Exception) as e:
-                        logging.error(e)
-                        logging.error(f'could not reset owner of {filepath} to default')
-                        owner = 'nobody'
+                        owner = pwd.getpwuid(path_stat.st_uid).pw_name
+                    except KeyError:
+                        try:
+                            default_owner_id = pwd.getpwnam(default_owner).pw_uid
+                            group_id = path_stat.st_gid
+                            os.chown(group_folder, file_api_user_id, group_id)
+                            owner = default_owner
+                        except (KeyError, Exception) as e:
+                            logging.error(e)
+                            logging.error(f'could not reset owner of {filepath} to default')
+                            owner = 'nobody'
+                else:
+                    owner = options.api_user
                 try:
                     size, mime_type = self.get_file_metadata(filepath)
                     status = self.enforce_export_policy(self.export_policy, filepath, tenant, size, mime_type)
