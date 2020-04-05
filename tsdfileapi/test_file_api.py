@@ -88,6 +88,7 @@ import pretty_bad_protocol._parsers
 pretty_bad_protocol._parsers.Verify.TRUST_LEVELS["ENCRYPTION_COMPLIANCE_MODE"] = 23
 
 # pylint: disable=relative-import
+from auth import process_access_token
 from tokens import gen_test_tokens, get_test_token_for_p12, gen_test_token_for_user
 from db import session_scope, sqlite_init
 from resumables import SerialResumable
@@ -1417,6 +1418,19 @@ class TestFileApi(unittest.TestCase):
         # in export, only file owners
 
 
+    def test_token_signature_validation(self):
+        test_header = 'Bearer ' + TEST_TOKENS['TEST_SIG']
+        res = process_access_token(
+            test_header,
+            self.test_project,
+            self.config['token_check_tenant'],
+            self.config['token_check_exp'],
+            self.config['tenant_claim_name'],
+            self.config['jwt_test_secret']
+        )
+        self.assertTrue(res['status'])
+
+
 def main():
     tests = []
     base = [
@@ -1522,6 +1536,9 @@ def main():
     reserved = [
         'test_ZZZ_reserved_resources',
     ]
+    sig = [
+        'test_token_signature_validation',
+    ]
     if len(sys.argv) == 2:
         print('usage:')
         print('python3 tsdfileapi/test_file_api.py config.yaml ARGS')
@@ -1547,6 +1564,8 @@ def main():
         tests.extend(listing)
     if 'delete' in sys.argv:
         tests.extend(delete)
+    if 'sig' in sys.argv:
+        tests.extend(sig)
     if 'all' in sys.argv:
         tests.extend(base)
         tests.extend(names)
@@ -1558,6 +1577,7 @@ def main():
         tests.extend(reserved)
         tests.extend(listing)
         tests.extend(delete)
+        tests.extend(sig)
     tests.sort()
     suite = unittest.TestSuite()
     for test in tests:

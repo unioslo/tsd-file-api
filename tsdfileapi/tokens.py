@@ -66,7 +66,8 @@ def gen_test_tokens(config):
         'TIMED_OUT': tkn(secret, exp=-1, role='import_user', tenant=proj),
         'WRONG_PROJECT': tkn(wrong, exp=-1, role='import_user', tenant='p01'),
         'EXPORT': tkn(secret, role='export_user', tenant=proj, user=user),
-        'ADMIN': tkn(secret, role='admin_user', tenant=proj, user=user)
+        'ADMIN': tkn(secret, role='admin_user', tenant=proj, user=user),
+        'TEST_SIG': tkn(config['jwt_test_secret'], role='import_user', user=user, tenant=proj)
     }
 
 def get_test_token_for_p12(config):
