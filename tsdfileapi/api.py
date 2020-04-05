@@ -1398,7 +1398,7 @@ class ProxyHandler(AuthRequestHandler):
         # arbitrary order
         # if not returning what you want
         # then try next page
-        dir_map = os.listdir(path)
+        dir_map = os.scandir(path)
         paginate = False
         files = []
         start_at = (current_next * pagination_value) - 1
@@ -1427,6 +1427,7 @@ class ProxyHandler(AuthRequestHandler):
                 self.set_status(400)
                 self.message = 'too many files, create a zip archive'
                 raise Exception
+            names = []
             times = []
             exportable = []
             reasons = []
@@ -1435,8 +1436,8 @@ class ProxyHandler(AuthRequestHandler):
             owners = []
             default_owner = options.default_file_owner.replace(options.tenant_string_pattern, tenant)
             for file in files:
-                filepath = os.path.normpath(path + '/' + file)
-                path_stat = os.stat(filepath)
+                filepath = file.path
+                path_stat = file.stat()
                 latest = path_stat.st_mtime
                 date_time = str(datetime.datetime.fromtimestamp(latest).isoformat())
                 try:
@@ -1462,6 +1463,7 @@ class ProxyHandler(AuthRequestHandler):
                     logging.error(e)
                     logging.error('could not enforce export policy when listing dir')
                     raise Exception
+                names.append(os.path.basename(filepath))
                 times.append(date_time)
                 exportable.append(status)
                 reasons.append(reason)
@@ -1469,7 +1471,7 @@ class ProxyHandler(AuthRequestHandler):
                 mimes.append(mime_type)
                 owners.append(owner)
             file_info = []
-            for f, t, e, r, s, m, o in zip(files, times, exportable, reasons, sizes, mimes, owners):
+            for f, t, e, r, s, m, o in zip(names, times, exportable, reasons, sizes, mimes, owners):
                 href = '%s/%s' % (self.request.uri, url_escape(f))
                 file_info.append({'filename': f,
                                   'size': s,
