@@ -1104,6 +1104,7 @@ class ProxyHandler(AuthRequestHandler):
         self.allow_export = options.config['backends']['disk'][backend]['allow_export']
         self.allow_list = options.config['backends']['disk'][backend]['allow_list']
         self.allow_info = options.config['backends']['disk'][backend]['allow_info']
+        self.allow_delete = options.config['backends']['disk'][backend]['allow_delete']
         self.export_max = options.config['backends']['disk'][backend]['export_max_num_list']
         self.has_posix_ownership = options.config['backends']['disk'][backend]['has_posix_ownership']
         try:
@@ -1709,6 +1710,58 @@ class ProxyHandler(AuthRequestHandler):
             self.write({'message': self.message})
         finally:
             self.finish()
+
+
+    def delete(self, tenant, filename):
+        self.message = 'Unknown error, please contact TSD'
+        try:
+            if not self.allow_delete:
+                self.message = 'Method not allowed'
+                self.set_status(403)
+                raise Exception
+            try:
+                self.authnz = self.process_token_and_extract_claims()
+            except Exception:
+                if not self.message:
+                    self.message = 'Not authorized to delete data'
+                self.set_status(401)
+                raise Exception
+            assert options.valid_tenant.match(tenant)
+            # only TSD import dir which is not the same dir
+            self.path = self.export_dir
+            if not filename:
+                raise Exception('No file to delete')
+            try:
+                secured_filename = check_filename(url_unescape(filename),
+                                                  disallowed_start_chars=options.start_chars)
+            except Exception as e:
+                raise Exception
+            self.filepath = '%s/%s' % (self.path, secured_filename)
+            if not os.path.lexists(self.filepath):
+                logging.error(self.filepath)
+                logging.error('%s tried to delete a file that does not exist', self.requestor)
+                self.set_status(404)
+                self.message = 'File does not exist'
+                raise Exception
+            if os.path.isdir(self.filepath):
+                self.set_status(403)
+                self.message = 'Cannot perform DELETE on directory - delete files individually'
+                raise Exception
+            try:
+                os.remove(self.filepath)
+                self.message = 'Deleted %s' % self.filepath
+            except OSError as e:
+                self.set_status(500)
+                self.message = 'Problem deleting %s' % self.filepath
+                raise Exception
+            logging.info('user: %s, deleted file: %s', self.requestor, self.filepath)
+            self.set_status(200)
+        except Exception as e:
+            logging.error(e)
+            logging.error(self.message)
+            self.write({'message': self.message})
+        finally:
+            self.finish({'message': self.message})
 
 
 class GenericTableHandler(AuthRequestHandler):

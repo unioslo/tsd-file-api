@@ -1412,10 +1412,21 @@ class TestFileApi(unittest.TestCase):
 
 
     def test_ZZZ_delete(self):
-        pass
-        # never a dir
-        # in store any file
-        # in export, only file owners
+        headers = {'Authorization': 'Bearer ' + TEST_TOKENS['EXPORT']}
+        dirs = f'{self.store_import_folder}/topdir/bottomdir'
+        try:
+            os.makedirs(dirs)
+        except OSError:
+            pass
+        with open(f'{dirs}/file1', 'w') as f:
+            f.write('hi there')
+        resp = requests.delete(f'{self.store_export}/topdir/bottomdir/file1', headers=headers)
+        self.assertEqual(resp.status_code, 200)
+        self.assertTrue('file1' not in os.listdir(dirs))
+        try:
+            shutil.rmtree(f'{dirs}')
+        except OSError as e:
+            pass
 
 
     def test_token_signature_validation(self):
