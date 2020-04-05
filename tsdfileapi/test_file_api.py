@@ -1362,21 +1362,24 @@ class TestFileApi(unittest.TestCase):
         self.assertEqual(resp.status_code, 200)
         resp = requests.get(f'{self.store_export}/topdir/bottomdir', headers=headers)
         self.assertEqual(resp.status_code, 200)
-        resp = requests.get(f'{self.store_export}/topdir/bottomdir?next=0', headers=headers)
+        resp = requests.get(f'{self.store_export}/topdir/bottomdir?page=0', headers=headers)
         self.assertEqual(resp.status_code, 200)
         data1 = json.loads(resp.text)
-        resp = requests.get(f'{self.store_export}/topdir/bottomdir?next=1', headers=headers)
+        resp = requests.get(f'{self.store_export}/topdir/bottomdir?page=1', headers=headers)
         self.assertEqual(resp.status_code, 200)
         data2 = json.loads(resp.text)
-        # should get the remaining file, left out by pagination
         self.assertTrue(data2['files'][0] not in data1['files'])
-        # fail gracefully
-        resp = requests.get(f'{self.store_export}/topdir/bottomdir?next=-1', headers=headers)
-        self.assertEqual(resp.status_code, 400)
-        resp = requests.get(f'{self.store_export}/topdir/bottomdir?next=blabla', headers=headers)
-        self.assertEqual(resp.status_code, 400)
-        resp = requests.get(f'{self.store_export}/topdir/bottomdir?next=100', headers=headers)
+        resp = requests.get(f'{self.store_export}/topdir/bottomdir?page=0&per_page=103', headers=headers)
+        data = json.loads(resp.text)
         self.assertEqual(resp.status_code, 200)
+        self.assertEqual(len(data['files']), 101)
+        # fail gracefully
+        resp = requests.get(f'{self.store_export}/topdir/bottomdir?page=-1', headers=headers)
+        self.assertEqual(resp.status_code, 400)
+        resp = requests.get(f'{self.store_export}/topdir/bottomdir?page=blabla', headers=headers)
+        self.assertEqual(resp.status_code, 400)
+        resp = requests.get(f'{self.store_export}/topdir/bottomdir?page=1&per_page=1001', headers=headers)
+        self.assertEqual(resp.status_code, 400)
         try:
             shutil.rmtree(f'{dirs}')
         except OSError as e:

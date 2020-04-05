@@ -1377,8 +1377,10 @@ class ProxyHandler(AuthRequestHandler):
 
         """
         current_next = 0
+        pagination_value = 100
         try:
-            current_next = int(self.get_query_argument('next'))
+            current_next = int(self.get_query_argument('page'))
+            pagination_value = int(self.get_query_argument('per_page'))
         except HTTPError as e:
             pass # use default value
         except ValueError:
@@ -1389,14 +1391,19 @@ class ProxyHandler(AuthRequestHandler):
             self.set_status(400)
             self.message = 'next values are natural numbers'
             raise Exception
-        # arbitrary order, but deterministic?
-        # if not, we need to sort it, but that may blow up if many files...
-        # could sample the dir first?
+        if pagination_value > 1000:
+            self.set_status(400)
+            self.message = 'per_page cannot exceed 1000'
+            raise Exception
+        # arbitrary order
+        # if not returning what you want
+        # then try next page
         dir_map = os.listdir(path)
         paginate = False
         files = []
-        start_at = (current_next * 100) - 1
-        stop_at = start_at + 100
+        start_at = (current_next * pagination_value) - 1
+        stop_at = start_at + pagination_value
+        # only materialise the necessary entries
         for num, entry in enumerate(dir_map):
             if num <= start_at:
                 continue
@@ -1406,7 +1413,7 @@ class ProxyHandler(AuthRequestHandler):
                 paginate = True
                 break # there is more
         if len(files) == 0:
-            self.write({'files': [], 'next': None})
+            self.write({'files': [], 'page': None})
         else:
             if paginate and not current_next:
                 next_next = 1
@@ -1473,7 +1480,7 @@ class ProxyHandler(AuthRequestHandler):
                                   'mime-type': m,
                                   'owner': o})
             logging.info('%s listed %s', self.requestor, path)
-            self.write({'files': file_info, 'next': nextref})
+            self.write({'files': file_info, 'page': nextref})
 
 
     def compute_etag(self):
