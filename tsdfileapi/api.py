@@ -66,16 +66,16 @@ from tornado.options import parse_command_line, define, options
 from tornado.web import Application, RequestHandler, stream_request_body, \
                         HTTPError, MissingArgumentError
 
-from auth import process_access_token
-from utils import call_request_hook, sns_dir, \
+from tsdfileapi.auth import process_access_token
+from tsdfileapi.utils import call_request_hook, sns_dir, \
                   check_filename, _IS_VALID_UUID, \
                   md5sum, tenant_from_url, create_cluster_dir_if_not_exists, \
                   move_data_to_folder
-from db import sqlite_insert, sqlite_init, \
+from tsdfileapi.db import sqlite_insert, sqlite_init, \
                sqlite_list_tables, sqlite_get_data, sqlite_update_data, \
                sqlite_delete_data
-from resumables import SerialResumable
-from pgp import _import_keys
+from tsdfileapi.resumables import SerialResumable
+from tsdfileapi.pgp import _import_keys
 
 
 _RW______ = stat.S_IREAD | stat.S_IWRITE
