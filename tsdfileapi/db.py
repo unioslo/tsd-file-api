@@ -91,13 +91,13 @@ def sqlite_insert(engine, table_name, data):
                 pass # most likely because it already exists, ignore
             if dtype is list:
                 for row in data:
-                    session.execute('insert into ' + table_name + ' (data) values (:values)',
+                    session.execute('insert into "' + table_name + '" (data) values (:values)',
                         {'values': json.dumps(row)})
             elif dtype is dict:
                 # investigate: http://docs.sqlalchemy.org/en/latest/faq/performance.html
                 # Bulk_insert_mappings or use raw sqlite3
                 row = data
-                session.execute('insert into ' + table_name + ' (data) values (:values)',
+                session.execute('insert into "' + table_name + '" (data) values (:values)',
                         {'values': json.dumps(row)})
         return True
     except IntegrityError as e:
@@ -132,7 +132,7 @@ def conditionally_create_generic_table(engine, table_name):
         raise TableCreationException
     try:
         with session_scope(engine) as session:
-            session.execute('create table if not exists %s (data json unique not null)' % table_name)
+            session.execute('create table if not exists "%s" (data json unique not null)' % table_name)
     except Exception as e:
         logging.error(e)
         raise TableCreationException
