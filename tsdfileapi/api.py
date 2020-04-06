@@ -1892,9 +1892,9 @@ def main():
         ('/v1/(.*)/files/export', ProxyHandler, dict(backend='files_export', namespace='files', endpoint='export')),
         ('/v1/(.*)/files/export/(.*)', ProxyHandler, dict(backend='files_export', namespace='files', endpoint='export')),
         # sqlite backend
-        ('/v1/(.*)/tables/generic/metadata/(.*)', GenericTableHandler, dict(app='generic')),
         ('/v1/(.*)/tables/generic/(.*)', GenericTableHandler, dict(app='generic')),
         ('/v1/(.*)/tables/generic', GenericTableHandler, dict(app='generic')),
+        # nettskjema
         ('/v1/(.*)/tables/survey/metadata/(.*)', GenericTableHandler, dict(app='survey')),
         ('/v1/(.*)/tables/survey/(.*)', GenericTableHandler, dict(app='survey')),
         ('/v1/(.*)/tables/survey', GenericTableHandler, dict(app='survey')),
