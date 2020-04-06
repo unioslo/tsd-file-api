@@ -599,6 +599,9 @@ class TestFileApi(unittest.TestCase):
                             data=lazy_file_reader(self.so_sweet),
                             headers=headers)
         self.assertEqual(resp.status_code, 201)
+        resp = requests.get(f'{self.survey}/123456/attachments/{file}',
+                            headers=headers)
+        self.assertEqual(resp.status_code, 200)
 
 
     def test_XXX_load(self):
