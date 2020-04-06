@@ -87,12 +87,10 @@ if __name__ == '__main__':
         '/mytable?select=c[*].(h,p)',
         '/mytable?select=y,c[*].(h,i)',
         # filtering
-        # TODO: consider supporting OR, and grouped conditions
-        # possibile approach
         # &where=x=not.is.null
-        # &where=(x=not.like.*zap:and:y=not.is.null)
-        # &where=(x=not.like.*zap:and:y=not.is.null)
-        # &where=((x=not.like.*zap:and:y=not.is.null):or:z=eq.0)
+        # &where=(x=not.like.*zap,and:y=not.is.null)
+        # &where=(x=not.like.*zap,and:y=not.is.null)
+        # &where=((x=not.like.*zap,and:y=not.is.null),or:z=eq.0)
         '/mytable?select=x&z=eq.5&y=gt.0',
         '/mytable?x=not.like.*zap&y=not.is.null',
         #'/mytable?d=in.(string1,string2)', # TODO, for string only

@@ -1775,12 +1775,10 @@ class GenericTableHandler(AuthRequestHandler):
     """
 
     def initialize(self, app):
+        # TODO: new table name handling
+        # new metadata handling
         self.app = app
         self.db_name =  '.' + app + '.db'
-        if 'metadata' in self.request.uri:
-            self.datatype = 'metadata'
-        else:
-            self.datatype = 'data'
         tenant = tenant_from_url(self.request.uri)
         assert options.valid_tenant.match(tenant)
         self.import_dir = options.config['backends']['sqlite'][app]['db_path']

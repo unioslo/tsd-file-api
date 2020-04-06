@@ -15,14 +15,13 @@ class SqlStatement(object):
 
     URI queries have the following generic structures, e.g.:
 
-        GET /table_name?select=col1,col2&col3=eq.5&col2=not.is.null&order=col1.desc
-        PATCH /table_name?set=col1.5&col3=eq.5
-        DELETE /table_name?col3=eq.5
+    GET /table_name?select=col1,col2&col3=eq.5&col2=not.is.null&order=col1.desc
+    PATCH /table_name?set=col1.5&col3=eq.5
+    DELETE /table_name?col3=eq.5
 
-    Limitation: currently, reserved tokens are: ',.&' and all URI query terms are
-    reserved words. To allow these to be used in query values, the parser will
-    have to be reimplemented to support quoting values in the URI. The current
-    implementation without such support will, however, satisfy enough queries.
+    Limitation: currently, reserved tokens are:
+
+    ,.&:*=[]()
 
     The constructor takes the URI, and generates three SQL query parts:
 
@@ -69,12 +68,12 @@ class SqlStatement(object):
     def build_select_query(self, uri):
         if '?' not in uri:
             table_name = os.path.basename(uri)
-            return 'select * from %s' % table_name
+            return 'select * from "%s"' % table_name
         table_name = os.path.basename(uri.split('?')[0])
-        stmt_select ="select %(columns)s " % {'columns': self.query_columns}
-        stmt_from = "from %(table_name)s " % {'table_name': table_name}
-        stmt_where = "where %(conditions)s " % {'conditions': self.query_conditions} if self.query_conditions else ''
-        stmt_order = "order by %(ordering)s " % {'ordering': self.query_ordering} if self.query_ordering else None
+        stmt_select = 'select %(columns)s ' % {'columns': self.query_columns}
+        stmt_from = 'from "%(table_name)s" ' % {'table_name': table_name}
+        stmt_where = 'where %(conditions)s ' % {'conditions': self.query_conditions} if self.query_conditions else ''
+        stmt_order = 'order by %(ordering)s ' % {'ordering': self.query_ordering} if self.query_ordering else None
         stmt_range = self.parse_range_clause(uri)
         query = stmt_select + stmt_from + stmt_where
         if stmt_order:
@@ -88,9 +87,9 @@ class SqlStatement(object):
         if '?' not in uri:
             return None
         table_name = os.path.basename(uri.split('?')[0])
-        stmt_update = "update %(table_name)s " % {'table_name': table_name}
-        stmt_set = "set %(update_details)s " % {'update_details': self.update_details} if self.update_details else ''
-        stmt_where = "where %(conditions)s " % {'conditions': self.query_conditions} if self.query_conditions else ''
+        stmt_update = 'update "%(table_name)s" ' % {'table_name': table_name}
+        stmt_set = 'set %(update_details)s ' % {'update_details': self.update_details} if self.update_details else ''
+        stmt_where = 'where %(conditions)s ' % {'conditions': self.query_conditions} if self.query_conditions else ''
         query = stmt_update + stmt_set + stmt_where
         return query if self.update_details else None
 
@@ -121,11 +120,13 @@ class SqlStatement(object):
         # seems broken too
         if '?' not in uri:
             table_name =  uri.split('/')[-1]
-            return "delete from %(table_name)s" % {'table_name': table_name}
+            return 'delete from "%(table_name)s"' % {'table_name': table_name}
         uri_path = uri.split('?')[0]
         table_name = os.path.basename(uri_path.split('/')[-1])
-        stmt_delete = "delete from %(table_name)s " % {'table_name': table_name}
-        stmt_where = "where %(conditions)s " % {'conditions': self.query_conditions} if self.query_conditions else ''
+        stmt_delete = 'delete from "%(table_name)s" ' % {'table_name': table_name}
+        stmt_where = 'where %(conditions)s ' % {
+            'conditions': self.query_conditions
+        } if self.query_conditions else ''
         query = stmt_delete + stmt_where
         return query
 
@@ -278,7 +279,7 @@ class SqlStatement(object):
                             %(sub_selections)s) as vals
                         from (
                             select key, value, fullkey, path
-                            from %(table_name)s, json_tree(%(table_name)s.data)
+                            from \"%(table_name)s\", json_tree(\"%(table_name)s\".data)
                             where path = '$.%(path)s'
                             %(idx)s
                             )
