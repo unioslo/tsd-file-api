@@ -569,13 +569,17 @@ class TestFileApi(unittest.TestCase):
         resp = requests.delete(self.base_url + '/survey/123456/metadata',
                             headers=headers)
         self.assertEqual(resp.status_code, 200)
-        # todo: impl
         resp = requests.get(self.base_url + '/survey',
                             headers=headers)
         data = json.loads(resp.text)
         self.assertTrue('123456' in data['tables'])
         self.assertEqual(resp.status_code, 200)
-        #('/123456', 'VALID', 'GET'), ->
+        resp = requests.get(self.base_url + '/survey/123456',
+                            headers=headers)
+        data = json.loads(resp.text)
+        self.assertTrue('metadata' in data['data'])
+        self.assertTrue('submissions' in data['data'])
+        self.assertTrue('attachments' in data['data'])
         nettskjema_url_tokens_method = [
             ('/123456/submissions', 'ADMIN', 'GET'),
             ('/123456/submissions?select=key1&key2=eq.bla&order=key1.desc', 'ADMIN', 'GET'),
@@ -587,6 +591,7 @@ class TestFileApi(unittest.TestCase):
         ]
         for app, acl in [('/survey', nettskjema_url_tokens_method)]:
             self.use_generic_table(app, acl)
+
 
     def test_XXX_load(self):
         # 250k rows, 1000 keys per json

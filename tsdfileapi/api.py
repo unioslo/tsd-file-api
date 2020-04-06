@@ -1774,12 +1774,13 @@ class GenericTableHandler(AuthRequestHandler):
         return f'{table_name}_metadata'
 
 
-    def initialize(self, app):
-        self.app = app
-        self.db_name =  '.' + app + '.db'
+    def initialize(self, backend):
+        self.backend = backend
+        self.db_name =  '.' + backend + '.db'
         tenant = tenant_from_url(self.request.uri)
         assert options.valid_tenant.match(tenant)
-        self.import_dir = options.config['backends']['sqlite'][app]['db_path']
+        self.import_dir = options.config['backends']['sqlite'][backend]['db_path']
+        self.table_structure = options.config['backends']['sqlite'][backend]['table_structure']
         self.tenant_dir = self.import_dir.replace(options.tenant_string_pattern, tenant)
 
 
@@ -1792,24 +1793,37 @@ class GenericTableHandler(AuthRequestHandler):
                 self.set_status(200)
                 self.write({'tables': tables})
             else:
-                self.authnz = self.process_token_and_extract_claims()
-                engine = sqlite_init(self.tenant_dir, name=self.db_name, builtin=True)
-                if self.request.uri.split('?')[0].endswith('metadata'):
-                    table_name = self.metadata_table_name(table_name)
-                data = sqlite_get_data(engine, table_name, self.request.uri)
-                if 'Accept' in self.request.headers:
-                    if self.request.headers['Accept'] == 'text/csv':
-                        df = DataFrame()
-                        df = df.from_records(data)
-                        data = df.to_csv(None, sep=',', index=False)
-                        self.set_status(200)
-                        self.write(data)
+                if self.table_structure:
+                    # describe sub-endpoints of tables
+                    base_url = self.request.uri.split('?')[0]
+                    for entry in self.table_structure:
+                        if base_url.endswith(entry):
+                            data_request = True
+                            break
+                        else:
+                            data_request = False
+                if not data_request:
+                    self.set_status(200)
+                    self.write({'data': self.table_structure})
+                else:
+                    self.authnz = self.process_token_and_extract_claims()
+                    engine = sqlite_init(self.tenant_dir, name=self.db_name, builtin=True)
+                    if self.request.uri.split('?')[0].endswith('metadata'):
+                        table_name = self.metadata_table_name(table_name)
+                    data = sqlite_get_data(engine, table_name, self.request.uri)
+                    if 'Accept' in self.request.headers:
+                        if self.request.headers['Accept'] == 'text/csv':
+                            df = DataFrame()
+                            df = df.from_records(data)
+                            data = df.to_csv(None, sep=',', index=False)
+                            self.set_status(200)
+                            self.write(data)
+                        else:
+                            self.set_status(200)
+                            self.write({'data': data})
                     else:
                         self.set_status(200)
                         self.write({'data': data})
-                else:
-                    self.set_status(200)
-                    self.write({'data': data})
         except Exception as e:
             logging.error(e)
             self.set_status(400)
@@ -1897,14 +1911,14 @@ def main():
         ('/v1/(.*)/files/export', ProxyHandler, dict(backend='files_export', namespace='files', endpoint='export')),
         ('/v1/(.*)/files/export/(.*)', ProxyHandler, dict(backend='files_export', namespace='files', endpoint='export')),
         # generic sqlite backend
-        ('/v1/(.*)/tables/generic/(.*)', GenericTableHandler, dict(app='generic')),
-        ('/v1/(.*)/tables/generic', GenericTableHandler, dict(app='generic')),
+        ('/v1/(.*)/tables/generic/(.*)', GenericTableHandler, dict(backend='generic')),
+        ('/v1/(.*)/tables/generic', GenericTableHandler, dict(backend='generic')),
         # surveys
-        ('/v1/(.*)/survey', GenericTableHandler, dict(app='survey')),
-        ('/v1/(.*)/survey/(.+)/metadata', GenericTableHandler, dict(app='survey')),
-        ('/v1/(.*)/survey/(.+)/submissions', GenericTableHandler, dict(app='survey')),
+        ('/v1/(.*)/survey', GenericTableHandler, dict(backend='survey')),
+        ('/v1/(.*)/survey/(.+)/metadata', GenericTableHandler, dict(backend='survey')),
+        ('/v1/(.*)/survey/(.+)/submissions', GenericTableHandler, dict(backend='survey')),
+        ('/v1/(.*)/survey/(.+)', GenericTableHandler, dict(backend='survey')),
         # ^
-        # TODO: handle GET /survey/([0-9]+) /attachments
         # TODO: /attachments
         # form data
         ('/v1/(.*)/files/upload', FormDataHandler, dict(backend='form_data')),
