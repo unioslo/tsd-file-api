@@ -1770,9 +1770,11 @@ class GenericTableHandler(AuthRequestHandler):
 
     """
 
+    def metadata_table_name(self, table_name):
+        return f'{table_name}_metadata'
+
+
     def initialize(self, app):
-        # TODO
-        # new metadata handling
         self.app = app
         self.db_name =  '.' + app + '.db'
         tenant = tenant_from_url(self.request.uri)
@@ -1792,6 +1794,8 @@ class GenericTableHandler(AuthRequestHandler):
             else:
                 self.authnz = self.process_token_and_extract_claims()
                 engine = sqlite_init(self.tenant_dir, name=self.db_name, builtin=True)
+                if self.request.uri.split('?')[0].endswith('metadata'):
+                    table_name = self.metadata_table_name(table_name)
                 data = sqlite_get_data(engine, table_name, self.request.uri)
                 if 'Accept' in self.request.headers:
                     if self.request.headers['Accept'] == 'text/csv':
@@ -1816,6 +1820,8 @@ class GenericTableHandler(AuthRequestHandler):
         try:
             self.authnz = self.process_token_and_extract_claims()
             data = json_decode(self.request.body)
+            if self.request.uri.split('?')[0].endswith('metadata'):
+                table_name = self.metadata_table_name(table_name)
             try:
                 engine = sqlite_init(self.tenant_dir, name=self.db_name)
                 sqlite_insert(engine, table_name, data)
@@ -1833,6 +1839,8 @@ class GenericTableHandler(AuthRequestHandler):
 
     def patch(self, tenant, table_name):
         try:
+            if self.request.uri.split('?')[0].endswith('metadata'):
+                table_name = self.metadata_table_name(table_name)
             self.authnz = self.process_token_and_extract_claims()
             engine = sqlite_init(self.tenant_dir, name=self.db_name, builtin=True)
             data = sqlite_update_data(engine, table_name, self.request.uri)
@@ -1846,6 +1854,8 @@ class GenericTableHandler(AuthRequestHandler):
 
     def delete(self, tenant, table_name):
         try:
+            if self.request.uri.split('?')[0].endswith('metadata'):
+                table_name = self.metadata_table_name(table_name)
             self.authnz = self.process_token_and_extract_claims()
             engine = sqlite_init(self.tenant_dir, name=self.db_name, builtin=True)
             data = sqlite_delete_data(engine, table_name, self.request.uri)
@@ -1889,10 +1899,11 @@ def main():
         # generic sqlite backend
         ('/v1/(.*)/tables/generic/(.*)', GenericTableHandler, dict(app='generic')),
         ('/v1/(.*)/tables/generic', GenericTableHandler, dict(app='generic')),
-        # nettskjema
-        ('/v1/(.*)/survey/([0-9]+)/metadata', GenericTableHandler, dict(app='survey')),
-        ('/v1/(.*)/survey/([0-9]+)/submissions', GenericTableHandler, dict(app='survey')),
+        # surveys
         ('/v1/(.*)/survey', GenericTableHandler, dict(app='survey')),
+        ('/v1/(.*)/survey/(.+)/metadata', GenericTableHandler, dict(app='survey')),
+        ('/v1/(.*)/survey/(.+)/submissions', GenericTableHandler, dict(app='survey')),
+        # ^
         # TODO: handle GET /survey/([0-9]+) /attachments
         # TODO: /attachments
         # form data
