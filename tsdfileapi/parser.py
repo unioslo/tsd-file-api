@@ -34,7 +34,8 @@ class SqlStatement(object):
 
     """
 
-    def __init__(self, uri):
+    def __init__(self, table_name, uri):
+        self.table_name = table_name
         # base regexes to identify data selections
         self.idx_present = re.compile(r'(.+)\[[0-9*:]+\](.*)')
         self.idx_single = re.compile(r'(.+)\[[0-9]+\](.*)')
@@ -67,11 +68,10 @@ class SqlStatement(object):
 
     def build_select_query(self, uri):
         if '?' not in uri:
-            table_name = os.path.basename(uri)
-            return 'select * from "%s"' % table_name
+            return 'select * from "%s"' % self.table_name
         table_name = os.path.basename(uri.split('?')[0])
         stmt_select = 'select %(columns)s ' % {'columns': self.query_columns}
-        stmt_from = 'from "%(table_name)s" ' % {'table_name': table_name}
+        stmt_from = 'from "%(table_name)s" ' % {'table_name': self.table_name}
         stmt_where = 'where %(conditions)s ' % {'conditions': self.query_conditions} if self.query_conditions else ''
         stmt_order = 'order by %(ordering)s ' % {'ordering': self.query_ordering} if self.query_ordering else None
         stmt_range = self.parse_range_clause(uri)
@@ -86,8 +86,7 @@ class SqlStatement(object):
     def build_update_query(self, uri):
         if '?' not in uri:
             return None
-        table_name = os.path.basename(uri.split('?')[0])
-        stmt_update = 'update "%(table_name)s" ' % {'table_name': table_name}
+        stmt_update = 'update "%(table_name)s" ' % {'table_name': self.table_name}
         stmt_set = 'set %(update_details)s ' % {'update_details': self.update_details} if self.update_details else ''
         stmt_where = 'where %(conditions)s ' % {'conditions': self.query_conditions} if self.query_conditions else ''
         query = stmt_update + stmt_set + stmt_where
@@ -119,11 +118,10 @@ class SqlStatement(object):
     def build_delete_query(self, uri):
         # seems broken too
         if '?' not in uri:
-            table_name =  uri.split('/')[-1]
-            return 'delete from "%(table_name)s"' % {'table_name': table_name}
+            return 'delete from "%(table_name)s"' % {'table_name': self.table_name}
         uri_path = uri.split('?')[0]
         table_name = os.path.basename(uri_path.split('/')[-1])
-        stmt_delete = 'delete from "%(table_name)s" ' % {'table_name': table_name}
+        stmt_delete = 'delete from "%(table_name)s" ' % {'table_name': self.table_name}
         stmt_where = 'where %(conditions)s ' % {
             'conditions': self.query_conditions
         } if self.query_conditions else ''
@@ -398,7 +396,6 @@ class SqlStatement(object):
             return '*'
         uri_parts = uri.split('?')
         uri_query = uri_parts[-1]
-        table_name = os.path.basename(uri_parts[0].split('/')[-1])
         columns = '*'
         parts = uri_query.split('&')
         for part in parts:
@@ -412,7 +409,7 @@ class SqlStatement(object):
             inner_cols = ''
             first = True
             for name in names:
-                extract = self.parse_column_selection(name, table_name)
+                extract = self.parse_column_selection(name, self.table_name)
                 if first:
                     inner_cols += extract
                 else:
@@ -422,7 +419,7 @@ class SqlStatement(object):
         else:
             if columns != '*':
                 name = columns
-                extract = self.parse_column_selection(name, table_name)
+                extract = self.parse_column_selection(name, self.table_name)
                 columns = fmt_str % (extract)
         return columns
 

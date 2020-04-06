@@ -121,7 +121,7 @@ if __name__ == '__main__':
         '/mytable?z=not.is.null'
     ]
     # test regexes for single column selection strategies
-    sql = SqlStatement('')
+    sql = SqlStatement('', '')
     # slice present
     assert not sql.idx_present.match('x')
     assert sql.idx_present.match('x[11]')

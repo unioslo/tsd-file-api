@@ -153,7 +153,7 @@ def sqlite_list_tables(engine):
 
 
 def sqlite_get_data(engine, table_name, uri, verbose=False):
-    sql = SqlStatement(uri)
+    sql = SqlStatement(table_name, uri)
     if verbose:
         print(sql.select_query)
     try:
@@ -173,7 +173,7 @@ def sqlite_get_data(engine, table_name, uri, verbose=False):
 
 
 def sqlite_update_data(engine, table_name, uri, verbose=False):
-    sql = SqlStatement(uri)
+    sql = SqlStatement(table_name, uri)
     if verbose:
         print(sql.update_query)
     try:
@@ -192,7 +192,7 @@ def sqlite_update_data(engine, table_name, uri, verbose=False):
 
 
 def sqlite_delete_data(engine, table_name, uri, verbose=False):
-    sql = SqlStatement(uri)
+    sql = SqlStatement(table_name, uri)
     if verbose:
         print(sql.delete_query)
     try:
