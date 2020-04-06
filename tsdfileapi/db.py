@@ -148,7 +148,9 @@ def sqlite_list_tables(engine):
     else:
         out = []
         for row in res:
-            out.append(row[0])
+            name = row[0]
+            if not name.endswith('_metadata'):
+                out.append(row[0])
         return out
 
 

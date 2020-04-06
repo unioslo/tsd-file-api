@@ -570,7 +570,11 @@ class TestFileApi(unittest.TestCase):
                             headers=headers)
         self.assertEqual(resp.status_code, 200)
         # todo: impl
-        #('', 'VALID', 'GET'), ->
+        resp = requests.get(self.base_url + '/survey',
+                            headers=headers)
+        data = json.loads(resp.text)
+        self.assertTrue('123456' in data['tables'])
+        self.assertEqual(resp.status_code, 200)
         #('/123456', 'VALID', 'GET'), ->
         nettskjema_url_tokens_method = [
             ('/123456/submissions', 'ADMIN', 'GET'),
