@@ -1914,12 +1914,13 @@ def main():
         ('/v1/(.*)/tables/generic/(.*)', GenericTableHandler, dict(backend='generic')),
         ('/v1/(.*)/tables/generic', GenericTableHandler, dict(backend='generic')),
         # surveys
-        ('/v1/(.*)/survey', GenericTableHandler, dict(backend='survey')),
+        ('/v1/(.*)/survey/([0-9]+/attachments.*)', ProxyHandler, dict(backend='survey', namespace='survey', endpoint=None)),
+        ('/v1/(.*)/survey/resumables', ResumablesHandler, dict(backend='survey')),
+        ('/v1/(.*)/survey/upload_stream/(.*)', StreamHandler, dict(backend='survey')),
         ('/v1/(.*)/survey/(.+)/metadata', GenericTableHandler, dict(backend='survey')),
         ('/v1/(.*)/survey/(.+)/submissions', GenericTableHandler, dict(backend='survey')),
-        ('/v1/(.*)/survey/(.+)', GenericTableHandler, dict(backend='survey')),
-        # ^
-        # TODO: /attachments
+        ('/v1/(.*)/survey', GenericTableHandler, dict(backend='survey')),
+        ('/v1/(.*)/survey/(.+)$', GenericTableHandler, dict(backend='survey')),
         # form data
         ('/v1/(.*)/files/upload', FormDataHandler, dict(backend='form_data')),
         ('/v1/(.*)/sns/(.*)/(.*)', SnsFormDataHandler, dict(backend='sns')),

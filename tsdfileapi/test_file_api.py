@@ -90,7 +90,7 @@ pretty_bad_protocol._parsers.Verify.TRUST_LEVELS["ENCRYPTION_COMPLIANCE_MODE"] =
 # pylint: disable=relative-import
 from auth import process_access_token
 from tokens import gen_test_tokens, get_test_token_for_p12, gen_test_token_for_user
-from db import session_scope, sqlite_init
+from db import session_scope, sqlite_init, sqlite_insert
 from resumables import SerialResumable
 from utils import sns_dir, md5sum, IllegalFilenameException
 from pgp import _import_keys
@@ -162,6 +162,7 @@ class TestFileApi(unittest.TestCase):
         cls.export_cluster = cls.base_url + '/cluster/export'
         cls.store_import = cls.base_url + '/store/import'
         cls.store_export = cls.base_url + '/store/export'
+        cls.survey = cls.base_url + '/survey'
         cls.test_project = cls.test_project
         cls.tenant_string_pattern = cls.config['tenant_string_pattern']
 
@@ -552,6 +553,7 @@ class TestFileApi(unittest.TestCase):
 
 
     def test_XXX_nettskjema_backend(self):
+
         data = [
             {'key1': 7, 'key2': 'bla', 'id': random.randint(0, 1000000)},
             {'key1': 99, 'key3': False, 'id': random.randint(0, 1000000)}
@@ -591,12 +593,34 @@ class TestFileApi(unittest.TestCase):
         ]
         for app, acl in [('/survey', nettskjema_url_tokens_method)]:
             self.use_generic_table(app, acl)
+        # attachments
+        file = url_escape('some-survey-attachment.txt')
+        resp = requests.put(f'{self.survey}/123456/attachments/{file}',
+                            data=lazy_file_reader(self.so_sweet),
+                            headers=headers)
+        self.assertEqual(resp.status_code, 201)
 
 
     def test_XXX_load(self):
-        # 250k rows, 1000 keys per json
-        # query it
-        pass
+        # draft data generation:
+        numrows = 250000 # responses per survey
+        numkeys = 1500 # questions per survey (absurd yes, but based somewhat on observed reality)
+        rows = []
+        print('generating test data')
+        for i in range(numrows):
+            row = {}
+            for j in range(numkeys):
+                key = f'k{j}'
+                row[key] = j
+            uid = str(uuid.uuid4())
+            row['id'] = uid
+            rows.append(row)
+            total = i
+            if i % 10000 == 0:
+                print('{} rows generated'.format(total))
+                total += total
+        print('inserting into db')
+        print(len(rows))
 
 
     # More Authn+z
@@ -1580,6 +1604,9 @@ def main():
     ns = [
         'test_XXX_nettskjema_backend',
     ]
+    ns_load = [
+        'test_XXX_load'
+    ]
     if len(sys.argv) == 2:
         print('usage:')
         print('python3 tsdfileapi/test_file_api.py config.yaml ARGS')
@@ -1611,6 +1638,8 @@ def main():
         tests.extend(tables)
     if 'ns' in sys.argv:
         tests.extend(ns)
+    if 'ns-load' in sys.argv:
+        tests.extend(ns_load)
     if 'all' in sys.argv:
         tests.extend(base)
         tests.extend(names)
