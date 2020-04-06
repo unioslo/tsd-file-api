@@ -1768,14 +1768,10 @@ class GenericTableHandler(AuthRequestHandler):
     """
     Manage data in generic sqlite backend.
 
-    Maybe:
-    - GET Accept: application/sqlite
-    - POST Content-Type: text/csv -> "concatenate"
-
     """
 
     def initialize(self, app):
-        # TODO: new table name handling
+        # TODO
         # new metadata handling
         self.app = app
         self.db_name =  '.' + app + '.db'
@@ -1871,7 +1867,6 @@ class HealthCheckHandler(RequestHandler):
 def main():
     parse_command_line()
     app = Application([
-        # Note: the name of the storage backend is the same as the URL fragment
         ('/v1/(.*)/files/health', HealthCheckHandler),
         # hpc storage
         ('/v1/(.*)/cluster/upload_stream', StreamHandler, dict(backend='cluster')),
@@ -1891,13 +1886,15 @@ def main():
         ('/v1/(.*)/files/resumables/(.*)', ResumablesHandler, dict(backend='files_import')),
         ('/v1/(.*)/files/export', ProxyHandler, dict(backend='files_export', namespace='files', endpoint='export')),
         ('/v1/(.*)/files/export/(.*)', ProxyHandler, dict(backend='files_export', namespace='files', endpoint='export')),
-        # sqlite backend
+        # generic sqlite backend
         ('/v1/(.*)/tables/generic/(.*)', GenericTableHandler, dict(app='generic')),
         ('/v1/(.*)/tables/generic', GenericTableHandler, dict(app='generic')),
         # nettskjema
-        ('/v1/(.*)/tables/survey/metadata/(.*)', GenericTableHandler, dict(app='survey')),
-        ('/v1/(.*)/tables/survey/(.*)', GenericTableHandler, dict(app='survey')),
-        ('/v1/(.*)/tables/survey', GenericTableHandler, dict(app='survey')),
+        ('/v1/(.*)/survey/([0-9]+)/metadata', GenericTableHandler, dict(app='survey')),
+        ('/v1/(.*)/survey/([0-9]+)/submissions', GenericTableHandler, dict(app='survey')),
+        ('/v1/(.*)/survey', GenericTableHandler, dict(app='survey')),
+        # TODO: handle GET /survey/([0-9]+) /attachments
+        # TODO: /attachments
         # form data
         ('/v1/(.*)/files/upload', FormDataHandler, dict(backend='form_data')),
         ('/v1/(.*)/sns/(.*)/(.*)', SnsFormDataHandler, dict(backend='sns')),

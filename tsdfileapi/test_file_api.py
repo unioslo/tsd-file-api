@@ -507,15 +507,15 @@ class TestFileApi(unittest.TestCase):
 
 
     def test_W_create_and_insert_into_generic_table(self):
-        data = [{'key1': 7, 'key2': 'bla'}, {'key1': 99, 'key3': False}]
+        data = [
+            {'key1': 7, 'key2': 'bla'},
+            {'key1': 99, 'key3': False}
+        ]
         headers = {'Authorization': 'Bearer ' + TEST_TOKENS['VALID']}
         resp = requests.put(self.base_url + '/tables/generic/mytest1',
                              data=json.dumps(data), headers=headers)
         self.assertEqual(resp.status_code, 201)
-        headers = {'Authorization': 'Bearer ' + TEST_TOKENS['VALID']}
-        resp = requests.put(self.base_url + '/tables/survey/123456',
-                             data=json.dumps(data), headers=headers)
-        self.assertEqual(resp.status_code, 201)
+
         headers = {'Authorization': 'Bearer ' + TEST_TOKENS['EXPORT'],
                    'Accept': 'text/csv'}
         resp = requests.get(self.base_url + '/tables/generic/mytest1', headers=headers)
@@ -547,20 +547,31 @@ class TestFileApi(unittest.TestCase):
             ('/mytest1', 'EXPORT', 'GET'),
             ('/mytest1?key1=not.is.null', 'ADMIN', 'DELETE'),
         ]
-        nettskjema_url_tokens_method = [
-            ('', 'VALID', 'GET'),
-            ('/123456', 'ADMIN', 'GET'),
-            ('/123456?select=key1&key2=eq.bla&order=key1.desc', 'ADMIN', 'GET'),
-            ('/123456?set=key1.777&key2=eq.bla', 'ADMIN', 'PATCH'),
-            ('/123456', 'ADMIN', 'GET'),
-            ('/123456?key1=eq.99', 'ADMIN', 'DELETE'),
-            ('/123456', 'ADMIN', 'GET'),
-            ('/123456?key1=not.is.null', 'ADMIN', 'DELETE'),
-        ]
-        for app, acl in [('/tables/generic', generic_url_tokens_method),
-                         ('/tables/survey', nettskjema_url_tokens_method)]:
+        for app, acl in [('/tables/generic', generic_url_tokens_method)]:
             self.use_generic_table(app, acl)
-            data = {'key1': 'int', 'key2': 'str', 'key3': 'bool'}
+
+
+    def test_XXX_nettskjema_backend(self):
+        data = [
+            {'key1': 7, 'key2': 'bla'},
+            {'key1': 99, 'key3': False}
+        ]
+        headers = {'Authorization': 'Bearer ' + TEST_TOKENS['VALID']}
+        resp = requests.put(self.base_url + '/survey/123456/submissions',
+                             data=json.dumps(data), headers=headers)
+        self.assertEqual(resp.status_code, 201)
+        nettskjema_url_tokens_method = [
+            #('', 'VALID', 'GET'),
+            ('/123456/submissions', 'ADMIN', 'GET'),
+            ('/123456/submissions?select=key1&key2=eq.bla&order=key1.desc', 'ADMIN', 'GET'),
+            ('/123456/submissions?set=key1.777&key2=eq.bla', 'ADMIN', 'PATCH'),
+            ('/123456/submissions', 'ADMIN', 'GET'),
+            ('/123456/submissions?key1=eq.99', 'ADMIN', 'DELETE'),
+            ('/123456/submissions', 'ADMIN', 'GET'),
+            ('/123456/submissions?key1=not.is.null', 'ADMIN', 'DELETE'),
+        ]
+        for app, acl in [('/survey', nettskjema_url_tokens_method)]:
+            self.use_generic_table(app, acl)
 
 
     # More Authn+z
@@ -1541,6 +1552,9 @@ def main():
         'test_W_create_and_insert_into_generic_table',
         'test_X_use_generic_table',
     ]
+    ns = [
+        'test_XXX_nettskjema_backend',
+    ]
     if len(sys.argv) == 2:
         print('usage:')
         print('python3 tsdfileapi/test_file_api.py config.yaml ARGS')
@@ -1570,6 +1584,8 @@ def main():
         tests.extend(sig)
     if 'tables' in sys.argv:
         tests.extend(tables)
+    if 'ns' in sys.argv:
+        tests.extend(ns)
     if 'all' in sys.argv:
         tests.extend(base)
         tests.extend(names)
@@ -1582,6 +1598,7 @@ def main():
         tests.extend(listing)
         tests.extend(delete)
         tests.extend(sig)
+        tests.extend(ns)
     tests.sort()
     suite = unittest.TestSuite()
     for test in tests:
