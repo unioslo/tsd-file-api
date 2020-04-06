@@ -553,15 +553,26 @@ class TestFileApi(unittest.TestCase):
 
     def test_XXX_nettskjema_backend(self):
         data = [
-            {'key1': 7, 'key2': 'bla'},
-            {'key1': 99, 'key3': False}
+            {'key1': 7, 'key2': 'bla', 'id': random.randint(0, 1000000)},
+            {'key1': 99, 'key3': False, 'id': random.randint(0, 1000000)}
         ]
         headers = {'Authorization': 'Bearer ' + TEST_TOKENS['VALID']}
         resp = requests.put(self.base_url + '/survey/123456/submissions',
                              data=json.dumps(data), headers=headers)
         self.assertEqual(resp.status_code, 201)
+        resp = requests.put(self.base_url + '/survey/123456/metadata',
+                             data=json.dumps(data), headers=headers)
+        self.assertEqual(resp.status_code, 201)
+        resp = requests.get(self.base_url + '/survey/123456/metadata',
+                            headers=headers)
+        self.assertEqual(resp.status_code, 200)
+        resp = requests.delete(self.base_url + '/survey/123456/metadata',
+                            headers=headers)
+        self.assertEqual(resp.status_code, 200)
+        # todo: impl
+        #('', 'VALID', 'GET'), ->
+        #('/123456', 'VALID', 'GET'), ->
         nettskjema_url_tokens_method = [
-            #('', 'VALID', 'GET'),
             ('/123456/submissions', 'ADMIN', 'GET'),
             ('/123456/submissions?select=key1&key2=eq.bla&order=key1.desc', 'ADMIN', 'GET'),
             ('/123456/submissions?set=key1.777&key2=eq.bla', 'ADMIN', 'PATCH'),
@@ -572,6 +583,11 @@ class TestFileApi(unittest.TestCase):
         ]
         for app, acl in [('/survey', nettskjema_url_tokens_method)]:
             self.use_generic_table(app, acl)
+
+    def test_XXX_load(self):
+        # 250k rows, 1000 keys per json
+        # query it
+        pass
 
 
     # More Authn+z
