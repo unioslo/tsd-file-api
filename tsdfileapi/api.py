@@ -1757,7 +1757,6 @@ class ProxyHandler(AuthRequestHandler):
             logging.info('user: %s, deleted file: %s', self.requestor, self.filepath)
             self.set_status(200)
         except Exception as e:
-            logging.error(e)
             logging.error(self.message)
             self.write({'message': self.message})
         finally:

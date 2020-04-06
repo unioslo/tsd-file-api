@@ -1423,6 +1423,10 @@ class TestFileApi(unittest.TestCase):
         resp = requests.delete(f'{self.store_export}/topdir/bottomdir/file1', headers=headers)
         self.assertEqual(resp.status_code, 200)
         self.assertTrue('file1' not in os.listdir(dirs))
+        resp = requests.delete(f'{self.store_export}/topdir/bottomdir', headers=headers)
+        self.assertEqual(resp.status_code, 403)
+        resp = requests.delete(f'{self.store_export}/topdir/bottomdir/nofile', headers=headers)
+        self.assertEqual(resp.status_code, 404)
         try:
             shutil.rmtree(f'{dirs}')
         except OSError as e:
