@@ -1786,8 +1786,8 @@ class GenericTableHandler(AuthRequestHandler):
 
     def get(self, tenant, table_name=None):
         try:
+            self.authnz = self.process_token_and_extract_claims()
             if not table_name:
-                self.authnz = self.process_token_and_extract_claims()
                 engine = sqlite_init(self.tenant_dir, name=self.db_name)
                 tables = sqlite_list_tables(engine)
                 self.set_status(200)
@@ -1806,7 +1806,6 @@ class GenericTableHandler(AuthRequestHandler):
                     self.set_status(200)
                     self.write({'data': self.table_structure})
                 else:
-                    self.authnz = self.process_token_and_extract_claims()
                     engine = sqlite_init(self.tenant_dir, name=self.db_name, builtin=True)
                     if self.request.uri.split('?')[0].endswith('metadata'):
                         table_name = self.metadata_table_name(table_name)
