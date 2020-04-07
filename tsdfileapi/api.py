@@ -1370,7 +1370,7 @@ class ProxyHandler(AuthRequestHandler):
 
     def get_file_metadata(self, filename):
         filename_raw_utf8 = filename.encode('utf-8')
-        if self.group_config['enabled']:
+        if self.has_posix_ownership:
             subprocess.call(['sudo', 'chmod', 'go+r', filename])
         if os.path.isdir(filename):
             return os.stat(filename).st_size, 'directory'
