@@ -11,5 +11,3 @@ mappings.yaml
 dist/*
 tsdfileapi/data/large-file
 src/
-venv/
-venv-*/

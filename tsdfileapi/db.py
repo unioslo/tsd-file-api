@@ -15,8 +15,8 @@ from sqlalchemy import create_engine
 from sqlalchemy.exc import OperationalError, IntegrityError, StatementError
 
 # pylint: disable=relative-import
-from tsdfileapi.utils import check_filename, IllegalFilenameException
-from tsdfileapi.parser import SqlStatement
+from utils import check_filename, IllegalFilenameException
+from parser import SqlStatement
 
 
 _VALID_COLNAME = re.compile(r'([0-9a-z])')
