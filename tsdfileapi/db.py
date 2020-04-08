@@ -173,16 +173,8 @@ def sqlite_get_data(engine, table_name, uri, verbose=False):
     sql = SqlStatement(table_name, uri)
     if verbose:
         print(sql.select_query)
-    try:
-        session = engine.cursor()
+    with sqlite_session(engine) as session:
         res = session.execute(sql.select_query).fetchall()
-    except Exception as e:
-        logging.error(e)
-        raise Exception('Could not fetch data')
-    finally:
-        session.close()
-        engine.rollback()
-        engine.close()
     data = []
     for row in res:
         data.append(json.loads(row[0]))
