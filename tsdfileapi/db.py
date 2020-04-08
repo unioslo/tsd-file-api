@@ -66,6 +66,21 @@ def session_scope(engine):
         session.close()
 
 
+@contextmanager
+def sqlite_session(engine):
+    session = engine.cursor()
+    try:
+        yield session
+        session.close()
+    except Exception as e:
+        session.close()
+        engine.rollback()
+        raise e
+    finally:
+        session.close()
+        engine.commit()
+
+
 def sqlite_insert(engine, table_name, data):
     """
     Inserts data into a table - either one row or in bulk.
@@ -141,7 +156,7 @@ def conditionally_create_generic_table(engine, table_name):
 
 def sqlite_list_tables(engine):
     query = "select name FROM sqlite_master where type = 'table'"
-    with session_scope(engine) as session:
+    with sqlite_session(engine) as session:
         res = session.execute(query).fetchall()
     if not res:
         return []
