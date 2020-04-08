@@ -1856,7 +1856,8 @@ class GenericTableHandler(AuthRequestHandler):
                 table_name = self.metadata_table_name(table_name)
             self.authnz = self.process_token_and_extract_claims()
             engine = sqlite_init(self.tenant_dir, name=self.db_name, builtin=True)
-            data = sqlite_update_data(engine, table_name, self.request.uri)
+            new_data = json_decode(self.request.body)
+            data = sqlite_update_data(engine, table_name, self.request.uri, new_data)
             self.set_status(200)
             self.write({'data': data})
         except Exception as e:

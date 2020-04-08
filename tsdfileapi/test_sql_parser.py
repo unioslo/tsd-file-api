@@ -110,12 +110,10 @@ if __name__ == '__main__':
         '/mytable?select=x,c[*].(h,p),a.k1,b[0]&x=not.is.null&order=x.desc&range=1.2'
     ]
     update_uris = [
-        '/mytable?set=x.5,y.6&z=eq.5',
-        # TODO: support
-        # '/mytable?set=a.k1.r2.5&z=eq.0',
-        # '/mytable?set=b[0].677&b=not.is.null',
-        # '/mytable?set=a.k1.r1[0].35',
-        # '/mytable?set=c[0].h.4',
+        # send data in payload, anchor on top-level key
+        # one column per request, GET, PATCH sequence client side
+        ('/mytable?set=x&z=eq.10', {'x': 5}),
+        ('/mytable?set=y&z=eq.5', {'y': 6}),
     ]
     delete_uris = [
         '/mytable?z=not.is.null'
@@ -159,11 +157,11 @@ if __name__ == '__main__':
             print()
         except Exception:
             pass
-    for uri in update_uris:
+    for uri, data in update_uris:
         try:
             print(uri)
             query_engine = sqlite_init('/tmp', name= 'file-api-test.db', builtin=True)
-            print(sqlite_update_data(query_engine, 'mytable', uri, verbose=True))
+            print(sqlite_update_data(query_engine, 'mytable', uri, data, verbose=True))
             query_engine = sqlite_init('/tmp', name= 'file-api-test.db', builtin=True)
             print(sqlite_get_data(query_engine, 'mytable', '/mytable'))
             print()

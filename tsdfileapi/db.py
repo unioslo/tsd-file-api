@@ -174,8 +174,8 @@ def sqlite_get_data(engine, table_name, uri, verbose=False):
     return data
 
 
-def sqlite_update_data(engine, table_name, uri, verbose=False):
-    sql = SqlStatement(table_name, uri)
+def sqlite_update_data(engine, table_name, uri, data, verbose=False):
+    sql = SqlStatement(table_name, uri, data)
     if verbose:
         print(sql.update_query)
     try:
