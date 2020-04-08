@@ -5,9 +5,9 @@ from parser import SqlStatement
 if __name__ == '__main__':
     test_data = [
         {
-            'x': 0,
+            'x': 1900,
             'y': 1,
-            'z': None,
+            'z': 5,
             'b':[1, 2, 5, 1],
             'c': None,
             'd': 'string1'
@@ -86,17 +86,18 @@ if __name__ == '__main__':
         '/mytable?select=c[*].h',
         '/mytable?select=c[*].(h,p)',
         '/mytable?select=y,c[*].(h,i)',
-        # filtering
-        # &where=x=not.is.null
-        # &where=(x=not.like.*zap,and:y=not.is.null)
-        # &where=(x=not.like.*zap,and:y=not.is.null)
-        # &where=((x=not.like.*zap,and:y=not.is.null),or:z=eq.0)
-        '/mytable?select=x&z=eq.5&y=gt.0',
-        '/mytable?x=not.like.*zap&y=not.is.null',
-        #'/mytable?d=in.(string1,string2)', # TODO, for string only
-        '/mytable?select=z&a.k1.r2=eq.2',
-        '/mytable?select=z&a.k1.r1[0]=eq.1',
-        '/mytable?select=z&a.k3[0].h=eq.0',
+        # filtering without groups
+        '/mytable?select=x&where=z=eq.5,and:y=gt.0',
+        '/mytable?where=x=not.like.*zap,and:y=not.is.null',
+        '/mytable?select=z&where=a.k1.r2=eq.2',
+        '/mytable?select=z&where=a.k1.r1[0]=eq.1',
+        '/mytable?select=z&where=a.k3[0].h=eq.0',
+        '/mytable?select=z&where=a.k1.r1[0]=eq.1,or:a.k3[0].h=eq.0',
+        # filtering with groups
+        '/mytable?where=(x=not.like.*zap,and:y=not.is.null)',
+        '/mytable?where=((x=not.like.*zap,and:y=not.is.null),or:z=eq.0),and:z=eq.0',
+        # TODO - for string only:
+        #'/mytable?d=in.string1,string2',
         # ordering
         '/mytable?order=y.desc',
         '/mytable?order=a.k1.r2.desc',
@@ -107,16 +108,16 @@ if __name__ == '__main__':
         '/mytable?select=x&range=0.2',
         '/mytable?range=2.3',
         # combined functionality
-        '/mytable?select=x,c[*].(h,p),a.k1,b[0]&x=not.is.null&order=x.desc&range=1.2'
+        '/mytable?select=x,c[*].(h,p),a.k1,b[0]&where=x=not.is.null,or:(y=gt.0,and:z=lt.100)&order=x.desc&range=1.2'
     ]
     update_uris = [
         # send data in payload, anchor on top-level key
         # one column per request, GET, PATCH sequence client side
-        ('/mytable?set=x&z=eq.10', {'x': 5}),
-        ('/mytable?set=y&z=eq.5', {'y': 6}),
+        ('/mytable?set=x&where=z=eq.10', {'x': 5}),
+        ('/mytable?set=y&where=z=eq.5', {'y': 6}),
     ]
     delete_uris = [
-        '/mytable?z=not.is.null'
+        '/mytable?where=z=not.is.null'
     ]
     # test regexes for single column selection strategies
     sql = SqlStatement('', '')
