@@ -55,7 +55,7 @@ class SqlStatement(object):
             'ilike': 'ilike', # * replaces % in the URI
             'not': 'not',
             'is': 'is',
-            # TODO: add 'in': 'in'
+            'in': 'in'
         }
         self.query_columns = self.parse_columns(uri)
         self.query_conditions = self.parse_row_clauses(uri)
@@ -437,12 +437,22 @@ class SqlStatement(object):
             int(val)
             val_str = ' %(val)s'
         except ValueError:
-            if val == 'null':
+            if val == 'null' or op == 'in':
                 val_str = ' %(val)s'
             else:
                 val_str = ' "%(val)s"'
-            if op == 'like' or op == 'ilike':
-                val = val.replace('*', '%')
+        if op == 'like' or op == 'ilike':
+            val = val.replace('*', '%')
+        if op == 'in':
+            val = val.replace('[', '')
+            val = val.replace(']', '')
+            values = val.split('|')
+            new_values = []
+            for v in values:
+                new = "'%s'" % v
+                new_values.append(new)
+            joined = ','.join(new_values)
+            val = "(%s)" % joined
         final = " %(bracket_open)s " + col_and_opt_str + val_str + " %(bracket_close)s "
         quoted_col, _, _ = self.quote_column_selection(col)
         safe_part = final % {
@@ -467,6 +477,18 @@ class SqlStatement(object):
         for part in parts:
             if part.startswith('where='):
                 part = part.replace('where=', '')
+                if '=in' in part:
+                    new = ''
+                    brace_open = False
+                    for char in part:
+                        if char == '[':
+                            brace_open = True
+                        if char == ']':
+                            brace_open = False
+                        if char == ',' and brace_open:
+                            char = '|'
+                        new += char
+                    part = new
                 clauses = part.split(',')
                 for clause in clauses:
                     combinator = None
