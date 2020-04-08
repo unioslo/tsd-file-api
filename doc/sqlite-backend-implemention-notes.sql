@@ -194,24 +194,3 @@ select json_object(
         )
     else null end)
 ) from mytable;
-
--- TODO...
--- POC: setting inside slices
-
--- set=b[2].66
--- todo
-select json_object('b', json_group_array(vals)) from (
-    -- when key = idx
-    select case when key = 2 then 66 else key end as vals from(
-        select key, value, fullkey, path
-        from mytable, json_tree(mytable.data)
-        where path = '$.b'
-    )
-);
-
--- set=a.k1.r1[0].35
--- todo
-
--- set=c[0].h.4
--- todo
-
