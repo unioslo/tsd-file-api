@@ -73,7 +73,7 @@ from utils import call_request_hook, sns_dir, \
                   move_data_to_folder
 from db import sqlite_insert, sqlite_init, \
                sqlite_list_tables, sqlite_get_data, sqlite_update_data, \
-               sqlite_delete_data
+               sqlite_delete_data, sqlite_session
 from resumables import SerialResumable
 from pgp import _import_keys
 
@@ -1782,14 +1782,13 @@ class GenericTableHandler(AuthRequestHandler):
         self.import_dir = options.config['backends']['sqlite'][backend]['db_path']
         self.table_structure = options.config['backends']['sqlite'][backend]['table_structure']
         self.tenant_dir = self.import_dir.replace(options.tenant_string_pattern, tenant)
-
+        self.engine = sqlite_init(self.tenant_dir, name=self.db_name, builtin=True)
 
     def get(self, tenant, table_name=None):
         try:
             self.authnz = self.process_token_and_extract_claims()
             if not table_name:
-                engine = sqlite_init(self.tenant_dir, name=self.db_name)
-                tables = sqlite_list_tables(engine)
+                tables = sqlite_list_tables(self.engine)
                 self.set_status(200)
                 self.write({'tables': tables})
             else:
