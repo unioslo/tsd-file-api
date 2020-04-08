@@ -508,15 +508,15 @@ class TestFileApi(unittest.TestCase):
 
 
     def test_W_create_and_insert_into_generic_table(self):
+        # TODO: harden these tests - check return values
         data = [
-            {'key1': 7, 'key2': 'bla'},
-            {'key1': 99, 'key3': False}
+            {'key1': 7, 'key2': 'bla', 'id': random.randint(0, 1000000)},
+            {'key1': 99, 'key3': False, 'id': random.randint(0, 1000000)}
         ]
         headers = {'Authorization': 'Bearer ' + TEST_TOKENS['VALID']}
         resp = requests.put(self.base_url + '/tables/generic/mytest1',
                              data=json.dumps(data), headers=headers)
         self.assertEqual(resp.status_code, 201)
-
         headers = {'Authorization': 'Bearer ' + TEST_TOKENS['EXPORT'],
                    'Accept': 'text/csv'}
         resp = requests.get(self.base_url + '/tables/generic/mytest1', headers=headers)
@@ -527,7 +527,6 @@ class TestFileApi(unittest.TestCase):
         methods = {
             'GET': requests.get,
             'PUT': requests.put,
-            'PATCH': requests.patch,
             'DELETE': requests.delete
         }
         for url, token, method in url_tokens_method:
@@ -538,22 +537,28 @@ class TestFileApi(unittest.TestCase):
 
 
     def test_X_use_generic_table(self):
+        # TODO: harden these tests - check return values
         generic_url_tokens_method = [
             ('', 'VALID', 'GET'),
             ('/mytest1', 'EXPORT', 'GET'),
-            ('/mytest1?select=key1&key2=eq.bla&order=key1.desc', 'EXPORT', 'GET'),
-            ('/mytest1?set=key1.777&key2=eq.bla', 'EXPORT', 'PATCH'),
+            ('/mytest1?select=key1&where=key2=eq.bla&order=key1.desc', 'EXPORT', 'GET'),
             ('/mytest1', 'EXPORT', 'GET'),
-            ('/mytest1?key1=eq.99', 'ADMIN', 'DELETE'),
+            ('/mytest1?where=key1=eq.99', 'ADMIN', 'DELETE'),
             ('/mytest1', 'EXPORT', 'GET'),
-            ('/mytest1?key1=not.is.null', 'ADMIN', 'DELETE'),
+            ('/mytest1?where=key1=not.is.null', 'ADMIN', 'DELETE'),
         ]
         for app, acl in [('/tables/generic', generic_url_tokens_method)]:
             self.use_generic_table(app, acl)
+        headers = {'Authorization': 'Bearer ' + TEST_TOKENS['VALID']}
+        resp = requests.patch(
+            self.base_url + '/tables/generic/mytest1?set=key1&where=key2=eq.bla',
+            data=json.dumps({'key1': 1000}),
+            headers=headers)
+        self.assertEqual(resp.status_code, 200)
 
 
     def test_XXX_nettskjema_backend(self):
-
+        # TODO: harden these tests - check return values
         data = [
             {'key1': 7, 'key2': 'bla', 'id': random.randint(0, 1000000)},
             {'key1': 99, 'key3': False, 'id': random.randint(0, 1000000)}
@@ -584,12 +589,11 @@ class TestFileApi(unittest.TestCase):
         self.assertTrue('attachments' in data['data'])
         nettskjema_url_tokens_method = [
             ('/123456/submissions', 'ADMIN', 'GET'),
-            ('/123456/submissions?select=key1&key2=eq.bla&order=key1.desc', 'ADMIN', 'GET'),
-            ('/123456/submissions?set=key1.777&key2=eq.bla', 'ADMIN', 'PATCH'),
+            ('/123456/submissions?select=key1&where=key2=eq.bla&order=key1.desc', 'ADMIN', 'GET'),
             ('/123456/submissions', 'ADMIN', 'GET'),
-            ('/123456/submissions?key1=eq.99', 'ADMIN', 'DELETE'),
+            ('/123456/submissions?where=key1=eq.99', 'ADMIN', 'DELETE'),
             ('/123456/submissions', 'ADMIN', 'GET'),
-            ('/123456/submissions?key1=not.is.null', 'ADMIN', 'DELETE'),
+            ('/123456/submissions?where=key1=not.is.null', 'ADMIN', 'DELETE'),
         ]
         for app, acl in [('/survey', nettskjema_url_tokens_method)]:
             self.use_generic_table(app, acl)
