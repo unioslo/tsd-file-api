@@ -611,7 +611,8 @@ class TestFileApi(unittest.TestCase):
     def test_XXX_load(self):
         # draft data generation:
         numrows = 250000 # responses per survey
-        numkeys = 1500 # questions per survey (absurd yes, but based somewhat on observed reality)
+        numkeys = 1500 # questions per survey
+        # ~ 10gb of data in sqlite
         rows = []
         print('generating test data')
         for i in range(numrows):
@@ -627,7 +628,9 @@ class TestFileApi(unittest.TestCase):
                 print('{} rows generated'.format(total))
                 total += total
         print('inserting into db')
-        print(len(rows))
+        # on localhost, fetching everything:
+        # real 0m48.339s
+        # in a json file, that is 4.7gb
 
 
     # More Authn+z

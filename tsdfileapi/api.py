@@ -1784,6 +1784,8 @@ class GenericTableHandler(AuthRequestHandler):
         self.tenant_dir = self.import_dir.replace(options.tenant_string_pattern, tenant)
         self.engine = sqlite_init(self.tenant_dir, name=self.db_name, builtin=True)
 
+
+    @gen.coroutine
     def get(self, tenant, table_name=None):
         try:
             self.authnz = self.process_token_and_extract_claims()
@@ -1807,23 +1809,34 @@ class GenericTableHandler(AuthRequestHandler):
                     self.set_status(200)
                     self.write({'data': self.table_structure})
                 else:
-                    engine = sqlite_init(self.tenant_dir, name=self.db_name, builtin=True)
                     if self.request.uri.split('?')[0].endswith('metadata'):
                         table_name = self.metadata_table_name(table_name)
-                    data = sqlite_get_data(engine, table_name, self.request.uri)
-                    if 'Accept' in self.request.headers:
-                        if self.request.headers['Accept'] == 'text/csv':
+                    if ('Accept' in self.request.headers
+                        and self.request.headers['Accept']) == 'text/csv':
+                            data = sqlite_get_data(self.engine, table_name, self.request.uri)
                             df = DataFrame()
                             df = df.from_records(data)
                             data = df.to_csv(None, sep=',', index=False)
                             self.set_status(200)
                             self.write(data)
-                        else:
-                            self.set_status(200)
-                            self.write({'data': data})
                     else:
                         self.set_status(200)
-                        self.write({'data': data})
+                        from parser import SqlStatement
+                        sql = SqlStatement(table_name, self.request.uri)
+                        self.set_header('Content-Type', 'application/json')
+                        # generate results asynchronously
+                        with sqlite_session(self.engine) as session:
+                            self.write('{"data": [')
+                            self.flush()
+                            first = True
+                            for row in session.execute(sql.select_query):
+                                if not first:
+                                    self.write(',')
+                                self.write(row[0])
+                                self.flush()
+                                first = False
+                            self.write(']}')
+                            self.flush()
         except Exception as e:
             logging.error(e)
             self.set_status(400)
