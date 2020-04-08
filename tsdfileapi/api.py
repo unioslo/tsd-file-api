@@ -1802,6 +1802,8 @@ class GenericTableHandler(AuthRequestHandler):
                             break
                         else:
                             data_request = False
+                else:
+                    data_request = True
                 if not data_request:
                     self.set_status(200)
                     self.write({'data': self.table_structure})
@@ -1859,7 +1861,7 @@ class GenericTableHandler(AuthRequestHandler):
             new_data = json_decode(self.request.body)
             data = sqlite_update_data(engine, table_name, self.request.uri, new_data)
             self.set_status(200)
-            self.write({'data': data})
+            self.write({'data': 'data updated'})
         except Exception as e:
             logging.error(e)
             self.set_status(400)
