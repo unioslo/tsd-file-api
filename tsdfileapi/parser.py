@@ -109,7 +109,6 @@ class SqlStatement(object):
 
 
     def build_delete_query(self, uri):
-        # seems broken too
         if '?' not in uri:
             return 'delete from "%(table_name)s"' % {'table_name': self.table_name}
         uri_path = uri.split('?')[0]
@@ -416,7 +415,7 @@ class SqlStatement(object):
         return columns
 
 
-    def construct_safe_where_clause_part(self, part, num_part):
+    def construct_safe_where_clause_part(self, part, num_part, combinator, bracket_open, bracket_close):
         op_and_val = part.split('=')[1]
         col = part.split('=')[0]
         if 'not' in op_and_val:
@@ -444,11 +443,17 @@ class SqlStatement(object):
                 val_str = ' "%(val)s"'
             if op == 'like' or op == 'ilike':
                 val = val.replace('*', '%')
-        final = col_and_opt_str + val_str
+        final = " %(bracket_open)s " + col_and_opt_str + val_str + " %(bracket_close)s "
         quoted_col, _, _ = self.quote_column_selection(col)
-        safe_part = final % {'col': quoted_col, 'op': op, 'val': val}
+        safe_part = final % {
+            'bracket_open': bracket_open,
+            'col': quoted_col,
+            'op': op,
+            'val': val,
+            'bracket_close': bracket_close
+        }
         if num_part > 0:
-            safe_part = ' and ' + safe_part
+            safe_part = ' %s %s' % (combinator, safe_part)
         return safe_part
 
 
@@ -457,16 +462,28 @@ class SqlStatement(object):
             return None
         uri_query = uri.split('?')[-1]
         conditions = ''
-        num_part = 0
+        num_clauses = 0
         parts = uri_query.split('&')
         for part in parts:
-            if (not part.startswith('select') and
-                not part.startswith('order') and
-                not part.startswith('set') and
-                not part.startswith('range')):
-                safe_part = self.construct_safe_where_clause_part(part, num_part)
-                conditions += safe_part
-                num_part += 1
+            if part.startswith('where='):
+                part = part.replace('where=', '')
+                clauses = part.split(',')
+                for clause in clauses:
+                    combinator = None
+                    bracket_open, bracket_close = '', ''
+                    if ':' in clause:
+                        combinator, clause = clause.split(':')
+                    for char in clause:
+                        if char == '(':
+                            bracket_open += '('
+                        if char == ')':
+                            bracket_close += ')'
+                    clause = clause.replace('(', '')
+                    clause = clause.replace(')', '')
+                    safe_part = self.construct_safe_where_clause_part(
+                        clause, num_clauses, combinator, bracket_open, bracket_close)
+                    conditions += safe_part
+                    num_clauses += 1
         if len(conditions) > 0:
             for op in self.operators.keys():
                 conditions = conditions.replace(op, self.operators[op])
