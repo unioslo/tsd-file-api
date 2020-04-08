@@ -96,8 +96,9 @@ if __name__ == '__main__':
         # filtering with groups
         '/mytable?where=(x=not.like.*zap,and:y=not.is.null)',
         '/mytable?where=((x=not.like.*zap,and:y=not.is.null),or:z=eq.0),and:z=eq.0',
-        # TODO - for string only:
-        #'/mytable?d=in.string1,string2',
+        # filtering with in
+        '/mytable?where=d=in.[string1,string2]',
+        '/mytable?where=d=in.[string1,string2],and:c=not.is.null',
         # ordering
         '/mytable?order=y.desc',
         '/mytable?order=a.k1.r2.desc',
