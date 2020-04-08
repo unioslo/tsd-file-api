@@ -34,8 +34,9 @@ class SqlStatement(object):
 
     """
 
-    def __init__(self, table_name, uri):
+    def __init__(self, table_name, uri, data=None):
         self.table_name = table_name
+        self.data = data
         # base regexes to identify data selections
         self.idx_present = re.compile(r'(.+)\[[0-9*:]+\](.*)')
         self.idx_single = re.compile(r'(.+)\[[0-9]+\](.*)')
@@ -102,16 +103,8 @@ class SqlStatement(object):
         set_count = 0
         for part in parts:
             if part.startswith('set'):
-                part = part.replace('set=', '')
-                settings = part.split(',')
-                new_values = {}
-                for setting in settings:
-                    col, val = setting.split('.')
-                    try:
-                        new_values[col] = int(val)
-                    except ValueError:
-                        new_values[col] = val
-                update_clause = "data = json_patch(data, '%s')" % json.dumps(new_values)
+                key = part.replace('set=', '')
+                update_clause = "data = json_patch(data, '%s')" % json.dumps(self.data)
         return update_clause
 
 
@@ -120,7 +113,6 @@ class SqlStatement(object):
         if '?' not in uri:
             return 'delete from "%(table_name)s"' % {'table_name': self.table_name}
         uri_path = uri.split('?')[0]
-        table_name = os.path.basename(uri_path.split('/')[-1])
         stmt_delete = 'delete from "%(table_name)s" ' % {'table_name': self.table_name}
         stmt_where = 'where %(conditions)s ' % {
             'conditions': self.query_conditions
