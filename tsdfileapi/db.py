@@ -99,21 +99,20 @@ def sqlite_insert(engine, table_name, data):
     """
     dtype = type(data)
     try:
-        with session_scope(engine) as session:
+        insert_stmt = 'insert into "{0}" (data) values (?)'.format(table_name)
+        with sqlite_session(engine) as session:
             try:
                 conditionally_create_generic_table(engine, table_name)
             except TableCreationException:
                 pass # most likely because it already exists, ignore
+            target = []
             if dtype is list:
-                for row in data:
-                    session.execute('insert into "' + table_name + '" (data) values (:values)',
-                        {'values': json.dumps(row)})
+
+                for element in data:
+                    target.append((json.dumps(element),))
             elif dtype is dict:
-                # investigate: http://docs.sqlalchemy.org/en/latest/faq/performance.html
-                # Bulk_insert_mappings or use raw sqlite3
-                row = data
-                session.execute('insert into "' + table_name + '" (data) values (:values)',
-                        {'values': json.dumps(row)})
+                target.append((json.dumps(data),))
+            session.executemany(insert_stmt, target)
         return True
     except IntegrityError as e:
         logging.error(e)
@@ -146,7 +145,7 @@ def conditionally_create_generic_table(engine, table_name):
         logging.error(e)
         raise TableCreationException
     try:
-        with session_scope(engine) as session:
+        with sqlite_session(engine) as session:
             session.execute('create table if not exists "%s" (data json unique not null)' % table_name)
     except Exception as e:
         logging.error(e)
@@ -185,18 +184,8 @@ def sqlite_update_data(engine, table_name, uri, data, verbose=False):
     sql = SqlStatement(table_name, uri, data)
     if verbose:
         print(sql.update_query)
-    try:
-        session = engine.cursor()
+    with sqlite_session(engine) as session:
         session.execute(sql.update_query)
-        engine.commit()
-    except Exception as e:
-        logging.error(sql.update_query)
-        logging.error(e)
-        return False
-    finally:
-        session.close()
-        engine.rollback()
-        engine.close()
     return True
 
 
@@ -204,16 +193,6 @@ def sqlite_delete_data(engine, table_name, uri, verbose=False):
     sql = SqlStatement(table_name, uri)
     if verbose:
         print(sql.delete_query)
-    try:
-        session = engine.cursor()
+    with sqlite_session(engine) as session:
         session.execute(sql.delete_query)
-        engine.commit()
-    except Exception as e:
-        logging.error(sql.delete_query)
-        logging.error(e)
-        return False
-    finally:
-        session.close()
-        engine.rollback()
-        engine.close()
     return True
