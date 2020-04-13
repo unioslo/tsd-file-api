@@ -72,9 +72,7 @@ from utils import call_request_hook, sns_dir, \
                   check_filename, _IS_VALID_UUID, \
                   md5sum, tenant_from_url, create_cluster_dir_if_not_exists, \
                   move_data_to_folder
-from db import sqlite_insert, sqlite_init, \
-               sqlite_list_tables, sqlite_get_data, sqlite_update_data, \
-               sqlite_delete_data, sqlite_session
+from db import sqlite_init, SqliteBackend
 from resumables import SerialResumable
 from pgp import _import_keys
 from parser import SqlStatement
@@ -1770,6 +1768,8 @@ class GenericTableHandler(AuthRequestHandler):
     """
     Manage data in generic sqlite backend.
 
+    TODO: text/csv, efficiently?
+
     """
 
     def metadata_table_name(self, table_name):
@@ -1785,6 +1785,7 @@ class GenericTableHandler(AuthRequestHandler):
         self.table_structure = options.config['backends']['sqlite'][backend]['table_structure']
         self.tenant_dir = self.import_dir.replace(options.tenant_string_pattern, tenant)
         self.engine = sqlite_init(self.tenant_dir, name=self.db_name, builtin=True)
+        self.db = SqliteBackend(self.engine)
 
 
     @gen.coroutine
@@ -1792,7 +1793,7 @@ class GenericTableHandler(AuthRequestHandler):
         try:
             self.authnz = self.process_token_and_extract_claims()
             if not table_name:
-                tables = sqlite_list_tables(self.engine)
+                tables = self.db.tables_list()
                 self.set_status(200)
                 self.write({'tables': tables})
             else:
@@ -1813,33 +1814,20 @@ class GenericTableHandler(AuthRequestHandler):
                 else:
                     if self.request.uri.split('?')[0].endswith('metadata'):
                         table_name = self.metadata_table_name(table_name)
-                    if ('Accept' in self.request.headers
-                        and self.request.headers['Accept']) == 'text/csv':
-                            # todo: investigate if this can be done efficiently
-                            # or place a limit on the size of the tables
-                            data = sqlite_get_data(self.engine, table_name, self.request.uri)
-                            df = DataFrame()
-                            df = df.from_records(data)
-                            data = df.to_csv(None, sep=',', index=False)
-                            self.set_status(200)
-                            self.write(data)
-                    else:
-                        self.set_status(200)
-                        sql = SqlStatement(table_name, self.request.uri)
-                        self.set_header('Content-Type', 'application/json')
-                        # generate results asynchronously
-                        with sqlite_session(self.engine) as session:
-                            self.write('{"data": [')
-                            self.flush()
-                            first = True
-                            for row in session.execute(sql.select_query):
-                                if not first:
-                                    self.write(',')
-                                self.write(row[0])
-                                self.flush()
-                                first = False
-                            self.write(']}')
-                            self.flush()
+                    self.set_status(200)
+                    sql = SqlStatement(table_name, self.request.uri)
+                    self.set_header('Content-Type', 'application/json')
+                    self.write('{"data": [')
+                    self.flush()
+                    first = True
+                    for row in self.db.table_select(table_name, self.request.uri):
+                        if not first:
+                            self.write(',')
+                        self.write(row)
+                        self.flush()
+                        first = False
+                    self.write(']}')
+                    self.flush()
         except Exception as e:
             logging.error(e)
             self.set_status(400)
@@ -1853,7 +1841,9 @@ class GenericTableHandler(AuthRequestHandler):
             if self.request.uri.split('?')[0].endswith('metadata'):
                 table_name = self.metadata_table_name(table_name)
             try:
-                sqlite_insert(self.engine, table_name, data)
+                # classify
+                #sqlite_insert(sle_name, data)
+                self.db.table_insert(table_name, data)
                 self.set_status(201)
                 self.write({'message': 'data stored'})
             except Exception as e:
@@ -1871,7 +1861,7 @@ class GenericTableHandler(AuthRequestHandler):
                 table_name = self.metadata_table_name(table_name)
             self.authnz = self.process_token_and_extract_claims()
             new_data = json_decode(self.request.body)
-            data = sqlite_update_data(self.engine, table_name, self.request.uri, new_data)
+            data = self.db.table_update(table_name, self.request.uri, new_data)
             self.set_status(200)
             self.write({'data': 'data updated'})
         except Exception as e:
@@ -1885,7 +1875,7 @@ class GenericTableHandler(AuthRequestHandler):
             if self.request.uri.split('?')[0].endswith('metadata'):
                 table_name = self.metadata_table_name(table_name)
             self.authnz = self.process_token_and_extract_claims()
-            data = sqlite_delete_data(self.engine, table_name, self.request.uri)
+            data = self.db.table_delete(table_name, self.request.uri)
             self.set_status(200)
             self.write({'data': data})
         except Exception as e:

@@ -90,7 +90,7 @@ pretty_bad_protocol._parsers.Verify.TRUST_LEVELS["ENCRYPTION_COMPLIANCE_MODE"] =
 # pylint: disable=relative-import
 from auth import process_access_token
 from tokens import gen_test_tokens, get_test_token_for_p12, gen_test_token_for_user
-from db import session_scope, sqlite_init, sqlite_insert
+from db import session_scope, sqlite_init
 from resumables import SerialResumable
 from utils import sns_dir, md5sum, IllegalFilenameException
 from pgp import _import_keys
@@ -533,6 +533,7 @@ class TestFileApi(unittest.TestCase):
             headers = {'Authorization': 'Bearer ' + TEST_TOKENS[token]}
             full_url = self.base_url + app_route + url
             resp = methods[method](full_url, headers=headers)
+            print(resp.text)
             self.assertTrue(resp.status_code in [200, 201])
 
 

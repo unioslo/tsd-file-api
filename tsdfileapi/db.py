@@ -23,22 +23,6 @@ _VALID_COLNAME = re.compile(r'([0-9a-z])')
 _VALID_TABLE_NAME = re.compile(r'([0-9a-z_])')
 
 
-class ColumnNameException(Exception):
-    message = 'Column name contains illegal characters'
-
-
-class TableCreationException(Exception):
-    message = 'table cannot be created'
-
-
-class InsertException(Exception):
-    message = 'Data insert failed - check URL and JSON'
-
-
-class DuplicateRowException(Exception):
-    message = 'Duplicate row - submission already stored'
-
-
 def sqlite_init(path, name='api-data.db', builtin=False):
     dbname = name
     if not builtin:
@@ -57,9 +41,6 @@ def session_scope(engine):
         yield session
         session.commit()
     except (OperationalError, IntegrityError, StatementError) as e:
-        logging.error(e)
-        logging.error("Could not commit data")
-        logging.error("Rolling back transaction")
         session.rollback()
         raise e
     finally:
@@ -81,118 +62,81 @@ def sqlite_session(engine):
         engine.commit()
 
 
-def sqlite_insert(engine, table_name, data):
-    """
-    Inserts data into a table - either one row or in bulk.
-    Create the table if not exists.
+class SqliteBackend(object):
 
-    Parameters
-    ----------
-    engine: sqlalchemy engine for sqlite
-    uri: string
-    data: dict
+    def __init__(self, engine, verbose=False):
+        self.engine = engine
+        self.verbose = verbose
+        self.table_definition = '(data json unique not null)'
+        # todo: add flavour here, pass to SqlStatement
 
-    Returns
-    -------
-    bool
+    def tables_list(self):
+        query = "select name FROM sqlite_master where type = 'table'"
+        with sqlite_session(self.engine) as session:
+            res = session.execute(query).fetchall()
+        if not res:
+            return []
+        else:
+            out = []
+            for row in res:
+                name = row[0]
+                if not name.endswith('_metadata'):
+                    out.append(row[0])
+            return out
 
-    """
-    dtype = type(data)
-    try:
-        insert_stmt = 'insert into "{0}" (data) values (?)'.format(table_name)
-        with sqlite_session(engine) as session:
-            try:
-                conditionally_create_generic_table(engine, table_name)
-            except TableCreationException:
-                pass # most likely because it already exists, ignore
+    def table_insert(self, table_name, data):
+        try:
+            dtype = type(data)
+            insert_stmt = f'insert into "{table_name}" (data) values (?)'
             target = []
             if dtype is list:
-
                 for element in data:
                     target.append((json.dumps(element),))
             elif dtype is dict:
                 target.append((json.dumps(data),))
-            session.executemany(insert_stmt, target)
+            try:
+                with sqlite_session(self.engine) as session:
+                    session.executemany(insert_stmt, target)
+                return True
+                pass
+            except (sqlite3.ProgrammingError, sqlite3.OperationalError) as e:
+                with sqlite_session(self.engine) as session:
+                    session.execute(f'create table if not exists "{table_name}" {self.table_definition}')
+                    session.executemany(insert_stmt, target)
+                return True
+        except sqlite3.ProgrammingError as e:
+            logging.error('Syntax error?')
+            raise e
+        except sqlite3.IntegrityError as e:
+            logging.error('Duplicate row')
+            raise e
+        except sqlite3.OperationalError as e:
+            logging.error('Database issue')
+            raise e
+        except Exception as e:
+            logging.error('Not sure what went wrong')
+            raise e
+
+    def table_update(self, table_name, uri, data):
+        sql = SqlStatement(table_name, uri, data=data)
+        if self.verbose:
+            print(sql.update_query)
+        with sqlite_session(self.engine) as session:
+            session.execute(sql.update_query)
         return True
-    except IntegrityError as e:
-        logging.error(e)
-        raise DuplicateRowException
-    except (OperationalError, StatementError) as e:
-        logging.error(e)
-        raise InsertException
-    except Exception as e:
-        logging.error(e)
-        raise Exception('not sure what went wrong - could not insert data')
 
+    def table_delete(self, table_name, uri):
+        sql = SqlStatement(table_name, uri)
+        if self.verbose:
+            print(sql.delete_query)
+        with sqlite_session(self.engine) as session:
+            session.execute(sql.delete_query)
+        return True
 
-def conditionally_create_generic_table(engine, table_name):
-    """
-    A generic table has one column named data, with a json type.
-
-    Parameters
-    ----------
-    engine: sqlite engine
-    table_name: str, name
-
-    Returns
-    -------
-    bool
-
-    """
-    try:
-        table_name = check_filename(table_name)
-    except (KeyError, IllegalFilenameException) as e:
-        logging.error(e)
-        raise TableCreationException
-    try:
-        with sqlite_session(engine) as session:
-            session.execute('create table if not exists "%s" (data json unique not null)' % table_name)
-    except Exception as e:
-        logging.error(e)
-        raise TableCreationException
-    return True
-
-
-def sqlite_list_tables(engine):
-    query = "select name FROM sqlite_master where type = 'table'"
-    with sqlite_session(engine) as session:
-        res = session.execute(query).fetchall()
-    if not res:
-        return []
-    else:
-        out = []
-        for row in res:
-            name = row[0]
-            if not name.endswith('_metadata'):
-                out.append(row[0])
-        return out
-
-
-def sqlite_get_data(engine, table_name, uri, verbose=False):
-    sql = SqlStatement(table_name, uri)
-    if verbose:
-        print(sql.select_query)
-    with sqlite_session(engine) as session:
-        res = session.execute(sql.select_query).fetchall()
-    data = []
-    for row in res:
-        data.append(json.loads(row[0]))
-    return data
-
-
-def sqlite_update_data(engine, table_name, uri, data, verbose=False):
-    sql = SqlStatement(table_name, uri, data)
-    if verbose:
-        print(sql.update_query)
-    with sqlite_session(engine) as session:
-        session.execute(sql.update_query)
-    return True
-
-
-def sqlite_delete_data(engine, table_name, uri, verbose=False):
-    sql = SqlStatement(table_name, uri)
-    if verbose:
-        print(sql.delete_query)
-    with sqlite_session(engine) as session:
-        session.execute(sql.delete_query)
-    return True
+    def table_select(self, table_name, uri):
+        sql = SqlStatement(table_name, uri)
+        if self.verbose:
+            print(sql.select_query)
+        with sqlite_session(self.engine) as session:
+            for row in session.execute(sql.select_query):
+                yield row[0]

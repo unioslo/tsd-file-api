@@ -1,5 +1,5 @@
 
-from db import sqlite_init, sqlite_insert, sqlite_get_data, sqlite_update_data, sqlite_delete_data
+from db import sqlite_init, SqliteBackend
 from parser import SqlStatement
 
 if __name__ == '__main__':
@@ -63,10 +63,13 @@ if __name__ == '__main__':
             'x': 10
         }
     ]
-    create_engine = sqlite_init('/tmp', name='file-api-test.db')
-    query_engine = sqlite_init('/tmp', name= 'file-api-test.db', builtin=True)
-    sqlite_delete_data(query_engine, 'mytable', '/mytable')
-    sqlite_insert(create_engine, 'mytable', test_data)
+    engine = sqlite_init('/tmp', name= 'file-api-test.db', builtin=True)
+    db = SqliteBackend(engine, verbose=True)
+    try:
+        db.table_delete('mytable', '/mytable')
+    except Exception:
+        pass
+    db.table_insert('mytable', test_data)
     select_uris = [
         # selections
         '/mytable',
@@ -154,24 +157,23 @@ if __name__ == '__main__':
     for uri in select_uris:
         try:
             print(uri)
-            query_engine = sqlite_init('/tmp', name= 'file-api-test.db', builtin=True)
-            print(sqlite_get_data(query_engine, 'mytable', uri, verbose=True))
+            for row in db.table_select('mytable', uri):
+                print(row)
             print()
         except Exception:
             pass
     for uri, data in update_uris:
         try:
             print(uri)
-            query_engine = sqlite_init('/tmp', name= 'file-api-test.db', builtin=True)
-            print(sqlite_update_data(query_engine, 'mytable', uri, data, verbose=True))
-            query_engine = sqlite_init('/tmp', name= 'file-api-test.db', builtin=True)
-            print(sqlite_get_data(query_engine, 'mytable', '/mytable'))
+            db.table_update('mytable', uri, data)
+            for row in db.table_select('mytable', '/mytable'):
+                print(row)
             print()
         except Exception:
             pass
     for uri in delete_uris:
         print(uri)
-        query_engine = sqlite_init('/tmp', name= 'file-api-test.db', builtin=True)
-        print(sqlite_delete_data(query_engine, 'mytable', uri, verbose=True))
-        query_engine = sqlite_init('/tmp', name= 'file-api-test.db', builtin=True)
-        print(sqlite_get_data(query_engine, 'mytable', '/mytable'))
+        db.table_delete('mytable', uri)
+        for row in db.table_select('mytable', '/mytable'):
+            print(row)
+
