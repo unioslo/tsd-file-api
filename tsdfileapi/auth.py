@@ -59,10 +59,10 @@ def process_access_token(
         logging.error(e.message)
         failure_message['reason'] = e.message
         return failure_message
-    if claims[tenant_claim_name] != tenant:
+    if check_tenant and claims[tenant_claim_name] != tenant:
         logging.error('Access denied to tenant: %s != %s ', claims[tenant_claim_name], tenant)
         return failure_message
-    if int(time.time()) > int(claims['exp']):
+    if check_exp and int(time.time()) > int(claims['exp']):
         logging.error('JWT expired')
         return failure_message
     return {'message': 'OK', 'status': True, 'claims': claims}
