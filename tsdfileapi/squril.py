@@ -493,7 +493,7 @@ class SqliteQueryGenerator(SqlGenerator):
     def gen_sql_delete(self):
         return 'hi'
 
-    def gen_sql_set(self):
+    def gen_sql_update(self):
         return 'hi'
 
 
