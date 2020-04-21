@@ -19,10 +19,6 @@ from utils import check_filename, IllegalFilenameException
 from parser import SqlStatement
 
 
-_VALID_COLNAME = re.compile(r'([0-9a-z])')
-_VALID_TABLE_NAME = re.compile(r'([0-9a-z_])')
-
-
 def sqlite_init(path, name='api-data.db', builtin=False):
     dbname = name
     if not builtin:
@@ -61,6 +57,7 @@ def sqlite_session(engine):
         session.close()
         engine.commit()
 
+# TODO: add a Backend ABC
 
 class SqliteBackend(object):
 
@@ -68,7 +65,6 @@ class SqliteBackend(object):
         self.engine = engine
         self.verbose = verbose
         self.table_definition = '(data json unique not null)'
-        # todo: add flavour here, pass to SqlStatement
 
     def tables_list(self):
         query = "select name FROM sqlite_master where type = 'table'"
@@ -140,3 +136,21 @@ class SqliteBackend(object):
         with sqlite_session(self.engine) as session:
             for row in session.execute(sql.select_query):
                 yield row[0]
+
+
+class PostgresBackend(object):
+
+    def __init__(self, engine, verbose=False):
+        self.engine = engine
+        self.verbose = verbose
+        self.table_definition = '(data jsonb unique not null)'
+
+    def tables_list(self):
+        pass
+
+    def table_insert(self, table_name, data):
+        # try insert
+        # if fail, create schema, create table (if not exists)
+        # try again
+        # caller needs to pass in the schema as part of the table name
+        pass
