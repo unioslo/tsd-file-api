@@ -1619,7 +1619,35 @@ class TestFileApi(unittest.TestCase):
         # nested array selection
         out = test_select_query('select=a.k1.r1[0]')
         self.assertEqual(out[2]['a']['k1']['r1'], [1])
-        db.table_delete('test_table', '')
+        # WHERE
+        # simple key op
+        out = test_select_query('select=x&where=x=gt.1000')
+        self.assertEqual(out, [{'x': 1900}])
+        # multipart simple key ops
+        out = test_select_query('select=x&where=x=gt.1000,or:y=eq.11')
+        self.assertEqual(out[0], {'x': 1900})
+        self.assertEqual(out[1], {'x': None})
+        out = test_select_query('select=x&where=x=lt.1000,and:y=eq.11')
+        self.assertEqual(out, [])
+        # groups
+        out = test_select_query('select=x&where=((x=lt.1000,and:y=eq.11),or:x=gt.1000)')
+        self.assertEqual(out, [{'x': 1900}])
+        # is, not, like, and null
+        out = test_select_query('select=x&where=x=not.is.null')
+        self.assertTrue(len(out) == 4)
+        out = test_select_query('select=d&where=d=not.like.*g3')
+        self.assertTrue(len(out) == 2)
+        # in
+        out = test_select_query('select=d&where=d=in.[string1,string2]')
+        self.assertTrue(len(out) == 2)
+        self.assertEqual(out, [{'d': 'string1'}, {'d': 'string2'}])
+        # nested key ops
+        out = test_select_query('select=x&where=a.k1.r1[0]=eq.1')
+        self.assertEqual(out, [{'x': 88}])
+        out = test_select_query('select=x&where=a.k3[0|h]=eq.0')
+        self.assertEqual(out, [{'x': 107}])
+        #db.table_delete('test_table', '')
+        # TODO: ensure date support, with a test
 
 
 
