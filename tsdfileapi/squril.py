@@ -437,7 +437,6 @@ class SqliteQueryGenerator(SqlGenerator):
         return selection
 
     def _gen_sql_data_selection(self, term):
-        print(f'handling {term.original} - parsed as: {term.parsed}')
         rev = term.parsed.copy()
         rev.reverse()
         out = []
@@ -477,8 +476,65 @@ class SqliteQueryGenerator(SqlGenerator):
             sql_select = f"select json_object({joined}) from \"{self.table_name}\""
         return sql_select
 
-    def gen_sql_where_clause(self):
-        pass
+    def _gen_sql_where_expressions(self, term):
+        groups_start = ''.join(term.parsed[0].groups_start)
+        groups_end = ''.join(term.parsed[0].groups_end)
+        combinator = term.parsed[0].combinator if term.parsed[0].combinator else ''
+        if len(term.parsed[0].select_term.parsed) > 1:
+            test_select_term = term.parsed[0].select_term.parsed[-1]
+            if isinstance(test_select_term, ArraySpecific):
+                target = term.parsed[0].select_term.original
+            elif isinstance(test_select_term, ArraySpecificSingle):
+                _key = term.parsed[0].select_term.bare_term
+                _idx = term.parsed[0].select_term.parsed[-1].idx
+                _col = term.parsed[0].select_term.parsed[-1].sub_selections[0]
+                target = f'{_key}[{_idx}].{_col}'
+            else:
+                raise Exception(f'Unsupported term {term.original}')
+        else:
+            if not isinstance(term.parsed[0].select_term.parsed[0], Key):
+                raise Exception(f'Invalid term {term.original}')
+            target = term.parsed[0].select_term.parsed[0].element
+        col = f"json_extract(data, '$.{target}')"
+        op = term.parsed[0].op
+        val = term.parsed[0].val
+        try:
+            int(val)
+            val = f'{val}'
+        except ValueError:
+            if val == 'null' or op == 'in':
+                val = f'{val}'
+            else:
+                val = f'"{val}"'
+        if op.endswith('.not'):
+            op = op.replace('.', ' ')
+        elif op.startswith('not.'):
+            op = op.replace('.', ' ')
+        elif op == 'in':
+            val = val.replace('[', '')
+            val = val.replace(']', '')
+            values = val.split(',')
+            new_values = []
+            for v in values:
+                new = "'%s'" % v
+                new_values.append(new)
+            joined = ','.join(new_values)
+            val = "(%s)" % joined
+        else:
+            op = self.operators[op]
+        if 'like' in op or 'ilike' in op:
+            val = val.replace('*', '%')
+        out = f'{groups_start} {combinator} {col} {op} {val} {groups_end}'
+        return out
+
+    def _gen_sql_where_clause(self):
+        out = self.where_map(self._gen_sql_where_expressions)
+        if not out:
+            sql_where = ''
+        else:
+            joined = ' '.join(out)
+            sql_where = f'where {joined}'
+        return sql_where
 
     def gen_sql_order_clause(self):
         pass
@@ -488,7 +544,8 @@ class SqliteQueryGenerator(SqlGenerator):
 
     def gen_sql_select(self):
         _select = self._gen_sql_select_clause()
-        return f'{_select}'
+        _where = self._gen_sql_where_clause()
+        return f'{_select} {_where}'
 
     def gen_sql_delete(self):
         return 'hi'
