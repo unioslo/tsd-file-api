@@ -7,6 +7,8 @@ import logging
 import re
 import json
 import sqlite3
+
+from abc import ABC, abstractmethod
 from contextlib import contextmanager
 
 from sqlalchemy.pool import QueuePool
@@ -57,9 +59,36 @@ def sqlite_session(engine):
         session.close()
         engine.commit()
 
-# TODO: add a Backend ABC
 
-class SqliteBackend(object):
+class DatabaseBackend(ABC):
+
+    def __init__(self, engine, verbose=False):
+        super(DatabaseBackend, self).__init__()
+        self.engine = engine
+        self.verbose = verbose
+
+    @abstractmethod
+    def tables_list(self):
+        pass
+
+    @abstractmethod
+    def table_insert(self, table_name, data):
+        pass
+
+    @abstractmethod
+    def table_update(self, table_name, uri, data):
+        pass
+
+    @abstractmethod
+    def table_delete(self, table_name, uri):
+        pass
+
+    @abstractmethod
+    def table_select(self, table_name, uri):
+        pass
+
+
+class SqliteBackend(DatabaseBackend):
 
     def __init__(self, engine, verbose=False):
         self.engine = engine
