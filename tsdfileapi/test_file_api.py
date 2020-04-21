@@ -1502,6 +1502,127 @@ class TestFileApi(unittest.TestCase):
         self.assertTrue(res['status'])
 
 
+    def test_sqlite_backend(self):
+        from squril import SqliteQueryGenerator
+        from db import SqliteBackend, sqlite_session
+        engine = sqlite_init('/tmp', name='api-test.db', builtin=True)
+        data = [
+            {
+                'x': 1900,
+                'y': 1,
+                'z': 5,
+                'b':[1, 2, 5, 1],
+                'c': None,
+                'd': 'string1'
+            },
+            {
+                'y': 11,
+                'z': 1,
+                'c': [
+                    {
+                        'h': 3,
+                        'p': 99,
+                        'w': False
+                    },
+                    {
+                        'h': 32,
+                        'p': False,
+                        'w': True,
+                        'i': {
+                            't': [1,2,3]
+                        }
+                    },
+                    {
+                        'h': 0
+                    }
+                ],
+                'd': 'string2'
+            },
+            {
+                'a': {
+                    'k1': {
+                        'r1': [1, 2],
+                        'r2': 2
+                    },
+                    'k2': ['val', 9]
+                },
+                'z': 0,
+                'x': 88,
+                'd': 'string3'
+            },
+            {
+                'a': {
+                    'k1': {
+                        'r1': [33, 200],
+                        'r2': 90
+                    },
+                    'k2': ['val222', 90],
+                    'k3': [{'h': 0}]
+                },
+                'z': 10,
+                'x': 107
+            },
+            {
+                'x': 10
+            }
+        ]
+        verbose = True
+        db = SqliteBackend(engine)
+        try:
+            db.table_delete('test_table', '')
+        except Exception:
+            pass
+        db.table_insert('test_table', data)
+        def test_select_query(uri_query, table='test_table', engine=engine, verbose=verbose):
+            out = []
+            q = SqliteQueryGenerator(table, uri_query)
+            if verbose:
+                print(uri_query)
+                print(q.select_query)
+            with sqlite_session(engine) as session:
+                resp = session.execute(q.select_query).fetchall()
+            for row in resp:
+                out.append(json.loads(row[0]))
+            if verbose:
+                print(out)
+            return out
+        # SELECT
+        # simple key selection
+        out = test_select_query('select=x')
+        for entry in out:
+            self.assertTrue('x' in entry.keys())
+            self.assertTrue(len(entry.keys()) == 1)
+        # more than one simple key
+        out = test_select_query('select=x,z')
+        for entry in out:
+            self.assertTrue('x' in entry.keys() and 'z' in entry.keys())
+            self.assertTrue(len(entry.keys()) == 2)
+        # simple array slice
+        out = test_select_query('select=x,b[1]')
+        self.assertEqual(out[0]['b'], [2])
+        self.assertEqual(out[1]['b'], None)
+        # selecting a key inside an array slice
+        out = test_select_query('select=x,c[1|h]')
+        self.assertEqual(out[0]['c'], None)
+        self.assertEqual(out[1]['c'], [{'h': 32}])
+        # selecting keys inside an array slice
+        out = test_select_query('select=x,c[1|h,p]')
+        self.assertEqual(out[0]['c'], None)
+        self.assertEqual(out[1]['c'], [{'h': 32, 'p': False}])
+        # broadcast key selection inside array - single key
+        out = test_select_query('select=x,c[*|h]')
+        self.assertTrue(len(out[1]['c']) == 3)
+        # broadcast key selection inside array - mutliple keys
+        out = test_select_query('select=x,c[*|h,p]')
+        self.assertTrue(len(out[1]['c']) == 3)
+        self.assertEqual(out[1]['c'][0], {'h': 3, 'p': 99})
+        # nested array selection
+        out = test_select_query('select=a.k1.r1[0]')
+        self.assertEqual(out[2]['a']['k1']['r1'], [1])
+        db.table_delete('test_table', '')
+
+
+
 def main():
     tests = []
     base = [
@@ -1618,6 +1739,9 @@ def main():
     ns_load = [
         'test_XXX_load'
     ]
+    sql_sqlite = [
+        'test_sqlite_backend',
+    ]
     if len(sys.argv) == 2:
         print('usage:')
         print('python3 tsdfileapi/test_file_api.py config.yaml ARGS')
@@ -1651,6 +1775,8 @@ def main():
         tests.extend(ns)
     if 'ns-load' in sys.argv:
         tests.extend(ns_load)
+    if 'sql-sqlite' in sys.argv:
+        tests.extend(sql_sqlite)
     if 'all' in sys.argv:
         tests.extend(base)
         tests.extend(names)
