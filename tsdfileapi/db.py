@@ -90,6 +90,37 @@ class DatabaseBackend(ABC):
 
 class SqliteBackend(DatabaseBackend):
 
+    """
+    This backend works reliably, and offers decent read-write
+    performance to API clients under the following conditions:
+
+    a) using network storage, like NFS
+
+        - using rollback-mode for transactions
+        - where clients do not perform long-running read operations
+
+    b) not using network storage
+
+        - using WAL-mode for transactions
+        - clients can perform long-running reads without
+          blocking writers
+
+    Briefly, WAL-mode (which offer non-blocking read/write) cannot
+    be reliably used over NFS, because the locking primitives
+    used by SQLite to prevent DB corruption are not implemented. So
+    if you are using NFS, you must use rollback-mode. This however,
+    means that writers require exclusive locks to write, which means
+    that long-running reads by clients would block writers. This
+    may be unfortunate, depending on the use case.
+
+    For more background refer to:
+
+        - https://www.sqlite.org/lockingv3.html
+        - https://www.sqlite.org/wal.html
+        - https://www.sqlite.org/threadsafe.html
+
+    """
+
     def __init__(self, engine, verbose=False):
         self.engine = engine
         self.verbose = verbose
@@ -182,4 +213,13 @@ class PostgresBackend(object):
         # if fail, create schema, create table (if not exists)
         # try again
         # caller needs to pass in the schema as part of the table name
+        pass
+
+    def table_update(self, table_name, uri, data):
+        pass
+
+    def table_delete(self, table_name, uri):
+        pass
+
+    def table_select(self, table_name, uri):
         pass
