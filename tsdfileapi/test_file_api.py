@@ -1660,6 +1660,10 @@ class TestFileApi(unittest.TestCase):
         out = test_select_query('select=x,a&order=a.k3[0|h].desc')
         self.assertTrue(out[1]['x'] == 1900)
         # RANGE
+        out = test_select_query('select=x&order=x.desc&range=0.2')
+        self.assertEqual(out, [{'x': 1900}, {'x': 107}])
+        out = test_select_query('select=x&order=x.desc&range=1.2')
+        self.assertEqual(out, [{'x': 107}, {'x': 88}])
         # UPDATE
         # DELETE
         #db.table_delete('test_table', '')
