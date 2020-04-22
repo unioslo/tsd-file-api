@@ -1646,6 +1646,17 @@ class TestFileApi(unittest.TestCase):
         self.assertEqual(out, [{'x': 88}])
         out = test_select_query('select=x&where=a.k3[0|h]=eq.0')
         self.assertEqual(out, [{'x': 107}])
+        # ORDER
+        # simple key
+        out = test_select_query('select=x&order=x.desc')
+        self.assertTrue(out[0]['x'] == 1900)
+        self.assertTrue(out[1]['x'] == 107)
+        self.assertTrue(out[2]['x'] == 88)
+        self.assertTrue(out[3]['x'] == 10)
+        self.assertTrue(out[4]['x'] is None)
+        # RANGE
+        # UPDATE
+        # DELETE
         #db.table_delete('test_table', '')
         # TODO: ensure date support, with a test
 

@@ -476,10 +476,7 @@ class SqliteQueryGenerator(SqlGenerator):
             sql_select = f"select json_object({joined}) from \"{self.table_name}\""
         return sql_select
 
-    def _gen_sql_where_expressions(self, term):
-        groups_start = ''.join(term.parsed[0].groups_start)
-        groups_end = ''.join(term.parsed[0].groups_end)
-        combinator = term.parsed[0].combinator if term.parsed[0].combinator else ''
+    def _gen_sql_col(self, term):
         if len(term.parsed[0].select_term.parsed) > 1:
             test_select_term = term.parsed[0].select_term.parsed[-1]
             if isinstance(test_select_term, ArraySpecific):
@@ -496,6 +493,13 @@ class SqliteQueryGenerator(SqlGenerator):
                 raise Exception(f'Invalid term {term.original}')
             target = term.parsed[0].select_term.parsed[0].element
         col = f"json_extract(data, '$.{target}')"
+        return col
+
+    def _gen_sql_where_expressions(self, term):
+        groups_start = ''.join(term.parsed[0].groups_start)
+        groups_end = ''.join(term.parsed[0].groups_end)
+        combinator = term.parsed[0].combinator if term.parsed[0].combinator else ''
+        col = self._gen_sql_col(term)
         op = term.parsed[0].op
         val = term.parsed[0].val
         try:
@@ -536,8 +540,17 @@ class SqliteQueryGenerator(SqlGenerator):
             sql_where = f'where {joined}'
         return sql_where
 
-    def gen_sql_order_clause(self):
-        pass
+    def _gen_sql_order(self, term):
+        selection = self._gen_sql_col(term)
+        direction = term.parsed[0].direction
+        return f'{selection} {direction}'
+
+    def _gen_sql_order_clause(self):
+        out = self.order_map(self._gen_sql_order)
+        if not out:
+            return ''
+        else:
+            return f'order by {out[0]}'
 
     def gen_sql_range_clause(self):
         pass
@@ -545,7 +558,8 @@ class SqliteQueryGenerator(SqlGenerator):
     def gen_sql_select(self):
         _select = self._gen_sql_select_clause()
         _where = self._gen_sql_where_clause()
-        return f'{_select} {_where}'
+        _order = self._gen_sql_order_clause()
+        return f'{_select} {_where} {_order}'
 
     def gen_sql_delete(self):
         return 'hi'
