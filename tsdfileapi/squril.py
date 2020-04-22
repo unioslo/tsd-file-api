@@ -436,7 +436,7 @@ class SqliteQueryGenerator(SqlGenerator):
             """
         return selection
 
-    def _gen_sql_data_selection(self, term):
+    def _term_to_sql_select(self, term):
         rev = term.parsed.copy()
         rev.reverse()
         out = []
@@ -468,7 +468,7 @@ class SqliteQueryGenerator(SqlGenerator):
         return selection
 
     def _gen_sql_select_clause(self):
-        out = self.select_map(self._gen_sql_data_selection)
+        out = self.select_map(self._term_to_sql_select)
         if not out:
             sql_select = f'select * from "{self.table_name}"'
         else:
@@ -495,7 +495,7 @@ class SqliteQueryGenerator(SqlGenerator):
         col = f"json_extract(data, '$.{target}')"
         return col
 
-    def _gen_sql_where_expressions(self, term):
+    def _term_to_sql_where(self, term):
         groups_start = ''.join(term.parsed[0].groups_start)
         groups_end = ''.join(term.parsed[0].groups_end)
         combinator = term.parsed[0].combinator if term.parsed[0].combinator else ''
@@ -532,7 +532,7 @@ class SqliteQueryGenerator(SqlGenerator):
         return out
 
     def _gen_sql_where_clause(self):
-        out = self.where_map(self._gen_sql_where_expressions)
+        out = self.where_map(self._term_to_sql_where)
         if not out:
             sql_where = ''
         else:
@@ -540,26 +540,34 @@ class SqliteQueryGenerator(SqlGenerator):
             sql_where = f'where {joined}'
         return sql_where
 
-    def _gen_sql_order(self, term):
+    def _term_to_sql_order(self, term):
         selection = self._gen_sql_col(term)
         direction = term.parsed[0].direction
-        return f'{selection} {direction}'
+        return f'order by {selection} {direction}'
 
     def _gen_sql_order_clause(self):
-        out = self.order_map(self._gen_sql_order)
+        out = self.order_map(self._term_to_sql_order)
         if not out:
             return ''
         else:
-            return f'order by {out[0]}'
+            return out[0]
 
-    def gen_sql_range_clause(self):
-        pass
+    def _term_to_sql_range(self, term):
+        return f'limit {term.parsed[0].end} offset {term.parsed[0].start}'
+
+    def _gen_sql_range_clause(self):
+        out = self.range_map(self._term_to_sql_range)
+        if not out:
+            return ''
+        else:
+            return out[0]
 
     def gen_sql_select(self):
         _select = self._gen_sql_select_clause()
         _where = self._gen_sql_where_clause()
         _order = self._gen_sql_order_clause()
-        return f'{_select} {_where} {_order}'
+        _range = self._gen_sql_range_clause()
+        return f'{_select} {_where} {_order} {_range}'
 
     def gen_sql_delete(self):
         return 'hi'
