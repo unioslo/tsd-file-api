@@ -1649,11 +1649,16 @@ class TestFileApi(unittest.TestCase):
         # ORDER
         # simple key
         out = test_select_query('select=x&order=x.desc')
-        self.assertTrue(out[0]['x'] == 1900)
-        self.assertTrue(out[1]['x'] == 107)
-        self.assertTrue(out[2]['x'] == 88)
-        self.assertTrue(out[3]['x'] == 10)
-        self.assertTrue(out[4]['x'] is None)
+        x_array = [1900, 107, 88, 10, None]
+        self.assertEqual(list(map(lambda x: x['x'], out)), x_array)
+        x_array.reverse()
+        out = test_select_query('select=x&order=x.asc')
+        self.assertEqual(list(map(lambda x: x['x'], out)), x_array)
+        # array selections
+        out = test_select_query('select=x,a&order=a.k1.r1[0].desc')
+        self.assertTrue(out[1]['x'] == 88)
+        out = test_select_query('select=x,a&order=a.k3[0|h].desc')
+        self.assertTrue(out[1]['x'] == 1900)
         # RANGE
         # UPDATE
         # DELETE
