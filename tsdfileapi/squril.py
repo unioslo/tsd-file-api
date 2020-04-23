@@ -346,6 +346,8 @@ class UriQuery(object):
 
 class SqlGenerator(object):
 
+    json_object_sql = None
+
     def __init__(self, table_name, uri_query, data=None):
         self.table_name = table_name
         self.uri_query = uri_query
@@ -364,6 +366,9 @@ class SqlGenerator(object):
             'is': 'is',
             'in': 'in'
         }
+        if not self.json_object_sql:
+            msg = 'Extending the SqlGenerator requires setting the class level property: json_object_sql'
+            raise Exception(msg)
         self.select_query = self.gen_sql_select()
         self.update_query = self.gen_sql_update()
         self.delete_query = self.gen_sql_delete()
@@ -536,7 +541,7 @@ class SqliteQueryGenerator(SqlGenerator):
                     selection = self._gen_sql_key_selection(term, parsed)
                 else:
                     # last call, wrapping up the selections
-                    selection = f"\"{parsed.element}\", json_object({selection})"
+                    selection = f"\"{parsed.element}\", {self.json_object_sql}({selection})"
             elif isinstance(parsed, ArraySpecific):
                 selection = self._gen_sql_array_selection(term, parsed)
             elif isinstance(parsed, ArraySpecificSingle):
