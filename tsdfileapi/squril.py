@@ -396,21 +396,70 @@ class SqlGenerator(object):
         return self.clause_map_terms(self.parsed_uri_query.set, map_func) \
             if self.parsed_uri_query.set else None
 
-    # mandatory methods
+    # mapper methods - used by public methods
+
+    def _gen_sql_select_clause(self):
+        out = self.select_map(self._term_to_sql_select)
+        if not out:
+            sql_select = f'select * from "{self.table_name}"'
+        else:
+            joined = ",".join(out)
+            sql_select = f"select {self.json_object_sql}({joined}) from \"{self.table_name}\""
+        return sql_select
+
+    def _gen_sql_where_clause(self):
+        out = self.where_map(self._term_to_sql_where)
+        if not out:
+            sql_where = ''
+        else:
+            joined = ' '.join(out)
+            sql_where = f'where {joined}'
+        return sql_where
+
+    def _gen_sql_order_clause(self):
+        out = self.order_map(self._term_to_sql_order)
+        if not out:
+            return ''
+        else:
+            return out[0]
+
+    def _gen_sql_range_clause(self):
+        out = self.range_map(self._term_to_sql_range)
+        if not out:
+            return ''
+        else:
+            return out[0]
+
+    # public methods - called by constructor
 
     def gen_sql_select(self):
-        pass
+        _select = self._gen_sql_select_clause()
+        _where = self._gen_sql_where_clause()
+        _order = self._gen_sql_order_clause()
+        _range = self._gen_sql_range_clause()
+        return f'{_select} {_where} {_order} {_range}'
 
     def gen_sql_update(self):
-        pass
+        out = self.set_map(self._term_to_sql_update)
+        if not out:
+            return ''
+        else:
+            _set = out[0]
+            _where = self._gen_sql_where_clause()
+            return f'update "{self.table_name}" {_set} {_where}'
 
     def gen_sql_delete(self):
-        pass
+        _where = self._gen_sql_where_clause()
+        return f'delete from "{self.table_name}" {_where}'
 
 
 class SqliteQueryGenerator(SqlGenerator):
 
     """Generate SQL for SQLite json1 backed tables, from a given UriQuery."""
+
+    json_object_sql = 'json_object'
+
+    # Helper functions - used by mappers
 
     def _gen_sql_array_sub_selection(self, term, parsed, specific=None):
         if specific:
@@ -438,6 +487,29 @@ class SqliteQueryGenerator(SqlGenerator):
                 else null end)
             """
         return selection
+
+    def _gen_sql_col(self, term):
+        if len(term.parsed[0].select_term.parsed) > 1:
+            test_select_term = term.parsed[0].select_term.parsed[-1]
+            if isinstance(test_select_term, ArraySpecific):
+                target = term.parsed[0].select_term.original
+            elif isinstance(test_select_term, ArraySpecificSingle):
+                _key = term.parsed[0].select_term.bare_term
+                _idx = term.parsed[0].select_term.parsed[-1].idx
+                _col = term.parsed[0].select_term.parsed[-1].sub_selections[0]
+                target = f'{_key}[{_idx}].{_col}'
+            else:
+                raise Exception(f'Unsupported term {term.original}')
+        else:
+            if not isinstance(term.parsed[0].select_term.parsed[0], Key):
+                raise Exception(f'Invalid term {term.original}')
+            target = term.parsed[0].select_term.parsed[0].element
+        col = f"json_extract(data, '$.{target}')"
+        return col
+
+    # term handler functions
+    # mapped over terms in a clause
+    # generates SQL for each term
 
     def _term_to_sql_select(self, term):
         rev = term.parsed.copy()
@@ -469,34 +541,6 @@ class SqliteQueryGenerator(SqlGenerator):
                 raise Exception(f'Could not parse {term.original}')
             first_done = True
         return selection
-
-    def _gen_sql_select_clause(self):
-        out = self.select_map(self._term_to_sql_select)
-        if not out:
-            sql_select = f'select * from "{self.table_name}"'
-        else:
-            joined = ",".join(out)
-            sql_select = f"select json_object({joined}) from \"{self.table_name}\""
-        return sql_select
-
-    def _gen_sql_col(self, term):
-        if len(term.parsed[0].select_term.parsed) > 1:
-            test_select_term = term.parsed[0].select_term.parsed[-1]
-            if isinstance(test_select_term, ArraySpecific):
-                target = term.parsed[0].select_term.original
-            elif isinstance(test_select_term, ArraySpecificSingle):
-                _key = term.parsed[0].select_term.bare_term
-                _idx = term.parsed[0].select_term.parsed[-1].idx
-                _col = term.parsed[0].select_term.parsed[-1].sub_selections[0]
-                target = f'{_key}[{_idx}].{_col}'
-            else:
-                raise Exception(f'Unsupported term {term.original}')
-        else:
-            if not isinstance(term.parsed[0].select_term.parsed[0], Key):
-                raise Exception(f'Invalid term {term.original}')
-            target = term.parsed[0].select_term.parsed[0].element
-        col = f"json_extract(data, '$.{target}')"
-        return col
 
     def _term_to_sql_where(self, term):
         groups_start = ''.join(term.parsed[0].groups_start)
@@ -534,43 +578,13 @@ class SqliteQueryGenerator(SqlGenerator):
         out = f'{groups_start} {combinator} {col} {op} {val} {groups_end}'
         return out
 
-    def _gen_sql_where_clause(self):
-        out = self.where_map(self._term_to_sql_where)
-        if not out:
-            sql_where = ''
-        else:
-            joined = ' '.join(out)
-            sql_where = f'where {joined}'
-        return sql_where
-
     def _term_to_sql_order(self, term):
         selection = self._gen_sql_col(term)
         direction = term.parsed[0].direction
         return f'order by {selection} {direction}'
 
-    def _gen_sql_order_clause(self):
-        out = self.order_map(self._term_to_sql_order)
-        if not out:
-            return ''
-        else:
-            return out[0]
-
     def _term_to_sql_range(self, term):
         return f'limit {term.parsed[0].end} offset {term.parsed[0].start}'
-
-    def _gen_sql_range_clause(self):
-        out = self.range_map(self._term_to_sql_range)
-        if not out:
-            return ''
-        else:
-            return out[0]
-
-    def gen_sql_select(self):
-        _select = self._gen_sql_select_clause()
-        _where = self._gen_sql_where_clause()
-        _order = self._gen_sql_order_clause()
-        _range = self._gen_sql_range_clause()
-        return f'{_select} {_where} {_order} {_range}'
 
     def _term_to_sql_update(self, term):
         if not self.data:
@@ -580,19 +594,6 @@ class SqliteQueryGenerator(SqlGenerator):
         assert len(self.data.keys()) == 1, f'Cannot update more than one key per statement'
         new = json.dumps(self.data)
         return f"set data = json_patch(data, '{new}')"
-
-    def gen_sql_update(self):
-        out = self.set_map(self._term_to_sql_update)
-        if not out:
-            return ''
-        else:
-            _set = out[0]
-            _where = self._gen_sql_where_clause()
-            return f'update "{self.table_name}" {_set} {_where}'
-
-    def gen_sql_delete(self):
-        _where = self._gen_sql_where_clause()
-        return f'delete from "{self.table_name}" {_where}'
 
 
 class PostgresQueryGenerator(SqlGenerator):
