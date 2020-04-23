@@ -461,6 +461,20 @@ class SqliteQueryGenerator(SqlGenerator):
 
     # Helper functions - used by mappers
 
+    def _gen_sql_key_selection(self, term, parsed):
+        selection = f"\"{parsed.element}\", json_extract(data, '$.{term.original}')"
+        return selection
+
+    def _gen_sql_array_selection(self, term, parsed):
+        selection = f"""
+            \"{parsed.bare_key}\",
+            case when json_extract(data, '$.{term.original}') is not null then
+                json_array(json_extract(data, '$.{term.original}'))
+            else null end
+            """
+        return selection
+
+
     def _gen_sql_array_sub_selection(self, term, parsed, specific=None):
         if specific:
             fullkey = f"and fullkey = '$.{parsed.bare_key}[{parsed.idx}]'"
@@ -519,16 +533,12 @@ class SqliteQueryGenerator(SqlGenerator):
         for parsed in rev:
             if isinstance(parsed, Key):
                 if not first_done:
-                    selection = f"\"{parsed.element}\", json_extract(data, '$.{term.original}')"
+                    selection = self._gen_sql_key_selection(term, parsed)
                 else:
+                    # last call, wrapping up the selections
                     selection = f"\"{parsed.element}\", json_object({selection})"
             elif isinstance(parsed, ArraySpecific):
-                selection = f"""
-                    \"{parsed.bare_key}\",
-                    case when json_extract(data, '$.{term.original}') is not null then
-                        json_array(json_extract(data, '$.{term.original}'))
-                    else null end
-                    """
+                selection = self._gen_sql_array_selection(term, parsed)
             elif isinstance(parsed, ArraySpecificSingle):
                 selection = self._gen_sql_array_sub_selection(term, parsed, specific=True)
             elif isinstance(parsed, ArraySpecificMultiple):
