@@ -1665,8 +1665,31 @@ class TestFileApi(unittest.TestCase):
         out = test_select_query('select=x&order=x.desc&range=1.2')
         self.assertEqual(out, [{'x': 107}, {'x': 88}])
         # UPDATE
+        def test_update_query(uri_query, table='test_table', engine=engine, verbose=verbose, data=data):
+            q = SqliteQueryGenerator(table, uri_query, data=data)
+            if verbose:
+                print(q.update_query)
+            with sqlite_session(engine) as session:
+                session.execute(q.update_query)
+            with sqlite_session(engine) as session:
+                resp = session.execute(f'select * from {table}').fetchall()
+            return True
+        out = test_update_query('set=x&where=x=lt.1000', data={'x': 999})
+        self.assertTrue(out is True)
+        out = test_select_query('select=x&where=x=eq.999')
+        self.assertTrue(len(out) == 3)
         # DELETE
-        #db.table_delete('test_table', '')
+        def test_delete_query(uri_query, table='test_table', engine=engine, verbose=verbose):
+            q = SqliteQueryGenerator(table, uri_query)
+            if verbose:
+                print(q.delete_query)
+            with sqlite_session(engine) as session:
+                session.execute(q.delete_query)
+            return True
+        out = test_delete_query('where=x=lt.1000')
+        self.assertTrue(out is True)
+        out = test_select_query('select=x&where=x=lt.1000')
+        self.assertEqual(out, [])
         # TODO: ensure date support, with a test
 
 
