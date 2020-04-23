@@ -588,11 +588,11 @@ class SqliteQueryGenerator(SqlGenerator):
         else:
             _set = out[0]
             _where = self._gen_sql_where_clause()
-            return f'update {self.table_name} {_set} {_where}'
+            return f'update "{self.table_name}" {_set} {_where}'
 
     def gen_sql_delete(self):
         _where = self._gen_sql_where_clause()
-        return f'delete from {self.table_name} {_where}'
+        return f'delete from "{self.table_name}" {_where}'
 
 
 class PostgresQueryGenerator(SqlGenerator):
