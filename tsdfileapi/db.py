@@ -17,8 +17,8 @@ from sqlalchemy import create_engine
 from sqlalchemy.exc import OperationalError, IntegrityError, StatementError
 
 # pylint: disable=relative-import
+from squril import SqliteQueryGenerator
 from utils import check_filename, IllegalFilenameException
-from parser import SqlStatement
 
 
 def sqlite_init(path, name='api-data.db', builtin=False):
@@ -174,25 +174,19 @@ class SqliteBackend(DatabaseBackend):
             raise e
 
     def table_update(self, table_name, uri, data):
-        sql = SqlStatement(table_name, uri, data=data)
-        if self.verbose:
-            print(sql.update_query)
+        sql = SqliteQueryGenerator(table_name, uri, data=data)
         with sqlite_session(self.engine) as session:
             session.execute(sql.update_query)
         return True
 
     def table_delete(self, table_name, uri):
-        sql = SqlStatement(table_name, uri)
-        if self.verbose:
-            print(sql.delete_query)
+        sql = SqliteQueryGenerator(table_name, uri)
         with sqlite_session(self.engine) as session:
             session.execute(sql.delete_query)
         return True
 
     def table_select(self, table_name, uri):
-        sql = SqlStatement(table_name, uri)
-        if self.verbose:
-            print(sql.select_query)
+        sql = SqliteQueryGenerator(table_name, uri)
         with sqlite_session(self.engine) as session:
             for row in session.execute(sql.select_query):
                 yield row[0]

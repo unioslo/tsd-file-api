@@ -1693,7 +1693,6 @@ class TestFileApi(unittest.TestCase):
         # TODO: ensure date support, with a test
 
 
-
 def main():
     tests = []
     base = [
