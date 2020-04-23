@@ -346,6 +346,11 @@ class UriQuery(object):
 
 class SqlGenerator(object):
 
+    """
+    Generic class, used to implement SQL code generation.
+
+    """
+
     json_object_sql = None
 
     def __init__(self, table_name, uri_query, data=None):
@@ -379,18 +384,97 @@ class SqlGenerator(object):
     # What is appropriate, depends on the backend.
 
     def _gen_sql_key_selection(self, term, parsed):
+        """
+        Generate SQL for selecting a Key element.
+
+        Called by _term_to_sql_select when generating the select
+        part of the SQL.
+
+        Parameters
+        ----------
+        term: squril.SelectTerm
+        parsed: squril.Key
+
+        Returns
+        -------
+        str
+
+        """
         raise NotImplementedError
 
     def _gen_sql_array_selection(self, term, parsed):
+        """
+        Generate SQL for selecting an ArraySpecific element.
+
+        Called by _term_to_sql_select when generating the select
+        part of the SQL.
+
+        Parameters
+        ----------
+        term: squril.SelectTerm
+        parsed: squril.ArraySpecific
+
+        Returns
+        -------
+        str
+
+        """
         raise NotImplementedError
 
     def _gen_sql_array_sub_selection(self, term, parsed, specific=None):
+        """
+        Generate SQL for selecting inside arrays.
+
+        Called by _term_to_sql_select when generating the select
+        part of the SQL.
+
+        Parameters
+        ----------
+        term: squril.SelectTerm
+        parsed:
+            squril.ArraySpecificSingle,
+            squril.ArraySpecificMultiple,
+            squril.ArrayBroadcastSingle,
+            squril.ArraySpecificMultiple
+
+        Returns
+        -------
+        str
+
+        """
+
         raise NotImplementedError
 
     def _gen_sql_col(self, term):
+        """
+        Generate a column reference from a term,
+        used in where and order clauses.
+
+        Parameters
+        ----------
+        term: squril.SelectTerm
+
+        Returns
+        -------
+        str
+
+        """
         raise NotImplementedError
 
     def _gen_sql_update(self, term):
+        """
+        Generate an update expression, from a term
+        using the data passed to the constructor.
+
+        Paremters
+        ---------
+        term: squril.Key
+
+        Returns
+        -------
+        bool
+
+        """
         raise NotImplementedError
 
     def _clause_map_terms(self, clause, map_func):
