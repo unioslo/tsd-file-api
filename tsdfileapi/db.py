@@ -173,7 +173,6 @@ class SqliteBackend(DatabaseBackend):
                 with sqlite_session(self.engine) as session:
                     session.executemany(insert_stmt, target)
                 return True
-                pass
             except (sqlite3.ProgrammingError, sqlite3.OperationalError) as e:
                 with sqlite_session(self.engine) as session:
                     session.execute(f'create table if not exists "{table_name}" {self.table_definition}')
@@ -248,11 +247,42 @@ class PostgresBackend(object):
             return out
 
     def table_insert(self, table_name, data):
-        # try insert
-        # if fail, create schema, create table (if not exists)
-        # try again
-        # caller needs to pass in the schema as part of the table name
-        pass
+        try:
+            schema, table_name = table_name.split('.')
+        except ValueError as e:
+            schema = 'public'
+        try:
+            dtype = type(data)
+            insert_stmt = f'insert into "{schema}"."{table_name}" (data) values (%s)'
+            target = []
+            if dtype is list:
+                for element in data:
+                    target.append((json.dumps(element),))
+            elif dtype is dict:
+                target.append((json.dumps(data),))
+            try:
+                with postgres_session(self.pool) as session:
+                    session.executemany(insert_stmt, target)
+                return True
+            except (psycopg2.ProgrammingError, psycopg2.OperationalError) as e:
+                table_create = f'create table if not exists "{schema}"."{table_name}"{self.table_definition}'
+                with postgres_session(self.pool) as session:
+                    session.execute(f'create schema if not exists "{schema}"')
+                    session.execute(table_create)
+                    session.executemany(insert_stmt, target)
+                return True
+        except psycopg2.ProgrammingError as e:
+            logging.error('Syntax error?')
+            raise e
+        except psycopg2.IntegrityError as e:
+            logging.error('Duplicate row')
+            raise e
+        except psycopg2.OperationalError as e:
+            logging.error('Database issue')
+            raise e
+        except Exception as e:
+            logging.error('Not sure what went wrong')
+            raise e
 
     def table_update(self, table_name, uri, data):
         pass
