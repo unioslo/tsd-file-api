@@ -75,7 +75,6 @@ from utils import call_request_hook, sns_dir, \
 from db import sqlite_init, SqliteBackend
 from resumables import SerialResumable
 from pgp import _import_keys
-from parser import SqlStatement
 
 
 _RW______ = stat.S_IREAD | stat.S_IWRITE
@@ -1815,7 +1814,6 @@ class GenericTableHandler(AuthRequestHandler):
                     if self.request.uri.split('?')[0].endswith('metadata'):
                         table_name = self.metadata_table_name(table_name)
                     self.set_status(200)
-                    sql = SqlStatement(table_name, self.request.uri)
                     self.set_header('Content-Type', 'application/json')
                     self.write('{"data": [')
                     self.flush()
