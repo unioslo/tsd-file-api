@@ -1,6 +1,7 @@
 
 """SQURIL - Structured Query URI Language."""
 
+import json
 import re
 
 from abc import ABC, abstractmethod
@@ -322,9 +323,10 @@ class UriQuery(object):
 
     """
 
-    def __init__(self, table_name, uri_query):
-        self.table_name = table_name # need the table name here? not sure...
+    def __init__(self, table_name, uri_query, data=None):
+        self.table_name = table_name
         self.original = uri_query
+        self.data = data
         self.select = self.parse_clause(prefix='select=', Cls=SelectClause)
         self.where = self.parse_clause(prefix='where=', Cls=WhereClause)
         self.order = self.parse_clause(prefix='order=', Cls=OrderClause)
@@ -344,9 +346,10 @@ class UriQuery(object):
 
 class SqlGenerator(object):
 
-    def __init__(self, table_name, uri_query):
+    def __init__(self, table_name, uri_query, data=None):
         self.table_name = table_name
         self.uri_query = uri_query
+        self.data = data
         self.parsed_uri_query = UriQuery(table_name, uri_query)
         self.operators = {
             'eq': '=',
@@ -569,11 +572,27 @@ class SqliteQueryGenerator(SqlGenerator):
         _range = self._gen_sql_range_clause()
         return f'{_select} {_where} {_order} {_range}'
 
-    def gen_sql_delete(self):
-        return 'hi'
+    def _term_to_sql_update(self, term):
+        if not self.data:
+            return None
+        key = term.parsed[0].select_term.bare_term
+        assert self.data.get(key) is not None, f'Target key of update: {key} not found in payload'
+        assert len(self.data.keys()) == 1, f'Cannot update more than one key per statement'
+        new = json.dumps(self.data)
+        return f"set data = json_patch(data, '{new}')"
 
     def gen_sql_update(self):
-        return 'hi'
+        out = self.set_map(self._term_to_sql_update)
+        if not out:
+            return ''
+        else:
+            _set = out[0]
+            _where = self._gen_sql_where_clause()
+            return f'update {self.table_name} {_set} {_where}'
+
+    def gen_sql_delete(self):
+        _where = self._gen_sql_where_clause()
+        return f'delete from {self.table_name} {_where}'
 
 
 class PostgresQueryGenerator(SqlGenerator):
