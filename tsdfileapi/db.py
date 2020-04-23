@@ -11,6 +11,8 @@ import sqlite3
 from abc import ABC, abstractmethod
 from contextlib import contextmanager
 
+import psycopg2
+
 from sqlalchemy.pool import QueuePool
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy import create_engine
@@ -60,6 +62,23 @@ def sqlite_session(engine):
         engine.commit()
 
 
+@contextmanager
+def postgres_session(pool):
+    engine = pool.getconn()
+    session = engine.cursor()
+    try:
+        yield session
+        session.close()
+    except Exception as e:
+        session.close()
+        engine.rollback()
+        raise e
+    finally:
+        session.close()
+        engine.commit()
+        pool.putconn(engine)
+
+
 class DatabaseBackend(ABC):
 
     def __init__(self, engine, verbose=False):
@@ -68,7 +87,7 @@ class DatabaseBackend(ABC):
         self.verbose = verbose
 
     @abstractmethod
-    def tables_list(self):
+    def tables_list(self, schema=None):
         pass
 
     @abstractmethod
@@ -126,7 +145,7 @@ class SqliteBackend(DatabaseBackend):
         self.verbose = verbose
         self.table_definition = '(data json unique not null)'
 
-    def tables_list(self):
+    def tables_list(self, schema=None):
         query = "select name FROM sqlite_master where type = 'table'"
         with sqlite_session(self.engine) as session:
             res = session.execute(query).fetchall()
@@ -194,13 +213,39 @@ class SqliteBackend(DatabaseBackend):
 
 class PostgresBackend(object):
 
-    def __init__(self, engine, verbose=False):
-        self.engine = engine
+    """
+    A PostgreSQL backend. PostgreSQL is a full-fledged
+    client-server relational DB, implementing MVCC for
+    concurrency control. This backend is therfore
+    suitable for applications that have many simultaneous
+    read and write operations, with full ACID compliance
+    and no reader-writer blocking.
+
+    For more info on MVCC, see:
+    https://www.postgresql.org/docs/12/mvcc-intro.html
+
+    """
+
+    def __init__(self, pool, verbose=False):
+        self.pool = pool
         self.verbose = verbose
         self.table_definition = '(data jsonb unique not null)'
 
-    def tables_list(self):
-        pass
+    def tables_list(self, schema=None):
+        query = f"""select table_name from information_schema.tables
+            where table_schema = '{schema}'"""
+        with postgres_session(self.pool) as session:
+            session.execute(query)
+            res = session.fetchall()
+        if not res:
+            return []
+        else:
+            out = []
+            for row in res:
+                name = row[0]
+                if not name.endswith('_metadata'):
+                    out.append(row[0])
+            return out
 
     def table_insert(self, table_name, data):
         # try insert
