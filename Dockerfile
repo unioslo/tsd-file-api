@@ -18,6 +18,6 @@ RUN gem install --no-ri --no-rdoc fpm
 WORKDIR /file-api
 COPY requirements.txt ./
 RUN mkdir -p dist
-RUN fpm --verbose -s virtualenv -p /file-api/dist -t rpm --name tsd-file-api-venv --version 2.2 --prefix /opt/tsd-file-api-venv/virtualenv requirements.txt
+RUN fpm --verbose -s virtualenv -p /file-api/dist -t rpm --name tsd-file-api-venv --version 2.3 --prefix /opt/tsd-file-api-venv/virtualenv requirements.txt
 COPY . ./
 RUN python3 setup.py bdist --format=rpm
