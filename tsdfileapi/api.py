@@ -59,6 +59,7 @@ import yaml
 import magic
 import tornado.queues
 from pandas import DataFrame
+from termcolor import colored
 from tornado.escape import json_decode, url_unescape, url_escape
 from tornado import gen
 from tornado.httpclient import AsyncHTTPClient
@@ -1889,52 +1890,97 @@ class HealthCheckHandler(RequestHandler):
         self.write({'message': 'healthy'})
 
 
+class Backends(object):
+
+    default_routes = {
+        'health': [
+            ('/v1/(.*)/files/health', HealthCheckHandler),
+        ],
+    }
+
+    optional_routes = {
+        'cluster': [
+            ('/v1/(.*)/cluster/upload_stream', StreamHandler, dict(backend='cluster')),
+            ('/v1/(.*)/cluster/upload_stream/(.*)', StreamHandler, dict(backend='cluster')),
+            ('/v1/(.*)/cluster/stream', ProxyHandler, dict(backend='cluster', namespace='cluster', endpoint='stream')),
+            ('/v1/(.*)/cluster/stream/(.*)', ProxyHandler, dict(backend='cluster', namespace='cluster', endpoint='stream')),
+            ('/v1/(.*)/cluster/resumables', ResumablesHandler, dict(backend='cluster')),
+            ('/v1/(.*)/cluster/resumables/(.*)', ResumablesHandler, dict(backend='cluster')),
+            ('/v1/(.*)/cluster/export', ProxyHandler, dict(backend='cluster', namespace='cluster', endpoint='export')),
+            ('/v1/(.*)/cluster/export/(.*)', ProxyHandler, dict(backend='cluster', namespace='cluster', endpoint='export')),
+        ],
+        'files_import': [
+            ('/v1/(.*)/files/upload_stream', StreamHandler, dict(backend='files_import')),
+            ('/v1/(.*)/files/upload_stream/(.*)', StreamHandler, dict(backend='files_import')),
+            ('/v1/(.*)/files/stream', ProxyHandler, dict(backend='files_import', namespace='files', endpoint='stream')),
+            ('/v1/(.*)/files/stream/(.*)', ProxyHandler, dict(backend='files_import', namespace='files', endpoint='stream')),
+            ('/v1/(.*)/files/resumables', ResumablesHandler, dict(backend='files_import')),
+            ('/v1/(.*)/files/resumables/(.*)', ResumablesHandler, dict(backend='files_import')),
+        ],
+        'files_export': [
+            ('/v1/(.*)/files/export', ProxyHandler, dict(backend='files_export', namespace='files', endpoint='export')),
+            ('/v1/(.*)/files/export/(.*)', ProxyHandler, dict(backend='files_export', namespace='files', endpoint='export')),
+        ],
+        'generic': [
+            ('/v1/(.*)/tables/generic/(.*)', GenericTableHandler, dict(backend='generic')),
+            ('/v1/(.*)/tables/generic', GenericTableHandler, dict(backend='generic')),
+        ],
+        'survey': [
+            ('/v1/(.*)/survey/([a-zA-Z_0-9]+/attachments.*)', ProxyHandler, dict(backend='survey', namespace='survey', endpoint=None)),
+            ('/v1/(.*)/survey/resumables', ResumablesHandler, dict(backend='survey')),
+            ('/v1/(.*)/survey/upload_stream/(.*)', StreamHandler, dict(backend='survey')),
+            ('/v1/(.*)/survey/([a-zA-Z_0-9]+)/metadata', GenericTableHandler, dict(backend='survey')),
+            ('/v1/(.*)/survey/([a-zA-Z_0-9]+)/submissions', GenericTableHandler, dict(backend='survey')),
+            ('/v1/(.*)/survey/([a-zA-Z_0-9]+)$', GenericTableHandler, dict(backend='survey')),
+            ('/v1/(.*)/survey', GenericTableHandler, dict(backend='survey')),
+        ],
+        'form_data': [
+            ('/v1/(.*)/files/upload', FormDataHandler, dict(backend='form_data')),
+            ('/v1/(.*)/sns/(.*)/(.*)', SnsFormDataHandler, dict(backend='sns')),
+        ],
+        'store': [
+            ('/v1/(.*)/store/upload_stream', StreamHandler, dict(backend='store')),
+            ('/v1/(.*)/store/upload_stream/(.*)', StreamHandler, dict(backend='store')),
+            ('/v1/(.*)/store/import', ProxyHandler, dict(backend='store', namespace='store', endpoint='import')),
+            ('/v1/(.*)/store/import/(.*)', ProxyHandler, dict(backend='store', namespace='store', endpoint='import')),
+            ('/v1/(.*)/store/resumables', ResumablesHandler, dict(backend='store')),
+            ('/v1/(.*)/store/resumables/(.*)', ResumablesHandler, dict(backend='store')),
+            ('/v1/(.*)/store/export', ProxyHandler, dict(backend='store', namespace='store', endpoint='export')),
+            ('/v1/(.*)/store/export/(.*)', ProxyHandler, dict(backend='store', namespace='store', endpoint='export')),
+        ],
+    }
+
+    def __init__(self, config):
+
+        self.config = config
+        self.routes = []
+
+        print(colored(f'tsd-file-api, listening on port {options.port}', 'magenta'))
+
+        print(colored('Loading default routes:', 'magenta'))
+        for name, route_set in self.default_routes.items():
+            for route in route_set:
+                print(colored(f'- {route[0]}', 'yellow'))
+                self.routes.append(route)
+
+        print(colored('Loading backend configuration:', 'magenta'))
+        for backend_set in self.config['backends']:
+            for backend in options.config['backends'][backend_set]:
+                if backend in self.optional_routes.keys():
+                    print(colored(f'Initialising: {backend}', 'cyan'))
+                    for route in self.optional_routes[backend]:
+                        print(colored(f'- {route[0]}', 'yellow'))
+                        self.routes.append(route)
+
+        # if no backends have been configured, then choose
+        # default configuration for the store, and the sqlite
+        # backend, using /tmp as the storage
+
+
 def main():
     parse_command_line()
-    app = Application([
-        ('/v1/(.*)/files/health', HealthCheckHandler),
-        # hpc storage
-        ('/v1/(.*)/cluster/upload_stream', StreamHandler, dict(backend='cluster')),
-        ('/v1/(.*)/cluster/upload_stream/(.*)', StreamHandler, dict(backend='cluster')),
-        ('/v1/(.*)/cluster/stream', ProxyHandler, dict(backend='cluster', namespace='cluster', endpoint='stream')),
-        ('/v1/(.*)/cluster/stream/(.*)', ProxyHandler, dict(backend='cluster', namespace='cluster', endpoint='stream')),
-        ('/v1/(.*)/cluster/resumables', ResumablesHandler, dict(backend='cluster')),
-        ('/v1/(.*)/cluster/resumables/(.*)', ResumablesHandler, dict(backend='cluster')),
-        ('/v1/(.*)/cluster/export', ProxyHandler, dict(backend='cluster', namespace='cluster', endpoint='export')),
-        ('/v1/(.*)/cluster/export/(.*)', ProxyHandler, dict(backend='cluster', namespace='cluster', endpoint='export')),
-        # project storage
-        ('/v1/(.*)/files/upload_stream', StreamHandler, dict(backend='files_import')),
-        ('/v1/(.*)/files/upload_stream/(.*)', StreamHandler, dict(backend='files_import')),
-        ('/v1/(.*)/files/stream', ProxyHandler, dict(backend='files_import', namespace='files', endpoint='stream')),
-        ('/v1/(.*)/files/stream/(.*)', ProxyHandler, dict(backend='files_import', namespace='files', endpoint='stream')),
-        ('/v1/(.*)/files/resumables', ResumablesHandler, dict(backend='files_import')),
-        ('/v1/(.*)/files/resumables/(.*)', ResumablesHandler, dict(backend='files_import')),
-        ('/v1/(.*)/files/export', ProxyHandler, dict(backend='files_export', namespace='files', endpoint='export')),
-        ('/v1/(.*)/files/export/(.*)', ProxyHandler, dict(backend='files_export', namespace='files', endpoint='export')),
-        # generic sqlite backend
-        ('/v1/(.*)/tables/generic/(.*)', GenericTableHandler, dict(backend='generic')),
-        ('/v1/(.*)/tables/generic', GenericTableHandler, dict(backend='generic')),
-        # surveys
-        ('/v1/(.*)/survey/([a-zA-Z_0-9]+/attachments.*)', ProxyHandler, dict(backend='survey', namespace='survey', endpoint=None)),
-        ('/v1/(.*)/survey/resumables', ResumablesHandler, dict(backend='survey')),
-        ('/v1/(.*)/survey/upload_stream/(.*)', StreamHandler, dict(backend='survey')),
-        ('/v1/(.*)/survey/([a-zA-Z_0-9]+)/metadata', GenericTableHandler, dict(backend='survey')),
-        ('/v1/(.*)/survey/([a-zA-Z_0-9]+)/submissions', GenericTableHandler, dict(backend='survey')),
-        ('/v1/(.*)/survey/([a-zA-Z_0-9]+)$', GenericTableHandler, dict(backend='survey')),
-        ('/v1/(.*)/survey', GenericTableHandler, dict(backend='survey')),
-        # form data
-        ('/v1/(.*)/files/upload', FormDataHandler, dict(backend='form_data')),
-        ('/v1/(.*)/sns/(.*)/(.*)', SnsFormDataHandler, dict(backend='sns')),
-        # store system
-        ('/v1/(.*)/store/upload_stream', StreamHandler, dict(backend='store')),
-        ('/v1/(.*)/store/upload_stream/(.*)', StreamHandler, dict(backend='store')),
-        ('/v1/(.*)/store/import', ProxyHandler, dict(backend='store', namespace='store', endpoint='import')),
-        ('/v1/(.*)/store/import/(.*)', ProxyHandler, dict(backend='store', namespace='store', endpoint='import')),
-        ('/v1/(.*)/store/resumables', ResumablesHandler, dict(backend='store')),
-        ('/v1/(.*)/store/resumables/(.*)', ResumablesHandler, dict(backend='store')),
-        ('/v1/(.*)/store/export', ProxyHandler, dict(backend='store', namespace='store', endpoint='export')),
-        ('/v1/(.*)/store/export/(.*)', ProxyHandler, dict(backend='store', namespace='store', endpoint='export')),
-    ], debug=options.debug)
+    backends = Backends(options.config)
+    app = Application(backends.routes, debug=options.debug)
     app.listen(options.port, max_body_size=options.max_body_size)
     IOLoop.instance().start()
 
