@@ -92,9 +92,12 @@ def read_config(filename):
 def set_config():
     try:
         _config = read_config(argv[1])
-    except Exception as e:
-        logging.error(e)
-        raise e
+    except IndexError as e:
+        print(colored('Missing config file, running with default setup', 'yellow'))
+        print(colored('WARNING: do _not_ do this in production', 'red'))
+        from defaults import _config
+        for k,v in _config.items():
+            print(colored(f'{k}:', 'yellow'), colored(f'{v}', 'magenta'))
     try:
         if argv[2].startswith('--port:'):
             port = argv[2].split(':')[1]
@@ -1955,7 +1958,7 @@ class Backends(object):
         self.config = config
         self.routes = []
 
-        print(colored(f'tsd-file-api, listening on port {options.port}', 'magenta'))
+        print(colored(f'tsd-file-api, listening on port {options.port}', 'yellow'))
 
         print(colored('Loading default routes:', 'magenta'))
         for name, route_set in self.default_routes.items():
