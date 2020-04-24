@@ -291,4 +291,9 @@ class PostgresBackend(object):
         pass
 
     def table_select(self, table_name, uri):
-        pass
+        # TODO
+        #q = ''
+        #with postgres_session(pool) as session:
+        #    session.execute(q)
+        #    for row in session:
+        #        yield row[0]
