@@ -96,8 +96,17 @@ def set_config():
         print(colored('Missing config file, running with default setup', 'yellow'))
         print(colored('WARNING: do _not_ do this in production', 'red'))
         from defaults import _config
+        from tokens import tkn
         for k,v in _config.items():
             print(colored(f'{k}:', 'yellow'), colored(f'{v}', 'magenta'))
+        print(colored('JWT token for dev purposes:', 'cyan'))
+        print(tkn(
+            _config['jwt_test_secret'],
+            exp=3600,
+            role='admin_user',
+            tenant='p11',
+            user='p11-test')
+        )
     try:
         if argv[2].startswith('--port:'):
             port = argv[2].split(':')[1]

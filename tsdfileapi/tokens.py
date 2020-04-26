@@ -26,9 +26,6 @@ def gen_test_jwt_secrets(config):
 
 
 def tkn(secret, exp=1, role=None, tenant=None, user=None):
-    """
-    This is the same token generation function as found in tsd-auth-api/auth.py
-    """
     allowed_roles = ['import_user', 'export_user', 'admin_user', 'wrong_user']
     if role in allowed_roles:
         expiry = datetime.now() + timedelta(hours=exp)
@@ -36,8 +33,14 @@ def tkn(secret, exp=1, role=None, tenant=None, user=None):
         if tenant:
             if not user:
                 user = tenant + '-' + role
-            claims = {'role': role, 'exp': exp, 'proj': tenant,
-                      'user': user, 'groups': [tenant + '-member-group']}
+            claims = {
+                # minimal set of claims
+                'role': role,
+                'exp': exp,
+                'proj': tenant,
+                'user': user,
+                'groups': [tenant + '-member-group']
+            }
         else:
             claims = {'role': role, 'exp': exp}
     else:
