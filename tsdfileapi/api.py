@@ -1780,7 +1780,6 @@ class GenericTableHandler(AuthRequestHandler):
 
     def initialize(self, backend, dbtype='sqlite'):
         self.backend = backend
-        self.db_name =  '.' + backend + '.db'
         tenant = tenant_from_url(self.request.uri)
         assert options.valid_tenant.match(tenant)
         self.import_dir = options.config['backends'][dbtype][backend]['db_path']
@@ -1788,6 +1787,11 @@ class GenericTableHandler(AuthRequestHandler):
         self.tenant_dir = self.import_dir.replace(options.tenant_string_pattern, tenant)
         self.check_tenant = options.config['backends'][dbtype][backend].get('check_tenant')
         if dbtype == 'sqlite':
+            if backend == 'apps_tables':
+                app_name = self.request.uri.split('/')[4]
+                self.db_name = f'.{backend}_{app_name}.db'
+            else:
+                self.db_name =  f'.{backend}.db'
             self.engine = sqlite_init(self.tenant_dir, name=self.db_name, builtin=True)
             self.db = SqliteBackend(self.engine)
 
@@ -1964,7 +1968,7 @@ class Backends(object):
         ],
         'apps_tables': [
             ('/v1/(.*)/apps/(.+)/tables/metadata', GenericTableHandler, dict(backend='apps_tables', dbtype='sqlite')),
-            ('/v1/(.*)/apps/(.+)/tables/(.+)$', GenericTableHandler, dict(backend='apps_tables', dbtype='sqlite')),
+            ('/v1/(.*)/apps/.+/tables/(.+)$', GenericTableHandler, dict(backend='apps_tables', dbtype='sqlite')),
         ]
     }
 
