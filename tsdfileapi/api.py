@@ -1960,7 +1960,7 @@ class Backends(object):
         'apps_files' : [
             ('/v1/(.*)/apps/(.+)/resumables', ResumablesHandler, dict(backend='apps_files')),
             ('/v1/(.*)/apps/upload_stream/(.*)',  StreamHandler, dict(backend='apps_files')),
-            ('/v1/(.*)/apps/(.+)/files/(.*)', ProxyHandler, dict(backend='apps_files', namespace='apps', endpoint=None)),
+            ('/v1/(.*)/apps/(.+/files/.*)', ProxyHandler, dict(backend='apps_files', namespace='apps', endpoint=None)),
         ],
         'apps_tables': [
             ('/v1/(.*)/apps/(.+)/tables/metadata', GenericTableHandler, dict(backend='apps_tables', dbtype='sqlite')),

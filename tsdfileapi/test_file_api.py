@@ -149,6 +149,7 @@ class TestFileApi(unittest.TestCase):
         cls.test_keyid = cls.config['test_keyid']
         cls.sns_uploads_folder = sns_dir(cls.test_sns_dir, cls.config['test_project'], cls.test_sns_url, cls.config['tenant_string_pattern'], test=True)
         cls.store_import_folder = cls.config['backends']['disk']['store']['import_path'].replace('pXX', cls.config['test_project'])
+        cls.apps_import_folder = cls.config['backends']['disk']['apps_files']['import_path'].replace('pXX', cls.config['test_project'])
 
         # endpoints
         cls.upload = cls.base_url + '/files/upload'
@@ -163,6 +164,7 @@ class TestFileApi(unittest.TestCase):
         cls.store_import = cls.base_url + '/store/import'
         cls.store_export = cls.base_url + '/store/export'
         cls.survey = cls.base_url + '/survey'
+        cls.apps = cls.base_url + '/apps'
         cls.test_project = cls.test_project
         cls.tenant_string_pattern = cls.config['tenant_string_pattern']
 
@@ -1693,6 +1695,23 @@ class TestFileApi(unittest.TestCase):
         # TODO: ensure date support, with a test
 
 
+    def test_app_backend(self):
+        # files
+        headers = {'Authorization': 'Bearer ' + TEST_TOKENS['VALID']}
+        file = url_escape('genetic-data.bam')
+        resp = requests.put(f'{self.apps}/ega/files/user1/{file}',
+                            data=lazy_file_reader(self.so_sweet),
+                            headers=headers)
+        self.assertEqual(resp.status_code, 201)
+        resp = requests.get(f'{self.apps}/ega/files/user1/{file}', headers=headers)
+        self.assertEqual(resp.status_code, 200)
+        self.start_new_resumable(
+            self.resume_file1, chunksize=5, endpoint=f'{self.apps}/ega/files/user1',
+            uploads_folder=f'{self.apps_import_folder}/ega/files/user1'
+        )
+        # tables - todo
+
+
 def main():
     tests = []
     base = [
@@ -1812,6 +1831,9 @@ def main():
     sql_sqlite = [
         'test_sqlite_backend',
     ]
+    apps = [
+        'test_app_backend',
+    ]
     if len(sys.argv) == 2:
         print('usage:')
         print('python3 tsdfileapi/test_file_api.py config.yaml ARGS')
@@ -1847,6 +1869,8 @@ def main():
         tests.extend(ns_load)
     if 'sql-sqlite' in sys.argv:
         tests.extend(sql_sqlite)
+    if 'apps' in sys.argv:
+        tests.extend(apps)
     if 'all' in sys.argv:
         tests.extend(base)
         tests.extend(names)
