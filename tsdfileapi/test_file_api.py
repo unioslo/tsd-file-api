@@ -650,7 +650,7 @@ class TestFileApi(unittest.TestCase):
         headers = {'Authorization': 'Bearer ' + TEST_TOKENS['WRONG_PROJECT']}
         resp = requests.put(self.base_url + '/tables/generic/form_63332',
                              data=json.dumps(data), headers=headers)
-        self.assertEqual(resp.status_code, 400)
+        self.assertEqual(resp.status_code, 401)
 
 
     # Handling custom content-types, on-the-fly
