@@ -1696,7 +1696,6 @@ class TestFileApi(unittest.TestCase):
 
 
     def test_app_backend(self):
-        # files
         headers = {'Authorization': 'Bearer ' + TEST_TOKENS['VALID']}
         file = url_escape('genetic-data.bam')
         resp = requests.put(f'{self.apps}/ega/files/user1/{file}',
@@ -1709,7 +1708,22 @@ class TestFileApi(unittest.TestCase):
             self.resume_file1, chunksize=5, endpoint=f'{self.apps}/ega/files/user1',
             uploads_folder=f'{self.apps_import_folder}/ega/files/user1'
         )
-        # tables - todo
+        data = [
+            {'key1': 7, 'key2': 'bla', 'id': random.randint(0, 1000000)},
+            {'key1': 99, 'key3': False, 'id': random.randint(0, 1000000)}
+        ]
+        headers['Content-Type'] = 'application/json'
+        resp = requests.put(
+            f'{self.apps}/ega/tables/user_data',
+            data=json.dumps(data),
+            headers=headers
+        )
+        self.assertEqual(resp.status_code, 201)
+        resp = requests.get(
+            f'{self.apps}/ega/tables/user_data',
+            headers=headers
+        )
+        self.assertEqual(resp.status_code, 200)
 
 
 def main():
