@@ -26,7 +26,30 @@ _config = {
                 'export_max_num_list': None,
                 'admin_path': '',
                 'import_path': '/tmp/pXX',
-                'export_path': '/tsd/pXX',
+                'export_path': '/tmp/pXX',
+                'allow_export': True,
+                'allow_list': True,
+                'allow_info': True,
+                'allow_delete': True,
+                'export_policy': {
+                    'default': {
+                        'enabled': False
+                    },
+                },
+                'group_logic': None,
+                'default_url_group': None,
+                'default_memberships': ['pXX-member-group'],
+                'enabled': False,
+                'request_hook': {
+                    'enabled': False,
+                },
+            },
+            'apps_files': {
+                'has_posix_ownership': False,
+                'export_max_num_list': None,
+                'admin_path': '',
+                'import_path': '/tmp/pXX/apps',
+                'export_path': '/tmp/pXX/apps',
                 'allow_export': True,
                 'allow_list': True,
                 'allow_info': True,
@@ -49,7 +72,11 @@ _config = {
             'generic': {
                 'db_path': '/tmp/pXX',
                 'table_structure': None,
-            }
+            },
+            'apps_tables': {
+                'db_path': '/tmp/pXX',
+                'table_structure': None,
+            },
         }
     }
 }
