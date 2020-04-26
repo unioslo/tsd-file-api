@@ -1956,6 +1956,13 @@ class Backends(object):
             ('/v1/(.*)/store/export', ProxyHandler, dict(backend='store', namespace='store', endpoint='export')),
             ('/v1/(.*)/store/export/(.*)', ProxyHandler, dict(backend='store', namespace='store', endpoint='export')),
         ],
+        'apps' : [
+            ('/v1/(.*)/apps/(.+)/resumables', ResumablesHandler, dict(backend='apps_files')),
+            ('/v1/(.*)/apps/upload_stream/(.*)',  StreamHandler, dict(backend='apps_files')),
+            ('/v1/(.*)/apps/(.+)/files/(.*)', ProxyHandler, dict(backend='apps_files', namespace='apps', endpoint=None)),
+            ('/v1/(.*)/apps/(.+)/tables/metadata', GenericTableHandler, dict(backend='apps_tables')),
+            ('/v1/(.*)/apps/(.+)/tables/(.+)$', GenericTableHandler, dict(backend='apps_tables')),
+        ]
     }
 
     def __init__(self, config):
@@ -1979,11 +1986,6 @@ class Backends(object):
                     for route in self.optional_routes[backend]:
                         print(colored(f'- {route[0]}', 'yellow'))
                         self.routes.append(route)
-
-        # if no backends have been configured, then choose
-        # default configuration for the store, and the sqlite
-        # backend, using /tmp as the storage
-
 
 def main():
     parse_command_line()
