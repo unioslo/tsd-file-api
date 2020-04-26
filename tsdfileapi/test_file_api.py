@@ -150,6 +150,7 @@ class TestFileApi(unittest.TestCase):
         cls.sns_uploads_folder = sns_dir(cls.test_sns_dir, cls.config['test_project'], cls.test_sns_url, cls.config['tenant_string_pattern'], test=True)
         cls.store_import_folder = cls.config['backends']['disk']['store']['import_path'].replace('pXX', cls.config['test_project'])
         cls.apps_import_folder = cls.config['backends']['disk']['apps_files']['import_path'].replace('pXX', cls.config['test_project'])
+        cls.verbose = cls.config.get('verbose')
 
         # endpoints
         cls.upload = cls.base_url + '/files/upload'
@@ -1504,90 +1505,66 @@ class TestFileApi(unittest.TestCase):
         self.assertTrue(res['status'])
 
 
-    def test_sqlite_backend(self):
-        from squril import SqliteQueryGenerator
-        from db import SqliteBackend, sqlite_session
-        engine = sqlite_init('/tmp', name='api-test.db', builtin=True)
-        data = [
-            {
-                'x': 1900,
-                'y': 1,
-                'z': 5,
-                'b':[1, 2, 5, 1],
-                'c': None,
-                'd': 'string1'
-            },
-            {
-                'y': 11,
-                'z': 1,
-                'c': [
-                    {
-                        'h': 3,
-                        'p': 99,
-                        'w': False
-                    },
-                    {
-                        'h': 32,
-                        'p': False,
-                        'w': True,
-                        'i': {
-                            't': [1,2,3]
-                        }
-                    },
-                    {
-                        'h': 0
-                    }
-                ],
-                'd': 'string2'
-            },
-            {
-                'a': {
-                    'k1': {
-                        'r1': [1, 2],
-                        'r2': 2
-                    },
-                    'k2': ['val', 9]
-                },
-                'z': 0,
-                'x': 88,
-                'd': 'string3'
-            },
-            {
-                'a': {
-                    'k1': {
-                        'r1': [33, 200],
-                        'r2': 90
-                    },
-                    'k2': ['val222', 90],
-                    'k3': [{'h': 0}]
-                },
-                'z': 10,
-                'x': 107
-            },
-            {
-                'x': 10
-            }
-        ]
-        verbose = True
-        db = SqliteBackend(engine)
-        try:
-            db.table_delete('test_table', '')
-        except Exception:
-            pass
-        db.table_insert('test_table', data)
-        def test_select_query(uri_query, table='test_table', engine=engine, verbose=verbose):
+    def test_db_backend(
+        self,
+        data,
+        engine,
+        session_func,
+        SqlGeneratorCls,
+        DbBackendCls,
+        verbose
+    ):
+        def test_select_query(
+            uri_query,
+            table='test_table',
+            engine=engine,
+            verbose=verbose
+        ):
             out = []
-            q = SqliteQueryGenerator(table, uri_query)
+            q = SqlGeneratorCls(table, uri_query)
             if verbose:
                 print(uri_query)
                 print(q.select_query)
-            with sqlite_session(engine) as session:
+            with session_func(engine) as session:
                 resp = session.execute(q.select_query).fetchall()
             for row in resp:
                 out.append(json.loads(row[0]))
             if verbose:
                 print(out)
             return out
+        def test_update_query(
+            uri_query,
+            table='test_table',
+            engine=engine,
+            verbose=verbose,
+            data=data
+        ):
+            q = SqlGeneratorCls(table, uri_query, data=data)
+            if verbose:
+                print(q.update_query)
+            with session_func(engine) as session:
+                session.execute(q.update_query)
+            with session_func(engine) as session:
+                resp = session.execute(f'select * from {table}').fetchall()
+            return True
+        def test_delete_query(
+            uri_query,
+            table='test_table',
+            engine=engine,
+            verbose=verbose
+        ):
+            q = SqlGeneratorCls(table, uri_query)
+            if verbose:
+                print(q.delete_query)
+            with session_func(engine) as session:
+                session.execute(q.delete_query)
+            return True
+        db = DbBackendCls(engine)
+        try:
+            db.table_delete('test_table', '')
+        except Exception:
+            pass
+        db.table_insert('test_table', data)
         # SELECT
         # simple key selection
         out = test_select_query('select=x')
@@ -1667,32 +1644,90 @@ class TestFileApi(unittest.TestCase):
         out = test_select_query('select=x&order=x.desc&range=1.2')
         self.assertEqual(out, [{'x': 107}, {'x': 88}])
         # UPDATE
-        def test_update_query(uri_query, table='test_table', engine=engine, verbose=verbose, data=data):
-            q = SqliteQueryGenerator(table, uri_query, data=data)
-            if verbose:
-                print(q.update_query)
-            with sqlite_session(engine) as session:
-                session.execute(q.update_query)
-            with sqlite_session(engine) as session:
-                resp = session.execute(f'select * from {table}').fetchall()
-            return True
+
         out = test_update_query('set=x&where=x=lt.1000', data={'x': 999})
         self.assertTrue(out is True)
         out = test_select_query('select=x&where=x=eq.999')
         self.assertTrue(len(out) == 3)
         # DELETE
-        def test_delete_query(uri_query, table='test_table', engine=engine, verbose=verbose):
-            q = SqliteQueryGenerator(table, uri_query)
-            if verbose:
-                print(q.delete_query)
-            with sqlite_session(engine) as session:
-                session.execute(q.delete_query)
-            return True
         out = test_delete_query('where=x=lt.1000')
         self.assertTrue(out is True)
         out = test_select_query('select=x&where=x=lt.1000')
         self.assertEqual(out, [])
         # TODO: ensure date support, with a test
+
+    def test_sqlite_backend(self):
+        data = [
+            {
+                'x': 1900,
+                'y': 1,
+                'z': 5,
+                'b':[1, 2, 5, 1],
+                'c': None,
+                'd': 'string1'
+            },
+            {
+                'y': 11,
+                'z': 1,
+                'c': [
+                    {
+                        'h': 3,
+                        'p': 99,
+                        'w': False
+                    },
+                    {
+                        'h': 32,
+                        'p': False,
+                        'w': True,
+                        'i': {
+                            't': [1,2,3]
+                        }
+                    },
+                    {
+                        'h': 0
+                    }
+                ],
+                'd': 'string2'
+            },
+            {
+                'a': {
+                    'k1': {
+                        'r1': [1, 2],
+                        'r2': 2
+                    },
+                    'k2': ['val', 9]
+                },
+                'z': 0,
+                'x': 88,
+                'd': 'string3'
+            },
+            {
+                'a': {
+                    'k1': {
+                        'r1': [33, 200],
+                        'r2': 90
+                    },
+                    'k2': ['val222', 90],
+                    'k3': [{'h': 0}]
+                },
+                'z': 10,
+                'x': 107
+            },
+            {
+                'x': 10
+            }
+        ]
+        from squril import SqliteQueryGenerator
+        from db import SqliteBackend, sqlite_session
+        engine = sqlite_init('/tmp', name='api-test.db', builtin=True)
+        self.test_db_backend(
+            data,
+            engine,
+            sqlite_session,
+            SqliteQueryGenerator,
+            SqliteBackend,
+            self.verbose
+        )
 
 
     def test_app_backend(self):
@@ -1842,7 +1877,7 @@ def main():
     ns_load = [
         'test_XXX_load'
     ]
-    sql_sqlite = [
+    db = [
         'test_sqlite_backend',
     ]
     apps = [
@@ -1881,8 +1916,8 @@ def main():
         tests.extend(ns)
     if 'ns-load' in sys.argv:
         tests.extend(ns_load)
-    if 'sql-sqlite' in sys.argv:
-        tests.extend(sql_sqlite)
+    if 'db' in sys.argv:
+        tests.extend(db)
     if 'apps' in sys.argv:
         tests.extend(apps)
     if 'all' in sys.argv:
@@ -1898,6 +1933,8 @@ def main():
         tests.extend(delete)
         tests.extend(sig)
         tests.extend(ns)
+        tests.extend(apps)
+        tests.extend(db)
     tests.sort()
     suite = unittest.TestSuite()
     for test in tests:
