@@ -36,10 +36,11 @@ _config = {
                         'enabled': False
                     },
                 },
-                'group_logic': None,
-                'default_url_group': None,
-                'default_memberships': ['pXX-member-group'],
-                'enabled': False,
+                'group_logic': {
+                    'default_url_group': None,
+                    'default_memberships': ['pXX-member-group'],
+                    'enabled': False,
+                },
                 'request_hook': {
                     'enabled': False,
                 },
@@ -59,10 +60,11 @@ _config = {
                         'enabled': False
                     },
                 },
-                'group_logic': None,
-                'default_url_group': None,
-                'default_memberships': ['pXX-member-group'],
-                'enabled': False,
+                'group_logic': {
+                    'default_url_group': None,
+                    'default_memberships': ['pXX-member-group'],
+                    'enabled': False,
+                },
                 'request_hook': {
                     'enabled': False,
                 },
