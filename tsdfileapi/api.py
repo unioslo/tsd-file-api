@@ -1778,17 +1778,18 @@ class GenericTableHandler(AuthRequestHandler):
         return f'{table_name}_metadata'
 
 
-    def initialize(self, backend):
+    def initialize(self, backend, dbtype='sqlite'):
         self.backend = backend
         self.db_name =  '.' + backend + '.db'
         tenant = tenant_from_url(self.request.uri)
         assert options.valid_tenant.match(tenant)
-        self.import_dir = options.config['backends']['sqlite'][backend]['db_path']
-        self.table_structure = options.config['backends']['sqlite'][backend]['table_structure']
+        self.import_dir = options.config['backends'][dbtype][backend]['db_path']
+        self.table_structure = options.config['backends'][dbtype][backend]['table_structure']
         self.tenant_dir = self.import_dir.replace(options.tenant_string_pattern, tenant)
-        self.check_tenant = options.config['backends']['sqlite'][backend].get('check_tenant')
-        self.engine = sqlite_init(self.tenant_dir, name=self.db_name, builtin=True)
-        self.db = SqliteBackend(self.engine)
+        self.check_tenant = options.config['backends'][dbtype][backend].get('check_tenant')
+        if dbtype == 'sqlite':
+            self.engine = sqlite_init(self.tenant_dir, name=self.db_name, builtin=True)
+            self.db = SqliteBackend(self.engine)
 
 
     def prepare(self):
@@ -1930,8 +1931,8 @@ class Backends(object):
             ('/v1/(.*)/files/export/(.*)', ProxyHandler, dict(backend='files_export', namespace='files', endpoint='export')),
         ],
         'generic': [
-            ('/v1/(.*)/tables/generic/(.*)', GenericTableHandler, dict(backend='generic')),
-            ('/v1/(.*)/tables/generic', GenericTableHandler, dict(backend='generic')),
+            ('/v1/(.*)/tables/generic/(.*)', GenericTableHandler, dict(backend='generic', dbtype='sqlite')),
+            ('/v1/(.*)/tables/generic', GenericTableHandler, dict(backend='generic', dbtype='sqlite')),
         ],
         'survey': [
             ('/v1/(.*)/survey/([a-zA-Z_0-9]+/attachments.*)', ProxyHandler, dict(backend='survey', namespace='survey', endpoint=None)),
@@ -1939,8 +1940,8 @@ class Backends(object):
             ('/v1/(.*)/survey/upload_stream/(.*)', StreamHandler, dict(backend='survey')),
             ('/v1/(.*)/survey/([a-zA-Z_0-9]+)/metadata', GenericTableHandler, dict(backend='survey')),
             ('/v1/(.*)/survey/([a-zA-Z_0-9]+)/submissions', GenericTableHandler, dict(backend='survey')),
-            ('/v1/(.*)/survey/([a-zA-Z_0-9]+)$', GenericTableHandler, dict(backend='survey')),
-            ('/v1/(.*)/survey', GenericTableHandler, dict(backend='survey')),
+            ('/v1/(.*)/survey/([a-zA-Z_0-9]+)$', GenericTableHandler, dict(backend='survey', dbtype='sqlite')), # todo , dbtype='postgres'
+            ('/v1/(.*)/survey', GenericTableHandler, dict(backend='survey', dbtype='sqlite')), # todo , dbtype='postgres'
         ],
         'form_data': [
             ('/v1/(.*)/files/upload', FormDataHandler, dict(backend='form_data')),
@@ -1960,8 +1961,8 @@ class Backends(object):
             ('/v1/(.*)/apps/(.+)/resumables', ResumablesHandler, dict(backend='apps_files')),
             ('/v1/(.*)/apps/upload_stream/(.*)',  StreamHandler, dict(backend='apps_files')),
             ('/v1/(.*)/apps/(.+)/files/(.*)', ProxyHandler, dict(backend='apps_files', namespace='apps', endpoint=None)),
-            ('/v1/(.*)/apps/(.+)/tables/metadata', GenericTableHandler, dict(backend='apps_tables')),
-            ('/v1/(.*)/apps/(.+)/tables/(.+)$', GenericTableHandler, dict(backend='apps_tables')),
+            ('/v1/(.*)/apps/(.+)/tables/metadata', GenericTableHandler, dict(backend='apps_tables', dbtype='sqlite')),
+            ('/v1/(.*)/apps/(.+)/tables/(.+)$', GenericTableHandler, dict(backend='apps_tables', dbtype='sqlite')),
         ]
     }
 
