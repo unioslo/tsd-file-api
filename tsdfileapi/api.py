@@ -4,36 +4,8 @@
 tsd-file-api
 ------------
 
-A multi-tenent API for uploading and downloading files
-and JSON data, designed for the University of Oslo's Services for Sensitive Data (TSD).
-
-Endpoints
----------
-
-The following classes of endpoints are available, and they differ from
-one another due the use cases they need to support. The use cases are as follows:
-
-/cluster        - store files on the HPC cluster's disk, with POSIX permissions
-/files          - store files on network disk, with POSIX permissions
-/tables         - store data in sqlite tables, no permissions
-/files/upload   - store files (uploaded as form-encoded) on network disk
-                  (currently no end-user POSIX permissions)
-/sns            - store files (uploaded as form-encoded) on network disk
-                  (also no end-user POSIX permissions, and specificaly
-                   designed for the UiO Nettskjema service integration)
-/store          - store files on disk, no end-user POSIX permissions,
-                  but intended for API-only usage (upload and download)
-                  so can support access control via integration with another
-                  system
-
-All this implies the following for using the API, in terms of it's integration
-with and authentication and authorization framework: for authenticated requests,
-you MUST use JWT, most probably with an OAUTH2.0 Authorization Server, and the JWTs
-MUST be used as Bearer tokens.
-
-Note: /files, and /store use the same RequestHandler(s), the only difference
-if that the /files backend, calls a request hook after data processing is finished.
-This request hook, sets the end-user POSIX permissions.
+A multi-tenent API for uploading and downloading files and JSON data,
+designed for the University of Oslo's Services for Sensitive Data (TSD).
 
 """
 
@@ -356,6 +328,7 @@ class GenericFormDataHandler(AuthRequestHandler):
             if backend == 'sns': # hope to deprecate this with new nettskjema integration
                 self.tsd_hidden_folder_pattern = options.config['backends']['disk'][backend]['subfolder_path']
             self.request_hook = options.config['backends']['disk'][backend]['request_hook']
+            self.check_tenant = options.config['backends']['disk'][backend].get('check_tenant')
             try:
                 disabled_group_config = {
                     'enabled': False,
@@ -377,7 +350,9 @@ class GenericFormDataHandler(AuthRequestHandler):
         try:
             self.new_paths = []
             self.group_name = None
-            self.authnz = self.process_token_and_extract_claims()
+            self.authnz = self.process_token_and_extract_claims(
+                check_tenant=self.check_tenant if self.check_tenant else options.check_tenant
+            )
             if not self.authnz:
                 self.set_status(401)
                 raise Exception
@@ -574,13 +549,16 @@ class ResumablesHandler(AuthRequestHandler):
             if backend == 'cluster' and tenant != 'p01':
                 assert create_cluster_dir_if_not_exists(self.import_dir, tenant, options.tenant_string_pattern)
             self.tenant_dir = self.import_dir.replace(options.tenant_string_pattern, tenant)
+            self.check_tenant = options.config['backends']['disk'][backend].get('check_tenant')
         except AssertionError as e:
             raise e
 
 
     def prepare(self):
         try:
-            self.authnz = self.process_token_and_extract_claims()
+            self.authnz = self.process_token_and_extract_claims(
+                check_tenant=self.check_tenant if self.check_tenant else options.check_tenant
+            )
         except Exception as e:
             logging.error(e)
             raise e
@@ -776,6 +754,7 @@ class StreamHandler(AuthRequestHandler):
             self.backend = backend
             self.request_hook = options.config['backends']['disk'][backend]['request_hook']
             self.group_config = options.config['backends']['disk'][backend]['group_logic']
+            self.check_tenant = options.config['backends']['disk'][backend].get('check_tenant')
         except AssertionError as e:
             self.backend = backend
             logging.error('URI does not contain a valid tenant')
@@ -806,7 +785,9 @@ class StreamHandler(AuthRequestHandler):
             self.chunk_num = None
             filemodes = {'POST': 'ab+', 'PUT': 'wb+', 'PATCH': 'wb+'}
             try:
-                self.authnz = self.process_token_and_extract_claims()
+                self.authnz = self.process_token_and_extract_claims(
+                    check_tenant=self.check_tenant if self.check_tenant else options.check_tenant
+                )
             except Exception as e:
                 logging.error(e)
                 raise Exception
@@ -1119,6 +1100,7 @@ class ProxyHandler(AuthRequestHandler):
         self.allow_delete = options.config['backends']['disk'][backend]['allow_delete']
         self.export_max = options.config['backends']['disk'][backend]['export_max_num_list']
         self.has_posix_ownership = options.config['backends']['disk'][backend]['has_posix_ownership']
+        self.check_tenant = options.config['backends']['disk'][backend].get('check_tenant')
         try:
             missing_group_config = {
                 'enabled': False,
@@ -1163,7 +1145,9 @@ class ProxyHandler(AuthRequestHandler):
                 raise e
             # 2. Authentication and authorization
             try:
-                authnz_status = self.process_token_and_extract_claims()
+                self.authnz = self.process_token_and_extract_claims(
+                    check_tenant=self.check_tenant if self.check_tenant else options.check_tenant
+                )
             except Exception as e:
                 logging.error('Access token invalid')
                 raise e
@@ -1220,7 +1204,7 @@ class ProxyHandler(AuthRequestHandler):
                 raise Exception
             # 6. Validate groups
             try:
-                group_name, group_memberships = self.get_group_info(tenant, self.group_config, authnz_status)
+                group_name, group_memberships = self.get_group_info(tenant, self.group_config, self.authnz)
                 self.enforce_group_logic(group_name, group_memberships, tenant, self.group_config)
             except Exception as e:
                 logging.error(e)
@@ -1562,7 +1546,9 @@ class ProxyHandler(AuthRequestHandler):
         self.message = 'Unknown error, please contact TSD'
         try:
             try:
-                self.authnz = self.process_token_and_extract_claims()
+                self.authnz = self.process_token_and_extract_claims(
+                    check_tenant=self.check_tenant if self.check_tenant else options.check_tenant
+                )
             except Exception:
                 if not self.message:
                     self.message = 'Not authorized to export data'
@@ -1683,7 +1669,9 @@ class ProxyHandler(AuthRequestHandler):
                 self.set_status(403)
                 raise Exception
             try:
-                self.authnz = self.process_token_and_extract_claims()
+                self.authnz = self.process_token_and_extract_claims(
+                    check_tenant=self.check_tenant if self.check_tenant else options.check_tenant
+                )
             except Exception:
                 if not self.message:
                     self.message = 'Not authorized to export data'
@@ -1732,7 +1720,9 @@ class ProxyHandler(AuthRequestHandler):
                 self.set_status(403)
                 raise Exception
             try:
-                self.authnz = self.process_token_and_extract_claims()
+                self.authnz = self.process_token_and_extract_claims(
+                    check_tenant=self.check_tenant if self.check_tenant else options.check_tenant
+                )
             except Exception:
                 if not self.message:
                     self.message = 'Not authorized to delete data'
@@ -1796,14 +1786,25 @@ class GenericTableHandler(AuthRequestHandler):
         self.import_dir = options.config['backends']['sqlite'][backend]['db_path']
         self.table_structure = options.config['backends']['sqlite'][backend]['table_structure']
         self.tenant_dir = self.import_dir.replace(options.tenant_string_pattern, tenant)
+        self.check_tenant = options.config['backends']['sqlite'][backend].get('check_tenant')
         self.engine = sqlite_init(self.tenant_dir, name=self.db_name, builtin=True)
         self.db = SqliteBackend(self.engine)
 
 
+    def prepare(self):
+        try:
+            self.authnz = self.process_token_and_extract_claims(
+                check_tenant=self.check_tenant if self.check_tenant else options.check_tenant
+            )
+        except Exception as e:
+            logging.error(e)
+            logging.error('Unauthorized request')
+            self.set_status(401)
+            self.finish()
+
     @gen.coroutine
     def get(self, tenant, table_name=None):
         try:
-            self.authnz = self.process_token_and_extract_claims()
             if not table_name:
                 tables = self.db.tables_list()
                 self.set_status(200)
@@ -1847,13 +1848,10 @@ class GenericTableHandler(AuthRequestHandler):
 
     def put(self, tenant, table_name):
         try:
-            self.authnz = self.process_token_and_extract_claims()
             data = json_decode(self.request.body)
             if self.request.uri.split('?')[0].endswith('metadata'):
                 table_name = self.metadata_table_name(table_name)
             try:
-                # classify
-                #sqlite_insert(sle_name, data)
                 self.db.table_insert(table_name, data)
                 self.set_status(201)
                 self.write({'message': 'data stored'})
@@ -1870,7 +1868,6 @@ class GenericTableHandler(AuthRequestHandler):
         try:
             if self.request.uri.split('?')[0].endswith('metadata'):
                 table_name = self.metadata_table_name(table_name)
-            self.authnz = self.process_token_and_extract_claims()
             new_data = json_decode(self.request.body)
             data = self.db.table_update(table_name, self.request.uri, new_data)
             self.set_status(200)
@@ -1885,7 +1882,6 @@ class GenericTableHandler(AuthRequestHandler):
         try:
             if self.request.uri.split('?')[0].endswith('metadata'):
                 table_name = self.metadata_table_name(table_name)
-            self.authnz = self.process_token_and_extract_claims()
             data = self.db.table_delete(table_name, self.request.uri)
             self.set_status(200)
             self.write({'data': data})
