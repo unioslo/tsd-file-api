@@ -1957,10 +1957,12 @@ class Backends(object):
             ('/v1/(.*)/store/export', ProxyHandler, dict(backend='store', namespace='store', endpoint='export')),
             ('/v1/(.*)/store/export/(.*)', ProxyHandler, dict(backend='store', namespace='store', endpoint='export')),
         ],
-        'apps' : [
+        'apps_files' : [
             ('/v1/(.*)/apps/(.+)/resumables', ResumablesHandler, dict(backend='apps_files')),
             ('/v1/(.*)/apps/upload_stream/(.*)',  StreamHandler, dict(backend='apps_files')),
             ('/v1/(.*)/apps/(.+)/files/(.*)', ProxyHandler, dict(backend='apps_files', namespace='apps', endpoint=None)),
+        ],
+        'apps_tables': [
             ('/v1/(.*)/apps/(.+)/tables/metadata', GenericTableHandler, dict(backend='apps_tables', dbtype='sqlite')),
             ('/v1/(.*)/apps/(.+)/tables/(.+)$', GenericTableHandler, dict(backend='apps_tables', dbtype='sqlite')),
         ]
