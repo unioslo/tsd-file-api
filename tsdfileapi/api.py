@@ -45,7 +45,7 @@ from utils import call_request_hook, sns_dir, \
                   check_filename, _IS_VALID_UUID, \
                   md5sum, tenant_from_url, create_cluster_dir_if_not_exists, \
                   move_data_to_folder
-from db import sqlite_init, SqliteBackend
+from db import sqlite_init, SqliteBackend, postgres_init, PostgresBackend
 from resumables import SerialResumable
 from pgp import _import_keys
 
@@ -578,7 +578,7 @@ class ResumablesHandler(AuthRequestHandler):
             try:
                 upload_id = url_unescape(self.get_query_argument('id'))
             except Exception:
-                pass
+                upload_id = None
             res = SerialResumable(self.tenant_dir, self.requestor)
             if not filename:
                 info = res.list_all(self.tenant_dir, self.requestor)
@@ -1972,6 +1972,11 @@ class Backends(object):
         ]
     }
 
+    database_backends = {
+        'sqlite': SqliteBackend,
+        'postgres': PostgresBackend
+    }
+
     def __init__(self, config):
 
         self.config = config
@@ -1993,6 +1998,24 @@ class Backends(object):
                     for route in self.optional_routes[backend]:
                         print(colored(f'- {route[0]}', 'yellow'))
                         self.routes.append(route)
+
+        print(colored('initialising database backends', 'magenta'))
+        for name, db_backend in self.database_backends.items():
+            if (name in options.config['backends'] and
+                db_backend.generator_class.db_init_sql):
+                print(colored(f'initialising db backend: {name}', 'cyan'))
+                self.initdb(name)
+
+    def initdb(self, name):
+        """Only postgres supported atm."""
+        if name == 'postgres':
+            pool = postgres_init(options.config['backends'][name]['dbconfig'])
+            db = PostgresBackend(pool)
+            db.initialise()
+        else:
+            print(colored('dbtype not supported', 'red'))
+            return
+
 
 def main():
     parse_command_line()
