@@ -90,7 +90,7 @@ pretty_bad_protocol._parsers.Verify.TRUST_LEVELS["ENCRYPTION_COMPLIANCE_MODE"] =
 # pylint: disable=relative-import
 from auth import process_access_token
 from tokens import gen_test_tokens, get_test_token_for_p12, gen_test_token_for_user
-from db import session_scope, sqlite_init
+from db import session_scope, sqlite_init, postgres_init
 from resumables import SerialResumable
 from utils import sns_dir, md5sum, IllegalFilenameException
 from pgp import _import_keys
@@ -1479,6 +1479,7 @@ class TestFileApi(unittest.TestCase):
             pass
         with open(f'{dirs}/file1', 'w') as f:
             f.write('hi there')
+        # TODO: ensure world writable - so test do not fail
         resp = requests.delete(f'{self.store_export}/topdir/bottomdir/file1', headers=headers)
         self.assertEqual(resp.status_code, 200)
         self.assertTrue('file1' not in os.listdir(dirs))
@@ -1521,14 +1522,21 @@ class TestFileApi(unittest.TestCase):
             verbose=verbose
         ):
             out = []
-            q = SqlGeneratorCls(table, uri_query)
             if verbose:
                 print(uri_query)
+            q = SqlGeneratorCls(table, uri_query)
+            if verbose:
                 print(q.select_query)
             with session_func(engine) as session:
-                resp = session.execute(q.select_query).fetchall()
+                session.execute(q.select_query)
+                resp = session.fetchall()
             for row in resp:
-                out.append(json.loads(row[0]))
+                target = row[0]
+                if isinstance(target, dict):
+                    _in = target
+                else:
+                    _in = json.loads(target)
+                out.append(_in)
             if verbose:
                 print(out)
             return out
@@ -1564,7 +1572,11 @@ class TestFileApi(unittest.TestCase):
             db.table_delete('test_table', '')
         except Exception:
             pass
-        db.table_insert('test_table', data)
+        try:
+            db.table_insert('test_table', data)
+        except Exception as e:
+            pass
+        # for now ^
         # SELECT
         # simple key selection
         out = test_select_query('select=x')
@@ -1644,7 +1656,6 @@ class TestFileApi(unittest.TestCase):
         out = test_select_query('select=x&order=x.desc&range=1.2')
         self.assertEqual(out, [{'x': 107}, {'x': 88}])
         # UPDATE
-
         out = test_update_query('set=x&where=x=lt.1000', data={'x': 999})
         self.assertTrue(out is True)
         out = test_select_query('select=x&where=x=eq.999')
@@ -1656,7 +1667,7 @@ class TestFileApi(unittest.TestCase):
         self.assertEqual(out, [])
         # TODO: ensure date support, with a test
 
-    def test_sqlite_backend(self):
+    def test_all_db_backends(self):
         data = [
             {
                 'x': 1900,
@@ -1717,15 +1728,24 @@ class TestFileApi(unittest.TestCase):
                 'x': 10
             }
         ]
-        from squril import SqliteQueryGenerator
-        from db import SqliteBackend, sqlite_session
+        from squril import SqliteQueryGenerator, PostgresQueryGenerator
+        from db import SqliteBackend, sqlite_session, PostgresBackend, postgres_session
         engine = sqlite_init('/tmp', name='api-test.db', builtin=True)
+        pool = postgres_init(self.config['backends']['postgres']['dbconfig'])
         self.test_db_backend(
             data,
             engine,
             sqlite_session,
             SqliteQueryGenerator,
             SqliteBackend,
+            self.verbose
+        )
+        self.test_db_backend(
+            data,
+            pool,
+            postgres_session,
+            PostgresQueryGenerator,
+            PostgresBackend,
             self.verbose
         )
 
@@ -1878,7 +1898,7 @@ def main():
         'test_XXX_load'
     ]
     db = [
-        'test_sqlite_backend',
+        'test_all_db_backends',
     ]
     apps = [
         'test_app_backend',

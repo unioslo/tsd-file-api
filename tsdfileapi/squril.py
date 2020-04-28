@@ -28,8 +28,12 @@ class BaseSelectElement(SelectElement):
     def create_sub_selections(self, element):
         return element.split('|')[1].replace(']', '').split(',') if '|' in element else []
     def create_idx(self, element):
-        return re.sub(r'.+\[(.)\|(.*)\]', r'\1', element) if '[' in element else None
-
+        if '[' in element and '|' in element:
+            return re.sub(r'.+\[(.*)\|(.*)\]', r'\1', element)
+        elif '[' in element and '|' not in element:
+            return re.sub(r'.+\[(.*)\]', r'\1', element)
+        else:
+            return None
 
 class Key(BaseSelectElement):
     name = 'key'
@@ -755,16 +759,23 @@ class PostgresQueryGenerator(SqlGenerator):
     """
 
     def _gen_sql_key_selection(self, term, parsed):
-        pass
+        selection = f"'{parsed.element}', data#>'{{{term.original}}}'"
+        return selection
 
     def _gen_sql_array_selection(self, term, parsed):
-        pass
+        selection = f"""
+            '{parsed.bare_key}',
+            case when data#>'{{{term.bare_term}}}'->{parsed.idx} is not null then
+                array[data#>'{{{term.bare_term}}}'->{parsed.idx}]
+            else null end
+            """
+        return selection
 
     def _gen_sql_array_sub_selection(self, term, parsed, specific=None):
-        pass
+        print(term, parsed)
 
     def _gen_sql_col(self, term):
-        pass
+        print(term)
 
     def _gen_sql_update(self, term):
-        pass
+        print(term)
