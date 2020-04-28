@@ -12,6 +12,7 @@ from abc import ABC, abstractmethod
 from contextlib import contextmanager
 
 import psycopg2
+import psycopg2.pool
 
 from sqlalchemy.pool import QueuePool
 from sqlalchemy.orm import sessionmaker
@@ -19,7 +20,7 @@ from sqlalchemy import create_engine
 from sqlalchemy.exc import OperationalError, IntegrityError, StatementError
 
 # pylint: disable=relative-import
-from squril import SqliteQueryGenerator
+from squril import SqliteQueryGenerator, PostgresQueryGenerator
 from utils import check_filename, IllegalFilenameException
 
 
@@ -31,6 +32,16 @@ def sqlite_init(path, name='api-data.db', builtin=False):
     else:
         engine = sqlite3.connect(path + '/' + dbname)
     return engine
+
+
+def postgres_init(dbconfig):
+    min_conn = 5
+    max_conn = 15
+    dsn = f"dbname={dbconfig['dbname']} user={dbconfig['user']} password={dbconfig['pw']} host={dbconfig['host']}"
+    pool = psycopg2.pool.SimpleConnectionPool(
+        min_conn, max_conn, dsn
+    )
+    return pool
 
 
 @contextmanager
@@ -87,6 +98,10 @@ class DatabaseBackend(ABC):
         self.verbose = verbose
 
     @abstractmethod
+    def initialise(self):
+        pass
+
+    @abstractmethod
     def tables_list(self, schema=None):
         pass
 
@@ -140,10 +155,15 @@ class SqliteBackend(DatabaseBackend):
 
     """
 
+    generator_class = SqliteQueryGenerator
+
     def __init__(self, engine, verbose=False):
         self.engine = engine
         self.verbose = verbose
         self.table_definition = '(data json unique not null)'
+
+    def initialise(self):
+        pass
 
     def tables_list(self, schema=None):
         query = "select name FROM sqlite_master where type = 'table'"
@@ -192,19 +212,19 @@ class SqliteBackend(DatabaseBackend):
             raise e
 
     def table_update(self, table_name, uri, data):
-        sql = SqliteQueryGenerator(table_name, uri, data=data)
+        sql = self.generator_class(table_name, uri, data=data)
         with sqlite_session(self.engine) as session:
             session.execute(sql.update_query)
         return True
 
     def table_delete(self, table_name, uri):
-        sql = SqliteQueryGenerator(table_name, uri)
+        sql = self.generator_class(table_name, uri)
         with sqlite_session(self.engine) as session:
             session.execute(sql.delete_query)
         return True
 
     def table_select(self, table_name, uri):
-        sql = SqliteQueryGenerator(table_name, uri)
+        sql = self.generator_class(table_name, uri)
         with sqlite_session(self.engine) as session:
             for row in session.execute(sql.select_query):
                 yield row[0]
@@ -225,10 +245,17 @@ class PostgresBackend(object):
 
     """
 
+    generator_class = PostgresQueryGenerator
+
     def __init__(self, pool, verbose=False):
         self.pool = pool
         self.verbose = verbose
         self.table_definition = '(data jsonb unique not null)'
+
+    def initialise(self):
+        with postgres_session(self.pool) as session:
+            session.execute(self.generator_class.db_init_sql)
+        return True
 
     def tables_list(self, schema=None):
         query = f"""select table_name from information_schema.tables
@@ -285,16 +312,20 @@ class PostgresBackend(object):
             raise e
 
     def table_update(self, table_name, uri, data):
-        pass
+        sql = self.generator_class(table_name, uri, data=data)
+        with sqlite_session(self.pool) as session:
+            session.execute(sql.update_query)
+        return True
 
     def table_delete(self, table_name, uri):
-        pass
+        sql = self.generator_class(table_name, uri)
+        with sqlite_session(self.pool) as session:
+            session.execute(sql.delete_query)
+        return True
 
     def table_select(self, table_name, uri):
-        pass
-        # TODO
-        #q = ''
-        #with postgres_session(pool) as session:
-        #    session.execute(q)
-        #    for row in session:
-        #        yield row[0]
+        sql = self.generator_class(table_name, uri)
+        with postgres_session(self.pool) as session:
+            session.execute(q)
+            for row in session:
+                yield row[0]

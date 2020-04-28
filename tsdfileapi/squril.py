@@ -352,6 +352,7 @@ class SqlGenerator(object):
     """
 
     json_object_sql = None
+    db_init_sql = None
 
     def __init__(self, table_name, uri_query, data=None):
         self.table_name = table_name
@@ -652,6 +653,7 @@ class SqliteQueryGenerator(SqlGenerator):
     """Generate SQL for SQLite json1 backed tables, from a given UriQuery."""
 
     json_object_sql = 'json_object'
+    db_init_sql = None
 
     # Helper functions - used by mappers
 
@@ -723,4 +725,46 @@ class SqliteQueryGenerator(SqlGenerator):
 
 
 class PostgresQueryGenerator(SqlGenerator):
-    pass # TODO
+
+    json_object_sql = 'jsonb_build_object'
+    db_init_sql = """
+        create or replace function filter_array_elements(data jsonb, keys text[])
+            returns jsonb as $$
+            declare key text;
+            declare element jsonb;
+            declare filtered jsonb;
+            declare out jsonb;
+            begin
+                for element in select jsonb_array_elements(data) loop
+                    for key in select unnest(keys) loop
+                        if filtered is not null then
+                            filtered := filtered || jsonb_build_object(key, jsonb_extract_path(element, key));
+                        else
+                            filtered := jsonb_build_object(key, jsonb_extract_path(element, key));
+                        end if;
+                    end loop;
+                    if out is not null then
+                        out := out || jsonb_build_array(filtered)::jsonb;
+                    else
+                        out := jsonb_build_array(filtered)::jsonb;
+                    end if;
+                end loop;
+                return out;
+            end;
+        $$ language plpgsql;
+    """
+
+    def _gen_sql_key_selection(self, term, parsed):
+        pass
+
+    def _gen_sql_array_selection(self, term, parsed):
+        pass
+
+    def _gen_sql_array_sub_selection(self, term, parsed, specific=None):
+        pass
+
+    def _gen_sql_col(self, term):
+        pass
+
+    def _gen_sql_update(self, term):
+        pass
