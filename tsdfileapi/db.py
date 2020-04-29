@@ -102,7 +102,7 @@ class DatabaseBackend(ABC):
         pass
 
     @abstractmethod
-    def tables_list(self, schema=None):
+    def tables_list(self):
         pass
 
     @abstractmethod
@@ -157,7 +157,7 @@ class SqliteBackend(DatabaseBackend):
 
     generator_class = SqliteQueryGenerator
 
-    def __init__(self, engine, verbose=False):
+    def __init__(self, engine, verbose=False, schema=None):
         self.engine = engine
         self.verbose = verbose
         self.table_definition = '(data json unique not null)'
@@ -165,7 +165,7 @@ class SqliteBackend(DatabaseBackend):
     def initialise(self):
         pass
 
-    def tables_list(self, schema=None):
+    def tables_list(self):
         query = "select name FROM sqlite_master where type = 'table'"
         with sqlite_session(self.engine) as session:
             res = session.execute(query).fetchall()
@@ -212,19 +212,19 @@ class SqliteBackend(DatabaseBackend):
             raise e
 
     def table_update(self, table_name, uri, data):
-        sql = self.generator_class(table_name, uri, data=data)
+        sql = self.generator_class(f'"{table_name}"', uri, data=data)
         with sqlite_session(self.engine) as session:
             session.execute(sql.update_query)
         return True
 
     def table_delete(self, table_name, uri):
-        sql = self.generator_class(table_name, uri)
+        sql = self.generator_class(f'"{table_name}"', uri)
         with sqlite_session(self.engine) as session:
             session.execute(sql.delete_query)
         return True
 
     def table_select(self, table_name, uri):
-        sql = self.generator_class(table_name, uri)
+        sql = self.generator_class(f'"{table_name}"', uri)
         with sqlite_session(self.engine) as session:
             for row in session.execute(sql.select_query):
                 yield row[0]
@@ -247,10 +247,11 @@ class PostgresBackend(object):
 
     generator_class = PostgresQueryGenerator
 
-    def __init__(self, pool, verbose=False):
+    def __init__(self, pool, verbose=False, schema=None):
         self.pool = pool
         self.verbose = verbose
         self.table_definition = '(data jsonb unique not null)'
+        self.schema = schema if schema else 'public'
 
     def initialise(self):
         with postgres_session(self.pool) as session:
@@ -258,9 +259,9 @@ class PostgresBackend(object):
                     session.execute(stmt)
         return True
 
-    def tables_list(self, schema=None):
+    def tables_list(self):
         query = f"""select table_name from information_schema.tables
-            where table_schema = '{schema}'"""
+            where table_schema = '{self.schema}'"""
         with postgres_session(self.pool) as session:
             session.execute(query)
             res = session.fetchall()
@@ -276,12 +277,8 @@ class PostgresBackend(object):
 
     def table_insert(self, table_name, data):
         try:
-            schema, table_name = table_name.split('.')
-        except ValueError as e:
-            schema = 'public'
-        try:
             dtype = type(data)
-            insert_stmt = f'insert into "{schema}"."{table_name}" (data) values (%s)'
+            insert_stmt = f'insert into {self.schema}."{table_name}" (data) values (%s)'
             target = []
             if dtype is list:
                 for element in data:
@@ -293,9 +290,9 @@ class PostgresBackend(object):
                     session.executemany(insert_stmt, target)
                 return True
             except (psycopg2.ProgrammingError, psycopg2.OperationalError) as e:
-                table_create = f'create table if not exists "{schema}"."{table_name}"{self.table_definition}'
+                table_create = f'create table if not exists {self.schema}."{table_name}"{self.table_definition}'
                 with postgres_session(self.pool) as session:
-                    session.execute(f'create schema if not exists "{schema}"')
+                    session.execute(f'create schema if not exists {self.schema}')
                     session.execute(table_create)
                     session.executemany(insert_stmt, target)
                 return True
@@ -313,20 +310,20 @@ class PostgresBackend(object):
             raise e
 
     def table_update(self, table_name, uri, data):
-        sql = self.generator_class(table_name, uri, data=data)
+        sql = self.generator_class(f'{self.schema}."{table_name}"', uri, data=data)
         with postgres_session(self.pool) as session:
             session.execute(sql.update_query)
         return True
 
     def table_delete(self, table_name, uri):
-        sql = self.generator_class(table_name, uri)
+        sql = self.generator_class(f'{self.schema}."{table_name}"', uri)
         with postgres_session(self.pool) as session:
             session.execute(sql.delete_query)
         return True
 
     def table_select(self, table_name, uri):
-        sql = self.generator_class(table_name, uri)
+        sql = self.generator_class(f'{self.schema}."{table_name}"', uri)
         with postgres_session(self.pool) as session:
-            session.execute(q)
+            session.execute(sql.select_query)
             for row in session:
                 yield row[0]

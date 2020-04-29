@@ -600,10 +600,10 @@ class SqlGenerator(object):
     def _gen_sql_select_clause(self):
         out = self.select_map(self._term_to_sql_select)
         if not out:
-            sql_select = f'select * from "{self.table_name}"'
+            sql_select = f'select * from {self.table_name}'
         else:
             joined = ",".join(out)
-            sql_select = f"select {self.json_object_sql}({joined}) from \"{self.table_name}\""
+            sql_select = f"select {self.json_object_sql}({joined}) from {self.table_name}"
         return sql_select
 
     def _gen_sql_where_clause(self):
@@ -645,11 +645,11 @@ class SqlGenerator(object):
         else:
             _set = out[0]
             _where = self._gen_sql_where_clause()
-            return f'update "{self.table_name}" {_set} {_where}'
+            return f'update {self.table_name} {_set} {_where}'
 
     def sql_delete(self):
         _where = self._gen_sql_where_clause()
-        return f'delete from "{self.table_name}" {_where}'
+        return f'delete from {self.table_name} {_where}'
 
 
 class SqliteQueryGenerator(SqlGenerator):

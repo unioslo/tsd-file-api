@@ -1782,11 +1782,11 @@ class GenericTableHandler(AuthRequestHandler):
         self.backend = backend
         tenant = tenant_from_url(self.request.uri)
         assert options.valid_tenant.match(tenant)
-        self.import_dir = options.config['backends'][dbtype][backend]['db_path']
         self.table_structure = options.config['backends'][dbtype][backend]['table_structure']
-        self.tenant_dir = self.import_dir.replace(options.tenant_string_pattern, tenant)
         self.check_tenant = options.config['backends'][dbtype][backend].get('check_tenant')
         if dbtype == 'sqlite':
+            self.import_dir = options.config['backends'][dbtype][backend]['db_path']
+            self.tenant_dir = self.import_dir.replace(options.tenant_string_pattern, tenant)
             if backend == 'apps_tables':
                 app_name = self.request.uri.split('/')[4]
                 self.db_name = f'.{backend}_{app_name}.db'
@@ -1794,6 +1794,8 @@ class GenericTableHandler(AuthRequestHandler):
                 self.db_name =  f'.{backend}.db'
             self.engine = sqlite_init(self.tenant_dir, name=self.db_name, builtin=True)
             self.db = SqliteBackend(self.engine)
+        elif dbtype == 'postgres':
+            self.db = PostgresBackend(options.pgpool, schema=tenant)
 
 
     def prepare(self):
@@ -1942,10 +1944,11 @@ class Backends(object):
             ('/v1/(.*)/survey/([a-zA-Z_0-9]+/attachments.*)', ProxyHandler, dict(backend='survey', namespace='survey', endpoint=None)),
             ('/v1/(.*)/survey/resumables', ResumablesHandler, dict(backend='survey')),
             ('/v1/(.*)/survey/upload_stream/(.*)', StreamHandler, dict(backend='survey')),
-            ('/v1/(.*)/survey/([a-zA-Z_0-9]+)/metadata', GenericTableHandler, dict(backend='survey')),
-            ('/v1/(.*)/survey/([a-zA-Z_0-9]+)/submissions', GenericTableHandler, dict(backend='survey')),
-            ('/v1/(.*)/survey/([a-zA-Z_0-9]+)$', GenericTableHandler, dict(backend='survey', dbtype='sqlite')), # todo , dbtype='postgres'
-            ('/v1/(.*)/survey', GenericTableHandler, dict(backend='survey', dbtype='sqlite')), # todo , dbtype='postgres'
+            # TODO: switch to postgres, when db setup is ready
+            ('/v1/(.*)/survey/([a-zA-Z_0-9]+)/metadata', GenericTableHandler, dict(backend='survey', dbtype='sqlite')),
+            ('/v1/(.*)/survey/([a-zA-Z_0-9]+)/submissions', GenericTableHandler, dict(backend='survey', dbtype='sqlite')),
+            ('/v1/(.*)/survey/([a-zA-Z_0-9]+)$', GenericTableHandler, dict(backend='survey', dbtype='sqlite')),
+            ('/v1/(.*)/survey', GenericTableHandler, dict(backend='survey', dbtype='sqlite')),
         ],
         'form_data': [
             ('/v1/(.*)/files/upload', FormDataHandler, dict(backend='form_data')),
@@ -2010,6 +2013,7 @@ class Backends(object):
         """Only postgres supported atm."""
         if name == 'postgres':
             pool = postgres_init(options.config['backends'][name]['dbconfig'])
+            define('pgpool', pool)
             db = PostgresBackend(pool)
             db.initialise()
         else:
