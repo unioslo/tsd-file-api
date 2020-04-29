@@ -1844,7 +1844,7 @@ class GenericTableHandler(AuthRequestHandler):
                     self.write('{"data": [')
                     self.flush()
                     first = True
-                    query = self.get_uri_query(self.request.uri_parts)
+                    query = self.get_uri_query(self.request.uri)
                     for row in self.db.table_select(table_name, query):
                         if not first:
                             self.write(',')
