@@ -764,13 +764,11 @@ class PostgresQueryGenerator(SqlGenerator):
         return term_attr.replace('.', ',') if '.' in term_attr else term_attr
 
     def _gen_sql_key_selection(self, term, parsed):
-        print(term, parsed)
         target = self._gen_select_target(term.original)
         selection = f"'{parsed.element}', data#>'{{{target}}}'"
         return selection
 
     def _gen_sql_array_selection(self, term, parsed):
-        print(term, parsed)
         target = self._gen_select_target(term.bare_term)
         selection = f"""
             '{parsed.bare_key}',
@@ -781,8 +779,6 @@ class PostgresQueryGenerator(SqlGenerator):
         return selection
 
     def _gen_sql_array_sub_selection(self, term, parsed, specific=None):
-        print(term, parsed)
-        print(parsed.bare_key)
         target = self._gen_select_target(term.bare_term)
         sub_selections = ','.join(parsed.sub_selections)
         data_selection_expr = f"filter_array_elements(data#>'{{{target}}}','{{{sub_selections}}}')"
@@ -799,7 +795,6 @@ class PostgresQueryGenerator(SqlGenerator):
         return selection
 
     def _gen_sql_col(self, term):
-        print(term)
         if len(term.parsed[0].select_term.parsed) > 1:
             test_select_term = term.parsed[0].select_term.parsed[-1]
             if isinstance(test_select_term, ArraySpecific):
@@ -835,4 +830,8 @@ class PostgresQueryGenerator(SqlGenerator):
         return col
 
     def _gen_sql_update(self, term):
-        print(term)
+        key = term.parsed[0].select_term.bare_term
+        assert self.data.get(key) is not None, f'Target key of update: {key} not found in payload'
+        assert len(self.data.keys()) == 1, f'Cannot update more than one key per statement'
+        val = self.data[key]
+        return f"set data = jsonb_set(data, '{{{key}}}', '{val}')"
