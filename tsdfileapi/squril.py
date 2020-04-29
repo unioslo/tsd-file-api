@@ -780,12 +780,26 @@ class PostgresQueryGenerator(SqlGenerator):
 
     def _gen_sql_array_sub_selection(self, term, parsed, specific=None):
         print(term, parsed)
-        # if specific:
-        # array[expr->idx]
-        # else expr
+        print(parsed.bare_key)
+        target = self._gen_select_target(term.bare_term)
+        sub_selections = ','.join(parsed.sub_selections)
+        data_selection_expr = f"filter_array_elements(data#>'{{{target}}}','{{{sub_selections}}}')"
+        if specific:
+            data_selection_expr = f'array[{data_selection_expr}->{parsed.idx}]'
+        selection = f"""
+            '{parsed.bare_key}',
+            case
+                when data#>'{{{target}}}' is not null
+                and jsonb_typeof(data#>'{{{target}}}') = 'array'
+            then {data_selection_expr}
+            else null end
+            """
+        return selection
 
     def _gen_sql_col(self, term):
         print(term)
+        #target = self._gen_select_target(term.bare_term)
+        #return f"data#>'{{{target}}}'"
 
     def _gen_sql_update(self, term):
         print(term)
