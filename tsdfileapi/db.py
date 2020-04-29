@@ -211,20 +211,20 @@ class SqliteBackend(DatabaseBackend):
             logging.error('Not sure what went wrong')
             raise e
 
-    def table_update(self, table_name, uri, data):
-        sql = self.generator_class(f'"{table_name}"', uri, data=data)
+    def table_update(self, table_name, uri_query, data):
+        sql = self.generator_class(f'"{table_name}"', uri_query, data=data)
         with sqlite_session(self.engine) as session:
             session.execute(sql.update_query)
         return True
 
-    def table_delete(self, table_name, uri):
-        sql = self.generator_class(f'"{table_name}"', uri)
+    def table_delete(self, table_name, uri_query):
+        sql = self.generator_class(f'"{table_name}"', uri_query)
         with sqlite_session(self.engine) as session:
             session.execute(sql.delete_query)
         return True
 
-    def table_select(self, table_name, uri):
-        sql = self.generator_class(f'"{table_name}"', uri)
+    def table_select(self, table_name, uri_query):
+        sql = self.generator_class(f'"{table_name}"', uri_query)
         with sqlite_session(self.engine) as session:
             for row in session.execute(sql.select_query):
                 yield row[0]
@@ -309,20 +309,20 @@ class PostgresBackend(object):
             logging.error('Not sure what went wrong')
             raise e
 
-    def table_update(self, table_name, uri, data):
-        sql = self.generator_class(f'{self.schema}."{table_name}"', uri, data=data)
+    def table_update(self, table_name, uri_query, data):
+        sql = self.generator_class(f'{self.schema}."{table_name}"', uri_query, data=data)
         with postgres_session(self.pool) as session:
             session.execute(sql.update_query)
         return True
 
-    def table_delete(self, table_name, uri):
-        sql = self.generator_class(f'{self.schema}."{table_name}"', uri)
+    def table_delete(self, table_name, uri_query):
+        sql = self.generator_class(f'{self.schema}."{table_name}"', uri_query)
         with postgres_session(self.pool) as session:
             session.execute(sql.delete_query)
         return True
 
-    def table_select(self, table_name, uri):
-        sql = self.generator_class(f'{self.schema}."{table_name}"', uri)
+    def table_select(self, table_name, uri_query):
+        sql = self.generator_class(f'{self.schema}."{table_name}"', uri_query)
         with postgres_session(self.pool) as session:
             session.execute(sql.select_query)
             for row in session:
