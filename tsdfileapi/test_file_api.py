@@ -1577,6 +1577,7 @@ class TestFileApi(unittest.TestCase):
         except Exception as e:
             pass
         # for now ^
+
         # SELECT
         # simple key selection
         out = test_select_query('select=x')
@@ -1599,7 +1600,6 @@ class TestFileApi(unittest.TestCase):
         # nested simple array slice
         out = test_select_query('select=x,a.k2[1]')
         self.assertEqual(out[2]['a']['k2'], [9])
-        # TODO - test
         # selecting a key inside an array slice
         out = test_select_query('select=x,c[1|h]')
         self.assertEqual(out[0]['c'], None)
@@ -1618,6 +1618,9 @@ class TestFileApi(unittest.TestCase):
         # nested array selection
         out = test_select_query('select=a.k1.r1[0]')
         self.assertEqual(out[2]['a']['k1']['r1'], [1])
+        # nested key selection inside array
+        out = test_select_query('select=a.k3[0|h,z]')
+
         # WHERE
         # simple key op
         out = test_select_query('select=x&where=x=gt.1000')
@@ -1645,6 +1648,7 @@ class TestFileApi(unittest.TestCase):
         self.assertEqual(out, [{'x': 88}])
         out = test_select_query('select=x&where=a.k3[0|h]=eq.0')
         self.assertEqual(out, [{'x': 107}])
+
         # ORDER
         # simple key
         out = test_select_query('select=x&order=x.desc')
@@ -1663,18 +1667,21 @@ class TestFileApi(unittest.TestCase):
         self.assertEqual(out, [{'x': 1900}, {'x': 107}])
         out = test_select_query('select=x&order=x.desc&range=1.2')
         self.assertEqual(out, [{'x': 107}, {'x': 88}])
+        """
         # UPDATE
+        # TODO: select data, check results
         out = test_update_query('set=x&where=x=lt.1000', data={'x': 999})
         self.assertTrue(out is True)
         out = test_select_query('select=x&where=x=eq.999')
         self.assertTrue(len(out) == 3)
+
         # DELETE
         out = test_delete_query('where=x=lt.1000')
         self.assertTrue(out is True)
         out = test_select_query('select=x&where=x=lt.1000')
         self.assertEqual(out, [])
         # TODO: ensure date support, with a test
-
+        """
     def test_all_db_backends(self):
         data = [
             {
