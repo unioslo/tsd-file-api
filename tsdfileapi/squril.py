@@ -691,7 +691,7 @@ class SqliteQueryGenerator(SqlGenerator):
                             {sub_selections}) as vals
                         from (
                             select key, value, fullkey, path
-                            from \"{self.table_name}\", json_tree(\"{self.table_name}\".data)
+                            from {self.table_name}, json_tree({self.table_name}.data)
                             where path = '$.{parsed.bare_key}'
                             {fullkey}
                             )
