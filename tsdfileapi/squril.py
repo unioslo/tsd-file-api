@@ -805,7 +805,10 @@ class PostgresQueryGenerator(SqlGenerator):
             if isinstance(test_select_term, ArraySpecific):
                 target = self._gen_select_target(term.parsed[0].select_term.bare_term)
                 _idx = term.parsed[0].select_term.parsed[-1].idx
-                col = f"data#>'{{{target}}}'#>>'{{{_idx}}}'"
+                if isinstance(term, OrderTerm):
+                    col = f"data#>'{{{target}}}'#>'{{{_idx}}}'"
+                else:
+                    col = f"data#>'{{{target}}}'#>>'{{{_idx}}}'"
             elif isinstance(test_select_term, ArraySpecificSingle):
                 target = self._gen_select_target(term.parsed[0].select_term.bare_term)
                 _idx = term.parsed[0].select_term.parsed[-1].idx
@@ -817,7 +820,10 @@ class PostgresQueryGenerator(SqlGenerator):
             if not isinstance(term.parsed[0].select_term.parsed[0], Key):
                 raise Exception(f'Invalid term {term.original}')
             target = term.parsed[0].select_term.parsed[0].element
-            col = f"data#>>'{{{target}}}'"
+            if isinstance(term, OrderTerm):
+                col = f"data#>'{{{target}}}'"
+            else:
+                col = f"data#>>'{{{target}}}'"
         if isinstance(term, WhereTerm):
             try:
                 integer_ops = ['eq', 'gt', 'gte', 'lt', 'lte', 'neq']
@@ -826,8 +832,6 @@ class PostgresQueryGenerator(SqlGenerator):
                     col = f'({col})::int'
             except ValueError:
                 pass
-        if isinstance(term, OrderTerm):
-            col = f'({col})::int' # but what if not int? -- need a db func to instropect
         return col
 
     def _gen_sql_update(self, term):

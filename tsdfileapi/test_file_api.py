@@ -1650,6 +1650,8 @@ class TestFileApi(unittest.TestCase):
         self.assertEqual(out, [{'x': 107}])
 
         # ORDER
+        # Note: postgres and sqlite treat NULLs different in ordering
+        # postgres puts them first, sqlite puts them last, so be it
         # simple key
         out = test_select_query('select=x&where=x=not.is.null&order=x.desc')
         x_array = [1900, 107, 88, 10]
@@ -1658,14 +1660,15 @@ class TestFileApi(unittest.TestCase):
         out = test_select_query('select=x&where=x=not.is.null&order=x.asc')
         self.assertEqual(list(map(lambda x: x['x'], out)), x_array)
         # array selections
-        out = test_select_query('select=x,a&order=a.k1.r1[0].desc')
-        self.assertTrue(out[1]['x'] == 88)
-        out = test_select_query('select=x,a&order=a.k3[0|h].desc')
-        self.assertTrue(out[1]['x'] == 1900)
+        out = test_select_query('select=x,a&where=a.k1.r1[0]=not.is.null&order=a.k1.r1[0].desc')
+        self.assertTrue(out[0]['x'] == 107)
+        out = test_select_query('select=x,a&where=a.k3[0|h]=not.is.null&order=a.k3[0|h].desc')
+        self.assertTrue(out[0]['x'] == 107)
+
         # RANGE
-        out = test_select_query('select=x&order=x.desc&range=0.2')
+        out = test_select_query('select=x&where=x=not.is.null&order=x.desc&range=0.2')
         self.assertEqual(out, [{'x': 1900}, {'x': 107}])
-        out = test_select_query('select=x&order=x.desc&range=1.2')
+        out = test_select_query('select=x&where=x=not.is.null&order=x.desc&range=1.2')
         self.assertEqual(out, [{'x': 107}, {'x': 88}])
         """
         # UPDATE
