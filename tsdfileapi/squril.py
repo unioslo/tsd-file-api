@@ -529,7 +529,7 @@ class SqlGenerator(object):
                     selection = self._gen_sql_key_selection(term, parsed)
                 else:
                     # last call, wrapping up the selections
-                    selection = f"\"{parsed.element}\", {self.json_object_sql}({selection})"
+                    selection = f"'{parsed.element}', {self.json_object_sql}({selection})"
             elif isinstance(parsed, ArraySpecific):
                 selection = self._gen_sql_array_selection(term, parsed)
             elif isinstance(parsed, ArraySpecificSingle):
@@ -758,21 +758,31 @@ class PostgresQueryGenerator(SqlGenerator):
         $$ language plpgsql;
     """
 
+    def _gen_select_target(self, term_attr):
+        return term_attr.replace('.', ',') if '.' in term_attr else term_attr
+
     def _gen_sql_key_selection(self, term, parsed):
-        selection = f"'{parsed.element}', data#>'{{{term.original}}}'"
+        print(term, parsed)
+        target = self._gen_select_target(term.original)
+        selection = f"'{parsed.element}', data#>'{{{target}}}'"
         return selection
 
     def _gen_sql_array_selection(self, term, parsed):
+        print(term, parsed)
+        target = self._gen_select_target(term.bare_term)
         selection = f"""
             '{parsed.bare_key}',
-            case when data#>'{{{term.bare_term}}}'->{parsed.idx} is not null then
-                array[data#>'{{{term.bare_term}}}'->{parsed.idx}]
+            case when data#>'{{{target}}}'->{parsed.idx} is not null then
+                array[data#>'{{{target}}}'->{parsed.idx}]
             else null end
             """
         return selection
 
     def _gen_sql_array_sub_selection(self, term, parsed, specific=None):
         print(term, parsed)
+        # if specific:
+        # array[expr->idx]
+        # else expr
 
     def _gen_sql_col(self, term):
         print(term)
