@@ -1553,8 +1553,16 @@ class TestFileApi(unittest.TestCase):
             with session_func(engine) as session:
                 session.execute(q.update_query)
             with session_func(engine) as session:
-                resp = session.execute(f'select * from {table}').fetchall()
-            return True
+                session.execute(f'select * from {table}')
+                resp = session.fetchall()
+            for row in resp:
+                target = row[0]
+                if isinstance(target, dict):
+                    _in = target
+                else:
+                    _in = json.loads(target)
+                out.append(_in)
+            return out
         def test_delete_query(
             uri_query,
             table='test_table',
@@ -1570,13 +1578,9 @@ class TestFileApi(unittest.TestCase):
         db = DbBackendCls(engine)
         try:
             db.table_delete('test_table', '')
-        except Exception:
-            pass
-        try:
-            db.table_insert('test_table', data)
         except Exception as e:
             pass
-        # for now ^
+        db.table_insert('test_table', data)
 
         # SELECT
         # simple key selection
@@ -1670,12 +1674,12 @@ class TestFileApi(unittest.TestCase):
         self.assertEqual(out, [{'x': 1900}, {'x': 107}])
         out = test_select_query('select=x&where=x=not.is.null&order=x.desc&range=1.2')
         self.assertEqual(out, [{'x': 107}, {'x': 88}])
-        """
+
         # UPDATE
         # TODO: select data, check results
         out = test_update_query('set=x&where=x=lt.1000', data={'x': 999})
-        self.assertTrue(out is True)
         out = test_select_query('select=x&where=x=eq.999')
+        self.assertEqual(out[0]['x'], 999)
         self.assertTrue(len(out) == 3)
 
         # DELETE
@@ -1684,7 +1688,8 @@ class TestFileApi(unittest.TestCase):
         out = test_select_query('select=x&where=x=lt.1000')
         self.assertEqual(out, [])
         # TODO: ensure date support, with a test
-        """
+
+
     def test_all_db_backends(self):
         data = [
             {

@@ -314,13 +314,13 @@ class PostgresBackend(object):
 
     def table_update(self, table_name, uri, data):
         sql = self.generator_class(table_name, uri, data=data)
-        with sqlite_session(self.pool) as session:
+        with postgres_session(self.pool) as session:
             session.execute(sql.update_query)
         return True
 
     def table_delete(self, table_name, uri):
         sql = self.generator_class(table_name, uri)
-        with sqlite_session(self.pool) as session:
+        with postgres_session(self.pool) as session:
             session.execute(sql.delete_query)
         return True
 
