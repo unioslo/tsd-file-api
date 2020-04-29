@@ -559,7 +559,7 @@ class SqlGenerator(object):
             if val == 'null' or op == 'in':
                 val = f'{val}'
             else:
-                val = f'"{val}"'
+                val = f"'{val}'"
         if op.endswith('.not'):
             op = op.replace('.', ' ')
         elif op.startswith('not.'):
@@ -731,7 +731,8 @@ class SqliteQueryGenerator(SqlGenerator):
 class PostgresQueryGenerator(SqlGenerator):
 
     json_object_sql = 'jsonb_build_object'
-    db_init_sql = """
+    db_init_sql = [
+        """
         create or replace function filter_array_elements(data jsonb, keys text[])
             returns jsonb as $$
             declare key text;
@@ -756,7 +757,8 @@ class PostgresQueryGenerator(SqlGenerator):
                 return out;
             end;
         $$ language plpgsql;
-    """
+        """
+    ]
 
     def _gen_select_target(self, term_attr):
         return term_attr.replace('.', ',') if '.' in term_attr else term_attr
@@ -798,8 +800,35 @@ class PostgresQueryGenerator(SqlGenerator):
 
     def _gen_sql_col(self, term):
         print(term)
-        #target = self._gen_select_target(term.bare_term)
-        #return f"data#>'{{{target}}}'"
+        if len(term.parsed[0].select_term.parsed) > 1:
+            test_select_term = term.parsed[0].select_term.parsed[-1]
+            if isinstance(test_select_term, ArraySpecific):
+                target = self._gen_select_target(term.parsed[0].select_term.bare_term)
+                _idx = term.parsed[0].select_term.parsed[-1].idx
+                col = f"data#>'{{{target}}}'#>>'{{{_idx}}}'"
+            elif isinstance(test_select_term, ArraySpecificSingle):
+                target = self._gen_select_target(term.parsed[0].select_term.bare_term)
+                _idx = term.parsed[0].select_term.parsed[-1].idx
+                _col = term.parsed[0].select_term.parsed[-1].sub_selections[0]
+                col = f"data#>'{{{target}}}'#>'{{{_idx}}}'#>'{{{_col}}}'"
+            else:
+                raise Exception(f'Unsupported term {term.original}')
+        else:
+            if not isinstance(term.parsed[0].select_term.parsed[0], Key):
+                raise Exception(f'Invalid term {term.original}')
+            target = term.parsed[0].select_term.parsed[0].element
+            col = f"data#>>'{{{target}}}'"
+        if isinstance(term, WhereTerm):
+            try:
+                integer_ops = ['eq', 'gt', 'gte', 'lt', 'lte', 'neq']
+                int(term.parsed[0].val)
+                if term.parsed[0].op in integer_ops:
+                    col = f'({col})::int'
+            except ValueError:
+                pass
+        if isinstance(term, OrderTerm):
+            col = f'({col})::int' # but what if not int? -- need a db func to instropect
+        return col
 
     def _gen_sql_update(self, term):
         print(term)

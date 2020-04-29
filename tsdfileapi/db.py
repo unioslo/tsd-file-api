@@ -254,7 +254,8 @@ class PostgresBackend(object):
 
     def initialise(self):
         with postgres_session(self.pool) as session:
-            session.execute(self.generator_class.db_init_sql)
+            for stmt in self.generator_class.db_init_sql:
+                    session.execute(stmt)
         return True
 
     def tables_list(self, schema=None):
