@@ -351,7 +351,7 @@ class GenericFormDataHandler(AuthRequestHandler):
             self.new_paths = []
             self.group_name = None
             self.authnz = self.process_token_and_extract_claims(
-                check_tenant=self.check_tenant if self.check_tenant else options.check_tenant
+                check_tenant=self.check_tenant if self.check_tenant is not None else options.check_tenant
             )
             if not self.authnz:
                 self.set_status(401)
@@ -557,7 +557,7 @@ class ResumablesHandler(AuthRequestHandler):
     def prepare(self):
         try:
             self.authnz = self.process_token_and_extract_claims(
-                check_tenant=self.check_tenant if self.check_tenant else options.check_tenant
+                check_tenant=self.check_tenant if self.check_tenant is not None else options.check_tenant
             )
         except Exception as e:
             logging.error(e)
@@ -786,7 +786,7 @@ class StreamHandler(AuthRequestHandler):
             filemodes = {'POST': 'ab+', 'PUT': 'wb+', 'PATCH': 'wb+'}
             try:
                 self.authnz = self.process_token_and_extract_claims(
-                    check_tenant=self.check_tenant if self.check_tenant else options.check_tenant
+                    check_tenant=self.check_tenant if self.check_tenant is not None else options.check_tenant
                 )
             except Exception as e:
                 logging.error(e)
@@ -1146,7 +1146,7 @@ class ProxyHandler(AuthRequestHandler):
             # 2. Authentication and authorization
             try:
                 self.authnz = self.process_token_and_extract_claims(
-                    check_tenant=self.check_tenant if self.check_tenant else options.check_tenant
+                    check_tenant=self.check_tenant if self.check_tenant is not None else options.check_tenant
                 )
             except Exception as e:
                 logging.error('Access token invalid')
@@ -1547,7 +1547,7 @@ class ProxyHandler(AuthRequestHandler):
         try:
             try:
                 self.authnz = self.process_token_and_extract_claims(
-                    check_tenant=self.check_tenant if self.check_tenant else options.check_tenant
+                    check_tenant=self.check_tenant if self.check_tenant is not None else options.check_tenant
                 )
             except Exception:
                 if not self.message:
@@ -1670,7 +1670,7 @@ class ProxyHandler(AuthRequestHandler):
                 raise Exception
             try:
                 self.authnz = self.process_token_and_extract_claims(
-                    check_tenant=self.check_tenant if self.check_tenant else options.check_tenant
+                    check_tenant=self.check_tenant if self.check_tenant is not None else options.check_tenant
                 )
             except Exception:
                 if not self.message:
@@ -1721,7 +1721,7 @@ class ProxyHandler(AuthRequestHandler):
                 raise Exception
             try:
                 self.authnz = self.process_token_and_extract_claims(
-                    check_tenant=self.check_tenant if self.check_tenant else options.check_tenant
+                    check_tenant=self.check_tenant if self.check_tenant is not None else options.check_tenant
                 )
             except Exception:
                 if not self.message:
@@ -1799,7 +1799,7 @@ class GenericTableHandler(AuthRequestHandler):
     def prepare(self):
         try:
             self.authnz = self.process_token_and_extract_claims(
-                check_tenant=self.check_tenant if self.check_tenant else options.check_tenant
+                check_tenant=self.check_tenant if self.check_tenant is not None else options.check_tenant
             )
         except Exception as e:
             logging.error(e)
