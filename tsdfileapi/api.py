@@ -1768,7 +1768,7 @@ class ProxyHandler(AuthRequestHandler):
 class GenericTableHandler(AuthRequestHandler):
 
     """
-    Manage data in generic sqlite backend.
+    Manage data in generic db backend.
 
     TODO: text/csv, efficiently?
 
@@ -1777,6 +1777,11 @@ class GenericTableHandler(AuthRequestHandler):
     def metadata_table_name(self, table_name):
         return f'{table_name}_metadata'
 
+    def get_uri_query(self, uri):
+        if '?' in uri:
+            return uri.split('?')[-1]
+        else:
+            return ''
 
     def initialize(self, backend, dbtype='sqlite'):
         self.backend = backend
@@ -1839,7 +1844,8 @@ class GenericTableHandler(AuthRequestHandler):
                     self.write('{"data": [')
                     self.flush()
                     first = True
-                    for row in self.db.table_select(table_name, self.request.uri):
+                    query = self.get_uri_query(self.request.uri_parts)
+                    for row in self.db.table_select(table_name, query):
                         if not first:
                             self.write(',')
                         self.write(row)
@@ -1876,7 +1882,8 @@ class GenericTableHandler(AuthRequestHandler):
             if self.request.uri.split('?')[0].endswith('metadata'):
                 table_name = self.metadata_table_name(table_name)
             new_data = json_decode(self.request.body)
-            data = self.db.table_update(table_name, self.request.uri, new_data)
+            query = self.get_uri_query(self.request.uri)
+            data = self.db.table_update(table_name, query, new_data)
             self.set_status(200)
             self.write({'data': 'data updated'})
         except Exception as e:
@@ -1889,7 +1896,8 @@ class GenericTableHandler(AuthRequestHandler):
         try:
             if self.request.uri.split('?')[0].endswith('metadata'):
                 table_name = self.metadata_table_name(table_name)
-            data = self.db.table_delete(table_name, self.request.uri)
+            query = self.get_uri_query(self.request.uri)
+            data = self.db.table_delete(table_name, query)
             self.set_status(200)
             self.write({'data': data})
         except Exception as e:
