@@ -1588,10 +1588,18 @@ class TestFileApi(unittest.TestCase):
         for entry in out:
             self.assertTrue('x' in entry.keys() and 'z' in entry.keys())
             self.assertTrue(len(entry.keys()) == 2)
+        # nested key
+        out = test_select_query('select=a.k1')
+        self.assertEqual(out[1]['a']['k1'], None)
+        self.assertEqual(out[2]['a']['k1'], {'r1': [1, 2], 'r2': 2})
         # simple array slice
         out = test_select_query('select=x,b[1]')
         self.assertEqual(out[0]['b'], [2])
         self.assertEqual(out[1]['b'], None)
+        # nested simple array slice
+        out = test_select_query('select=x,a.k2[1]')
+        self.assertEqual(out[2]['a']['k2'], [9])
+        # TODO - test
         # selecting a key inside an array slice
         out = test_select_query('select=x,c[1|h]')
         self.assertEqual(out[0]['c'], None)
