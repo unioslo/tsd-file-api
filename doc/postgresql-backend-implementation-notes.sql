@@ -147,3 +147,22 @@ select jsonb_build_object(
     then array[filter_array_elements(data#>'{c}', '{h,p}')->0]
     else null end)
 from mytable;
+
+
+-- ensuring unique rows without running into index size constraints
+-- e.g.:
+drop table d1;
+create table if not exists d1 (data jsonb not null, uniq text unique not null);
+
+create or replace function unique_data()
+    returns trigger as $$
+    begin
+        NEW.uniq := md5(NEW.data::text);
+        return new;
+    end;
+$$ language plpgsql;
+
+create trigger ensure_unique_data before insert on d1
+    for each row execute procedure unique_data();
+
+insert into d1 (data) values ('{"d": 9}');

@@ -90,10 +90,12 @@ pretty_bad_protocol._parsers.Verify.TRUST_LEVELS["ENCRYPTION_COMPLIANCE_MODE"] =
 # pylint: disable=relative-import
 from auth import process_access_token
 from tokens import gen_test_tokens, get_test_token_for_p12, gen_test_token_for_user
-from db import session_scope, sqlite_init, postgres_init
+from db import session_scope, sqlite_init, postgres_init, SqliteBackend, \
+               sqlite_session, PostgresBackend, postgres_session
 from resumables import SerialResumable
 from utils import sns_dir, md5sum, IllegalFilenameException
 from pgp import _import_keys
+from squril import SqliteQueryGenerator, PostgresQueryGenerator
 
 
 def project_import_dir(config, tenant=None, backend=None, tenant_pattern=None):
@@ -613,12 +615,12 @@ class TestFileApi(unittest.TestCase):
 
 
     def test_XXX_load(self):
-        # draft data generation:
         numrows = 250000 # responses per survey
         numkeys = 1500 # questions per survey
-        # ~ 10gb of data in sqlite
-        rows = []
+
         print('generating test data')
+        pool = postgres_init(self.config['backends']['postgres']['dbconfig'])
+        db = PostgresBackend(pool, schema='p11')
         for i in range(numrows):
             row = {}
             for j in range(numkeys):
@@ -626,16 +628,23 @@ class TestFileApi(unittest.TestCase):
                 row[key] = j
             uid = str(uuid.uuid4())
             row['id'] = uid
-            rows.append(row)
+            # insert row
+            db.table_insert('loadtest', row)
             total = i
-            if i % 10000 == 0:
+            if i % (numrows/10.0) == 0:
                 print('{} rows generated'.format(total))
                 total += total
-        print('inserting into db')
+
+        # sqlite findings:
+        # ~ 10gb of data in sqlite
         # on localhost, fetching everything:
         # real 0m48.339s
         # in a json file, that is 4.7gb
 
+        # postgres findings:
+        # on localhost, fetching everything:
+        # real    4m21.898s
+        # CPU intensive, memory fine
 
     # More Authn+z
     # ------------
@@ -1751,8 +1760,6 @@ class TestFileApi(unittest.TestCase):
                 'x': 10
             }
         ]
-        from squril import SqliteQueryGenerator, PostgresQueryGenerator
-        from db import SqliteBackend, sqlite_session, PostgresBackend, postgres_session
         engine = sqlite_init('/tmp', name='api-test.db', builtin=True)
         pool = postgres_init(self.config['backends']['postgres']['dbconfig'])
         self.test_db_backend(
@@ -1917,7 +1924,7 @@ def main():
     ns = [
         'test_XXX_nettskjema_backend',
     ]
-    ns_load = [
+    load = [
         'test_XXX_load'
     ]
     db = [
@@ -1957,8 +1964,8 @@ def main():
         tests.extend(tables)
     if 'ns' in sys.argv:
         tests.extend(ns)
-    if 'ns-load' in sys.argv:
-        tests.extend(ns_load)
+    if 'load' in sys.argv:
+        tests.extend(load)
     if 'db' in sys.argv:
         tests.extend(db)
     if 'apps' in sys.argv:

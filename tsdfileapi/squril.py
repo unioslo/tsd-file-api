@@ -757,6 +757,15 @@ class PostgresQueryGenerator(SqlGenerator):
                 return out;
             end;
         $$ language plpgsql;
+        """,
+        """
+        create or replace function unique_data()
+        returns trigger as $$
+            begin
+                NEW.uniq := md5(NEW.data::text);
+                return new;
+            end;
+        $$ language plpgsql;
         """
     ]
 
