@@ -250,7 +250,7 @@ class PostgresBackend(object):
     def __init__(self, pool, verbose=False, schema=None):
         self.pool = pool
         self.verbose = verbose
-        self.table_definition = '(data jsonb unique not null)'
+        self.table_definition = '(data jsonb not null, uniq text unique not null)'
         self.schema = schema if schema else 'public'
 
     def initialise(self):
@@ -291,9 +291,13 @@ class PostgresBackend(object):
                 return True
             except (psycopg2.ProgrammingError, psycopg2.OperationalError) as e:
                 table_create = f'create table if not exists {self.schema}."{table_name}"{self.table_definition}'
+                trigger_create = f"""
+                    create trigger ensure_unique_data before insert on {self.schema}."{table_name}"
+                    for each row execute procedure unique_data()"""
                 with postgres_session(self.pool) as session:
                     session.execute(f'create schema if not exists {self.schema}')
                     session.execute(table_create)
+                    session.execute(trigger_create)
                     session.executemany(insert_stmt, target)
                 return True
         except psycopg2.ProgrammingError as e:
