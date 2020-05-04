@@ -1740,10 +1740,9 @@ class ProxyHandler(AuthRequestHandler):
                 raise Exception
             self.filepath = '%s/%s' % (self.path, secured_filename)
             if not os.path.lexists(self.filepath):
-                logging.error(self.filepath)
                 logging.error('%s tried to delete a file that does not exist', self.requestor)
                 self.set_status(404)
-                self.message = 'File does not exist'
+                self.message = f'File does not exist {self.filepath}'
                 raise Exception
             if os.path.isdir(self.filepath):
                 self.set_status(403)
@@ -1861,6 +1860,7 @@ class GenericTableHandler(AuthRequestHandler):
 
     def put(self, tenant, table_name):
         try:
+            # TODO check content type: support nacl
             data = json_decode(self.request.body)
             if self.request.uri.split('?')[0].endswith('metadata'):
                 table_name = self.metadata_table_name(table_name)
@@ -1881,6 +1881,7 @@ class GenericTableHandler(AuthRequestHandler):
         try:
             if self.request.uri.split('?')[0].endswith('metadata'):
                 table_name = self.metadata_table_name(table_name)
+            # TODO check content type: support nacl
             new_data = json_decode(self.request.body)
             query = self.get_uri_query(self.request.uri)
             data = self.db.table_update(table_name, query, new_data)
@@ -1912,6 +1913,9 @@ class HealthCheckHandler(RequestHandler):
         self.set_status(200)
         self.write({'message': 'healthy'})
 
+
+# class NaclKeyHander
+# TODO:
 
 class Backends(object):
 

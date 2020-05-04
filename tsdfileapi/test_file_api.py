@@ -1482,13 +1482,10 @@ class TestFileApi(unittest.TestCase):
     def test_ZZZ_delete(self):
         headers = {'Authorization': 'Bearer ' + TEST_TOKENS['EXPORT']}
         dirs = f'{self.store_import_folder}/topdir/bottomdir'
-        try:
-            os.makedirs(dirs)
-        except OSError:
-            pass
-        with open(f'{dirs}/file1', 'w') as f:
-            f.write('hi there')
-        # TODO: ensure world writable - so test do not fail
+        resp = requests.put(f'{self.store_import}/topdir/bottomdir/file1',
+                            data=lazy_file_reader(self.so_sweet),
+                            headers=headers)
+        self.assertEqual(resp.status_code, 201)
         resp = requests.delete(f'{self.store_export}/topdir/bottomdir/file1', headers=headers)
         self.assertEqual(resp.status_code, 200)
         self.assertTrue('file1' not in os.listdir(dirs))
@@ -1761,7 +1758,11 @@ class TestFileApi(unittest.TestCase):
             }
         ]
         engine = sqlite_init('/tmp', name='api-test.db', builtin=True)
-        pool = postgres_init(self.config['backends']['postgres']['dbconfig'])
+        try:
+            if self.config['backends']['postgres']['dbconfig']:
+                pool = postgres_init(self.config['backends']['postgres']['dbconfig'])
+        except KeyError as e:
+            pool = None
         self.test_db_backend(
             data,
             engine,
@@ -1770,14 +1771,15 @@ class TestFileApi(unittest.TestCase):
             SqliteBackend,
             self.verbose
         )
-        self.test_db_backend(
-            data,
-            pool,
-            postgres_session,
-            PostgresQueryGenerator,
-            PostgresBackend,
-            self.verbose
-        )
+        if pool:
+            self.test_db_backend(
+                data,
+                pool,
+                postgres_session,
+                PostgresQueryGenerator,
+                PostgresBackend,
+                self.verbose
+            )
 
 
     def test_app_backend(self):
