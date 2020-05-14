@@ -1813,6 +1813,43 @@ class TestFileApi(unittest.TestCase):
         self.assertEqual(resp.status_code, 200)
 
 
+    def test_nacl_crypto(self):
+        from nacl.public import SealedBox, PrivateKey, PublicKey
+        from nacl.secret import SecretBox
+        import nacl.utils
+        # server key pair
+        server_public_key = base64.b64decode(self.config['test_nacl_public']['public'])
+        server_private_key = base64.b64decode(self.config['test_nacl_public']['private'])
+
+        # client steps
+        # 1. generate a client secret key
+        key = nacl.utils.random(SecretBox.KEY_SIZE)
+        # 2. use it to encrypt payload
+        client_secret_box = SecretBox(key)
+        payload = 'hi there'
+        encrypted_payload = client_secret_box.encrypt(bytes(payload.encode('utf-8')))
+        # 3. use server public key encrypt client secret key
+        client_sealed_box = SealedBox(PublicKey(server_public_key))
+        cipher_text = client_sealed_box.encrypt(key)
+
+        # server steps
+        # 1. decrypt the client secret key
+        server_sealed_box = SealedBox(PrivateKey(server_private_key))
+        decrypted_client_key = server_sealed_box.decrypt(cipher_text)
+        assert key == decrypted_client_key
+        # 2. decrypt the encrypted payload
+        server_secret_box = SecretBox(decrypted_client_key)
+        decrypted_payload = server_secret_box.decrypt(encrypted_payload)
+        assert decrypted_payload.decode('utf-8') == payload
+
+        # now with requests
+        # get server public key
+        # send data
+        # - files
+        # - tables enc({}), enc([{}, {}]), [end({})] ?
+        # - figure out content-types
+
+
 def main():
     tests = []
     base = [
@@ -1935,6 +1972,9 @@ def main():
     apps = [
         'test_app_backend',
     ]
+    crypt = [
+        'test_nacl_crypto'
+    ]
     if len(sys.argv) == 2:
         print('usage:')
         print('python3 tsdfileapi/test_file_api.py config.yaml ARGS')
@@ -1972,6 +2012,8 @@ def main():
         tests.extend(db)
     if 'apps' in sys.argv:
         tests.extend(apps)
+    if 'crypt' in sys.argv:
+        tests.extend(crypt)
     if 'all' in sys.argv:
         tests.extend(base)
         tests.extend(names)
@@ -1987,6 +2029,7 @@ def main():
         tests.extend(ns)
         tests.extend(apps)
         tests.extend(db)
+        tests.extend(crypt)
     tests.sort()
     suite = unittest.TestSuite()
     for test in tests:
