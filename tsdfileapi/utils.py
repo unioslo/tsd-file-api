@@ -90,6 +90,7 @@ def sns_dir(base_pattern, tenant, uri, tenant_string_pattern, test=False):
         if not os.path.lexists(_path):
             logging.info('Creating %s', _path)
             os.makedirs(_path)
+            subprocess.call('chmod', '775', _path)
         return _path
     except Exception as e:
         logging.error(e)
