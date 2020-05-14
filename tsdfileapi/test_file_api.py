@@ -1814,33 +1814,51 @@ class TestFileApi(unittest.TestCase):
 
 
     def test_nacl_crypto(self):
-        from nacl.public import SealedBox, PrivateKey, PublicKey
-        from nacl.secret import SecretBox
-        import nacl.utils
+
+        # https://libnacl.readthedocs.io/en/latest/index.html
+        import libnacl
+        import libnacl.sealed
+        import libnacl.public
+        import libnacl.utils
+
         # server key pair
         server_public_key = base64.b64decode(self.config['test_nacl_public']['public'])
         server_private_key = base64.b64decode(self.config['test_nacl_public']['private'])
 
-        # client steps
-        # 1. generate a client secret key
-        key = nacl.utils.random(SecretBox.KEY_SIZE)
-        # 2. use it to encrypt payload
-        client_secret_box = SecretBox(key)
-        payload = 'hi there'
-        encrypted_payload = client_secret_box.encrypt(bytes(payload.encode('utf-8')))
-        # 3. use server public key encrypt client secret key
-        client_sealed_box = SealedBox(PublicKey(server_public_key))
-        cipher_text = client_sealed_box.encrypt(key)
+        # client
+        # Note: for browser clients, e.g.:
+        # https://github.com/bcomnes/nacl-blob and https://nacl-blob.netlify.app/
+        # https://github.com/tonyg/js-nacl#secret-key-encryption-crypto_stream
+        # 1. generate a client secret key and nonce
+        nonce = libnacl.utils.rand_nonce()
+        key = libnacl.utils.salsa_key()
 
-        # server steps
+        # 2. use it to encrypt payload
+        payload = 'hi there'
+        # if per chunk, then the encrypted chunks
+        # should be sent to the server _wholly_
+        encrypted_payload = libnacl.crypto_stream_xor(payload.encode(), nonce, key)
+
+        # 3. use server public key encrypt client secret key, and nonce
+        client_sealed_box = libnacl.sealed.SealedBox(libnacl.public.PublicKey(server_public_key))
+        cipher_text_key = client_sealed_box.encrypt(key)
+        cipher_text_nonce = client_sealed_box.encrypt(nonce)
+
+        # server
         # 1. decrypt the client secret key
-        server_sealed_box = SealedBox(PrivateKey(server_private_key))
-        decrypted_client_key = server_sealed_box.decrypt(cipher_text)
+        server_sealed_box = libnacl.sealed.SealedBox(libnacl.public.SecretKey(server_private_key))
+        decrypted_client_key = server_sealed_box.decrypt(cipher_text_key)
+        decrypted_client_nonce = server_sealed_box.decrypt(cipher_text_nonce)
         assert key == decrypted_client_key
+        assert nonce == decrypted_client_nonce
+
         # 2. decrypt the encrypted payload
-        server_secret_box = SecretBox(decrypted_client_key)
-        decrypted_payload = server_secret_box.decrypt(encrypted_payload)
-        assert decrypted_payload.decode('utf-8') == payload
+        decrypted_payload = libnacl.crypto_stream_xor(
+            encrypted_payload,
+            decrypted_client_nonce,
+            decrypted_client_key
+        )
+        assert decrypted_payload.decode() == payload
 
         # now with requests
         # get server public key

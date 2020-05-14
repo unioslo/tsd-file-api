@@ -952,7 +952,6 @@ class StreamHandler(AuthRequestHandler):
             self.send_error("something went wrong")
 
 
-    # TODO: check for errors
     def post(self, tenant, uri_filename=None):
         if not self.custom_content_type:
             self.target_file.close()
@@ -978,11 +977,11 @@ class StreamHandler(AuthRequestHandler):
         self.write({'message': 'data streamed'})
 
 
-    # TODO: check for errors
     def put(self, tenant, uri_filename=None):
         if not self.custom_content_type:
             self.target_file.close()
             os.rename(self.path, self.path_part)
+        # TODO: support application/octet-stream+nacl
         elif self.custom_content_type in ['application/tar', 'application/tar.gz',
                                           'application/aes']:
             out, err = self.proc.communicate()
@@ -1222,8 +1221,8 @@ class ProxyHandler(AuthRequestHandler):
                     headers['Aes-Key'] = self.request.headers['Aes-Key']
                 if 'Aes-Iv' in self.request.headers.keys():
                     headers['Aes-Iv'] = self.request.headers['Aes-Iv']
-                if 'Pragma' in self.request.headers.keys():
-                    headers['Pragma'] = self.request.headers['Pragma']
+                # TODO: add support fot Nacl-Key, and Nacl-Nonce
+                # TODO: when combined with application/octet-stream+nacl
             except Exception as e:
                 logging.error('Could not prepare headers for async request handling')
                 raise e
@@ -1915,7 +1914,24 @@ class HealthCheckHandler(RequestHandler):
 
 
 class NaclKeyHander(RequestHandler):
-    pass
+
+    def get(self, tenant):
+        public_key = options.config.get('nacl_public').get('public')
+        out = {
+            'public_key': public_key,
+            'encoding': 'base64',
+            'alg': 'sealed_box,X25519,XSalsa20-Poly1305',
+            'info': 'https://libsodium.gitbook.io/doc/public-key_cryptography/sealed_boxes',
+            'exp': None,
+            'metadata': {
+                'usage': "To be used in combination with encrypted stream " +
+                         "(https://libsodium.gitbook.io/doc/secret-key_cryptography/secretstream) - " +
+                         "clients are required to use the public_key to encrypt their secret key " +
+                         "and nonce, and send this in the Nacl-Key, and Nacl-Nonce headers, along with the payload." +
+                         "For more information see endpoint-specific docs."
+            }
+        }
+        self.write(out)
 
 
 class Backends(object):
@@ -1954,6 +1970,7 @@ class Backends(object):
             ('/v1/(.*)/tables/generic', GenericTableHandler, dict(backend='generic', dbtype='sqlite')),
         ],
         'survey': [
+            ('/v1/(.*)/survey/crypto/key', NaclKeyHander),
             ('/v1/(.*)/survey/([a-zA-Z_0-9]+/attachments.*)', ProxyHandler, dict(backend='survey', namespace='survey', endpoint=None)),
             ('/v1/(.*)/survey/resumables', ResumablesHandler, dict(backend='survey')),
             ('/v1/(.*)/survey/resumables/(.*)', ResumablesHandler, dict(backend='survey')),
