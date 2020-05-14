@@ -1914,8 +1914,9 @@ class HealthCheckHandler(RequestHandler):
         self.write({'message': 'healthy'})
 
 
-# class NaclKeyHander
-# TODO:
+class NaclKeyHander(RequestHandler):
+    pass
+
 
 class Backends(object):
 
@@ -1955,6 +1956,7 @@ class Backends(object):
         'survey': [
             ('/v1/(.*)/survey/([a-zA-Z_0-9]+/attachments.*)', ProxyHandler, dict(backend='survey', namespace='survey', endpoint=None)),
             ('/v1/(.*)/survey/resumables', ResumablesHandler, dict(backend='survey')),
+            ('/v1/(.*)/survey/resumables/(.*)', ResumablesHandler, dict(backend='survey')),
             ('/v1/(.*)/survey/upload_stream/(.*)', StreamHandler, dict(backend='survey')),
             # TODO: switch to postgres, when db setup is ready
             ('/v1/(.*)/survey/([a-zA-Z_0-9]+)/metadata', GenericTableHandler, dict(backend='survey', dbtype='sqlite')),
@@ -1977,7 +1979,8 @@ class Backends(object):
             ('/v1/(.*)/store/export/(.*)', ProxyHandler, dict(backend='store', namespace='store', endpoint='export')),
         ],
         'apps_files' : [
-            ('/v1/(.*)/apps/(.+)/resumables', ResumablesHandler, dict(backend='apps_files')),
+            ('/v1/(.*)/apps/.+/resumables', ResumablesHandler, dict(backend='apps_files')),
+            ('/v1/(.*)/apps/.+/resumables/(.*)', ResumablesHandler, dict(backend='apps_files')),
             ('/v1/(.*)/apps/upload_stream/(.*)',  StreamHandler, dict(backend='apps_files')),
             ('/v1/(.*)/apps/(.+/files/.*)', ProxyHandler, dict(backend='apps_files', namespace='apps', endpoint=None)),
         ],
