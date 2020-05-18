@@ -1995,10 +1995,34 @@ class TestFileApi(unittest.TestCase):
         )
         self.assertEqual(md5sum(test_file), md5sum(f'{self.uploads_folder_survey}/{target}'))
 
-        # TODO:
-        # - tables, Content-Type: application/json+nacl
-        #   - enc({}),
-        #   - enc([{}, {}])
+        payload1 = {'x': 10, 'y': 0, 'more': 'all the data yay', 'id': str(uuid.uuid4())}
+        payload2 = [
+            {'id': str(uuid.uuid4()), 'answers': [i for i in range(1000)]},
+            {'id': str(uuid.uuid4()), 'answers': [i for i in range(100)]},
+            {'id': str(uuid.uuid4()), 'answers': [i for i in range(10000)]},
+        ]
+        def encrypt_json(data, nonce, key):
+            # return encrypted payload
+            # and length of serialised, byte encoded json
+            serialised = json.dumps(data).encode()
+            enc = libnacl.crypto_stream_xor(serialised, nonce, key)
+            return enc, len(serialised)
+
+        target = '444222/submissions'
+        for payload in [payload1, payload2]:
+            encrypted, chunksize = encrypt_json(payload, nonce, key)
+            resp = requests.put(
+                f'{self.survey}/{target}',
+                headers={
+                    'Content-Type': 'application/json+nacl',
+                    'Nacl-Nonce': nacl_nonce,
+                    'Nacl-Key': nacl_key,
+                    'Nacl-Chunksize': str(chunksize),
+                    'Authorization': f"Bearer {TEST_TOKENS['VALID']}"
+                },
+                data=encrypted
+            )
+            self.assertTrue(resp.status_code, 201)
 
 
 def main():
