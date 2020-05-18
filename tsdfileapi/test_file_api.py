@@ -1995,6 +1995,20 @@ class TestFileApi(unittest.TestCase):
         )
         self.assertEqual(md5sum(test_file), md5sum(f'{self.uploads_folder_survey}/{target}'))
 
+        # test refuse too large chunk size
+        resp = requests.put(
+            f'{self.survey}/{target}',
+            headers={
+                'Content-Type': content_type,
+                'Nacl-Nonce': nacl_nonce,
+                'Nacl-Key': nacl_key,
+                'Nacl-Chunksize': str(500001),
+                'Authorization': f"Bearer {TEST_TOKENS['VALID']}"
+            },
+            data=open(new_stream, 'rb').read()
+        )
+        self.assertTrue(resp.status_code, 400)
+
         payload1 = {'x': 10, 'y': 0, 'more': 'all the data yay', 'id': str(uuid.uuid4())}
         payload2 = [
             {'id': str(uuid.uuid4()), 'answers': [i for i in range(1000)]},
@@ -2024,6 +2038,19 @@ class TestFileApi(unittest.TestCase):
             )
             self.assertTrue(resp.status_code, 201)
 
+        # test refuse too large chunk sizes
+        resp = requests.put(
+            f'{self.survey}/{target}',
+            headers={
+                'Content-Type': 'application/json+nacl',
+                'Nacl-Nonce': nacl_nonce,
+                'Nacl-Key': nacl_key,
+                'Nacl-Chunksize': str(500001),
+                'Authorization': f"Bearer {TEST_TOKENS['VALID']}"
+            },
+            data=encrypted
+        )
+        self.assertTrue(resp.status_code, 400)
 
 def main():
     tests = []
