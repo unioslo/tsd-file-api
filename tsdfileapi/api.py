@@ -30,6 +30,9 @@ from collections import OrderedDict
 import yaml
 import magic
 import tornado.queues
+import libnacl.sealed
+import libnacl.public
+
 from pandas import DataFrame
 from termcolor import colored
 from tornado.escape import json_decode, url_unescape, url_escape
@@ -102,6 +105,12 @@ def set_config():
     define('default_file_owner', _config['default_file_owner'])
     define('create_tenant_dir', _config['create_tenant_dir'])
     define('jwt_secret', _config['jwt_secret'] if 'jwt_secret' in _config.keys() else None)
+    define('sealed_box', libnacl.sealed.SealedBox(
+            libnacl.public.SecretKey(
+                base64.b64decode(_config['nacl_public']['private'])
+            )
+        )
+    )
 
 set_config()
 
@@ -741,6 +750,26 @@ class StreamHandler(AuthRequestHandler):
                                              stdin=self.openssl_proc.stdout,
                                              stdout=self.target_file)
 
+    def handle_nacl_stream(self, headers):
+        self.custom_content_type = headers['Content-Type']
+        self.nacl_stream_buffer = b''
+        try:
+            self.nacl_nonce = options.sealed_box.decrypt(
+                base64.b64decode(headers['Nacl-Nonce'])
+            )
+            self.nacl_key = options.sealed_box.decrypt(
+                base64.b64decode(headers['Nacl-Key'])
+            )
+        except Exception as e:
+            logging.error(e)
+            logging.error('Could not decrypt Nacl headers')
+            raise Exception
+        try:
+            self.nacl_chunksize = int(headers['Nacl-Chunksize'])
+        except KeyError:
+            logging.error('Missing Nacl-Chunksize header - cannot decrypt data')
+            raise Exception
+
 
     def initialize(self, backend):
         try:
@@ -886,6 +915,10 @@ class StreamHandler(AuthRequestHandler):
                         self.handle_gz(content_type, filemode)
                     elif content_type == 'application/gz.aes':
                         self.handle_gz_aes(content_type, filemode)
+                    elif content_type == 'application/octet-stream+nacl':
+                        self.handle_nacl_stream(self.request.headers)
+                        self.target_file = open(self.path, filemode)
+                        os.chmod(self.path, _RW______)
                     else: # 3.8 no custom content type
                         if self.request.method != 'PATCH':
                             self.custom_content_type = None
@@ -924,6 +957,17 @@ class StreamHandler(AuthRequestHandler):
                     self.res.add_chunk(self.target_file, chunk)
                 else:
                     self.target_file.write(chunk)
+            elif self.custom_content_type == 'application/octet-stream+nacl':
+                for byte in chunk:
+                    self.nacl_stream_buffer += bytes([byte])
+                    if len(self.nacl_stream_buffer) % self.nacl_chunksize == 0:
+                        decrypted = libnacl.crypto_stream_xor(
+                            self.nacl_stream_buffer,
+                            self.nacl_nonce,
+                            self.nacl_key
+                        )
+                        self.target_file.write(decrypted)
+                        self.nacl_stream_buffer = b''
             elif self.custom_content_type in ['application/tar', 'application/tar.gz',
                                               'application/aes']:
                 self.proc.stdin.write(chunk)
@@ -951,7 +995,7 @@ class StreamHandler(AuthRequestHandler):
             os.rename(self.path, self.path_part)
             self.send_error("something went wrong")
 
-
+    # TODO: deprecate
     def post(self, tenant, uri_filename=None):
         if not self.custom_content_type:
             self.target_file.close()
@@ -981,7 +1025,17 @@ class StreamHandler(AuthRequestHandler):
         if not self.custom_content_type:
             self.target_file.close()
             os.rename(self.path, self.path_part)
-        # TODO: support application/octet-stream+nacl
+        elif self.custom_content_type == 'application/octet-stream+nacl':
+            if self.nacl_stream_buffer:
+                decrypted = libnacl.crypto_stream_xor(
+                            self.nacl_stream_buffer,
+                            self.nacl_nonce,
+                            self.nacl_key
+                        )
+                self.nacl_stream_buffer = b''
+                self.target_file.write(decrypted)
+            self.target_file.close()
+            os.rename(self.path, self.path_part)
         elif self.custom_content_type in ['application/tar', 'application/tar.gz',
                                           'application/aes']:
             out, err = self.proc.communicate()
@@ -1211,19 +1265,26 @@ class ProxyHandler(AuthRequestHandler):
                 raise e
             # 7. Set headers for internal request
             try:
-                if 'Content-Type' not in self.request.headers.keys():
+                headers = {'Authorization': 'Bearer ' + self.jwt}
+                header_keys = self.request.headers.keys()
+                if 'Content-Type' not in header_keys:
                     content_type = 'application/octet-stream'
-                elif 'Content-Type' in self.request.headers.keys():
+                elif 'Content-Type' in header_keys:
                     content_type = self.request.headers['Content-Type']
-                headers = {'Authorization': 'Bearer ' + self.jwt,
-                           'Content-Type': content_type}
-                if 'Aes-Key' in self.request.headers.keys():
+                    if content_type == 'application/octet-stream+nacl':
+                        required_nacl_headers = ['Nacl-Key', 'Nacl-Nonce', 'Nacl-Chunksize']
+                        for required_nacl_header in required_nacl_headers:
+                            if required_nacl_header not in header_keys:
+                                logging.error(f'missing {required_nacl_header}')
+                                raise Exception
+                            headers[required_nacl_header] = self.request.headers[required_nacl_header]
+                if 'Aes-Key' in header_keys:
                     headers['Aes-Key'] = self.request.headers['Aes-Key']
-                if 'Aes-Iv' in self.request.headers.keys():
+                if 'Aes-Iv' in header_keys:
                     headers['Aes-Iv'] = self.request.headers['Aes-Iv']
-                # TODO: add support fot Nacl-Key, and Nacl-Nonce
-                # TODO: when combined with application/octet-stream+nacl
+                headers['Content-Type'] = content_type
             except Exception as e:
+                logging.error(e)
                 logging.error('Could not prepare headers for async request handling')
                 raise e
             # 8. Build URL
