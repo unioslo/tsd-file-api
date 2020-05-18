@@ -1873,6 +1873,46 @@ class GenericTableHandler(AuthRequestHandler):
             self.set_status(401)
             self.finish()
 
+
+    def decrypt_nacl_data(self, data, headers):
+        out = b''
+        nacl_stream_buffer = b''
+        try:
+            nacl_nonce = options.sealed_box.decrypt(
+                base64.b64decode(headers['Nacl-Nonce'])
+            )
+            nacl_key = options.sealed_box.decrypt(
+                base64.b64decode(headers['Nacl-Key'])
+            )
+        except Exception as e:
+            logging.error(e)
+            logging.error('Could not decrypt Nacl headers')
+            raise Exception
+        try:
+            nacl_chunksize = int(headers['Nacl-Chunksize'])
+        except KeyError:
+            logging.error('Missing Nacl-Chunksize header - cannot decrypt data')
+            raise Exception
+        for byte in data:
+            nacl_stream_buffer += bytes([byte])
+            if len(nacl_stream_buffer) % nacl_chunksize == 0:
+                decrypted = libnacl.crypto_stream_xor(
+                    nacl_stream_buffer,
+                    nacl_nonce,
+                    nacl_key
+                )
+                out += decrypted
+                nacl_stream_buffer = b''
+        if nacl_stream_buffer:
+            decrypted = libnacl.crypto_stream_xor(
+                nacl_stream_buffer,
+                nacl_nonce,
+                nacl_key
+            )
+            out += decrypted
+        return out.decode()
+
+
     @gen.coroutine
     def get(self, tenant, table_name=None):
         try:
@@ -1920,8 +1960,14 @@ class GenericTableHandler(AuthRequestHandler):
 
     def put(self, tenant, table_name):
         try:
-            # TODO check content type: support nacl
-            data = json_decode(self.request.body)
+            if self.request.headers['Content-Type'] == 'application/json+nacl':
+                new_data = self.decrypt_nacl_data(
+                    self.request.body,
+                    self.request.headers
+                )
+            else:
+                new_data = self.request.body
+            data = json_decode(new_data)
             if self.request.uri.split('?')[0].endswith('metadata'):
                 table_name = self.metadata_table_name(table_name)
             try:
@@ -1941,10 +1987,16 @@ class GenericTableHandler(AuthRequestHandler):
         try:
             if self.request.uri.split('?')[0].endswith('metadata'):
                 table_name = self.metadata_table_name(table_name)
-            # TODO check content type: support nacl
-            new_data = json_decode(self.request.body)
+            if self.request.headers['Content-Type'] == 'application/json+nacl':
+                new_data = self.decrypt_nacl_data(
+                    self.request.body,
+                    self.request.headers
+                )
+            else:
+                new_data = self.request.body
+            data = json_decode(new_data)
             query = self.get_uri_query(self.request.uri)
-            data = self.db.table_update(table_name, query, new_data)
+            out = self.db.table_update(table_name, query, data)
             self.set_status(200)
             self.write({'data': 'data updated'})
         except Exception as e:
