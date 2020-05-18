@@ -1960,7 +1960,7 @@ class GenericTableHandler(AuthRequestHandler):
 
     def put(self, tenant, table_name):
         try:
-            if self.request.headers['Content-Type'] == 'application/json+nacl':
+            if self.request.headers.get('Content-Type') == 'application/json+nacl':
                 new_data = self.decrypt_nacl_data(
                     self.request.body,
                     self.request.headers
@@ -1987,7 +1987,7 @@ class GenericTableHandler(AuthRequestHandler):
         try:
             if self.request.uri.split('?')[0].endswith('metadata'):
                 table_name = self.metadata_table_name(table_name)
-            if self.request.headers['Content-Type'] == 'application/json+nacl':
+            if self.request.headers.get('Content-Type') == 'application/json+nacl':
                 new_data = self.decrypt_nacl_data(
                     self.request.body,
                     self.request.headers
