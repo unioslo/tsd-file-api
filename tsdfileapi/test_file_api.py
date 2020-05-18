@@ -143,13 +143,39 @@ class TestFileApi(unittest.TestCase):
             open(os.path.normpath(cls.data_folder + '/example-ns.json')).read())
         cls.test_user = cls.config['test_user']
         cls.test_group = cls.config['test_group']
-        cls.uploads_folder = project_import_dir(cls.config, cls.config['test_project'], backend='files_import', tenant_pattern=cls.config['tenant_string_pattern'])
-        cls.uploads_folder_p12 = project_import_dir(cls.config, 'p12', backend='files_import', tenant_pattern=cls.config['tenant_string_pattern'])
-        cls.test_sns_url = '/v1/{0}/sns/{1}/{2}'.format(cls.config['test_project'], cls.config['test_keyid'], cls.config['test_formid'])
+        cls.uploads_folder = project_import_dir(
+            cls.config,
+            cls.config['test_project'],
+            backend='files_import',
+            tenant_pattern=cls.config['tenant_string_pattern']
+        )
+        cls.uploads_folder_p12 = project_import_dir(
+            cls.config,
+            'p12',
+            backend='files_import',
+            tenant_pattern=cls.config['tenant_string_pattern']
+        )
+        cls.uploads_folder_survey = project_import_dir(
+            cls.config,
+            cls.config['test_project'],
+            backend='survey',
+            tenant_pattern=cls.config['tenant_string_pattern']
+        )
+        cls.test_sns_url = '/v1/{0}/sns/{1}/{2}'.format(
+            cls.config['test_project'],
+            cls.config['test_keyid'],
+            cls.config['test_formid']
+        )
         cls.test_sns_dir = cls.config['backends']['disk']['sns']['import_path']
         cls.test_formid = cls.config['test_formid']
         cls.test_keyid = cls.config['test_keyid']
-        cls.sns_uploads_folder = sns_dir(cls.test_sns_dir, cls.config['test_project'], cls.test_sns_url, cls.config['tenant_string_pattern'], test=True)
+        cls.sns_uploads_folder = sns_dir(
+            cls.test_sns_dir,
+            cls.config['test_project'],
+            cls.test_sns_url,
+            cls.config['tenant_string_pattern'],
+            test=True
+        )
         cls.store_import_folder = cls.config['backends']['disk']['store']['import_path'].replace('pXX', cls.config['test_project'])
         cls.apps_import_folder = cls.config['backends']['disk']['apps_files']['import_path'].replace('pXX', cls.config['test_project'])
         cls.verbose = cls.config.get('verbose')
@@ -1786,7 +1812,7 @@ class TestFileApi(unittest.TestCase):
         headers = {'Authorization': 'Bearer ' + TEST_TOKENS['VALID']}
         file = url_escape('genetic-data.bam')
         resp = requests.put(f'{self.apps}/ega/files/user1/{file}',
-                            data=lazy_file_reader(self.so_sweet),
+                            data=open('/Users/leondutoit/Downloads/munch-membership.pdf', 'rb').read(),
                             headers=headers)
         self.assertEqual(resp.status_code, 201)
         resp = requests.get(f'{self.apps}/ega/files/user1/{file}', headers=headers)
@@ -1835,8 +1861,6 @@ class TestFileApi(unittest.TestCase):
 
         # 2. use it to encrypt payload
         payload = 'hi there'
-        # if per chunk, then the encrypted chunks
-        # should be sent to the server _wholly_
         encrypted_payload = libnacl.crypto_stream_xor(payload.encode(), nonce, key)
 
         # 3. use server public key encrypt client secret key, and nonce
@@ -1860,12 +1884,121 @@ class TestFileApi(unittest.TestCase):
         )
         assert decrypted_payload.decode() == payload
 
-        # now with requests
-        # get server public key
-        # send data
-        # - files
-        # - tables enc({}), enc([{}, {}]), [end({})] ?
-        # - figure out content-types
+        # write an encryptde stream to a file (save a stream)
+        chunk_size = 10
+        smaller = []
+        larger = []
+        with open('/tmp/lines', 'w') as f:
+            for i in range(20):
+                f.write(f'{i} good day sir, hwo are you doing? ')
+            f.write('good bye')
+        test_file = '/tmp/lines'
+        enc_test_file = test_file + '.stream'
+        dec_test_file = test_file + '.decr'
+        with open(test_file, 'rb') as fplain:
+            with open(enc_test_file, 'wb') as fcipher:
+                while True:
+                    data = fplain.read(chunk_size)
+                    if not data:
+                        break
+                    enc = libnacl.crypto_stream_xor(data, nonce, key)
+                    fcipher.write(enc)
+
+        # Simulate getting chunks of different sizes form the network
+        # some being too small, and others being too large
+        # with respect to the chunk size used to create the encrypted stream.
+        # Then recipient (server) needs to accumulate incoming chunks
+        # in a buffer, and process the correct sized
+        # chunks from that buffer
+        _buffer = b''
+        small_chunk = chunk_size - 3
+        larger_chunk = chunk_size + 1
+        line_no = 0
+        with open(dec_test_file, 'wb') as fdecrypted:
+            with open(enc_test_file, 'rb') as fsmaller:
+                while True:
+                    line_no += 1
+                    if line_no % 2 == 0:
+                        size = small_chunk
+                    else:
+                        size = larger_chunk
+                    chunk = fsmaller.read(size)
+                    for byte in chunk:
+                        _buffer += bytes([byte])
+                        if len(_buffer) % chunk_size == 0:
+                            decr = libnacl.crypto_stream_xor(_buffer, nonce, key)
+                            fdecrypted.write(decr)
+                            _buffer = b''
+                    if not chunk:
+                        break
+                if len(_buffer) > 0:
+                    decr = libnacl.crypto_stream_xor(_buffer, nonce, key)
+                    fdecrypted.write(decr)
+
+        assert md5sum(test_file) == md5sum(dec_test_file)
+
+        # now with requests to the survey backend
+        # client setup steps
+        resp = requests.get(f'{self.base_url}/survey/crypto/key')
+        encoded_public_key = json.loads(resp.text).get('public_key')
+        public_key = libnacl.public.PublicKey(base64.b64decode(encoded_public_key))
+        sbox = libnacl.sealed.SealedBox(public_key)
+        nonce = libnacl.utils.rand_nonce()
+        key = libnacl.utils.salsa_key()
+        chunk_size = 5
+        # save a new encrypted stream to a file, with new nonce, and key
+        # this could be generated on the fly while reading the file
+        # TODO: test this with a large file
+        new_stream = test_file + '.new.stream'
+        with open(test_file, 'rb') as fin:
+            with open(new_stream, 'wb') as fout:
+                while True:
+                    data = fin.read(chunk_size)
+                    if not data:
+                        break
+                    enc = libnacl.crypto_stream_xor(data, nonce, key)
+                    fout.write(enc)
+
+        # prepare request params
+        nacl_nonce = base64.b64encode(sbox.encrypt(nonce))
+        nacl_key = base64.b64encode(sbox.encrypt(key))
+        nacl_chunksize = chunk_size
+        content_type = 'application/octet-stream+nacl'
+
+        # send encrypted data, chunk-wise
+        target = '123456/attachments/auto-decrypt1'
+        resp = requests.put(
+            f'{self.survey}/{target}',
+            headers={
+                'Content-Type': content_type,
+                'Nacl-Nonce': nacl_nonce,
+                'Nacl-Key': nacl_key,
+                'Nacl-Chunksize': str(nacl_chunksize),
+                'Authorization': f"Bearer {TEST_TOKENS['VALID']}"
+            },
+            data=lazy_file_reader(new_stream)
+        )
+        self.assertEqual(md5sum(test_file), md5sum(f'{self.uploads_folder_survey}/{target}'))
+
+        # send encrypted data, all in one
+        target = '123456/attachments/auto-decrypt2'
+        resp = requests.put(
+            f'{self.survey}/{target}',
+            headers={
+                'Content-Type': content_type,
+                'Nacl-Nonce': nacl_nonce,
+                'Nacl-Key': nacl_key,
+                'Nacl-Chunksize': str(nacl_chunksize),
+                'Authorization': f"Bearer {TEST_TOKENS['VALID']}"
+            },
+            data=open(new_stream, 'rb').read()
+        )
+        self.assertEqual(md5sum(test_file), md5sum(f'{self.uploads_folder_survey}/{target}'))
+
+        # TODO:
+        # - tables, Content-Type: application/json+nacl
+        #   - enc({}),
+        #   - enc([{}, {}])
 
 
 def main():
