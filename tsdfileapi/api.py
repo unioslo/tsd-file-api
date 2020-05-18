@@ -105,6 +105,7 @@ def set_config():
     define('default_file_owner', _config['default_file_owner'])
     define('create_tenant_dir', _config['create_tenant_dir'])
     define('jwt_secret', _config['jwt_secret'] if 'jwt_secret' in _config.keys() else None)
+    define('max_nacl_chunksize', 500000) # don't want more than 0.5MB
     define('sealed_box', libnacl.sealed.SealedBox(
             libnacl.public.SecretKey(
                 base64.b64decode(_config['nacl_public']['private'])
@@ -1278,6 +1279,8 @@ class ProxyHandler(AuthRequestHandler):
                                 logging.error(f'missing {required_nacl_header}')
                                 raise Exception
                             headers[required_nacl_header] = self.request.headers[required_nacl_header]
+                    if int(headers['Nacl-Chunksize']) > options.max_nacl_chunksize:
+                        raise Exception(f'Nacl-Chunksize larger than max allowed: {options.max_nacl_chunksize}')
                 if 'Aes-Key' in header_keys:
                     headers['Aes-Key'] = self.request.headers['Aes-Key']
                 if 'Aes-Iv' in header_keys:
@@ -1864,12 +1867,14 @@ class GenericTableHandler(AuthRequestHandler):
 
     def prepare(self):
         try:
+            self.error = None
             self.authnz = self.process_token_and_extract_claims(
                 check_tenant=self.check_tenant if self.check_tenant is not None else options.check_tenant
             )
         except Exception as e:
+            self.error = 'Unauthorized request - token rejected'
             logging.error(e)
-            logging.error('Unauthorized request')
+            logging.error(self.error)
             self.set_status(401)
             self.finish()
 
@@ -1885,14 +1890,19 @@ class GenericTableHandler(AuthRequestHandler):
                 base64.b64decode(headers['Nacl-Key'])
             )
         except Exception as e:
+            self.error = 'Could not decrypt Nacl headers'
             logging.error(e)
-            logging.error('Could not decrypt Nacl headers')
+            logging.error(self.error)
             raise Exception
         try:
             nacl_chunksize = int(headers['Nacl-Chunksize'])
         except KeyError:
-            logging.error('Missing Nacl-Chunksize header - cannot decrypt data')
+            self.error = 'Missing Nacl-Chunksize header - cannot decrypt data'
+            logging.error(self.error)
             raise Exception
+        if nacl_chunksize > options.max_nacl_chunksize:
+            self.error = f'Nacl-Chunksize larger than max allowed: {options.max_nacl_chunksize}'
+            raise Exception(self.error)
         for byte in data:
             nacl_stream_buffer += bytes([byte])
             if len(nacl_stream_buffer) % nacl_chunksize == 0:
@@ -1955,7 +1965,7 @@ class GenericTableHandler(AuthRequestHandler):
         except Exception as e:
             logging.error(e)
             self.set_status(400)
-            self.write({'message': 'error'})
+            self.write({'message': self.error})
 
 
     def put(self, tenant, table_name):
@@ -1980,7 +1990,7 @@ class GenericTableHandler(AuthRequestHandler):
         except Exception as e:
             logging.error(e)
             self.set_status(400)
-            self.write({'message': 'error'})
+            self.write({'message': self.error})
 
 
     def patch(self, tenant, table_name):
@@ -2002,7 +2012,7 @@ class GenericTableHandler(AuthRequestHandler):
         except Exception as e:
             logging.error(e)
             self.set_status(400)
-            self.write({'message': 'error'})
+            self.write({'message': self.error})
 
 
     def delete(self, tenant, table_name):
@@ -2016,7 +2026,7 @@ class GenericTableHandler(AuthRequestHandler):
         except Exception as e:
             logging.error(e)
             self.set_status(400)
-            self.write({'message': 'error'})
+            self.write({'message': self.error})
 
 
 class HealthCheckHandler(RequestHandler):
@@ -2036,12 +2046,21 @@ class NaclKeyHander(RequestHandler):
             'alg': 'sealed_box,X25519,XSalsa20-Poly1305',
             'info': 'https://libsodium.gitbook.io/doc/public-key_cryptography/sealed_boxes',
             'exp': None,
-            'metadata': {
-                'usage': "To be used in combination with encrypted stream " +
-                         "(https://libsodium.gitbook.io/doc/secret-key_cryptography/secretstream) - " +
-                         "clients are required to use the public_key to encrypt their secret key " +
-                         "and nonce, and send this in the Nacl-Key, and Nacl-Nonce headers, along with the payload." +
-                         "For more information see endpoint-specific docs."
+            'usage': {
+                'explanation':
+                    "To be used in combination with encrypted stream " +
+                     "(https://libsodium.gitbook.io/doc/secret-key_cryptography/secretstream) - " +
+                     "clients are required to use the public_key to encrypt their secret key " +
+                     "and nonce, and send this in the Nacl-Key, and Nacl-Nonce headers, along with the payload." +
+                     "For more information see endpoint-specific docs.",
+                'secret_stream_headers': {
+                    'Nacl-Nonce': 'base64 encoded xchacha20poly1305 nonce',
+                    'Nacl-Key': 'base64 encoded xchacha20poly1305 key',
+                    'Nacl-Chunksize': 'string value: size of encrypted chunks, in bytes'
+                },
+                'max_bytes': {
+                    'Nacl-Chunksize': options.max_nacl_chunksize,
+                }
             }
         }
         self.write(out)
