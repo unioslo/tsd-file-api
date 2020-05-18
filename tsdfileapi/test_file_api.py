@@ -1812,7 +1812,7 @@ class TestFileApi(unittest.TestCase):
         headers = {'Authorization': 'Bearer ' + TEST_TOKENS['VALID']}
         file = url_escape('genetic-data.bam')
         resp = requests.put(f'{self.apps}/ega/files/user1/{file}',
-                            data=open('/Users/leondutoit/Downloads/munch-membership.pdf', 'rb').read(),
+                            data=lazy_file_reader(self.so_sweet),
                             headers=headers)
         self.assertEqual(resp.status_code, 201)
         resp = requests.get(f'{self.apps}/ega/files/user1/{file}', headers=headers)
