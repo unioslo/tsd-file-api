@@ -1186,6 +1186,7 @@ class ProxyHandler(AuthRequestHandler):
     def prepare(self):
         """Initiate internal async HTTP request to handle body.
         """
+        self.error = None
         try:
             # 1. Set up internal variables
             try:
@@ -1203,14 +1204,16 @@ class ProxyHandler(AuthRequestHandler):
                     check_tenant=self.check_tenant if self.check_tenant is not None else options.check_tenant
                 )
             except Exception as e:
-                logging.error('Access token invalid')
+                self.error = 'Access token invalid'
+                logging.error(self.error)
                 raise e
             # 3. Validate tenant number in URI
             try:
                 tenant = tenant_from_url(self.request.uri)
                 assert options.valid_tenant.match(tenant)
             except AssertionError as e:
-                logging.error('URI does not contain a valid tenant')
+                self.error = 'URI does not contain a valid tenant'
+                logging.error(self.error)
                 raise e
             # 4. Set the filename
             try:
@@ -1238,8 +1241,9 @@ class ProxyHandler(AuthRequestHandler):
                     else:
                         pass
             except Exception as e:
+                self.error = 'could not process URI'
                 logging.error(e)
-                logging.error('could not process URI')
+                logging.error(self.error)
                 raise Exception
             # 5. ensure resource is not reserved
             try:
@@ -1254,6 +1258,8 @@ class ProxyHandler(AuthRequestHandler):
                 else:
                     assert self.is_reserved_resource(work_dir, url_unescape(resource))
             except (AssertionError, Exception) as e:
+                self.error = 'reserved resource name'
+                logging.error((self.error))
                 self.set_status(400)
                 raise Exception
             # 6. Validate groups
@@ -1261,8 +1267,9 @@ class ProxyHandler(AuthRequestHandler):
                 group_name, group_memberships = self.get_group_info(tenant, self.group_config, self.authnz)
                 self.enforce_group_logic(group_name, group_memberships, tenant, self.group_config)
             except Exception as e:
+                self.error = 'could not perform group checks'
                 logging.error(e)
-                logging.error('could not perform group checks')
+                logging.error(self.error)
                 raise e
             # 7. Set headers for internal request
             try:
@@ -1279,16 +1286,19 @@ class ProxyHandler(AuthRequestHandler):
                                 logging.error(f'missing {required_nacl_header}')
                                 raise Exception
                             headers[required_nacl_header] = self.request.headers[required_nacl_header]
-                    if int(headers['Nacl-Chunksize']) > options.max_nacl_chunksize:
-                        raise Exception(f'Nacl-Chunksize larger than max allowed: {options.max_nacl_chunksize}')
+                        if int(headers['Nacl-Chunksize']) > options.max_nacl_chunksize:
+                            self.error = f'Nacl-Chunksize larger than max allowed: {options.max_nacl_chunksize}'
+                            logging.error(self.error)
+                            raise Exception
                 if 'Aes-Key' in header_keys:
                     headers['Aes-Key'] = self.request.headers['Aes-Key']
                 if 'Aes-Iv' in header_keys:
                     headers['Aes-Iv'] = self.request.headers['Aes-Iv']
                 headers['Content-Type'] = content_type
             except Exception as e:
+                self.error = 'Could not prepare headers for async request handling'
                 logging.error(e)
-                logging.error('Could not prepare headers for async request handling')
+                logging.error(self.error)
                 raise e
             # 8. Build URL
             # 8.1 collect params
@@ -1330,7 +1340,7 @@ class ProxyHandler(AuthRequestHandler):
                 raise e
         except Exception as e:
             self.set_status(401)
-            self.finish({'message': 'Request failed'})
+            self.finish({'message': self.error})
 
     @gen.coroutine
     def body_producer(self, write):
