@@ -813,7 +813,7 @@ class StreamHandler(AuthRequestHandler):
             self.path_part = None
             self.chunk_order_correct = True
             self.chunk_num = None
-            filemodes = {'POST': 'ab+', 'PUT': 'wb+', 'PATCH': 'wb+'}
+            filemodes = {'PUT': 'wb+', 'PATCH': 'wb+'}
             try:
                 self.authnz = self.process_token_and_extract_claims(
                     check_tenant=self.check_tenant if self.check_tenant is not None else options.check_tenant
@@ -996,32 +996,6 @@ class StreamHandler(AuthRequestHandler):
             os.rename(self.path, self.path_part)
             self.send_error("something went wrong")
 
-    # TODO: deprecate
-    def post(self, tenant, uri_filename=None):
-        if not self.custom_content_type:
-            self.target_file.close()
-            os.rename(self.path, self.path_part)
-        elif self.custom_content_type in ['application/tar', 'application/tar.gz',
-                                          'application/aes']:
-            out, err = self.proc.communicate()
-            if self.custom_content_type == 'application/aes':
-                os.rename(self.path, self.path_part)
-        elif self.custom_content_type in ['application/tar.aes', 'application/tar.gz.aes']:
-            out, err = self.openssl_proc.communicate()
-            out, err = self.tar_proc.communicate()
-        elif self.custom_content_type == 'application/gz':
-            out, err = self.gunzip_proc.communicate()
-            self.target_file.close()
-            os.rename(self.path, self.path_part)
-        elif self.custom_content_type == 'application/gz.aes':
-            out, err = self.openssl_proc.communicate()
-            out, err = self.gunzip_proc.communicate()
-            self.target_file.close()
-            os.rename(self.path, self.path_part)
-        self.set_status(201)
-        self.write({'message': 'data streamed'})
-
-
     def put(self, tenant, uri_filename=None):
         if not self.custom_content_type:
             self.target_file.close()
@@ -1188,11 +1162,16 @@ class ProxyHandler(AuthRequestHandler):
         """
         self.error = None
         try:
-            # 1. Set up internal variables
+            # 1. Set up internal variables, check method supported
             try:
                 self.chunks = tornado.queues.Queue(1)
                 if self.request.method == 'HEAD':
                     body = None
+                elif self.request.method == 'POST':
+                    self.set_status(405)
+                    self.error = 'POST not supported'
+                    logging.error(self.error)
+                    raise Exception
                 else:
                     body = self.body_producer
             except Exception as e:
@@ -1225,7 +1204,7 @@ class ProxyHandler(AuthRequestHandler):
                     self.filename = check_filename(url_unescape(filename),
                                                    disallowed_start_chars=options.start_chars)
                 else:
-                    if self.request.method in ('PUT', 'POST', 'PATCH'):
+                    if self.request.method in ('PUT', 'PATCH'):
                         logging.warning('legacy Filename header used')
                         try:
                             self.filename = check_filename(self.request.headers['Filename'],
@@ -1251,7 +1230,7 @@ class ProxyHandler(AuthRequestHandler):
                 resource = uri.split(f'/{delimiter}/')[-1]
                 if self.request.method in ('GET', 'HEAD', 'DELETE'):
                     work_dir = self.export_dir
-                elif self.request.method in ('PUT', 'POST', 'PATCH'):
+                elif self.request.method in ('PUT', 'PATCH'):
                     work_dir = self.import_dir
                 if resource == uri:
                     pass # cannot be reserved, no need to check
@@ -1325,7 +1304,7 @@ class ProxyHandler(AuthRequestHandler):
             internal_url = f'http://localhost:{options.port}/v1/{tenant}/{self.namespace}/upload_stream/{resource}{params}'
             # 9. Do async request to handle incoming data
             try:
-                if self.request.method in ('PUT', 'POST', 'PATCH'):
+                if self.request.method in ('PUT', 'PATCH'):
                     # otherwise we are serving something
                     # so no need to pass data on
                     self.fetch_future = AsyncHTTPClient().fetch(
@@ -1353,15 +1332,6 @@ class ProxyHandler(AuthRequestHandler):
     @gen.coroutine
     def data_received(self, chunk):
         yield self.chunks.put(chunk)
-
-    @gen.coroutine
-    def post(self, tenant, filename=None):
-        """Called after entire body has been read."""
-        yield self.chunks.put(None)
-        # wait for request to finish.
-        response = yield self.fetch_future
-        self.set_status(response.code)
-        self.write(response.body)
 
     @gen.coroutine
     def put(self, tenant, filename=None):
