@@ -2107,10 +2107,6 @@ class Backends(object):
             ('/v1/(.*)/files/export', ProxyHandler, dict(backend='files_export', namespace='files', endpoint='export')),
             ('/v1/(.*)/files/export/(.*)', ProxyHandler, dict(backend='files_export', namespace='files', endpoint='export')),
         ],
-        'generic': [
-            ('/v1/(.*)/tables/generic/(.*)', GenericTableHandler, dict(backend='generic', dbtype='sqlite')),
-            ('/v1/(.*)/tables/generic', GenericTableHandler, dict(backend='generic', dbtype='sqlite')),
-        ],
         'survey': [
             ('/v1/(.*)/survey/crypto/key', NaclKeyHander),
             ('/v1/(.*)/survey/([a-zA-Z_0-9]+/attachments.*)', ProxyHandler, dict(backend='survey', namespace='survey', endpoint=None)),

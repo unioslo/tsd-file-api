@@ -686,7 +686,7 @@ class TestFileApi(unittest.TestCase):
     def test_Z_token_for_other_project_rejected(self):
         data = {'submission_id':11, 'age':193}
         headers = {'Authorization': 'Bearer ' + TEST_TOKENS['WRONG_PROJECT']}
-        resp = requests.put(self.base_url + '/tables/generic/form_63332',
+        resp = requests.put(self.base_url + '/survey/63332/submissions',
                              data=json.dumps(data), headers=headers)
         self.assertEqual(resp.status_code, 401)
 
@@ -2157,11 +2157,6 @@ def main():
     sig = [
         'test_token_signature_validation',
     ]
-    tables = [
-        # sqlite backend -> needs sqlite+json1
-        'test_W_create_and_insert_into_generic_table',
-        'test_X_use_generic_table',
-    ]
     ns = [
         'test_XXX_nettskjema_backend',
     ]
@@ -2204,8 +2199,6 @@ def main():
         tests.extend(delete)
     if 'sig' in sys.argv:
         tests.extend(sig)
-    if 'tables' in sys.argv:
-        tests.extend(tables)
     if 'ns' in sys.argv:
         tests.extend(ns)
     if 'load' in sys.argv:
