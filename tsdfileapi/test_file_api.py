@@ -905,9 +905,9 @@ class TestFileApi(unittest.TestCase):
         headers = {'Authorization': 'Bearer ' + TEST_TOKENS['VALID'],
                    'Expect': '100-Continue'}
         url = self.stream + '/streamed-example-with-group-spec.csv?group=p11-member-group'
-        resp = requests.post(url,
-                             data=lazy_file_reader(self.example_csv),
-                             headers=headers)
+        resp = requests.put(url,
+                            data=lazy_file_reader(self.example_csv),
+                            headers=headers)
         self.assertEqual(resp.status_code, 201)
 
     def test_ZF_stream_does_not_work_with_client_specified_group_wrong_tenant(self):
