@@ -22,6 +22,7 @@ import fileinput
 import json
 import re
 import sqlite3
+import time
 
 from uuid import uuid4
 from sys import argv
@@ -51,6 +52,7 @@ from utils import call_request_hook, sns_dir, \
 from db import sqlite_init, SqliteBackend, postgres_init, PostgresBackend
 from resumables import SerialResumable
 from pgp import _import_keys
+from rmq import PikaClient
 
 
 _RW______ = stat.S_IREAD | stat.S_IWRITE
@@ -112,6 +114,7 @@ def set_config():
             )
         )
     )
+    define('rabbitmq', _config.get('rabbitmq'))
 
 set_config()
 
@@ -325,16 +328,86 @@ class AuthRequestHandler(RequestHandler):
                         return False
         return True
 
+    def handle_mq_publication(self, mq_config=None, data=None):
+        """
+        Publish a message to RabbitMQ, as the result of a HTTP request.
+        NB: The API assumes that a vhost has been created.
+
+        Parameters
+        ----------
+        mq_config: dict
+            enabled: bool, required
+            exchange: str, optional
+            version: str, e.g. v1, optional
+            routing_key: str, period separated string, e.g. k.v1.foo, optional
+        data: dict, no structure required
+
+        Implementation
+        --------------
+        By default, messages are published with the following routing key:
+
+            routing key: k.{version}.{tenant}.{endpoint}
+
+        Exchanges are topic exchanges, and queues receive messages
+        based on binding keys. These binding keys can have varying
+        levels of specificity, such as:
+
+            k.#                 - all
+            k.v1.#              - all for v1
+            k.v1.p11.#          - all for v1, and tenant p11
+            k.v1.p11.survey     - only for v1, p11 and the survey backend
+
+        For a backend to produce messages, it's config must be set as:
+
+            mq:
+              enabled: True
+
+        Defaults can be over-ridden by providing mq_config.
+
+        """
+        self.pika_client = self.application.settings.get('pika_client')
+        if not self.pika_client:
+            return
+        if not mq_config.get('enabled'):
+            return
+        try:
+            default_version = 'v1'
+            default_rkey = f'k.{default_version}.{self.tenant}.{self.endpoint}'
+            ex =  mq_config.get('exchange')
+            ver = (
+                default_version if not mq_config.get('version')
+                else mq_config.get('version')
+            )
+            rkey = (
+                default_rkey if not mq_config.get('routing_key')
+                else mq_config.get('routing_key')
+            )
+            self.pika_client.publish_message(
+                exchange=ex,
+                routing_key=rkey,
+                method=self.request.method,
+                uri=self.request.uri,
+                version=ver,
+                data=data
+            )
+        except Exception as e:
+            summary = f'exchange: {exchange}, routing_key: {rkey}, version: {ver}'
+            msg = f'problem publishing message, {summary}'
+            logging.error(msg)
+            logging.error(e)
+        return
+
 
 class GenericFormDataHandler(AuthRequestHandler):
 
     def initialize(self, backend):
         try:
-            tenant = tenant_from_url(self.request.uri)
-            assert options.valid_tenant.match(tenant)
+            self.backend = backend
+            self.endpoint = self.request.uri.split('/')[3]
+            self.tenant = tenant_from_url(self.request.uri)
+            assert options.valid_tenant.match(self.tenant)
             self.tenant_dir_pattern = options.config['backends']['disk'][backend]['import_path']
             self.tsd_hidden_folder = None
-            self.backend = backend
             if backend == 'sns': # hope to deprecate this with new nettskjema integration
                 self.tsd_hidden_folder_pattern = options.config['backends']['disk'][backend]['subfolder_path']
             self.request_hook = options.config['backends']['disk'][backend]['request_hook']
@@ -373,9 +446,8 @@ class GenericFormDataHandler(AuthRequestHandler):
             # check group logic here
             try:
                 authnz_status = self.authnz
-                tenant = tenant_from_url(self.request.uri)
-                group_name, group_memberships = self.get_group_info(tenant, self.group_config, authnz_status)
-                self.enforce_group_logic(group_name, group_memberships, tenant, self.group_config)
+                group_name, group_memberships = self.get_group_info(self.tenant, self.group_config, authnz_status)
+                self.enforce_group_logic(group_name, group_memberships, self.tenant, self.group_config)
             except Exception as e:
                 logging.error(e)
                 logging.error('group checks failed')
@@ -551,16 +623,20 @@ class ResumablesHandler(AuthRequestHandler):
 
     def initialize(self, backend):
         try:
-            tenant = tenant_from_url(self.request.uri)
-            assert options.valid_tenant.match(tenant)
+            self.backend = backend
+            self.endpoint = self.request.uri.split('/')[3]
+            self.tenant = tenant_from_url(self.request.uri)
+            assert options.valid_tenant.match(self.tenant)
             # can deprecate once rsync is in place for cluster software install
-            key = 'admin_path' if (backend == 'cluster' and tenant == 'p01') else 'import_path'
+            key = 'admin_path' if (backend == 'cluster' and self.tenant == 'p01') else 'import_path'
             self.import_dir = options.config['backends']['disk'][backend][key]
-            if backend == 'cluster' and tenant != 'p01':
-                assert create_cluster_dir_if_not_exists(self.import_dir, tenant, options.tenant_string_pattern)
-            self.tenant_dir = self.import_dir.replace(options.tenant_string_pattern, tenant)
+            if backend == 'cluster' and self.tenant != 'p01':
+                assert create_cluster_dir_if_not_exists(self.import_dir, self.tenant, options.tenant_string_pattern)
+            self.tenant_dir = self.import_dir.replace(options.tenant_string_pattern, self.tenant)
             self.check_tenant = options.config['backends']['disk'][backend].get('check_tenant')
-        except AssertionError as e:
+        except (AssertionError, Exception) as e:
+            logging.error('Could not initialize resumables handler')
+            logging.error(e)
             raise e
 
 
@@ -774,13 +850,15 @@ class StreamHandler(AuthRequestHandler):
 
     def initialize(self, backend):
         try:
-            tenant = tenant_from_url(self.request.uri)
-            assert options.valid_tenant.match(tenant)
-            key = 'admin_path' if (backend == 'cluster' and tenant == 'p01') else 'import_path'
+            self.backend = backend
+            self.endpoint = self.request.uri.split('/')[3]
+            self.tenant = tenant_from_url(self.request.uri)
+            assert options.valid_tenant.match(self.tenant)
+            key = 'admin_path' if (backend == 'cluster' and self.tenant == 'p01') else 'import_path'
             self.import_dir = options.config['backends']['disk'][backend][key]
-            if backend == 'cluster' and tenant != 'p01':
-                assert create_cluster_dir_if_not_exists(self.import_dir, tenant, options.tenant_string_pattern)
-            self.tenant_dir = self.import_dir.replace(options.tenant_string_pattern, tenant)
+            if backend == 'cluster' and self.tenant != 'p01':
+                assert create_cluster_dir_if_not_exists(self.import_dir, self.tenant, options.tenant_string_pattern)
+            self.tenant_dir = self.import_dir.replace(options.tenant_string_pattern, self.tenant)
             self.backend = backend
             self.request_hook = options.config['backends']['disk'][backend]['request_hook']
             self.group_config = options.config['backends']['disk'][backend]['group_logic']
@@ -1058,10 +1136,11 @@ class StreamHandler(AuthRequestHandler):
 
     def on_finish(self):
         """
-        Called after each request at the very end before closing the connection.
+        Called after each request before closing the connection.
 
-        - clean up any open files if an error occurred
-        - call the request hook, if configured
+        1. clean up any open files, if an error occurred
+        2. call the request hook, if configured
+        3. publish message to rabbitmq, if configured
 
         """
         try:
@@ -1070,31 +1149,42 @@ class StreamHandler(AuthRequestHandler):
                 os.rename(self.path, self.path_part)
         except AttributeError as e:
             pass
-        if self.request.method in ('PUT','POST') or (self.request.method == 'PATCH' and self.chunk_num == 'end'):
+        resource_created = (
+            self.request.method == 'PUT' or (
+                self.request.method == 'PATCH' and
+                self.chunk_num == 'end'
+            )
+        )
+        if resource_created:
             try:
-                # switch path and path_part variables back to their original values
-                # keep local copies in this scope for safety
+                # switch path variables back
                 if not self.completed_resumable_file:
                     path, path_part = self.path_part, self.path
                 else:
                     path = self.completed_resumable_filename
-                # need to move path into resource dir, if present
                 resource_path = move_data_to_folder(path, self.resource_dir)
-                if self.backend == 'cluster' and self.tenant == 'p01': # TODO: remove special case
-                    pass
-                else:
-                    if self.request_hook['enabled']:
-                        call_request_hook(self.request_hook['path'],
-                                          [resource_path, self.requestor, options.api_user, self.group_name],
-                                          as_sudo=self.request_hook['sudo'])
             except Exception as e:
-                logging.info('could not change file mode or owner for some reason')
+                logging.info('could not move data to destination folder')
                 logging.info(e)
+            try:
+                if self.request_hook['enabled']:
+                    if self.backend == 'cluster' and self.tenant == 'p01':
+                        pass # TODO: remove special case
+                    else:
+                        call_request_hook(
+                            self.request_hook['path'],
+                            [resource_path, self.requestor, options.api_user, self.group_name],
+                            as_sudo=self.request_hook['sudo']
+                        )
+            except Exception as e:
+                logging.info('problem calling request hook')
+                logging.info(e)
+            # publish message
 
 
     def on_connection_close(self):
         """
-        Called when clients close the connection. Clean up any open files.
+        Called when clients close the connection.
 
         """
         try:
@@ -1111,8 +1201,7 @@ class StreamHandler(AuthRequestHandler):
                                           as_sudo=self.request_hook['sudo'])
                 logging.info('StreamHandler: Closed file after client closed connection')
         except AttributeError as e:
-            logging.info(e)
-            logging.info('There was no open file to close or move')
+            pass
 
 
 @stream_request_body
@@ -1190,6 +1279,7 @@ class ProxyHandler(AuthRequestHandler):
             try:
                 tenant = tenant_from_url(self.request.uri)
                 assert options.valid_tenant.match(tenant)
+                self.tenant = tenant
             except AssertionError as e:
                 self.error = 'URI does not contain a valid tenant'
                 logging.error(self.error)
@@ -1827,13 +1917,14 @@ class GenericTableHandler(AuthRequestHandler):
 
     def initialize(self, backend, dbtype='sqlite'):
         self.backend = backend
-        tenant = tenant_from_url(self.request.uri)
-        assert options.valid_tenant.match(tenant)
+        self.tenant = tenant_from_url(self.request.uri)
+        assert options.valid_tenant.match(self.tenant)
+        self.endpoint = self.request.uri.split('/')[3]
         self.table_structure = options.config['backends'][dbtype][backend]['table_structure']
         self.check_tenant = options.config['backends'][dbtype][backend].get('check_tenant')
         if dbtype == 'sqlite':
             self.import_dir = options.config['backends'][dbtype][backend]['db_path']
-            self.tenant_dir = self.import_dir.replace(options.tenant_string_pattern, tenant)
+            self.tenant_dir = self.import_dir.replace(options.tenant_string_pattern, self.tenant)
             if backend == 'apps_tables':
                 app_name = self.request.uri.split('/')[4]
                 self.db_name = f'.{backend}_{app_name}.db'
@@ -1842,7 +1933,7 @@ class GenericTableHandler(AuthRequestHandler):
             self.engine = sqlite_init(self.tenant_dir, name=self.db_name, builtin=True)
             self.db = SqliteBackend(self.engine)
         elif dbtype == 'postgres':
-            self.db = PostgresBackend(options.pgpool, schema=tenant)
+            self.db = PostgresBackend(options.pgpool, schema=self.tenant)
 
 
     def prepare(self):
@@ -2011,6 +2102,10 @@ class GenericTableHandler(AuthRequestHandler):
 
 class HealthCheckHandler(RequestHandler):
 
+    def get(self, tenant):
+        self.set_status(200)
+        self.write({'message': 'have a pika client'})
+
     def head(self, tenant):
         self.set_status(200)
         self.write({'message': 'healthy'})
@@ -2124,6 +2219,7 @@ class Backends(object):
 
         self.config = config
         self.routes = []
+        self.exchanges = {}
 
         print(colored(f'tsd-file-api, listening on port {options.port}', 'yellow'))
 
@@ -2142,12 +2238,18 @@ class Backends(object):
                         print(colored(f'- {route[0]}', 'yellow'))
                         self.routes.append(route)
 
-        print(colored('initialising database backends', 'magenta'))
+        print(colored('Initialising database backends', 'magenta'))
         for name, db_backend in self.database_backends.items():
             if (name in options.config['backends'] and
                 db_backend.generator_class.db_init_sql):
-                print(colored(f'initialising db backend: {name}', 'cyan'))
+                print(colored(f'DB backend: {name}', 'cyan'))
                 self.initdb(name)
+
+        if self.config.get('rabbitmq').get('enabled'):
+            print(colored('Finding rabbitmq exchanges', 'magenta'))
+            for backend_set in self.config['backends']:
+                for name, backend in options.config['backends'][backend_set].items():
+                    self.find_exchanges(name, backend)
 
     def initdb(self, name):
         """Only postgres supported atm."""
@@ -2160,13 +2262,36 @@ class Backends(object):
             print(colored('dbtype not supported', 'red'))
             return
 
+    def find_exchanges(self, name, backend_config):
+        """Optionally create an exchange."""
+        mq_config = backend_config.get('mq')
+        if not mq_config:
+            return
+        if not mq_config.get('routing_key'):
+            mq_config['routing_key'] = 'k.{version}.{tenant}.{endpoint}'
+        print(
+            colored(f'Backend: {name}, ', 'cyan'),
+            colored(f'rabbitmq settings: {mq_config}', 'yellow')
+        )
+        self.exchanges[name] = mq_config
+
 
 def main():
     parse_command_line()
     backends = Backends(options.config)
-    app = Application(backends.routes, debug=options.debug)
+    pika_client = (
+        PikaClient(options.rabbitmq, backends.exchanges) if options.rabbitmq.get('enabled')
+        else None
+    )
+    app = Application(
+        backends.routes,
+        **{'pika_client': pika_client, 'debug': options.debug}
+    )
     app.listen(options.port, max_body_size=options.max_body_size)
-    IOLoop.instance().start()
+    ioloop = IOLoop.instance()
+    if pika_client:
+        ioloop.add_timeout(time.time() + .1, pika_client.connect)
+    ioloop.start()
 
 
 if __name__ == '__main__':
