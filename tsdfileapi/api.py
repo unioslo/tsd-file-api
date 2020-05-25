@@ -370,6 +370,8 @@ class AuthRequestHandler(RequestHandler):
             return
         if not mq_config.get('enabled'):
             return
+        if not mq_config.get('methods').get(self.request.method):
+            return
         try:
             default_version = 'v1'
             default_rkey = f'k.{default_version}.{self.tenant}.{self.endpoint}'
@@ -1192,7 +1194,7 @@ class StreamHandler(AuthRequestHandler):
                     data=message_data
                 )
             except Exception as e:
-                logger.error(e)
+                logging.error(e)
             self.on_finish_called = True
 
 
@@ -1246,6 +1248,7 @@ class ProxyHandler(AuthRequestHandler):
         self.export_max = options.config['backends']['disk'][backend]['export_max_num_list']
         self.has_posix_ownership = options.config['backends']['disk'][backend]['has_posix_ownership']
         self.check_tenant = options.config['backends']['disk'][backend].get('check_tenant')
+        self.mq_config = options.config['backends']['disk'][backend].get('mq')
         try:
             missing_group_config = {
                 'enabled': False,
@@ -1923,6 +1926,21 @@ class ProxyHandler(AuthRequestHandler):
             self.write({'message': self.message})
         finally:
             self.finish({'message': self.message})
+
+    def on_finish(self):
+        if self.request.method in ('GET', 'HEAD', 'DELETE'):
+            try:
+                message_data = {
+                    'path': None,
+                    'requestor': self.requestor,
+                    'group': None
+                }
+                self.handle_mq_publication(
+                    mq_config=self.mq_config,
+                    data=message_data
+                )
+            except Exception as e:
+                logging.error(e)
 
 
 class GenericTableHandler(AuthRequestHandler):
