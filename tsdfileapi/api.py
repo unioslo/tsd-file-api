@@ -891,6 +891,7 @@ class StreamHandler(AuthRequestHandler):
             self.path_part = None
             self.chunk_order_correct = True
             self.chunk_num = None
+            self.on_finish_called = False
             filemodes = {'PUT': 'wb+', 'PATCH': 'wb+'}
             try:
                 self.authnz = self.process_token_and_extract_claims(
@@ -1180,6 +1181,7 @@ class StreamHandler(AuthRequestHandler):
                 logging.info('problem calling request hook')
                 logging.info(e)
             # publish message
+            self.on_finish_called = True
 
 
     def on_connection_close(self):
@@ -1192,14 +1194,16 @@ class StreamHandler(AuthRequestHandler):
                 self.target_file.close()
                 path = self.path
                 resource_path = move_data_to_folder(path, self.resource_dir)
-                if self.backend == 'cluster' and self.tenant == 'p01':  # TODO: remove special case
-                    pass
-                else:
-                    if self.request_hook['enabled']:
-                        call_request_hook(self.request_hook['path'],
-                                          [resource_path, self.requestor, options.api_user, self.group_name],
-                                          as_sudo=self.request_hook['sudo'])
-                logging.info('StreamHandler: Closed file after client closed connection')
+                if self.request_hook['enabled']:
+                    if self.backend == 'cluster' and self.tenant == 'p01':
+                        pass # TODO: remove special case
+                    else:
+                        call_request_hook(
+                            self.request_hook['path'],
+                            [resource_path, self.requestor, options.api_user, self.group_name],
+                            as_sudo=self.request_hook['sudo']
+                        )
+                # publish message - only if on_finish wasn't called
         except AttributeError as e:
             pass
 
