@@ -863,6 +863,7 @@ class StreamHandler(AuthRequestHandler):
             self.request_hook = options.config['backends']['disk'][backend]['request_hook']
             self.group_config = options.config['backends']['disk'][backend]['group_logic']
             self.check_tenant = options.config['backends']['disk'][backend].get('check_tenant')
+            self.mq_config = options.config['backends']['disk'][backend].get('mq')
         except AssertionError as e:
             self.backend = backend
             logging.error('URI does not contain a valid tenant')
@@ -1139,9 +1140,9 @@ class StreamHandler(AuthRequestHandler):
         """
         Called after each request before closing the connection.
 
-        1. clean up any open files, if an error occurred
-        2. call the request hook, if configured
-        3. publish message to rabbitmq, if configured
+        1. Clean up any open files, if an error occurred
+        2. Call the request hook, if configured
+        3. Publish message to rabbitmq, if configured
 
         """
         try:
@@ -1180,13 +1181,27 @@ class StreamHandler(AuthRequestHandler):
             except Exception as e:
                 logging.info('problem calling request hook')
                 logging.info(e)
-            # publish message
+            try:
+                message_data = {
+                    'path': resource_path,
+                    'requestor': self.requestor,
+                    'group': self.group_name
+                }
+                self.handle_mq_publication(
+                    mq_config=self.mq_config,
+                    data=message_data
+                )
+            except Exception as e:
+                logger.error(e)
             self.on_finish_called = True
 
 
     def on_connection_close(self):
         """
         Called when clients close the connection.
+
+        1. Close open file, move it to destination
+        2. Publish message to rabbitmq, if configured
 
         """
         try:
@@ -1203,9 +1218,18 @@ class StreamHandler(AuthRequestHandler):
                             [resource_path, self.requestor, options.api_user, self.group_name],
                             as_sudo=self.request_hook['sudo']
                         )
-                # publish message - only if on_finish wasn't called
-        except AttributeError as e:
-            pass
+                if not self.on_finish_called:
+                    message_data = {
+                        'path': resource_path,
+                        'requestor': self.requestor,
+                        'group': self.group_name
+                    }
+                    self.handle_mq_publication(
+                        mq_config=self.mq_config,
+                        data=message_data
+                    )
+        except (AttributeError, Exception) as e:
+            logging.error(e)
 
 
 @stream_request_body
@@ -2271,8 +2295,6 @@ class Backends(object):
         mq_config = backend_config.get('mq')
         if not mq_config:
             return
-        if not mq_config.get('routing_key'):
-            mq_config['routing_key'] = 'k.{version}.{tenant}.{endpoint}'
         print(
             colored(f'Backend: {name}, ', 'cyan'),
             colored(f'rabbitmq settings: {mq_config}', 'yellow')
