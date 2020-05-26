@@ -384,11 +384,15 @@ class AuthRequestHandler(RequestHandler):
                 default_rkey if not mq_config.get('routing_key')
                 else mq_config.get('routing_key')
             )
+            uri = (
+                self.request.headers.get('Original-Uri') if self.request.headers.get('Original-Uri')
+                else self.request.uri
+            )
             self.pika_client.publish_message(
                 exchange=ex,
                 routing_key=rkey,
                 method=self.request.method,
-                uri=self.request.uri,
+                uri=uri,
                 version=ver,
                 data=data
             )
@@ -1373,7 +1377,7 @@ class ProxyHandler(AuthRequestHandler):
                 raise e
             # 7. Set headers for internal request
             try:
-                headers = {'Authorization': 'Bearer ' + self.jwt}
+                headers = {'Authorization': 'Bearer ' + self.jwt, 'Original-Uri': self.request.uri}
                 header_keys = self.request.headers.keys()
                 if 'Content-Type' not in header_keys:
                     content_type = 'application/octet-stream'
