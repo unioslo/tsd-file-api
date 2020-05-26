@@ -357,10 +357,18 @@ class AuthRequestHandler(RequestHandler):
             k.v1.p11.#          - all for v1, and tenant p11
             k.v1.p11.survey     - only for v1, p11 and the survey backend
 
-        For a backend to produce messages, it's config must be set as:
+        For a backend to produce messages, it's config must be set as, e.g.:
 
             mq:
               enabled: True
+              exchange: 'ex_apps'
+              version: 'v1'
+              methods:
+                GET: False
+                HEAD: False
+                PUT: True
+                PATCH: True
+                DELETE: True
 
         Defaults can be over-ridden by providing mq_config.
 
