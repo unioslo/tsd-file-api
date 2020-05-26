@@ -1817,6 +1817,10 @@ class TestFileApi(unittest.TestCase):
         self.assertEqual(resp.status_code, 201)
         resp = requests.get(f'{self.apps}/ega/files/user1/{file}', headers=headers)
         self.assertEqual(resp.status_code, 200)
+        resp = requests.head(f'{self.apps}/ega/files/user1/{file}', headers=headers)
+        self.assertEqual(resp.status_code, 200)
+        resp = requests.delete(f'{self.apps}/ega/files/user1/{file}', headers=headers)
+        self.assertEqual(resp.status_code, 200)
         self.start_new_resumable(
             self.resume_file1, chunksize=5, endpoint=f'{self.apps}/ega/files/user1',
             uploads_folder=f'{self.apps_import_folder}/ega/files/user1'
@@ -1826,6 +1830,7 @@ class TestFileApi(unittest.TestCase):
             {'key1': 99, 'key3': False, 'id': random.randint(0, 1000000)}
         ]
         headers['Content-Type'] = 'application/json'
+        headers['Resource-Identifier'] = 'id'
         resp = requests.put(
             f'{self.apps}/ega/tables/user_data',
             data=json.dumps(data),
@@ -1834,6 +1839,11 @@ class TestFileApi(unittest.TestCase):
         self.assertEqual(resp.status_code, 201)
         resp = requests.get(
             f'{self.apps}/ega/tables/user_data',
+            headers=headers
+        )
+        self.assertEqual(resp.status_code, 200)
+        resp = requests.delete(
+            f'{self.apps}/ega/tables/user_data?where=key1=eq.7',
             headers=headers
         )
         self.assertEqual(resp.status_code, 200)
