@@ -1948,8 +1948,6 @@ class GenericTableHandler(AuthRequestHandler):
     """
     Manage data in generic db backend.
 
-    TODO: text/csv, efficiently?
-
     """
 
     def metadata_table_name(self, table_name):
@@ -1967,6 +1965,7 @@ class GenericTableHandler(AuthRequestHandler):
         assert options.valid_tenant.match(self.tenant)
         self.endpoint = self.request.uri.split('/')[3]
         self.table_structure = options.config['backends'][dbtype][backend]['table_structure']
+        self.mq_config = options.config['backends'][dbtype][backend].get('mq')
         self.check_tenant = options.config['backends'][dbtype][backend].get('check_tenant')
         if dbtype == 'sqlite':
             self.import_dir = options.config['backends'][dbtype][backend]['db_path']
@@ -1985,6 +1984,7 @@ class GenericTableHandler(AuthRequestHandler):
     def prepare(self):
         try:
             self.error = None
+            self.rid_info = {'key': None, 'values': []}
             self.authnz = self.process_token_and_extract_claims(
                 check_tenant=self.check_tenant if self.check_tenant is not None else options.check_tenant
             )
@@ -2038,6 +2038,38 @@ class GenericTableHandler(AuthRequestHandler):
             )
             out += decrypted
         return out.decode()
+
+
+    def set_resource_identifier_info(self, data):
+        """
+        When publising messages to rabbitmq, it is useful
+        for queue consumers to have references to the specific
+        resources that were created, modified or deleted.
+
+        In the case where all information is contained in the URI,
+        such as for GET, and DELETE, this function is superfluous.
+
+        However, for both PUT and PATCH, resource references are
+        contained in the request body. Clients can optionally
+        provide information about which key(s) in the request
+        data contain unique references to their data, by setting
+        the Resource-Identifier header.
+
+        This function will then put both the key, and the value(s)
+        produced by using the key, in the payload of the rabbitmq
+        message.  Downstream queue consumers can then use these
+        references to fetch the target resources from the API.
+
+        """
+        rid_key = self.request.headers.get('Resource-Identifier')
+        if rid_key:
+            if isinstance(data, dict):
+                rid_values = [data.get(rid_key)]
+            elif isinstance(data, list):
+                rid_values = []
+                for entry in data:
+                    rid_values.append(entry.get(rid_key))
+            self.rid_info = {'key': rid_key, 'values': rid_values}
 
 
     @gen.coroutine
@@ -2095,6 +2127,7 @@ class GenericTableHandler(AuthRequestHandler):
             else:
                 new_data = self.request.body
             data = json_decode(new_data)
+            self.set_resource_identifier_info(data)
             if self.request.uri.split('?')[0].endswith('metadata'):
                 table_name = self.metadata_table_name(table_name)
             try:
@@ -2122,6 +2155,7 @@ class GenericTableHandler(AuthRequestHandler):
             else:
                 new_data = self.request.body
             data = json_decode(new_data)
+            self.set_resource_identifier_info(data)
             query = self.get_uri_query(self.request.uri)
             out = self.db.table_update(table_name, query, data)
             self.set_status(200)
@@ -2146,11 +2180,23 @@ class GenericTableHandler(AuthRequestHandler):
             self.write({'message': self.error})
 
 
-class HealthCheckHandler(RequestHandler):
+    def on_finish(self):
+        try:
+            message_data = {
+                'path': None,
+                'requestor': self.requestor,
+                'group': None,
+                'resource_identifier': self.rid_info
+            }
+            self.handle_mq_publication(
+                mq_config=self.mq_config,
+                data=message_data
+            )
+        except Exception as e:
+            logging.error(e)
 
-    def get(self, tenant):
-        self.set_status(200)
-        self.write({'message': 'have a pika client'})
+
+class HealthCheckHandler(RequestHandler):
 
     def head(self, tenant):
         self.set_status(200)
@@ -2298,7 +2344,6 @@ class Backends(object):
                     self.find_exchanges(name, backend)
 
     def initdb(self, name):
-        """Only postgres supported atm."""
         if name == 'postgres':
             pool = postgres_init(options.config['backends'][name]['dbconfig'])
             define('pgpool', pool)
@@ -2309,7 +2354,6 @@ class Backends(object):
             return
 
     def find_exchanges(self, name, backend_config):
-        """Optionally create an exchange."""
         mq_config = backend_config.get('mq')
         if not mq_config:
             return
@@ -2317,7 +2361,12 @@ class Backends(object):
             colored(f'Backend: {name}, ', 'cyan'),
             colored(f'rabbitmq settings: {mq_config}', 'yellow')
         )
-        self.exchanges[name] = mq_config
+        existing_exchanges = []
+        for name, config in self.exchanges.items():
+            existing_exchanges.append(config.get('exchange'))
+        if (not self.exchanges.get(name) and
+            mq_config.get('exchange') not in existing_exchanges):
+            self.exchanges[name] = mq_config
 
 
 def main():
