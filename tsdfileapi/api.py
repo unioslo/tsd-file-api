@@ -671,12 +671,17 @@ class ResumablesHandler(AuthRequestHandler):
 
     def prepare(self):
         try:
+            self.err = 'Unauthorized'
+            if options.maintenance_mode_enabled:
+                self.set_status(503)
+                self.err = 'Service temporarily unavailable'
+                raise Exception(self.err)
             self.authnz = self.process_token_and_extract_claims(
                 check_tenant=self.check_tenant if self.check_tenant is not None else options.check_tenant
             )
         except Exception as e:
             logging.error(e)
-            raise e
+            self.finish({'message': self.err})
 
 
     def get(self, tenant, filename=None):

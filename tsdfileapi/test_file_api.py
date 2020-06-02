@@ -2074,6 +2074,8 @@ class TestFileApi(unittest.TestCase):
         resp = requests.post(maintenance_on)
         resp = requests.put(self.sns_upload)
         self.assertEqual(resp.status_code, 503)
+        resp = requests.get(f'{self.base_url}/files/resumables')
+        self.assertEqual(resp.status_code, 503)
         resp = requests.post(maintenance_off)
 
 
