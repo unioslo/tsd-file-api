@@ -1316,8 +1316,8 @@ class ProxyHandler(AuthRequestHandler):
             # 0. If in maintenance mode, stop
             if options.maintenance_mode_enabled:
                 self.set_status(503)
-                self.err = 'Service temporarily unavailable'
-                raise Exception(self.err)
+                self.error = 'Service temporarily unavailable'
+                raise Exception(self.error)
             # 1. Set up internal variables, check method supported
             try:
                 self.chunks = tornado.queues.Queue(1)
@@ -2028,15 +2028,19 @@ class GenericTableHandler(AuthRequestHandler):
     def prepare(self):
         try:
             self.error = None
+            if options.maintenance_mode_enabled:
+                self.set_status(503)
+                self.error = 'Service temporarily unavailable'
+                raise Exception(self.error)
+            self.error = 'Unauthorized'
             self.rid_info = {'key': None, 'values': []}
             self.authnz = self.process_token_and_extract_claims(
                 check_tenant=self.check_tenant if self.check_tenant is not None else options.check_tenant
             )
         except Exception as e:
-            self.error = 'Unauthorized request - token rejected'
-            logging.error(e)
-            logging.error(self.error)
-            self.set_status(401)
+            if self._status_code != 503:
+                self.set_status(401)
+                logging.error(self.error)
             self.finish()
 
 
@@ -2226,16 +2230,17 @@ class GenericTableHandler(AuthRequestHandler):
 
     def on_finish(self):
         try:
-            message_data = {
-                'path': None,
-                'requestor': self.requestor,
-                'group': None,
-                'resource_identifier': self.rid_info
-            }
-            self.handle_mq_publication(
-                mq_config=self.mq_config,
-                data=message_data
-            )
+            if not options.maintenance_mode_enabled:
+                message_data = {
+                    'path': None,
+                    'requestor': self.requestor,
+                    'group': None,
+                    'resource_identifier': self.rid_info
+                }
+                self.handle_mq_publication(
+                    mq_config=self.mq_config,
+                    data=message_data
+                )
         except Exception as e:
             logging.error(e)
 
