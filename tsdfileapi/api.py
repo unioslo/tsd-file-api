@@ -448,31 +448,43 @@ class GenericFormDataHandler(AuthRequestHandler):
 
     def prepare(self):
         try:
+            self.err = 'request failed'
+            if options.maintenance_mode_enabled:
+                self.set_status(503)
+                self.err = 'Service temporarily unavailable'
+                raise Exception
             self.new_paths = []
             self.group_name = None
             self.authnz = self.process_token_and_extract_claims(
                 check_tenant=self.check_tenant if self.check_tenant is not None else options.check_tenant
             )
             if not self.authnz:
+                self.err = 'Unauthorized'
                 self.set_status(401)
                 raise Exception
             if not self.request.files['file']:
-                logging.error('No file(s) supplied with upload request')
+                self.err = 'No file(s) supplied with upload request'
+                logging.error(self.err)
                 self.set_status(400)
                 raise Exception
             # check group logic here
             try:
                 authnz_status = self.authnz
-                group_name, group_memberships = self.get_group_info(self.tenant, self.group_config, authnz_status)
-                self.enforce_group_logic(group_name, group_memberships, self.tenant, self.group_config)
+                group_name, group_memberships = self.get_group_info(
+                    self.tenant, self.group_config, authnz_status
+                )
+                self.enforce_group_logic(
+                    group_name, group_memberships, self.tenant, self.group_config
+                )
             except Exception as e:
+                self.err = 'group checks failed'
                 logging.error(e)
-                logging.error('group checks failed')
+                logging.error(self.err)
                 raise e
         except Exception as e:
-            if self._status_code != 401:
+            if self._status_code not in [401, 503]:
                 self.set_status(400)
-            self.finish({'message': 'request failed'})
+            self.finish({'message': self.err})
 
     def write_files(self, filemode, tenant):
         try:
