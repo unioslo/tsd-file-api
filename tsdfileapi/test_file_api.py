@@ -2076,6 +2076,14 @@ class TestFileApi(unittest.TestCase):
         self.assertEqual(resp.status_code, 503)
         resp = requests.get(f'{self.base_url}/files/resumables')
         self.assertEqual(resp.status_code, 503)
+        resp = requests.put(f'{self.base_url}/files/stream/file')
+        self.assertEqual(resp.status_code, 503)
+        resp = requests.patch(f'{self.base_url}/files/stream/file')
+        self.assertEqual(resp.status_code, 503)
+        resp = requests.get(f'{self.base_url}/files/export/file1')
+        self.assertEqual(resp.status_code, 503)
+        resp = requests.head(f'{self.base_url}/files/export/file2')
+        self.assertEqual(resp.status_code, 503)
         resp = requests.post(maintenance_off)
 
 

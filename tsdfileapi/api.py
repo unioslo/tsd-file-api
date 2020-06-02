@@ -680,7 +680,6 @@ class ResumablesHandler(AuthRequestHandler):
                 check_tenant=self.check_tenant if self.check_tenant is not None else options.check_tenant
             )
         except Exception as e:
-            logging.error(e)
             self.finish({'message': self.err})
 
 
@@ -1314,6 +1313,11 @@ class ProxyHandler(AuthRequestHandler):
         """
         self.error = None
         try:
+            # 0. If in maintenance mode, stop
+            if options.maintenance_mode_enabled:
+                self.set_status(503)
+                self.err = 'Service temporarily unavailable'
+                raise Exception(self.err)
             # 1. Set up internal variables, check method supported
             try:
                 self.chunks = tornado.queues.Queue(1)
@@ -1471,7 +1475,8 @@ class ProxyHandler(AuthRequestHandler):
                 logging.error(e)
                 raise e
         except Exception as e:
-            self.set_status(401)
+            if self._status_code != 503:
+                self.set_status(401)
             self.finish({'message': self.error})
 
     @gen.coroutine
@@ -1966,7 +1971,8 @@ class ProxyHandler(AuthRequestHandler):
             self.finish({'message': self.message})
 
     def on_finish(self):
-        if self.request.method in ('GET', 'HEAD', 'DELETE'):
+        if (self.request.method in ('GET', 'HEAD', 'DELETE')
+            and not options.maintenance_mode_enabled):
             try:
                 message_data = {
                     'path': None,
