@@ -135,7 +135,8 @@ class TestFileApi(unittest.TestCase):
 
         # includes p19 - a random project number for integration testing
         cls.test_project = cls.config['test_project']
-        cls.base_url = 'http://localhost' + ':' + str(cls.config['port']) + '/v1/' + cls.test_project
+        cls.maintenance_url = f"http://localhost:{str(cls.config['port'])}/v1/admin"
+        cls.base_url = f"http://localhost:{str(cls.config['port'])}/v1/{cls.test_project}"
         cls.data_folder = cls.config['data_folder']
         cls.example_csv = os.path.normpath(cls.data_folder + '/example.csv')
         cls.an_empty_file = os.path.normpath(cls.data_folder + '/an-empty-file')
@@ -2066,6 +2067,14 @@ class TestFileApi(unittest.TestCase):
         )
         self.assertTrue(resp.status_code, 400)
 
+
+    def test_maintenance_mode(self):
+        maintenance_on = f'{self.maintenance_url}?maintenance=on'
+        maintenance_off = f'{self.maintenance_url}?maintenance=off'
+        resp = requests.post(maintenance_on)
+        resp = requests.post(maintenance_off)
+
+
 def main():
     tests = []
     base = [
@@ -2186,6 +2195,9 @@ def main():
     crypt = [
         'test_nacl_crypto'
     ]
+    maintenance = [
+        'test_maintenance_mode',
+    ]
     if len(sys.argv) == 2:
         print('usage:')
         print('python3 tsdfileapi/test_file_api.py config.yaml ARGS')
@@ -2223,6 +2235,8 @@ def main():
         tests.extend(apps)
     if 'crypt' in sys.argv:
         tests.extend(crypt)
+    if 'maintenance' in sys.argv:
+        tests.extend(maintenance)
     if 'all' in sys.argv:
         tests.extend(base)
         tests.extend(names)
