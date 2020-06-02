@@ -1479,6 +1479,10 @@ class TestFileApi(unittest.TestCase):
             shutil.rmtree(f'{dirs}')
         except OSError as e:
             pass
+        # posix backend
+        resp = requests.get(f'{self.export}/data-folder', headers=headers)
+        self.assertEqual(resp.status_code, 200)
+
 
 
     def test_ZZZ_get_file_from_dir(self):

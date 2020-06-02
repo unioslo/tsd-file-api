@@ -62,8 +62,6 @@ def session_scope(engine):
         yield session
         session.commit()
     except (OperationalError, IntegrityError, StatementError) as e:
-        logging.error(e)
-        logging.error("Rolling back transaction")
         session.rollback()
         raise e
     finally:

@@ -24,6 +24,7 @@ setup(
             'data/tsd/p11/export/fi*',
             'data/tsd/p11/export/bl*',
             'data/tsd/p11/export/.~lock*',
+            'data/tsd/p11/export/data-folder/s*',
             'config/file-api-config.yaml.example',
             'config/file-api.service',
         ]

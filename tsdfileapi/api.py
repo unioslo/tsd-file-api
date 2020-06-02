@@ -115,6 +115,7 @@ def set_config():
         )
     )
     define('rabbitmq', _config.get('rabbitmq'))
+    define('maintenance_mode_enabled', False)
 
 set_config()
 
@@ -375,6 +376,8 @@ class AuthRequestHandler(RequestHandler):
         """
         self.pika_client = self.application.settings.get('pika_client')
         if not self.pika_client:
+            return
+        if not mq_config:
             return
         if not mq_config.get('enabled'):
             return
@@ -1543,7 +1546,13 @@ class ProxyHandler(AuthRequestHandler):
     def get_file_metadata(self, filename):
         filename_raw_utf8 = filename.encode('utf-8')
         if self.has_posix_ownership:
+            # to be able to stat top level files
+            # where api user is owner of top level dir
             subprocess.call(['sudo', 'chmod', 'go+r', filename])
+            if os.path.isdir(filename):
+                # to be able to stat files down the tree
+                # where someone else is owner of dir
+                subprocess.call(['sudo', 'chmod', 'o+x', filename])
         if os.path.isdir(filename):
             return os.stat(filename).st_size, 'directory'
         mime_type = magic.from_file(filename_raw_utf8, mime=True)
@@ -1621,6 +1630,17 @@ class ProxyHandler(AuthRequestHandler):
             default_owner = options.default_file_owner.replace(options.tenant_string_pattern, tenant)
             for file in files:
                 filepath = file.path
+                try:
+                    size, mime_type = self.get_file_metadata(filepath)
+                    status = self.enforce_export_policy(self.export_policy, filepath, tenant, size, mime_type)
+                    if status:
+                        reason = None
+                    else:
+                        reason = self.message
+                except Exception as e:
+                    logging.error(e)
+                    logging.error('could not enforce export policy when listing dir')
+                    raise Exception
                 path_stat = file.stat()
                 latest = path_stat.st_mtime
                 date_time = str(datetime.datetime.fromtimestamp(latest).isoformat())
@@ -1639,17 +1659,6 @@ class ProxyHandler(AuthRequestHandler):
                             owner = 'nobody'
                 else:
                     owner = options.api_user
-                try:
-                    size, mime_type = self.get_file_metadata(filepath)
-                    status = self.enforce_export_policy(self.export_policy, filepath, tenant, size, mime_type)
-                    if status:
-                        reason = None
-                    else:
-                        reason = self.message
-                except Exception as e:
-                    logging.error(e)
-                    logging.error('could not enforce export policy when listing dir')
-                    raise Exception
                 names.append(os.path.basename(filepath))
                 times.append(date_time)
                 exportable.append(status)
@@ -2244,6 +2253,20 @@ class NaclKeyHander(RequestHandler):
         }
         self.write(out)
 
+class RunTimeConfigurationHandler(RequestHandler):
+
+    def post(self):
+        try:
+            action = url_escape(self.get_query_argument('maintenance'))
+            assert action in ['on', 'off'], f'action: {action} not supported'
+            if action == 'on':
+                options.maintenance_mode_enabled = True
+            elif action == 'off':
+                options.maintenance_mode_enabled = False
+            self.write({'maintenance_mode_enabled': options.maintenance_mode_enabled})
+        except (Exception, AssertionError) as e:
+            logging.error(e)
+
 
 class Backends(object):
 
@@ -2251,6 +2274,9 @@ class Backends(object):
         'health': [
             ('/v1/(.*)/files/health', HealthCheckHandler),
         ],
+        'runtime_configuration': [
+            ('/v1/admin.*', RunTimeConfigurationHandler),
+        ]
     }
 
     optional_routes = {
