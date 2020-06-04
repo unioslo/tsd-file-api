@@ -2268,6 +2268,7 @@ def main():
         tests.extend(apps)
         tests.extend(db)
         tests.extend(crypt)
+        tests.extend(form_data)
     tests.sort()
     suite = unittest.TestSuite()
     for test in tests:
