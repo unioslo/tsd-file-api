@@ -1056,10 +1056,6 @@ class TestFileApi(unittest.TestCase):
         res._db_remove_completed_for_owner(upload_id)
 
 
-    def test_ZQ_large_start_file_resume(self):
-        pass
-
-
     def test_ZR_cancel_resumable(self):
         cs = 5
         proj = ''
@@ -2097,18 +2093,6 @@ def main():
         # authz
         'test_D_timed_out_token_rejected',
         'test_E_unauthenticated_request_rejected',
-        # form-data
-        'test_F_post_file_multi_part_form_data',
-        'test_F1_post_file_multi_part_form_data_sns',
-        'test_FA_post_multiple_files_multi_part_form_data',
-        'test_G_patch_file_multi_part_form_data',
-        'test_G1_patch_file_multi_part_form_data_sns',
-        'test_GA_patch_multiple_files_multi_part_form_data',
-        'test_H_put_file_multi_part_form_data',
-        'test_H1_put_file_multi_part_form_data_sns',
-        'test_HA_put_multiple_files_multi_part_form_data',
-        # sns
-        'test_H4XX_when_no_keydir_exists',
         # head
         'test_N_head_on_uploads_fails_when_it_should',
         'test_O_head_on_uploads_succeeds_when_conditions_are_met',
@@ -2117,7 +2101,6 @@ def main():
         'test_Z_token_for_other_project_rejected',
         # upload dirs
         'test_ZA_choosing_file_upload_directories_based_on_tenant_works',
-        'test_ZB_sns_folder_logic_is_correct',
         'test_ZC_setting_ownership_based_on_user_works',
         'test_ZD_cannot_upload_empty_file_to_sns',
         # groups
@@ -2130,7 +2113,6 @@ def main():
         'test_ZN_resume_works_with_upload_id_match',
         'test_ZO_resume_works_with_filename_match',
         'test_ZP_resume_do_not_upload_if_md5_mismatch',
-        #'test_ZQ_large_start_file_resume',
         'test_ZR_cancel_resumable',
         'test_ZS_recovering_inconsistent_data_allows_resume_from_previous_chunk',
         'test_ZT_list_all_resumables',
@@ -2142,6 +2124,21 @@ def main():
         'test_ZZf_cluster_export_not_p01_works',
         # store backend
         'test_ZZg_store_import_and_export',
+    ]
+    form_data = [
+        # form-data
+        'test_F_post_file_multi_part_form_data',
+        'test_F1_post_file_multi_part_form_data_sns',
+        'test_FA_post_multiple_files_multi_part_form_data',
+        'test_G_patch_file_multi_part_form_data',
+        'test_G1_patch_file_multi_part_form_data_sns',
+        'test_GA_patch_multiple_files_multi_part_form_data',
+        'test_H_put_file_multi_part_form_data',
+        'test_H1_put_file_multi_part_form_data_sns',
+        'test_HA_put_multiple_files_multi_part_form_data',
+        # sns
+        'test_H4XX_when_no_keydir_exists',
+        'test_ZB_sns_folder_logic_is_correct',
     ]
     names = [
         'test_ZZe_filename_rules_with_uploads',
@@ -2221,6 +2218,8 @@ def main():
         sys.exit(0)
     if 'base' in sys.argv:
         tests.extend(base)
+    if 'form_data' in sys.argv:
+        tests.extend(form_data)
     if 'names' in sys.argv:
         tests.extend(names)
     if 'pipelines' in sys.argv:
