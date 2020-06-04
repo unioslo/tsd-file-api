@@ -531,9 +531,6 @@ class GenericFormDataHandler(AuthRequestHandler):
                 os.chmod(self.path_part, _RW_RW___)
             self.new_paths.append(self.path_part)
             if self.backend == 'sns':
-                if not os.path.lexists(tsd_hidden_folder):
-                    os.makedirs(tsd_hidden_folder)
-                    os.chmod(tsd_hidden_folder, _RW_RW___)
                 subfolder_path = os.path.normpath(tsd_hidden_folder + '/' + filename)
                 try:
                     shutil.copy(self.path_part, subfolder_path)
