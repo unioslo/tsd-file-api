@@ -56,7 +56,7 @@ from rmq import PikaClient
 
 
 _RW______ = stat.S_IREAD | stat.S_IWRITE
-_RW_RW___ = stat.S_IREAD | stat.S_IWRITE | stat.S_IRGRP | stat.S_IWGRP
+_RW_RW___ = _RW______ | stat.S_IRGRP | stat.S_IWGRP
 _IS_VALID_UUID = re.compile(r'([a-f\d0-9-]{32,36})')
 
 
@@ -114,7 +114,7 @@ def set_config():
             )
         )
     )
-    define('rabbitmq', _config.get('rabbitmq'))
+    define('rabbitmq', _config.get('rabbitmq', {}))
     define('maintenance_mode_enabled', False)
 
 set_config()
@@ -531,6 +531,9 @@ class GenericFormDataHandler(AuthRequestHandler):
                 os.chmod(self.path_part, _RW_RW___)
             self.new_paths.append(self.path_part)
             if self.backend == 'sns':
+                if not os.path.lexists(tsd_hidden_folder):
+                    os.makedirs(tsd_hidden_folder)
+                    os.chmod(tsd_hidden_folder, _RW_RW___)
                 subfolder_path = os.path.normpath(tsd_hidden_folder + '/' + filename)
                 try:
                     shutil.copy(self.path_part, subfolder_path)
@@ -2403,7 +2406,7 @@ class Backends(object):
                 print(colored(f'DB backend: {name}', 'cyan'))
                 self.initdb(name)
 
-        if self.config.get('rabbitmq').get('enabled'):
+        if self.config.get('rabbitmq', {}).get('enabled'):
             print(colored('Finding rabbitmq exchanges', 'magenta'))
             for backend_set in self.config['backends']:
                 for name, backend in options.config['backends'][backend_set].items():

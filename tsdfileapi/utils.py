@@ -81,8 +81,8 @@ def sns_dir(base_pattern, tenant, uri, tenant_string_pattern, test=False):
         uri_parts = uri.split('/')
         formid = uri_parts[-1]
         keyid = uri_parts[-2]
-        assert _VALID_FORMID.match(formid)
-        assert _IS_REALISTIC_PGP_KEY_FINGERPRINT.match(keyid)
+        assert _VALID_FORMID.match(formid), f'invalid form ID: {formid}'
+        assert _IS_REALISTIC_PGP_KEY_FINGERPRINT.match(keyid), f'invalid PGP fingerprint: {keyid}'
         folder = base_pattern.replace(tenant_string_pattern, tenant).replace('KEYID', keyid).replace('FORMID', formid)
         _path = os.path.normpath(folder)
         if test:
@@ -90,11 +90,10 @@ def sns_dir(base_pattern, tenant, uri, tenant_string_pattern, test=False):
         if not os.path.lexists(_path):
             logging.info('Creating %s', _path)
             os.makedirs(_path)
-            subprocess.call('chmod', '775', _path)
+            subprocess.call(['chmod', '2770', _path])
         return _path
-    except Exception as e:
+    except (Exception, AssertionError) as e:
         logging.error(e)
-        logging.error('Could not resolve specified directory with key ID: %s', keyid)
         raise e
 
 
