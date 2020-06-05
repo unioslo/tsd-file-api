@@ -484,7 +484,7 @@ class GenericFormDataHandler(AuthRequestHandler):
         except Exception as e:
             if self._status_code not in [401, 503]:
                 self.set_status(400)
-            self.finish({'message': self.err})
+            self.finish()
 
     def write_files(self, filemode, tenant):
         try:
@@ -680,7 +680,7 @@ class ResumablesHandler(AuthRequestHandler):
                 check_tenant=self.check_tenant if self.check_tenant is not None else options.check_tenant
             )
         except Exception as e:
-            self.finish({'message': self.err})
+            self.finish()
 
 
     def get(self, tenant, filename=None):
@@ -1477,7 +1477,7 @@ class ProxyHandler(AuthRequestHandler):
         except Exception as e:
             if self._status_code != 503:
                 self.set_status(401)
-            self.finish({'message': self.error})
+            self.finish()
 
     @gen.coroutine
     def body_producer(self, write):
