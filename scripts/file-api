@@ -1,0 +1,234 @@
+#!/bin/bash
+
+readonly NAME=file-api
+
+if [[ $# -lt 1 ]]; then
+    echo ""
+    echo "  Missing arguments, exiting"
+    echo "  ${NAME} --help|-h for help"
+    echo ""
+    exit 1
+fi
+
+SYSTEM=$(uname)
+DEFINITIONS=/etc/tsd-file-api/definitions
+
+readonly _help="
+
+    ${NAME}: A helper utility for managing the state of API processes.
+
+    Options
+    -------
+    --definitions           Optional reference to process definitions.
+    --group-info            Print info about a group.
+    --group-maintenance     Put a group into maintenance, take it out of
+                            maintenance, or query its maintenance status.
+    --group-ctl             start, restart, stop, enable, or disable a group.
+
+
+    process definitions
+    -------------------
+    To use #{NAME} you need to define the following in a file that
+    can be source:
+
+    API_USER=<name>
+    datadir=/path
+    arrayg1=( ports ... )
+    arrayg2=( ports ... )
+
+
+    maintenance mode
+    ----------------
+    The maintenance mode of a process can be either on, or off.
+    The normal mode of operation when a process is started is
+    that maintenance mode us off. When it is on, then no new HTTP
+    requests are accepted by the process. Existing requests are
+    allowed to finish.
+
+    This can be used to drain a process (or group) of requests.
+    This in turn can be used to deploy a new version of the API
+    without downtime.
+
+    See ${NAME} -e|--examples
+
+
+    Individual process control
+    --------------------------
+    All group options have per process equivalents, which take a specific
+    port number as their argument, e.g.:
+
+    ${NAME} --process-info 3000
+
+    This allows inspecting/changing the state of individual processes
+    within a group, if necessary.
+"
+
+readonly _examples="
+
+    Deploy a new version without downtime
+    -------------------------------------
+    Check that g1 is currently on, and its
+    maintenance mode if off, and that g2 is currently off:
+
+    ${NAME} --group-info g1
+    ${NAME} --group-info g2
+
+    Install the new rpm, start g2, and put g1 into maintenance:
+
+    ${NAME} --group-ctl g2 status
+    ${NAME} --maintenance g1 on
+
+    Wait for requests to finish, and finally:
+
+    ${NAME} --group-info g1
+    ${NAME} --group-ctl g1 stop
+"
+
+readonly MAINT_OFF_QUESTION="\
+
+WARNING
+-------
+Maintenance mode for this process is currently off.
+Performing this operation will terminate all active HTTP requests.
+It is recommended that maintenance mode is first enabled for group.
+${NAME} --group-maintenance <group> on
+"
+
+readonly MAINT_ON_QUESTION="\
+
+WARNING
+-------
+The current process still has open files.
+Performing this operation will terminate the remaining HTTP requests,
+even though maintenance mode is currently on.
+It is recommended to wait until all open files are closed.
+For information about that check:
+${NAME} --group-info <group>
+"
+
+get() {
+    eval echo \${array${1}[${2:-@}]}
+}
+
+systemctl_with_port() {
+    systemctl "${2}" "file-api@${1}.service"
+}
+
+maintenance_mode_with_port() {
+    local OP="${2}"
+    if [[ "${OP}" =~ ^('on'|'off') ]]; then
+        curl -s --request POST "http://localhost:${1}/v1/admin?maintenance=${2}"
+    elif [[ "${OP}" == 'status' ]]; then
+        curl -s --request GET "http://localhost:${1}/v1/admin"
+    else
+        echo "argument: ${OP} not supported"
+        exit 1
+    fi
+}
+
+get_open_files_with_port() {
+    local PORT="${1}"
+    if [[ "${SYSTEM}" == "Darwin" ]]; then
+        local FLAGS="-fl"
+    elif [[ "${SYSTEM}" == "Linux" ]]; then
+        local FLAGS="-fa"
+    fi
+    PID=$(pgrep "${FLAGS}" tsdfileapi | grep "${PORT}" | awk '{print $1}')
+    if [[ "${PID}" != "" ]]; then
+        FILES_OPEN=($(lsof -p "${PID}" | grep "${datadir}" | grep -v .resumables | awk '{print $NF}'))
+        NUM_FILES_OPEN=$(echo ${#FILES_OPEN[@]})
+    else
+        PID="NA (process not running)"
+        NUM_FILES_OPEN=0
+    fi
+}
+
+group_info() {
+    echo "target: ${1}"
+    if [[ ! -z "${_PORT}" ]]; then local ports=("${1}"); else local ports=$(get "${1}"); fi
+    for port in ${ports[*]}; do
+        get_open_files_with_port "${port}"
+        echo "pid ${PID}, port ${port}, ${NUM_FILES_OPEN} file(s) open"
+        if [[ $NUM_FILES_OPEN -gt 0 ]]; then
+            for f in ${FILES_OPEN[*]}; do
+                echo "${f}"
+            done
+        fi
+    done
+}
+
+group_maintenance() {
+    echo "target: ${1}"
+    if [[ ! -z "${_PORT}" ]]; then local ports=("${1}"); else local ports=$(get "${1}"); fi
+    for port in ${ports[*]}; do
+        maint_out=$(maintenance_mode_with_port "${port}" "${2}" | jq '. | .maintenance_mode_enabled')
+        if [[ "${maint_out}" == 'true' ]]; then
+            mode='on'
+        else
+            mode='off'
+        fi
+        printf "%s\n" "port: ${port}, maintenance mode: ${mode}"
+    done
+}
+
+ask() {
+    echo "${1}"
+    read -p 'Are you sure you want to continue? y/n > ' ANS
+}
+
+group_ctl() {
+    echo "target: ${1}"
+    local group="${1}"
+    local OP="${2}"
+    if [[ ! -z "${_PORT}" ]]; then local ports=("${1}"); else local ports=$(get "${1}"); fi
+    for port in ${ports[*]}; do
+        case "${OP}" in
+            start|enable|status)
+                systemctl_with_port "${port}" "${OP}"
+            ;;
+            stop|restart)
+                maint_out=$(maintenance_mode_with_port $port status | jq '. | .maintenance_mode_enabled')
+                if [[ "${maint_out}" == "false" ]]; then
+                    ask "${MAINT_OFF_QUESTION}"
+                elif [[ "${maint_out}" == "true" ]]; then
+                    ANS=y
+                    get_open_files_with_port "${port}"
+                    if [[ "${NUM_FILES_OPEN}" -gt 0 ]]; then
+                        ask "${MAINT_ON_QUESTION}"
+                    fi
+                else
+                    ANS=y
+                fi
+                if [[ "${ANS}" == "y" ]]; then
+                    systemctl_with_port "${port}" "${OP}"
+                else
+                    echo "Aborting"
+                    exit 0
+                fi
+            ;;
+            *)
+                echo "unsupported operation: ${OP}"
+                break
+            ;;
+        esac
+    done
+}
+
+read_definitions() {
+    source $DEFINITIONS
+}
+
+while (( "$#" )); do
+    case "${1}" in
+        --definitions)          shift; DEFINITIONS="${1}"; read_definitions; shift ;;
+        --process-info)         shift; _PORT=true; group_info "${1}"; exit 0 ;;
+        --process-maintenance)  shift; _PORT=true; group_maintenance "${1}" "${2}"; exit 0 ;;
+        --process-ctl)          shift; _PORT=true; group_ctl "${1}" "${2}"; exit 0 ;;
+        --group-info)           shift; group_info "${1}"; exit 0 ;;
+        --group-maintenance)    shift; group_maintenance "${1}" "${2}"; exit 0 ;;
+        --group-ctl)            shift; group_ctl "${1}" "${2}"; exit 0 ;;
+        -h | --help)            printf "%s\n" "$_help"; exit 0 ;;
+        -e | --_examples)       printf "%s\n" "$_examples"; exit 0 ;;
+        *) break ;;
+    esac
+done
