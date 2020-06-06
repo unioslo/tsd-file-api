@@ -11,3 +11,4 @@ mappings.yaml
 dist/*
 tsdfileapi/data/large-file
 src/
+definitions
