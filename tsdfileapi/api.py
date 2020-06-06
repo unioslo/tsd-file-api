@@ -2293,7 +2293,11 @@ class RunTimeConfigurationHandler(RequestHandler):
                 options.maintenance_mode_enabled = False
             self.write({'maintenance_mode_enabled': options.maintenance_mode_enabled})
         except (Exception, AssertionError) as e:
+            self.set_status(400)
             logging.error(e)
+
+    def get(self):
+        self.write({'maintenance_mode_enabled': options.maintenance_mode_enabled})
 
 
 class Backends(object):
