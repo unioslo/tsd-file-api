@@ -149,7 +149,7 @@ group_info() {
     for port in ${ports[*]}; do
         get_open_files_with_port "${port}"
         echo "pid ${PID}, port ${port}, ${NUM_FILES_OPEN} file(s) open"
-        if [[ $NUM_FILES_OPEN -gt 0 ]]; then
+        if [[ "${NUM_FILES_OPEN}" -gt 0 ]]; then
             for f in ${FILES_OPEN[*]}; do
                 echo "${f}"
             done
@@ -187,7 +187,7 @@ group_ctl() {
                 systemctl_with_port "${port}" "${OP}"
             ;;
             stop|restart)
-                maint_out=$(maintenance_mode_with_port $port status | jq '. | .maintenance_mode_enabled')
+                maint_out=$(maintenance_mode_with_port "${port}" status | jq '. | .maintenance_mode_enabled')
                 if [[ "${maint_out}" == "false" ]]; then
                     ask "${MAINT_OFF_QUESTION}"
                 elif [[ "${maint_out}" == "true" ]]; then
