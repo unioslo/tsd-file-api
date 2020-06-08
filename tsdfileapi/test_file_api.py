@@ -591,35 +591,63 @@ class TestFileApi(unittest.TestCase):
 
 
     def test_XXX_nettskjema_backend(self):
-        # TODO: harden these tests - check return values
         data = [
             {'key1': 7, 'key2': 'bla', 'id': random.randint(0, 1000000)},
             {'key1': 99, 'key3': False, 'id': random.randint(0, 1000000)}
         ]
         headers = {'Authorization': 'Bearer ' + TEST_TOKENS['VALID']}
-        resp = requests.put(self.base_url + '/survey/123456/submissions',
-                             data=json.dumps(data), headers=headers)
+        # add data to a table
+        resp = requests.put(
+            self.base_url + '/survey/123456/submissions',
+            data=json.dumps(data),
+            headers=headers
+        )
         self.assertEqual(resp.status_code, 201)
-        resp = requests.put(self.base_url + '/survey/123456/metadata',
-                             data=json.dumps(data), headers=headers)
+        # audit functionality
+        resp = requests.patch(
+            f'{self.survey}/123456/submissions?set=key1&where=key2=eq.bla',
+            headers=headers,
+            data=json.dumps({'key1': 5})
+        )
+        self.assertEqual(resp.status_code, 200)
+        resp = requests.get(
+            f'{self.survey}/123456/audit',
+            headers=headers
+        )
+        resp = requests.delete(
+            f'{self.survey}/123456/audit',
+            headers=headers
+        )
+        self.assertEqual(resp.status_code, 403)
+        # metadata functionality
+        resp = requests.put(
+            self.base_url + '/survey/123456/metadata',
+            data=json.dumps(data),
+            headers=headers
+        )
         self.assertEqual(resp.status_code, 201)
-        resp = requests.get(self.base_url + '/survey/123456/metadata',
-                            headers=headers)
+        resp = requests.get(
+            self.base_url + '/survey/123456/metadata',
+            headers=headers
+        )
         self.assertEqual(resp.status_code, 200)
-        resp = requests.delete(self.base_url + '/survey/123456/metadata',
-                            headers=headers)
+        resp = requests.delete(
+            self.base_url + '/survey/123456/metadata',
+            headers=headers
+        )
         self.assertEqual(resp.status_code, 200)
-        resp = requests.get(self.base_url + '/survey',
-                            headers=headers)
+        # check endpoint overview
+        resp = requests.get(self.base_url + '/survey', headers=headers)
         data = json.loads(resp.text)
         self.assertTrue('123456' in data['tables'])
         self.assertEqual(resp.status_code, 200)
-        resp = requests.get(self.base_url + '/survey/123456',
-                            headers=headers)
+        # get data
+        resp = requests.get(self.base_url + '/survey/123456', headers=headers)
         data = json.loads(resp.text)
         self.assertTrue('metadata' in data['data'])
         self.assertTrue('submissions' in data['data'])
         self.assertTrue('attachments' in data['data'])
+        # perform some queries
         nettskjema_url_tokens_method = [
             ('/123456/submissions', 'ADMIN', 'GET'),
             ('/123456/submissions?select=key1&where=key2=eq.bla&order=key1.desc', 'ADMIN', 'GET'),
@@ -632,12 +660,16 @@ class TestFileApi(unittest.TestCase):
             self.use_generic_table(app, acl)
         # attachments
         file = url_escape('some-survey-attachment.txt')
-        resp = requests.put(f'{self.survey}/123456/attachments/{file}',
-                            data=lazy_file_reader(self.so_sweet),
-                            headers=headers)
+        resp = requests.put(
+            f'{self.survey}/123456/attachments/{file}',
+            data=lazy_file_reader(self.so_sweet),
+            headers=headers
+        )
         self.assertEqual(resp.status_code, 201)
-        resp = requests.get(f'{self.survey}/123456/attachments/{file}',
-                            headers=headers)
+        resp = requests.get(
+            f'{self.survey}/123456/attachments/{file}',
+            headers=headers
+        )
         self.assertEqual(resp.status_code, 200)
 
 
