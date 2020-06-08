@@ -1958,7 +1958,11 @@ class ProxyHandler(AuthRequestHandler):
                 self.message = 'Cannot perform DELETE on directory - delete files individually'
                 raise Exception
             try:
+                # Allow the file to be deleted by changing the rights temporary of the parent directory
+                subprocess.call(['sudo', 'chmod', 'o+w',  os.path.dirname(self.filepath)])
                 os.remove(self.filepath)
+                # Restoring the rights of the parent directory
+                subprocess.call(['sudo', 'chmod', 'o-w',  os.path.dirname(self.filepath)])
                 self.message = 'Deleted %s' % self.filepath
             except OSError as e:
                 self.set_status(500)
