@@ -3,6 +3,7 @@
 
 # pylint: disable=missing-docstring
 
+import datetime
 import logging
 import re
 import json
@@ -92,10 +93,11 @@ def postgres_session(pool):
 
 class DatabaseBackend(ABC):
 
-    def __init__(self, engine, verbose=False):
+    def __init__(self, engine, verbose=False, requestor=None):
         super(DatabaseBackend, self).__init__()
         self.engine = engine
         self.verbose = verbose
+        self.requestor = requestor
 
     @abstractmethod
     def initialise(self):
@@ -157,10 +159,11 @@ class SqliteBackend(DatabaseBackend):
 
     generator_class = SqliteQueryGenerator
 
-    def __init__(self, engine, verbose=False, schema=None):
+    def __init__(self, engine, verbose=False, schema=None, requestor=None):
         self.engine = engine
         self.verbose = verbose
         self.table_definition = '(data json unique not null)'
+        self.requestor = requestor
 
     def initialise(self):
         pass
@@ -212,9 +215,19 @@ class SqliteBackend(DatabaseBackend):
             raise e
 
     def table_update(self, table_name, uri_query, data):
+        old = list(self.table_select(table_name, uri_query))
         sql = self.generator_class(f'"{table_name}"', uri_query, data=data)
         with sqlite_session(self.engine) as session:
             session.execute(sql.update_query)
+        audit_data = []
+        for val in old:
+            audit_data.append({
+                'timestamp': datetime.datetime.now().isoformat(),
+                'diff': data,
+                'previous': json.loads(val),
+                'identity': self.requestor
+            })
+        self.table_insert(f'{table_name}_audit', audit_data)
         return True
 
     def table_delete(self, table_name, uri_query):
@@ -247,11 +260,12 @@ class PostgresBackend(object):
 
     generator_class = PostgresQueryGenerator
 
-    def __init__(self, pool, verbose=False, schema=None):
+    def __init__(self, pool, verbose=False, schema=None, requestor=None):
         self.pool = pool
         self.verbose = verbose
         self.table_definition = '(data jsonb not null, uniq text unique not null)'
         self.schema = schema if schema else 'public'
+        self.requestor = requestor
 
     def initialise(self):
         with postgres_session(self.pool) as session:
@@ -314,9 +328,19 @@ class PostgresBackend(object):
             raise e
 
     def table_update(self, table_name, uri_query, data):
+        old = list(self.table_select(table_name, uri_query))
         sql = self.generator_class(f'{self.schema}."{table_name}"', uri_query, data=data)
         with postgres_session(self.pool) as session:
             session.execute(sql.update_query)
+        audit_data = []
+        for val in old:
+            audit_data.append({
+                'timestamp': datetime.datetime.now().isoformat(),
+                'diff': data,
+                'previous': val,
+                'identity': self.requestor
+            })
+        self.table_insert(f'{table_name}_audit', audit_data)
         return True
 
     def table_delete(self, table_name, uri_query):
