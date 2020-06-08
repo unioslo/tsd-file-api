@@ -2039,7 +2039,7 @@ class GenericTableHandler(AuthRequestHandler):
                 self.engine = sqlite_init(self.tenant_dir, name=self.db_name, builtin=True)
                 self.db = SqliteBackend(self.engine, requestor=self.requestor)
             elif self.dbtype == 'postgres':
-                self.db = PostgresBackend(options.pgpool, schema=self.tenant)
+                self.db = PostgresBackend(options.pgpool, schema=self.tenant, requestor=self.requestor)
         except Exception as e:
             if self._status_code != 503:
                 self.set_status(401)
