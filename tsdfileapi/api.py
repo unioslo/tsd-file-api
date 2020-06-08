@@ -34,6 +34,7 @@ import tornado.queues
 import libnacl.sealed
 import libnacl.public
 
+import tornado.log
 from pandas import DataFrame
 from termcolor import colored
 from tornado.escape import json_decode, url_unescape, url_escape
@@ -116,6 +117,7 @@ def set_config():
     )
     define('rabbitmq', _config.get('rabbitmq', {}))
     define('maintenance_mode_enabled', False)
+    options.logging = _config.get('log_level', 'info')
 
 set_config()
 
@@ -1994,8 +1996,8 @@ class GenericTableHandler(AuthRequestHandler):
 
     """
 
-    def metadata_table_name(self, table_name):
-        return f'{table_name}_metadata'
+    def create_table_name(self, table_name, suffix):
+        return f'{table_name}_{suffix}'
 
     def get_uri_query(self, uri):
         if '?' in uri:
@@ -2011,18 +2013,7 @@ class GenericTableHandler(AuthRequestHandler):
         self.table_structure = options.config['backends'][dbtype][backend]['table_structure']
         self.mq_config = options.config['backends'][dbtype][backend].get('mq')
         self.check_tenant = options.config['backends'][dbtype][backend].get('check_tenant')
-        if dbtype == 'sqlite':
-            self.import_dir = options.config['backends'][dbtype][backend]['db_path']
-            self.tenant_dir = self.import_dir.replace(options.tenant_string_pattern, self.tenant)
-            if backend == 'apps_tables':
-                app_name = self.request.uri.split('/')[4]
-                self.db_name = f'.{backend}_{app_name}.db'
-            else:
-                self.db_name =  f'.{backend}.db'
-            self.engine = sqlite_init(self.tenant_dir, name=self.db_name, builtin=True)
-            self.db = SqliteBackend(self.engine)
-        elif dbtype == 'postgres':
-            self.db = PostgresBackend(options.pgpool, schema=self.tenant)
+        self.dbtype = dbtype
 
 
     def prepare(self):
@@ -2037,6 +2028,18 @@ class GenericTableHandler(AuthRequestHandler):
             self.authnz = self.process_token_and_extract_claims(
                 check_tenant=self.check_tenant if self.check_tenant is not None else options.check_tenant
             )
+            if self.dbtype == 'sqlite':
+                self.import_dir = options.config['backends'][self.dbtype][self.backend]['db_path']
+                self.tenant_dir = self.import_dir.replace(options.tenant_string_pattern, self.tenant)
+                if self.backend == 'apps_tables':
+                    app_name = self.request.uri.split('/')[4]
+                    self.db_name = f'.{self.backend}_{app_name}.db'
+                else:
+                    self.db_name =  f'.{self.backend}.db'
+                self.engine = sqlite_init(self.tenant_dir, name=self.db_name, builtin=True)
+                self.db = SqliteBackend(self.engine, requestor=self.requestor)
+            elif self.dbtype == 'postgres':
+                self.db = PostgresBackend(options.pgpool, schema=self.tenant)
         except Exception as e:
             if self._status_code != 503:
                 self.set_status(401)
@@ -2143,8 +2146,10 @@ class GenericTableHandler(AuthRequestHandler):
                     self.set_status(200)
                     self.write({'data': self.table_structure})
                 else:
-                    if self.request.uri.split('?')[0].endswith('metadata'):
-                        table_name = self.metadata_table_name(table_name)
+                    suffixes = ['metadata', 'audit']
+                    for suffix in suffixes:
+                        if self.request.uri.split('?')[0].endswith(suffix):
+                            table_name = self.create_table_name(table_name, suffix)
                     self.set_status(200)
                     self.set_header('Content-Type', 'application/json')
                     self.write('{"data": [')
@@ -2177,7 +2182,11 @@ class GenericTableHandler(AuthRequestHandler):
             data = json_decode(new_data)
             self.set_resource_identifier_info(data)
             if self.request.uri.split('?')[0].endswith('metadata'):
-                table_name = self.metadata_table_name(table_name)
+                table_name = self.create_table_name(table_name, 'metadata')
+            if self.request.uri.split('?')[0].endswith('audit'):
+                self.set_status(403)
+                self.error = 'Not allowed to write to audit tables'
+                raise Exception(self.error)
             try:
                 self.db.table_insert(table_name, data)
                 self.set_status(201)
@@ -2187,14 +2196,19 @@ class GenericTableHandler(AuthRequestHandler):
                 raise Exception
         except Exception as e:
             logging.error(e)
-            self.set_status(400)
+            if not self._status_code == 403:
+                self.set_status(400)
             self.write({'message': self.error})
 
 
     def patch(self, tenant, table_name):
         try:
             if self.request.uri.split('?')[0].endswith('metadata'):
-                table_name = self.metadata_table_name(table_name)
+                table_name = self.create_table_name(table_name, 'metadata')
+            if self.request.uri.split('?')[0].endswith('audit'):
+                self.set_status(403)
+                self.error = 'Not allowed to write to audit tables'
+                raise Exception(self.error)
             if self.request.headers.get('Content-Type') == 'application/json+nacl':
                 new_data = self.decrypt_nacl_data(
                     self.request.body,
@@ -2210,21 +2224,27 @@ class GenericTableHandler(AuthRequestHandler):
             self.write({'data': 'data updated'})
         except Exception as e:
             logging.error(e)
-            self.set_status(400)
+            if not self._status_code == 403:
+                self.set_status(400)
             self.write({'message': self.error})
 
 
     def delete(self, tenant, table_name):
         try:
             if self.request.uri.split('?')[0].endswith('metadata'):
-                table_name = self.metadata_table_name(table_name)
+                table_name = self.create_table_name(table_name, 'metadata')
+            if self.request.uri.split('?')[0].endswith('audit'):
+                self.set_status(403)
+                self.error = 'Not allowed to delete from audit tables'
+                raise Exception(self.error)
             query = self.get_uri_query(self.request.uri)
             data = self.db.table_delete(table_name, query)
             self.set_status(200)
             self.write({'data': data})
         except Exception as e:
             logging.error(e)
-            self.set_status(400)
+            if not self._status_code == 403:
+                self.set_status(400)
             self.write({'message': self.error})
 
 
@@ -2343,6 +2363,7 @@ class Backends(object):
             # TODO: switch to postgres, when db setup is ready
             ('/v1/(.*)/survey/([a-zA-Z_0-9]+)/metadata', GenericTableHandler, dict(backend='survey', dbtype='sqlite')),
             ('/v1/(.*)/survey/([a-zA-Z_0-9]+)/submissions', GenericTableHandler, dict(backend='survey', dbtype='sqlite')),
+            ('/v1/(.*)/survey/([a-zA-Z_0-9]+)/audit', GenericTableHandler, dict(backend='survey', dbtype='sqlite')),
             ('/v1/(.*)/survey/([a-zA-Z_0-9]+)$', GenericTableHandler, dict(backend='survey', dbtype='sqlite')),
             ('/v1/(.*)/survey', GenericTableHandler, dict(backend='survey', dbtype='sqlite')),
         ],
@@ -2367,6 +2388,7 @@ class Backends(object):
             ('/v1/(.*)/apps/(.+/files.*)', ProxyHandler, dict(backend='apps_files', namespace='apps', endpoint=None)),
         ],
         'apps_tables': [
+            ('/v1/(.*)/apps/(.+)/tables/audit', GenericTableHandler, dict(backend='apps_tables', dbtype='sqlite')),
             ('/v1/(.*)/apps/(.+)/tables/metadata', GenericTableHandler, dict(backend='apps_tables', dbtype='sqlite')),
             ('/v1/(.*)/apps/.+/tables/(.+)$', GenericTableHandler, dict(backend='apps_tables', dbtype='sqlite')),
         ]
@@ -2440,7 +2462,7 @@ class Backends(object):
 
 
 def main():
-    parse_command_line()
+    tornado.log.enable_pretty_logging()
     backends = Backends(options.config)
     pika_client = (
         PikaClient(options.rabbitmq, backends.exchanges) if options.rabbitmq.get('enabled')
