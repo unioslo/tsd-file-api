@@ -1959,10 +1959,14 @@ class ProxyHandler(AuthRequestHandler):
                 raise Exception
             try:
                 # Allow the file to be deleted by changing the rights temporary of the parent directory
-                subprocess.call(['sudo', 'chmod', 'o+w',  os.path.dirname(self.filepath)])
+                if self.has_posix_ownership:
+                    subprocess.call(['sudo', 'chmod', 'o+w',  os.path.dirname(self.filepath)])
+                
                 os.remove(self.filepath)
+                
                 # Restoring the rights of the parent directory
-                subprocess.call(['sudo', 'chmod', 'o-w',  os.path.dirname(self.filepath)])
+                if self.has_posix_ownership:
+                    subprocess.call(['sudo', 'chmod', 'o-w',  os.path.dirname(self.filepath)])
                 self.message = 'Deleted %s' % self.filepath
             except OSError as e:
                 self.set_status(500)
