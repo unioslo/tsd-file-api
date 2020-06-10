@@ -1513,6 +1513,12 @@ class TestFileApi(unittest.TestCase):
         resp = requests.get(f'{self.export}/data-folder', headers=headers)
         self.assertEqual(resp.status_code, 200)
 
+    def test_ZZZ_listing_import_dir(self):
+        headers = {'Authorization': 'Bearer ' + TEST_TOKENS['VALID']}
+        # top level
+        # no group included
+        resp = requests.get(f'{self.stream}', headers=headers)
+        self.assertEqual(resp.status_code, 200)
 
 
     def test_ZZZ_get_file_from_dir(self):
@@ -2216,6 +2222,7 @@ def main():
     ]
     listing = [
         'test_ZZZ_listing_dirs',
+        'test_ZZZ_listing_import_dir',
     ]
     delete = [
         'test_ZZZ_delete',
