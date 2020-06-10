@@ -316,10 +316,17 @@ class SerialResumable(AbstractResumable):
                     pass
                 if chunk_size:
                     group = self._db_get_group(pr)
-                    info.append({'chunk_size': chunk_size, 'max_chunk': max_chunk,
-                                 'md5sum': md5sum, 'previous_offset': previous_offset,
-                                 'next_offset': next_offset, 'id': pr,
-                                 'filename': filename, 'group': group})
+                    key = self._db_get_key(pr)
+                    info.append({
+                        'chunk_size': chunk_size,
+                        'max_chunk': max_chunk,
+                        'md5sum': md5sum,
+                        'previous_offset': previous_offset,
+                        'next_offset': next_offset,
+                        'id': pr,
+                        'filename': filename,
+                        'group': group,
+                        'key': key})
         return {'resumables': info}
 
     def _repair_inconsistent_resumable(self, merged_file, chunks, merged_file_size,
@@ -423,13 +430,22 @@ class SerialResumable(AbstractResumable):
             previous_offset, next_offset, \
             warning, recommendation, filename = self._get_resumable_chunk_info(resumable_dir, work_dir)
         group = self._db_get_group(upload_id)
+        key = self._db_get_key(upload_id)
         if recommendation == 'end':
             next_offset = 'end'
-        info = {'filename': filename, 'id': relevant_dir,
-                'chunk_size': chunk_size, 'max_chunk': max_chunk,
-                'md5sum': md5sum, 'previous_offset': previous_offset,
-                'next_offset': next_offset, 'warning': warning,
-                'filename': filename, 'group': group}
+        info = {
+            'filename': filename,
+            'id': relevant_dir,
+            'chunk_size': chunk_size,
+            'max_chunk': max_chunk,
+            'md5sum': md5sum,
+            'previous_offset': previous_offset,
+            'next_offset': next_offset,
+            'warning': warning,
+            'filename': filename,
+            'group': group,
+            'key': key
+        }
         return info
 
     def _get_full_chunks_on_disk(self, work_dir, upload_id, chunk_num):
