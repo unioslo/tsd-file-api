@@ -605,41 +605,53 @@ class SerialResumable(AbstractResumable):
     def _db_update_with_chunk_info(self, resumable_id, chunk_num, chunk_size):
         resumable_table = f'resumable_{resumable_id}'
         with session_scope(self.engine) as session:
-            session.execute('insert into "%s"(chunk_num, chunk_size) values (:chunk_num, :chunk_size)' % resumable_table,
-                            {'chunk_num': chunk_num, 'chunk_size': chunk_size})
+            session.execute(f"""
+                insert into "{resumable_table}"(chunk_num, chunk_size)
+                values (:chunk_num, :chunk_size)""",
+                {'chunk_num': chunk_num, 'chunk_size': chunk_size}
+            )
         return True
 
     def _db_pop_chunk(self, resumable_id, chunk_num):
         resumable_table = f'resumable_{resumable_id}'
         with session_scope(self.engine) as session:
-            res = session.execute('delete from "%s" where chunk_num = :chunk_num' % resumable_table,
-                                  {'chunk_num': chunk_num})
+            res = session.execute(f"""
+                delete from "{resumable_table}"
+                where chunk_num = :chunk_num""",
+                {'chunk_num': chunk_num}
+            )
         return True
 
     def _db_get_total_size(self, resumable_id):
         resumable_table = f'resumable_{resumable_id}'
         with session_scope(self.engine) as session:
-            res = session.execute('select sum(chunk_size) from "%s"' % resumable_table).fetchone()[0]
+            res = session.execute(
+                f'select sum(chunk_size) from "{resumable_table}"'
+            ).fetchone()[0]
         return res
 
     def _db_get_group(self, resumable_id):
-        resumable_table = f'resumable_{resumable_id}'
         with session_scope(self.engine) as session:
-            res = session.execute('select upload_group from resumable_uploads where id = :resumable_id',
-                                  {'resumable_id': resumable_id}).fetchone()[0]
+            res = session.execute(
+                'select upload_group from resumable_uploads where id = :resumable_id',
+                {'resumable_id': resumable_id}
+            ).fetchone()[0]
         return res
 
     def _db_get_key(self, resumable_id):
-        resumable_table = f'resumable_{resumable_id}'
         with session_scope(self.engine) as session:
-            res = session.execute('select key from resumable_uploads where id = :resumable_id',
-                                  {'resumable_id': resumable_id}).fetchone()[0]
+            res = session.execute(
+                'select key from resumable_uploads where id = :resumable_id',
+                {'resumable_id': resumable_id}
+            ).fetchone()[0]
         return res
 
     def _db_upload_belongs_to_owner(self, resumable_id):
         with session_scope(self.engine) as session:
-            res = session.execute('select count(1) from resumable_uploads where id = :resumable_id',
-                                  {'resumable_id': resumable_id}).fetchone()[0]
+            res = session.execute(
+                'select count(1) from resumable_uploads where id = :resumable_id',
+                {'resumable_id': resumable_id}
+            ).fetchone()[0]
         return True if res > 0 else False
 
     def _db_get_all_resumable_ids_for_owner(self):
@@ -655,5 +667,5 @@ class SerialResumable(AbstractResumable):
         with session_scope(self.engine) as session:
             session.execute('delete from resumable_uploads where id = :resumable_id',
                             {'resumable_id': resumable_id})
-            session.execute('drop table "%s"' % resumable_table)
+            session.execute(f'drop table "{resumable_table}"')
         return True
