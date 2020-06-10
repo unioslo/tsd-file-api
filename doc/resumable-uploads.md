@@ -27,7 +27,7 @@ Using the UUID returned by the server in the response, the client can continue s
 ```txt
 PATCH /files/stream/filename?chunk=<num>&id=<UUID>&group=<group-name>
 
-{filename: str, max_chunk: int, id: uuid}
+{filename: str, max_chunk: int, id: uuid, key: str}
 ```
 
 
@@ -51,7 +51,8 @@ GET /files/resumables
             next_offset: <int,'end'>,
             md5sum: str,
             warning: str,
-            group: str
+            group: str,
+            key: str
         },
         {...}
     ]
@@ -80,7 +81,8 @@ GET /files/resumables/myfile?id=<UUID>
     next_offset: <int,'end'>,
     md5sum: str
     warning: str,
-    group: str
+    group: str,
+    key: str
 }
 ```
 
@@ -106,7 +108,7 @@ Assuming data is consistent, the client then proceeds as follows:
 ```txt
 PATCH /files/stream/filename?chunk=<num>?id=<UUID>&group=<group-name>
 
-{filename: str, max_chunk: int, id: uuid}
+{filename: str, max_chunk: int, id: uuid, key: str}
 ```
 
 ## 3. Completing an upload
