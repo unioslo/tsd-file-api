@@ -1043,6 +1043,7 @@ class TestFileApi(unittest.TestCase):
         self.assertEqual(resp['max_chunk'], u'end')
         self.assertTrue(resp['id'] is not None)
         self.assertEqual(resp['filename'], filename)
+        self.assertTrue('key' in resp.keys())
 
 
     def test_ZO_resume_works_with_filename_match(self):
