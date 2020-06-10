@@ -241,10 +241,16 @@ class AuthRequestHandler(RequestHandler):
             return group_config['default_url_group'], group_config['default_memberships']
         try:
             group_name = url_unescape(self.get_query_argument('group'))
-        except Exception as e:
-            default_url_group = group_config['default_url_group']
-            if options.tenant_string_pattern in default_url_group:
-                group_name = default_url_group.replace(options.tenant_string_pattern, tenant)
+        except HTTPError as e:
+            # first check if it is in the url
+            found = re.sub(r'/v1/.+/(p[0-9]+-[a-zA-Z0-9]+-group).*', r'\1', self.request.uri)
+            if found == self.request.uri:
+                # then it is not there, so we need to use the default
+                default_url_group = group_config['default_url_group']
+                if options.tenant_string_pattern in default_url_group:
+                    group_name = default_url_group.replace(options.tenant_string_pattern, tenant)
+            else:
+                group_name = found
         try:
             group_memberships = authnz_status['claims']['groups']
         except Exception as e:
@@ -1355,7 +1361,7 @@ class ProxyHandler(AuthRequestHandler):
             # 1. Set up internal variables, check method supported
             try:
                 self.chunks = tornado.queues.Queue(1)
-                if self.request.method == 'HEAD':
+                if self.request.method in ['HEAD', 'GET', 'DELETE']:
                     body = None
                 elif self.request.method == 'POST':
                     self.set_status(405)
@@ -1376,7 +1382,7 @@ class ProxyHandler(AuthRequestHandler):
                 self.error = 'Access token invalid'
                 logging.error(self.error)
                 raise e
-            # 3. Validate tenant number in URI
+            # 3. Validate tenant identifier in URI
             try:
                 tenant = tenant_from_url(self.request.uri)
                 assert options.valid_tenant.match(tenant)
@@ -1409,7 +1415,7 @@ class ProxyHandler(AuthRequestHandler):
                         else:
                             uri = f'{uri}/{self.filename}'
                     else:
-                        pass
+                        self.filename = None # do not need it here
             except Exception as e:
                 self.error = 'could not process URI'
                 logging.error(e)
@@ -1429,7 +1435,7 @@ class ProxyHandler(AuthRequestHandler):
                     assert self.is_reserved_resource(work_dir, url_unescape(resource))
             except (AssertionError, Exception) as e:
                 self.error = 'reserved resource name'
-                logging.error((self.error))
+                logging.error(self.error)
                 self.set_status(400)
                 raise Exception
             # 6. Validate groups
@@ -1479,7 +1485,7 @@ class ProxyHandler(AuthRequestHandler):
             except Exception:
                 pass
             # 8.2 enfore group logic, if enabled
-            if self.group_config['enabled']:
+            if self.group_config['enabled'] and self.request.method in ['PUT', 'PATCH']:
                 # 8.2.1 if a directory is present, and not the same as the group
                 if url_unescape(uri_parts[5]) != self.filename and uri_parts[5] != group_name:
                     logging.error('inconsistent group permissions')
@@ -1489,6 +1495,10 @@ class ProxyHandler(AuthRequestHandler):
                     # inject appropriate value - until clients have transitioned
                     file = url_escape(self.filename)
                     resource = f'{group_name}/{file}'
+            elif self.group_config['enabled'] and self.request.method in ['GET', 'HEAD']:
+                # then we are operating in the TSD import directory
+                if not self.filename and len(uri_parts) == 5: # no folder given
+                    resource = work_dir # root dir
             # 8.3 build internal url
             self.resource = resource
             params = '?group=%s&chunk=%s&id=%s' % (group_name, chunk_num, upload_id)
@@ -1511,6 +1521,8 @@ class ProxyHandler(AuthRequestHandler):
         except Exception as e:
             if self._status_code != 503:
                 self.set_status(401)
+                logging.error(self.error)
+                logging.error(e)
             self.finish()
 
     @gen.coroutine
@@ -1616,9 +1628,20 @@ class ProxyHandler(AuthRequestHandler):
         return size, mime_type
 
 
-    def list_files(self, path, tenant):
+    def list_files(self, path, tenant, root):
         """
-        Lists files in the export directory.
+        List a directory.
+
+        Listing the export directory requires changing folder
+        and file modes in order to stat inodes.
+
+        Listing the import directory has its own special semantics.
+        The requestor is only allowed to list those group folders
+        which intersect with their group memberships. At the top
+        level folder, only folders are allowed.
+
+        When the backend does not have has_posix_ownership and/or
+        group logic, the API owns everything, and listing is simple.
 
         Returns
         -------
@@ -1683,45 +1706,60 @@ class ProxyHandler(AuthRequestHandler):
             sizes = []
             mimes = []
             owners = []
-            default_owner = options.default_file_owner.replace(options.tenant_string_pattern, tenant)
-            for file in files:
-                filepath = file.path
-                try:
-                    size, mime_type = self.get_file_metadata(filepath)
-                    status = self.enforce_export_policy(self.export_policy, filepath, tenant, size, mime_type)
-                    if status:
-                        reason = None
-                    else:
-                        reason = self.message
-                except Exception as e:
-                    logging.error(e)
-                    logging.error('could not enforce export policy when listing dir')
-                    raise Exception
-                path_stat = file.stat()
-                latest = path_stat.st_mtime
-                date_time = str(datetime.datetime.fromtimestamp(latest).isoformat())
-                if self.has_posix_ownership:
+            if not self.group_config['enabled']:
+                default_owner = options.default_file_owner.replace(options.tenant_string_pattern, tenant)
+                for file in files:
+                    filepath = file.path
                     try:
-                        owner = pwd.getpwuid(path_stat.st_uid).pw_name
-                    except KeyError:
+                        size, mime_type = self.get_file_metadata(filepath)
+                        status = self.enforce_export_policy(self.export_policy, filepath, tenant, size, mime_type)
+                        if status:
+                            reason = None
+                        else:
+                            reason = self.message
+                    except Exception as e:
+                        logging.error(e)
+                        logging.error('could not enforce export policy when listing dir')
+                        raise Exception
+                    path_stat = file.stat()
+                    latest = path_stat.st_mtime
+                    date_time = str(datetime.datetime.fromtimestamp(latest).isoformat())
+                    if self.has_posix_ownership:
                         try:
-                            default_owner_id = pwd.getpwnam(default_owner).pw_uid
-                            group_id = path_stat.st_gid
-                            os.chown(group_folder, file_api_user_id, group_id)
-                            owner = default_owner
-                        except (KeyError, Exception) as e:
-                            logging.error(e)
-                            logging.error(f'could not reset owner of {filepath} to default')
-                            owner = 'nobody'
+                            owner = pwd.getpwuid(path_stat.st_uid).pw_name
+                        except KeyError:
+                            try:
+                                default_owner_id = pwd.getpwnam(default_owner).pw_uid
+                                group_id = path_stat.st_gid
+                                os.chown(group_folder, file_api_user_id, group_id)
+                                owner = default_owner
+                            except (KeyError, Exception) as e:
+                                logging.error(e)
+                                logging.error(f'could not reset owner of {filepath} to default')
+                                owner = 'nobody'
+                    else:
+                        owner = options.api_user
+                    names.append(os.path.basename(filepath))
+                    times.append(date_time)
+                    exportable.append(status)
+                    reasons.append(reason)
+                    sizes.append(size)
+                    mimes.append(mime_type)
+                    owners.append(owner)
+            else: # then it is the TSD import dir
+                group_memberships = self.claims.get('groups')
+                if root:
+                    for file in files:
+                        if file.name in group_memberships:
+                            names.append(os.path.basename(file.path))
+                            times.append(None)
+                            exportable.append(False)
+                            reasons.append(None)
+                            sizes.append(None)
+                            mimes.append(None)
+                            owners.append(None)
                 else:
-                    owner = options.api_user
-                names.append(os.path.basename(filepath))
-                times.append(date_time)
-                exportable.append(status)
-                reasons.append(reason)
-                sizes.append(size)
-                mimes.append(mime_type)
-                owners.append(owner)
+                    pass # TODO
             file_info = []
             for f, t, e, r, s, m, o in zip(names, times, exportable, reasons, sizes, mimes, owners):
                 href = '%s/%s' % (self.request.uri, url_escape(f))
@@ -1795,7 +1833,8 @@ class ProxyHandler(AuthRequestHandler):
                     raise Exception
                 if filename and os.path.isdir(f'{self.path}/{self.resource}'):
                     self.path += f'/{self.resource}'
-                self.list_files(self.path, tenant)
+                root = True if self.resource == self.path else False
+                self.list_files(self.path, tenant, root)
                 return
             if not self.allow_export:
                 self.message = 'Method not allowed'
