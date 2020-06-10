@@ -507,13 +507,53 @@ class SerialResumable(AbstractResumable):
             os.remove(old_chunk)
         return final
 
-    def _db_insert_new_for_owner(self, resumable_id, group):
-        resumable_table = 'resumable_%s' % resumable_id
+    def _db_insert_new_for_owner(self, resumable_id, group, key=None):
+        """
+        A backwards incompatible change introduced the key column
+        to the resumable_uploads table. This is why existing tables'
+        columns are altered.
+        """
+        resumable_accounting_table = 'resumable_uploads'
+        resumable_table = f'resumable_{resumable_id}'
         with session_scope(self.engine) as session:
-            session.execute('create table if not exists resumable_uploads(id text, upload_group text)')
-            session.execute('insert into resumable_uploads (id, upload_group) values (:resumable_id, :upload_group)',
-                            {'resumable_id': resumable_id, 'upload_group': group})
-            session.execute('create table "%s"(chunk_num int, chunk_size int)' % resumable_table) # want an exception if exists
+            resumables_table_exists = False
+            current_tables = session.execute(
+                "select name FROM sqlite_master where type = 'table'"
+            ).fetchall()
+            if len(current_tables) == 0:
+                pass
+            else:
+                for table in current_tables:
+                    if resumable_accounting_table in table[0]:
+                        resumables_table_exists = True
+                        break
+            if not resumables_table_exists:
+                session.execute(f"""
+                    create table if not exists {resumable_accounting_table}(
+                        id text,
+                        upload_group text,
+                        key text
+                    )"""
+                )
+            else:
+                try:
+                    session.execute(f"""
+                        alter table {resumable_accounting_table} add column key text"""
+                    )
+                except OperationalError as e:
+                    pass # ^ already altered the table before
+            session.execute(f"""
+                insert into {resumable_accounting_table} (id, upload_group, key)
+                values (:resumable_id, :upload_group, :key)""",
+                {
+                    'resumable_id': resumable_id,
+                    'upload_group': group,
+                    'key': key
+                }
+            )
+            session.execute(f"""
+                create table "{resumable_table}"(chunk_num int, chunk_size int)"""
+            )
         return True
 
     def _db_update_with_chunk_info(self, resumable_id, chunk_num, chunk_size):
