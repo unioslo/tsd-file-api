@@ -84,7 +84,16 @@ class AbstractResumable(ABC):
         self.owner = owner
 
     @abstractmethod
-    def prepare(self, work_dir, in_filename, url_chunk_num, url_upload_id, url_group, owner):
+    def prepare(
+            self,
+            work_dir,
+            in_filename,
+            url_chunk_num,
+            url_upload_id,
+            url_group,
+            owner,
+            key=None
+        ):
         pass
 
     @abstractmethod
@@ -100,11 +109,23 @@ class AbstractResumable(ABC):
         pass
 
     @abstractmethod
-    def merge_chunk(self, work_dir, last_chunk_filename, upload_id, owner):
+    def merge_chunk(
+            self,
+            work_dir,
+            last_chunk_filename,
+            upload_id,
+            owner
+        ):
         pass
 
     @abstractmethod
-    def finalise(self, work_dir, last_chunk_filename, upload_id, owner):
+    def finalise(
+            self,
+            work_dir,
+            last_chunk_filename,
+            upload_id,
+            owner
+        ):
         pass
 
     @abstractmethod
@@ -159,7 +180,16 @@ class SerialResumable(AbstractResumable):
             os.chmod(db_path, _RW______)
         return rdb
 
-    def prepare(self, work_dir, in_filename, url_chunk_num, url_upload_id, url_group, owner):
+    def prepare(
+            self,
+            work_dir,
+            in_filename,
+            url_chunk_num,
+            url_upload_id,
+            url_group,
+            owner,
+            key=None
+        ):
         """
         The following cases are handled:
 
@@ -190,7 +220,7 @@ class SerialResumable(AbstractResumable):
             chunk_order_correct = True
         elif chunk_num == 1:
             os.makedirs(work_dir + '/' + upload_id)
-            assert self._db_insert_new_for_owner(upload_id, url_group)
+            assert self._db_insert_new_for_owner(upload_id, url_group, key=key)
             chunk_order_correct = True
             completed_resumable_file = None
         elif chunk_num > 1:
