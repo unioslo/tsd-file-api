@@ -111,6 +111,7 @@ get() {
 }
 
 systemctl_with_port() {
+    echo "running: ${2} file-api@${1}.service"
     systemctl "${2}" "file-api@${1}.service"
 }
 
@@ -220,13 +221,13 @@ read_definitions() {
 
 while (( "$#" )); do
     case "${1}" in
-        --definitions)          shift; DEFINITIONS="${1}"; read_definitions; shift ;;
-        --process-info)         shift; _PORT=true; group_info "${1}"; exit 0 ;;
-        --process-maintenance)  shift; _PORT=true; group_maintenance "${1}" "${2}"; exit 0 ;;
-        --process-ctl)          shift; _PORT=true; group_ctl "${1}" "${2}"; exit 0 ;;
-        --group-info)           shift; group_info "${1}"; exit 0 ;;
-        --group-maintenance)    shift; group_maintenance "${1}" "${2}"; exit 0 ;;
-        --group-ctl)            shift; group_ctl "${1}" "${2}"; exit 0 ;;
+        --definitions)          shift; DEFINITIONS="${1}"; shift ;;
+        --process-info)         shift; read_definitions; _PORT=true; group_info "${1}"; exit 0 ;;
+        --process-maintenance)  shift; read_definitions; _PORT=true; group_maintenance "${1}" "${2}"; exit 0 ;;
+        --process-ctl)          shift; read_definitions; _PORT=true; group_ctl "${1}" "${2}"; exit 0 ;;
+        --group-info)           shift; read_definitions; group_info "${1}"; exit 0 ;;
+        --group-maintenance)    shift; read_definitions; group_maintenance "${1}" "${2}"; exit 0 ;;
+        --group-ctl)            shift; read_definitions; group_ctl "${1}" "${2}"; exit 0 ;;
         -h | --help)            printf "%s\n" "$_help"; exit 0 ;;
         -e | --_examples)       printf "%s\n" "$_examples"; exit 0 ;;
         *) break ;;
