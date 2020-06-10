@@ -1759,7 +1759,17 @@ class ProxyHandler(AuthRequestHandler):
                             mimes.append(None)
                             owners.append(None)
                 else:
-                    pass # TODO
+                    for file in files:
+                        names.append(file.name)
+                        # until someone asks for sync to check
+                        # server-side file size, and mtime
+                        # getting file metadata is unsupported
+                        times.append(None)
+                        exportable.append(False)
+                        reasons.append(None)
+                        sizes.append(None)
+                        mimes.append(None)
+                        owners.append(None)
             file_info = []
             for f, t, e, r, s, m, o in zip(names, times, exportable, reasons, sizes, mimes, owners):
                 href = '%s/%s' % (self.request.uri, url_escape(f))

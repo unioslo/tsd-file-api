@@ -1519,6 +1519,13 @@ class TestFileApi(unittest.TestCase):
         # no group included
         resp = requests.get(f'{self.stream}', headers=headers)
         self.assertEqual(resp.status_code, 200)
+        # trying a group that the requestor is not a member of
+        # will have APIgrant  level access control in addition
+        resp = requests.get(f'{self.stream}/p11-bla-group', headers=headers)
+        self.assertEqual(resp.status_code, 401)
+        # with necessary membership
+        resp = requests.get(f'{self.stream}/p11-member-group', headers=headers)
+        self.assertEqual(resp.status_code, 200)
 
 
     def test_ZZZ_get_file_from_dir(self):
