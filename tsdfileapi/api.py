@@ -987,16 +987,32 @@ class StreamHandler(AuthRequestHandler):
                         raise Exception
                     # 3.3 handle resumable, if relavant
                     if self.request.method == 'PATCH':
+                        # select resumable key:
+                        # then we remove the group name from url_dirs
+                        # because this is handled transparently
+                        # (for better or for worse)
+                        if self.group_config['enabled']:
+                            res_key = url_dirs.replace(self.group_name, '')
+                            # potentially replace '' with None
+                            res_key = None if not res_key else res_key
+                        else:
+                            res_key = url_dirs
                         self.res = SerialResumable(self.tenant_dir, self.requestor)
                         url_chunk_num = url_unescape(self.get_query_argument('chunk'))
                         url_upload_id = url_unescape(self.get_query_argument('id'))
                         self.chunk_num, \
-                            self.upload_id, \
-                            self.completed_resumable_file, \
-                            self.chunk_order_correct, \
-                            filename = self.res.prepare(self.tenant_dir, filename,
-                                                        url_chunk_num, url_upload_id,
-                                                        self.group_name, self.requestor)
+                        self.upload_id, \
+                        self.completed_resumable_file, \
+                        self.chunk_order_correct, \
+                        filename = self.res.prepare(
+                                self.tenant_dir,
+                                filename,
+                                url_chunk_num,
+                                url_upload_id,
+                                self.group_name,
+                                self.requestor,
+                                res_key
+                            )
                         if not self.chunk_order_correct:
                             logging.error('incorrect chunk order')
                             raise Exception
@@ -1961,9 +1977,9 @@ class ProxyHandler(AuthRequestHandler):
                 # Allow the file to be deleted by changing the rights temporary of the parent directory
                 if self.has_posix_ownership:
                     subprocess.call(['sudo', 'chmod', 'o+w',  os.path.dirname(self.filepath)])
-                
+
                 os.remove(self.filepath)
-                
+
                 # Restoring the rights of the parent directory
                 if self.has_posix_ownership:
                     subprocess.call(['sudo', 'chmod', 'o-w',  os.path.dirname(self.filepath)])
