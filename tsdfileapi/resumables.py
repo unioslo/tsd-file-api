@@ -383,7 +383,7 @@ class SerialResumable(AbstractResumable):
 
         Returns
         -------
-        tuple, (size, chunknum, md5sum, previous_offset, next_offset)
+        tuple, (size, chunknum, md5sum, previous_offset, next_offset, key)
 
         """
         def info(chunks, recommendation=None, warning=None):

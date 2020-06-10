@@ -631,6 +631,7 @@ class ResumablesHandler(AuthRequestHandler):
     - md5sum of the last chunk
     - previos offset in bytes
     - next offset in bytes (total size of merged file)
+    - resumable key (server-side directory specified in url)
 
     There are two possible scenarios: 1) the client knows the upload_id
     associated with the file which needs to be resumed, or 2) the client
