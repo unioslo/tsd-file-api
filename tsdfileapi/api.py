@@ -1786,15 +1786,6 @@ class ProxyHandler(AuthRequestHandler):
         """
         self.message = 'Unknown error, please contact TSD'
         try:
-            try:
-                self.authnz = self.process_token_and_extract_claims(
-                    check_tenant=self.check_tenant if self.check_tenant is not None else options.check_tenant
-                )
-            except Exception:
-                if not self.message:
-                    self.message = 'Not authorized to export data'
-                self.set_status(401)
-                raise Exception
             assert options.valid_tenant.match(tenant)
             self.path = self.export_dir
             if not filename or os.path.isdir(f'{self.path}/{self.resource}'):
@@ -1908,15 +1899,6 @@ class ProxyHandler(AuthRequestHandler):
             if not self.allow_info:
                 self.message = 'Method not allowed'
                 self.set_status(403)
-                raise Exception
-            try:
-                self.authnz = self.process_token_and_extract_claims(
-                    check_tenant=self.check_tenant if self.check_tenant is not None else options.check_tenant
-                )
-            except Exception:
-                if not self.message:
-                    self.message = 'Not authorized to export data'
-                self.set_status(401)
                 raise Exception
             assert options.valid_tenant.match(tenant)
             self.path = self.export_dir
