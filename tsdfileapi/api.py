@@ -992,11 +992,11 @@ class StreamHandler(AuthRequestHandler):
                         # because this is handled transparently
                         # (for better or for worse)
                         if self.group_config['enabled']:
-                            res_key = url_dirs.replace(self.group_name, '')
+                            self.res_key = url_dirs.replace(self.group_name, '')
                             # potentially replace '' with None
-                            res_key = None if not res_key else res_key
+                            self.res_key = None if not self.res_key else self.res_key
                         else:
-                            res_key = url_dirs
+                            self.res_key = url_dirs
                         self.res = SerialResumable(self.tenant_dir, self.requestor)
                         url_chunk_num = url_unescape(self.get_query_argument('chunk'))
                         url_upload_id = url_unescape(self.get_query_argument('id'))
@@ -1011,7 +1011,7 @@ class StreamHandler(AuthRequestHandler):
                                 url_upload_id,
                                 self.group_name,
                                 self.requestor,
-                                res_key
+                                self.res_key
                             )
                         if not self.chunk_order_correct:
                             logging.error('incorrect chunk order')
@@ -1192,7 +1192,8 @@ class StreamHandler(AuthRequestHandler):
         self.write({
             'filename': filename,
             'id': self.upload_id,
-            'max_chunk': self.chunk_num
+            'max_chunk': self.chunk_num,
+            'key': self.res_key
             }
         )
 
