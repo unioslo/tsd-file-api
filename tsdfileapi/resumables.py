@@ -316,7 +316,11 @@ class SerialResumable(AbstractResumable):
                     pass
                 if chunk_size:
                     group = self._db_get_group(pr)
-                    key = self._db_get_key(pr)
+                    key = None
+                    try:
+                        key = self._db_get_key(pr)
+                    except Exception: # for transition
+                        pass
                     info.append({
                         'chunk_size': chunk_size,
                         'max_chunk': max_chunk,
@@ -430,7 +434,11 @@ class SerialResumable(AbstractResumable):
             previous_offset, next_offset, \
             warning, recommendation, filename = self._get_resumable_chunk_info(resumable_dir, work_dir)
         group = self._db_get_group(upload_id)
-        key = self._db_get_key(upload_id)
+        key = None
+        try:
+            key = self._db_get_key(upload_id)
+        except Exception: # for transition
+            pass
         if recommendation == 'end':
             next_offset = 'end'
         info = {
