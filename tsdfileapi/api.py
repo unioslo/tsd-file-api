@@ -665,11 +665,8 @@ class ResumablesHandler(AuthRequestHandler):
             self.endpoint = self.request.uri.split('/')[3]
             self.tenant = tenant_from_url(self.request.uri)
             assert options.valid_tenant.match(self.tenant)
-            # can deprecate once rsync is in place for cluster software install
-            key = 'admin_path' if (backend == 'cluster' and self.tenant == 'p01') else 'import_path'
-            self.import_dir = options.config['backends']['disk'][backend][key]
-            if backend == 'cluster' and self.tenant != 'p01':
-                assert create_cluster_dir_if_not_exists(self.import_dir, self.tenant, options.tenant_string_pattern)
+            self.import_dir = options.config['backends']['disk'][backend]['import_path']
+            assert create_cluster_dir_if_not_exists(self.import_dir, self.tenant, options.tenant_string_pattern)
             self.tenant_dir = self.import_dir.replace(options.tenant_string_pattern, self.tenant)
             self.check_tenant = options.config['backends']['disk'][backend].get('check_tenant')
         except (AssertionError, Exception) as e:
@@ -896,10 +893,8 @@ class StreamHandler(AuthRequestHandler):
             self.endpoint = self.request.uri.split('/')[3]
             self.tenant = tenant_from_url(self.request.uri)
             assert options.valid_tenant.match(self.tenant)
-            key = 'admin_path' if (backend == 'cluster' and self.tenant == 'p01') else 'import_path'
-            self.import_dir = options.config['backends']['disk'][backend][key]
-            if backend == 'cluster' and self.tenant != 'p01':
-                assert create_cluster_dir_if_not_exists(self.import_dir, self.tenant, options.tenant_string_pattern)
+            self.import_dir = options.config['backends']['disk'][backend]['import_path']
+            assert create_cluster_dir_if_not_exists(self.import_dir, self.tenant, options.tenant_string_pattern)
             self.tenant_dir = self.import_dir.replace(options.tenant_string_pattern, self.tenant)
             self.backend = backend
             self.request_hook = options.config['backends']['disk'][backend]['request_hook']
@@ -1243,14 +1238,11 @@ class StreamHandler(AuthRequestHandler):
                 logging.info(e)
             try:
                 if self.request_hook['enabled']:
-                    if self.backend == 'cluster' and self.tenant == 'p01':
-                        pass # TODO: remove special case
-                    else:
-                        call_request_hook(
-                            self.request_hook['path'],
-                            [resource_path, self.requestor, options.api_user, self.group_name],
-                            as_sudo=self.request_hook['sudo']
-                        )
+                    call_request_hook(
+                        self.request_hook['path'],
+                        [resource_path, self.requestor, options.api_user, self.group_name],
+                        as_sudo=self.request_hook['sudo']
+                    )
             except Exception as e:
                 logging.info('problem calling request hook')
                 logging.info(e)
@@ -1283,14 +1275,11 @@ class StreamHandler(AuthRequestHandler):
                 path = self.path
                 resource_path = move_data_to_folder(path, self.resource_dir)
                 if self.request_hook['enabled']:
-                    if self.backend == 'cluster' and self.tenant == 'p01':
-                        pass # TODO: remove special case
-                    else:
-                        call_request_hook(
-                            self.request_hook['path'],
-                            [resource_path, self.requestor, options.api_user, self.group_name],
-                            as_sudo=self.request_hook['sudo']
-                        )
+                    call_request_hook(
+                        self.request_hook['path'],
+                        [resource_path, self.requestor, options.api_user, self.group_name],
+                        as_sudo=self.request_hook['sudo']
+                    )
                 if not self.on_finish_called:
                     message_data = {
                         'path': resource_path,
@@ -1340,8 +1329,7 @@ class ProxyHandler(AuthRequestHandler):
             self.export_path_pattern = self.backend_paths['export_path']
             self.export_dir = self.export_path_pattern.replace(options.tenant_string_pattern, tenant)
             self.export_policy = options.config['backends']['disk'][backend]['export_policy']
-            key = 'admin_path' if (backend == 'cluster' and tenant == 'p01') else 'import_path'
-            self.import_dir = options.config['backends']['disk'][backend][key]
+            self.import_dir = options.config['backends']['disk'][backend]['import_path']
             self.import_dir = self.import_dir.replace(options.tenant_string_pattern, tenant)
         except Exception as e:
             self.group_config = disabled_group_config

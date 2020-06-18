@@ -1329,7 +1329,7 @@ class TestFileApi(unittest.TestCase):
 
     # cluster import
 
-    def test_ZZe_cluster_uploads_not_p01(self):
+    def test_ZZe_cluster_uploads(self):
         token = gen_test_token_for_user(self.config, self.test_user)
         headers = {'Authorization': 'Bearer ' + token,
                    'Expect': '100-Continue'}
@@ -1341,7 +1341,7 @@ class TestFileApi(unittest.TestCase):
 
     # Cluster export
 
-    def test_ZZf_cluster_export_not_p01_works(self):
+    def test_ZZf_cluster_export_works(self):
         url = self.export_cluster + '/file1'
         headers = {'Authorization': 'Bearer ' + TEST_TOKENS['EXPORT']}
         resp1 = requests.head(url, headers=headers)
@@ -2166,8 +2166,8 @@ def main():
         'test_ZV_resume_chunk_order_enforced',
         'test_ZW_resumables_access_control',
         # cluster
-        'test_ZZe_cluster_uploads_not_p01',
-        'test_ZZf_cluster_export_not_p01_works',
+        'test_ZZe_cluster_uploads',
+        'test_ZZf_cluster_export_works',
         # store backend
         'test_ZZg_store_import_and_export',
     ]
