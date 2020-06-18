@@ -24,7 +24,6 @@ _config = {
             'store': {
                 'has_posix_ownership': False,
                 'export_max_num_list': None,
-                'admin_path': '',
                 'import_path': '/tmp/pXX',
                 'export_path': '/tmp/pXX',
                 'allow_export': True,
@@ -48,7 +47,6 @@ _config = {
             'apps_files': {
                 'has_posix_ownership': False,
                 'export_max_num_list': None,
-                'admin_path': '',
                 'import_path': '/tmp/pXX',
                 'export_path': '/tmp/pXX',
                 'allow_export': True,

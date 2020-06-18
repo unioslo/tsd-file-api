@@ -17,7 +17,6 @@ export_chunk_size: 512000
 backends:
   disk:
     cluster:
-      admin_path: '/cluster/import'
       import_path: '/cluster/pXX/import'
       export_path: '~/tsd-file-api/tsdfileapi/data/tsd/pXX/export'
       request_hook:
@@ -36,7 +35,6 @@ backends:
         enforce_membership: True
 
     files:
-      admin_path: ''
       import_path: '/pXX/import'
       export_path: '~/tsd-file-api/tsdfileapi/data/tsd/pXX/export'
       request_hook:
@@ -63,7 +61,6 @@ backends:
         enforce_membership: True
 
     store:
-      admin_path: ''
       import_path: '/pXX/store'
       export_path: '/pXX/store'
       export_policy:
