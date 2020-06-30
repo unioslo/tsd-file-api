@@ -2064,15 +2064,16 @@ class GenericTableHandler(AuthRequestHandler):
         else:
             return ''
 
-    def initialize(self, backend, dbtype='sqlite'):
+    def initialize(self, backend):
         self.backend = backend
         self.tenant = tenant_from_url(self.request.uri)
         assert options.valid_tenant.match(self.tenant)
         self.endpoint = self.request.uri.split('/')[3]
-        self.table_structure = options.config['backends'][dbtype][backend]['table_structure']
-        self.mq_config = options.config['backends'][dbtype][backend].get('mq')
-        self.check_tenant = options.config['backends'][dbtype][backend].get('check_tenant')
-        self.dbtype = dbtype
+        self.backend_config = options.config['backends']['dbs'][backend]
+        self.dbtype = self.backend_config['db']['engine']
+        self.table_structure = self.backend_config['table_structure']
+        self.mq_config = self.backend_config.get('mq')
+        self.check_tenant = self.backend_config.get('check_tenant')
 
 
     def prepare(self):
@@ -2088,7 +2089,7 @@ class GenericTableHandler(AuthRequestHandler):
                 check_tenant=self.check_tenant if self.check_tenant is not None else options.check_tenant
             )
             if self.dbtype == 'sqlite':
-                self.import_dir = options.config['backends'][self.dbtype][self.backend]['db_path']
+                self.import_dir = self.backend_config['db']['path']
                 self.tenant_dir = self.import_dir.replace(options.tenant_string_pattern, self.tenant)
                 if self.backend == 'apps_tables':
                     app_name = self.request.uri.split('/')[4]
@@ -2102,6 +2103,7 @@ class GenericTableHandler(AuthRequestHandler):
         except Exception as e:
             if self._status_code != 503:
                 self.set_status(401)
+                logging.error(e)
                 logging.error(self.error)
             self.finish()
 
@@ -2419,12 +2421,11 @@ class Backends(object):
             ('/v1/(.*)/survey/resumables', ResumablesHandler, dict(backend='survey')),
             ('/v1/(.*)/survey/resumables/(.*)', ResumablesHandler, dict(backend='survey')),
             ('/v1/(.*)/survey/upload_stream/(.*)', StreamHandler, dict(backend='survey')),
-            # TODO: switch to postgres, when db setup is ready
-            ('/v1/(.*)/survey/([a-zA-Z_0-9]+)/metadata', GenericTableHandler, dict(backend='survey', dbtype='sqlite')),
-            ('/v1/(.*)/survey/([a-zA-Z_0-9]+)/submissions', GenericTableHandler, dict(backend='survey', dbtype='sqlite')),
-            ('/v1/(.*)/survey/([a-zA-Z_0-9]+)/audit', GenericTableHandler, dict(backend='survey', dbtype='sqlite')),
-            ('/v1/(.*)/survey/([a-zA-Z_0-9]+)$', GenericTableHandler, dict(backend='survey', dbtype='sqlite')),
-            ('/v1/(.*)/survey', GenericTableHandler, dict(backend='survey', dbtype='sqlite')),
+            ('/v1/(.*)/survey/([a-zA-Z_0-9]+)/metadata', GenericTableHandler, dict(backend='survey')),
+            ('/v1/(.*)/survey/([a-zA-Z_0-9]+)/submissions', GenericTableHandler, dict(backend='survey')),
+            ('/v1/(.*)/survey/([a-zA-Z_0-9]+)/audit', GenericTableHandler, dict(backend='survey')),
+            ('/v1/(.*)/survey/([a-zA-Z_0-9]+)$', GenericTableHandler, dict(backend='survey')),
+            ('/v1/(.*)/survey', GenericTableHandler, dict(backend='survey')),
         ],
         'form_data': [
             ('/v1/(.*)/files/upload', FormDataHandler, dict(backend='form_data')),
@@ -2447,9 +2448,9 @@ class Backends(object):
             ('/v1/(.*)/apps/(.+/files.*)', ProxyHandler, dict(backend='apps_files', namespace='apps', endpoint=None)),
         ],
         'apps_tables': [
-            ('/v1/(.*)/apps/(.+)/tables/audit', GenericTableHandler, dict(backend='apps_tables', dbtype='sqlite')),
-            ('/v1/(.*)/apps/(.+)/tables/metadata', GenericTableHandler, dict(backend='apps_tables', dbtype='sqlite')),
-            ('/v1/(.*)/apps/.+/tables/(.+)$', GenericTableHandler, dict(backend='apps_tables', dbtype='sqlite')),
+            ('/v1/(.*)/apps/(.+)/tables/audit', GenericTableHandler, dict(backend='apps_tables')),
+            ('/v1/(.*)/apps/(.+)/tables/metadata', GenericTableHandler, dict(backend='apps_tables')),
+            ('/v1/(.*)/apps/.+/tables/(.+)$', GenericTableHandler, dict(backend='apps_tables')),
         ]
     }
 
@@ -2482,10 +2483,10 @@ class Backends(object):
                         self.routes.append(route)
 
         print(colored('Initialising database backends', 'magenta'))
-        for name, db_backend in self.database_backends.items():
-            if (name in options.config['backends'] and
-                db_backend.generator_class.db_init_sql):
-                print(colored(f'DB backend: {name}', 'cyan'))
+        for name, backend in self.config['backends']['dbs'].items():
+            db_backend = self.database_backends[backend['db']['engine']]
+            if db_backend.generator_class.db_init_sql:
+                print(colored(f"DB backend: {backend['db']['engine']}", 'cyan'))
                 self.initdb(name)
 
         if self.config.get('rabbitmq', {}).get('enabled'):
@@ -2495,13 +2496,13 @@ class Backends(object):
                     self.find_exchanges(name, backend)
 
     def initdb(self, name):
-        if name == 'postgres':
-            pool = postgres_init(options.config['backends'][name]['dbconfig'])
+        engine_type = options.config['backends']['dbs'][name]['db']['engine']
+        if engine_type == 'postgres':
+            pool = postgres_init(options.config['backends']['dbs'][name]['db']['dbconfig'])
             define('pgpool', pool)
             db = PostgresBackend(pool)
             db.initialise()
         else:
-            print(colored('dbtype not supported', 'red'))
             return
 
     def find_exchanges(self, name, backend_config):
