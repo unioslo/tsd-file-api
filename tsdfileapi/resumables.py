@@ -281,7 +281,7 @@ class SerialResumable(AbstractResumable):
                 current_pr = '%s/%s' % (work_dir, pr)
                 if _IS_VALID_UUID.match(pr) and os.path.lexists(current_pr):
                     candidates.append((os.stat(current_pr).st_size, pr))
-            candidates.sort(_resumables_cmp)
+            candidates.sort(key=_resumables_cmp)
             for cand in candidates:
                 upload_id = cand[1]
                 first_chunk = self._find_nth_chunk(work_dir, upload_id, filename, 1)
