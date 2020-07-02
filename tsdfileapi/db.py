@@ -178,7 +178,7 @@ class SqliteBackend(DatabaseBackend):
             out = []
             for row in res:
                 name = row[0]
-                if not name.endswith('_metadata'):
+                if not name.endswith('_metadata') and not name.endswith('_audit'):
                     out.append(row[0])
             return out
 
@@ -285,7 +285,7 @@ class PostgresBackend(object):
             out = []
             for row in res:
                 name = row[0]
-                if not name.endswith('_metadata'):
+                if not name.endswith('_metadata') and not name.endswith('_audit'):
                     out.append(row[0])
             return out
 
