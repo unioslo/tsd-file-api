@@ -984,7 +984,6 @@ class StreamHandler(AuthRequestHandler):
                                         owner = options.api_user if (
                                             target.endswith(self.group_name) and is_target_root
                                         ) else self.requestor
-                                        logging.info(f'owner of {target} is {owner}')
                                         subprocess.call(['sudo', 'chown', f'{owner}:{self.group_name}', target])
                                 except (Exception, OSError):
                                     logging.error('could not set permissions on upload directories')
