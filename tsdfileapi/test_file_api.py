@@ -1523,9 +1523,16 @@ class TestFileApi(unittest.TestCase):
         # will have APIgrant  level access control in addition
         resp = requests.get(f'{self.stream}/p11-bla-group', headers=headers)
         self.assertEqual(resp.status_code, 401)
-        # with necessary membership
+        # with necessary membership (reporting modified_date by default)
         resp = requests.get(f'{self.stream}/p11-member-group', headers=headers)
         self.assertEqual(resp.status_code, 200)
+        data = json.loads(resp.text)
+        self.assertTrue(data['files'][0]['modified_date'] is not None)
+        # leaving out modified_date if requested
+        resp = requests.get(f'{self.stream}/p11-member-group?disable_metadata=true', headers=headers)
+        self.assertEqual(resp.status_code, 200)
+        data = json.loads(resp.text)
+        self.assertTrue(data['files'][0]['modified_date'] is None)
         # allowed
         target = os.path.basename(self.so_sweet)
         resp = requests.head(f'{self.stream}/p11-member-group/{target}', headers=headers)
