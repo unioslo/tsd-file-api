@@ -1,6 +1,7 @@
 
 import json
 import logging
+import urllib
 
 import pika
 
@@ -20,15 +21,15 @@ class PikaClient(object):
         if self.connecting:
             return
         self.connecting = True
-        creds = pika.PlainCredentials(
-            self.config.get('user'),
-            self.config.get('pw')
-        )
-        params = pika.ConnectionParameters(
-            host=self.config.get('host'),
-            port=5671 if self.config.get('amqps') else 5672,
-            virtual_host=self.config.get('vhost'),
-            credentials=creds
+        host = self.config.get('host')
+        port = 5671 if self.config.get('amqps') else 5672
+        scheme = 'amqps' if self.config.get('amqps') else 'amqp'
+        virtual_host = urllib.parse.quote(self.config.get('vhost'), safe='')
+        user = self.config.get('user')
+        pw = self.config.get('pw')
+        heartbeat = self.config.get('heartbeat') if self.config.get('heartbeat') else 0
+        params = pika.URLParameters(
+            f"{scheme}://{user}:{pw}@{host}:{port}/{virtual_host}?heartbeat={heartbeat}"
         )
         self.connection = TornadoConnection(params)
         self.connection.add_on_open_callback(self.on_connect)
