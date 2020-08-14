@@ -1526,6 +1526,14 @@ class TestFileApi(unittest.TestCase):
         # with necessary membership
         resp = requests.get(f'{self.stream}/p11-member-group', headers=headers)
         self.assertEqual(resp.status_code, 200)
+        # allowed
+        target = os.path.basename(self.so_sweet)
+        resp = requests.head(f'{self.stream}/p11-member-group/{target}', headers=headers)
+        self.assertEqual(resp.status_code, 200)
+        self.assertTrue('Etag' in resp.headers.keys())
+        # not allowed
+        resp = requests.head(f'{self.stream}/p11-bla-group/{target}', headers=headers)
+        self.assertEqual(resp.status_code, 401)
 
 
     def test_ZZZ_get_file_from_dir(self):

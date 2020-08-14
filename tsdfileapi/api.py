@@ -980,6 +980,7 @@ class StreamHandler(AuthRequestHandler):
                                 try:
                                     if self.group_config['enabled']:
                                         subprocess.call(['chmod', '2770', target])
+                                        # todo: if not root dir, should be user not api_user
                                         subprocess.call(['sudo', 'chown', f'{options.api_user}:{self.group_name}', target])
                                 except (Exception, OSError):
                                     logging.error('could not set permissions on upload directories')
@@ -1431,7 +1432,7 @@ class ProxyHandler(AuthRequestHandler):
                 group_name, group_memberships = self.get_group_info(tenant, self.group_config, self.authnz)
                 self.enforce_group_logic(group_name, group_memberships, tenant, self.group_config)
             except Exception as e:
-                self.error = 'could not perform group checks'
+                self.error = 'failed group check'
                 logging.error(e)
                 logging.error(self.error)
                 raise e
@@ -1959,10 +1960,12 @@ class ProxyHandler(AuthRequestHandler):
                 raise Exception
             size, mime_type = self.get_file_metadata(self.filepath)
             status = self.enforce_export_policy(self.export_policy, self.filepath, tenant, size, mime_type)
-            assert status
+            self.message = 'export policy violation'
+            assert status, self.message
             logging.info('user: %s, checked file: %s , with MIME type: %s', self.requestor, self.filepath, mime_type)
             self.set_header('Content-Length', size)
             self.set_header('Accept-Ranges', 'bytes')
+            self.set_header('Content-Type', mime_type)
             self.set_status(200)
         except Exception as e:
             logging.error(e)
