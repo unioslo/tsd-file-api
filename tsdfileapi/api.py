@@ -1639,6 +1639,7 @@ class ProxyHandler(AuthRequestHandler):
         """
         current_page = 0
         pagination_value = 100
+        disable_metadata = self.get_query_argument('disable_metadata', None)
         try:
             current_page = int(self.get_query_argument('page'))
             pagination_value = int(self.get_query_argument('per_page'))
@@ -1749,11 +1750,14 @@ class ProxyHandler(AuthRequestHandler):
                             owners.append(None)
                 else:
                     for file in files:
+                        if not disable_metadata:
+                            path_stat = file.stat()
+                            latest = path_stat.st_mtime
+                            date_time = str(datetime.datetime.fromtimestamp(latest).isoformat())
+                        else:
+                            date_time = None
                         names.append(file.name)
-                        # until someone asks for sync to check
-                        # server-side file size, and mtime
-                        # getting file metadata is unsupported
-                        times.append(None)
+                        times.append(date_time)
                         exportable.append(False)
                         reasons.append(None)
                         sizes.append(None)
@@ -1943,8 +1947,9 @@ class ProxyHandler(AuthRequestHandler):
             if not filename:
                 raise Exception('No info to report')
             try:
-                secured_filename = check_filename(url_unescape(filename),
-                                                  disallowed_start_chars=options.start_chars)
+                secured_filename = check_filename(
+                    url_unescape(filename), disallowed_start_chars=options.start_chars
+                )
             except Exception as e:
                 raise Exception
             self.filepath = '%s/%s' % (self.path, secured_filename)
