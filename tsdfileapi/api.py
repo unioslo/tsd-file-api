@@ -975,16 +975,21 @@ class StreamHandler(AuthRequestHandler):
                             logging.info(f'creating resource dir: {self.resource_dir}')
                             os.makedirs(self.resource_dir)
                             target = self.tenant_dir
+                            is_target_root = True
                             for _dir in url_dirs.split('/'):
                                 target += f'/{_dir}'
                                 try:
                                     if self.group_config['enabled']:
                                         subprocess.call(['chmod', '2770', target])
-                                        owner = options.api_user if target.endswith(self.group_name) else self.requestor
+                                        owner = options.api_user if (
+                                            target.endswith(self.group_name) and is_target_root
+                                        ) else self.requestor
+                                        logging.info(f'owner of {target} is {owner}')
                                         subprocess.call(['sudo', 'chown', f'{owner}:{self.group_name}', target])
                                 except (Exception, OSError):
                                     logging.error('could not set permissions on upload directories')
                                     raise Exception
+                                is_target_root = False
                     except Exception as e:
                         logging.error(e)
                         raise Exception
