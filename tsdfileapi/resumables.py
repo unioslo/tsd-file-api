@@ -261,7 +261,8 @@ class SerialResumable(AbstractResumable):
         files = os.listdir(current_resumable)
         files.sort(key=_natural_keys)
         completed_chunks = [ f for f in files if '.part' not in f ]
-        return completed_chunks[n]
+        out = completed_chunks[n] if completed_chunks else ''
+        return out
 
     def _find_relevant_resumable_dir(self, work_dir, filename, upload_id):
         """
@@ -319,7 +320,10 @@ class SerialResumable(AbstractResumable):
                 except (OSError, Exception):
                     pass
                 if chunk_size:
-                    group = self._db_get_group(pr)
+                    try:
+                        group = self._db_get_group(pr)
+                    except Exception as e:
+                        group = None
                     key = None
                     try:
                         key = self._db_get_key(pr)
@@ -438,7 +442,10 @@ class SerialResumable(AbstractResumable):
         chunk_size, max_chunk, md5sum, \
             previous_offset, next_offset, \
             warning, recommendation, filename = self._get_resumable_chunk_info(resumable_dir, work_dir)
-        group = self._db_get_group(upload_id)
+        try:
+            group = self._db_get_group(upload_id)
+        except Exception as e:
+            group = None
         key = None
         try:
             key = self._db_get_key(upload_id)
