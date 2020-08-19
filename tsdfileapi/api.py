@@ -1295,24 +1295,33 @@ class StreamHandler(AuthRequestHandler):
             if not self.target_file.closed:
                 self.target_file.close()
                 path = self.path
-                # TODO: add if resource create block here too
-                resource_path = move_data_to_folder(path, self.resource_dir)
-                if self.request_hook['enabled']:
-                    call_request_hook(
-                        self.request_hook['path'],
-                        [resource_path, self.requestor, options.api_user, self.group_name],
-                        as_sudo=self.request_hook['sudo']
+                resource_created = (
+                    self.request.method == 'PUT' or (
+                        self.request.method == 'PATCH' and
+                        self.chunk_num == 'end'
                     )
-                if not self.on_finish_called:
-                    message_data = {
-                        'path': resource_path,
-                        'requestor': self.requestor,
-                        'group': self.group_name
-                    }
-                    self.handle_mq_publication(
-                        mq_config=self.mq_config,
-                        data=message_data
-                    )
+                )
+                if resource_created:
+                    resource_path = move_data_to_folder(path, self.resource_dir)
+                    if self.request_hook['enabled']:
+                        call_request_hook(
+                            self.request_hook['path'],
+                            [resource_path, self.requestor, options.api_user, self.group_name],
+                            as_sudo=self.request_hook['sudo']
+                        )
+                    if not self.on_finish_called:
+                        message_data = {
+                            'path': resource_path,
+                            'requestor': self.requestor,
+                            'group': self.group_name
+                        }
+                        self.handle_mq_publication(
+                            mq_config=self.mq_config,
+                            data=message_data
+                        )
+                # otherwise leave the partial upload in place, as is
+                # most likely a client that closed the connection
+                # while uploading a chunk, that was never finished
         except (AttributeError, Exception) as e:
             logging.error(e)
 
