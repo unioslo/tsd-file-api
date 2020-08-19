@@ -1,4 +1,5 @@
 
+import functools
 import re
 import logging
 import os
@@ -20,6 +21,9 @@ from sqlalchemy.exc import OperationalError, IntegrityError, StatementError
 _IS_VALID_UUID = re.compile(r'([a-f\d0-9-]{32,36})')
 _RW______ = stat.S_IREAD | stat.S_IWRITE
 
+
+class ResumableNotFoundError(Exception):
+    pass
 
 def _atoi(text):
     return int(text) if text.isdigit() else text
@@ -281,7 +285,7 @@ class SerialResumable(AbstractResumable):
                 current_pr = '%s/%s' % (work_dir, pr)
                 if _IS_VALID_UUID.match(pr) and os.path.lexists(current_pr):
                     candidates.append((os.stat(current_pr).st_size, pr))
-            candidates.sort(key=_resumables_cmp)
+            candidates = sorted(candidates, key=functools.cmp_to_key(_resumables_cmp))
             for cand in candidates:
                 upload_id = cand[1]
                 first_chunk = self._find_nth_chunk(work_dir, upload_id, filename, 1)
@@ -428,7 +432,8 @@ class SerialResumable(AbstractResumable):
     def info(self, work_dir, filename, upload_id, owner):
         relevant_dir = self._find_relevant_resumable_dir(work_dir, filename, upload_id)
         if not relevant_dir:
-            raise Exception('No resumable found for: %s', filename)
+            logging.error('No resumable found for: %s', filename)
+            raise ResumableNotFoundError
         resumable_dir = '%s/%s' % (work_dir, relevant_dir)
         chunk_size, max_chunk, md5sum, \
             previous_offset, next_offset, \
@@ -450,7 +455,6 @@ class SerialResumable(AbstractResumable):
             'previous_offset': previous_offset,
             'next_offset': next_offset,
             'warning': warning,
-            'filename': filename,
             'group': group,
             'key': key
         }

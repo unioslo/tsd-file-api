@@ -51,7 +51,7 @@ from utils import call_request_hook, sns_dir, \
                   md5sum, tenant_from_url, create_cluster_dir_if_not_exists, \
                   move_data_to_folder
 from db import sqlite_init, SqliteBackend, postgres_init, PostgresBackend
-from resumables import SerialResumable
+from resumables import SerialResumable, ResumableNotFoundError
 from pgp import _import_keys
 from rmq import PikaClient
 
@@ -690,13 +690,26 @@ class ResumablesHandler(AuthRequestHandler):
 
 
     def get(self, tenant, filename=None):
-        self.message = {'filename': filename, 'id': None, 'chunk_size': None, 'max_chunk': None}
+        self.message = {
+            'filename': filename,
+            'id': None,
+            'chunk_size': None,
+            'max_chunk': None,
+            'md5sum': None,
+            'previous_offset': None,
+            'next_offset': None,
+            'warning': None,
+            'group': None,
+            'key': None
+        }
         upload_id = None
+        status = None
         try:
             try:
                 if filename:
-                    secured_filename = check_filename(url_unescape(filename),
-                                                      disallowed_start_chars=options.start_chars)
+                    secured_filename = check_filename(
+                        url_unescape(filename), disallowed_start_chars=options.start_chars
+                    )
             except Exception:
                 logging.error('not able to check for resumable due to bad input')
                 raise Exception
@@ -708,12 +721,16 @@ class ResumablesHandler(AuthRequestHandler):
             if not filename:
                 info = res.list_all(self.tenant_dir, self.requestor)
             else:
-                info = res.info(self.tenant_dir, secured_filename, upload_id, self.requestor)
+                try:
+                    info = res.info(self.tenant_dir, secured_filename, upload_id, self.requestor)
+                except ResumableNotFoundError:
+                    status = 400
             self.set_status(200)
             self.write(info)
         except Exception as e:
             logging.error(e)
-            self.set_status(400)
+            status = 400 if not status else status
+            self.set_status(status)
             self.write(self.message)
 
 
@@ -1278,6 +1295,7 @@ class StreamHandler(AuthRequestHandler):
             if not self.target_file.closed:
                 self.target_file.close()
                 path = self.path
+                # TODO: add if resource create block here too
                 resource_path = move_data_to_folder(path, self.resource_dir)
                 if self.request_hook['enabled']:
                     call_request_hook(
