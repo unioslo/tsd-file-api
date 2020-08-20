@@ -133,11 +133,11 @@ class AbstractResumable(ABC):
         pass
 
     @abstractmethod
-    def list_all(self, work_dir, owner):
+    def list_all(self, work_dir, owner, key=None):
         pass
 
     @abstractmethod
-    def info(self, work_dir, filename, upload_id, owner):
+    def info(self, work_dir, filename, upload_id, owner, key=None):
         pass
 
     @abstractmethod
@@ -264,7 +264,7 @@ class SerialResumable(AbstractResumable):
         out = completed_chunks[n] if completed_chunks else ''
         return out
 
-    def _find_relevant_resumable_dir(self, work_dir, filename, upload_id):
+    def _find_relevant_resumable_dir(self, work_dir, filename, upload_id, key=None):
         """
         If the client provides an upload_id, then the exact folder is returned.
         If no upload_id is provided, e.g. when the upload_id is lost, then
@@ -277,7 +277,7 @@ class SerialResumable(AbstractResumable):
 
         """
         relevant = None
-        potential_resumables = self._db_get_all_resumable_ids_for_owner()
+        potential_resumables = self._db_get_all_resumable_ids_for_owner(key=key)
         if not upload_id:
             logging.info('Trying to find a matching resumable for %s', filename)
             candidates = []
@@ -285,7 +285,7 @@ class SerialResumable(AbstractResumable):
                 pr = item[0]
                 current_pr = '%s/%s' % (work_dir, pr)
                 if _IS_VALID_UUID.match(pr) and os.path.lexists(current_pr):
-                    candidates.append((os.stat(current_pr).st_size, pr))
+                    candidates.append((os.stat(current_pr).st_mtime, pr))
             candidates = sorted(candidates, key=functools.cmp_to_key(_resumables_cmp))
             for cand in candidates:
                 upload_id = cand[1]
@@ -301,8 +301,8 @@ class SerialResumable(AbstractResumable):
                     relevant = pr
         return relevant
 
-    def list_all(self, work_dir, owner):
-        potential_resumables = self._db_get_all_resumable_ids_for_owner()
+    def list_all(self, work_dir, owner, key=None):
+        potential_resumables = self._db_get_all_resumable_ids_for_owner(key=key)
         resumables = []
         info = []
         for item in potential_resumables:
@@ -433,8 +433,8 @@ class SerialResumable(AbstractResumable):
         chunks = [ c for c in all_chunks if '.part' not in c ]
         return info(chunks)
 
-    def info(self, work_dir, filename, upload_id, owner):
-        relevant_dir = self._find_relevant_resumable_dir(work_dir, filename, upload_id)
+    def info(self, work_dir, filename, upload_id, owner, key=None):
+        relevant_dir = self._find_relevant_resumable_dir(work_dir, filename, upload_id, key=key)
         if not relevant_dir:
             logging.error('No resumable found for: %s', filename)
             raise ResumableNotFoundError
@@ -442,15 +442,15 @@ class SerialResumable(AbstractResumable):
         chunk_size, max_chunk, md5sum, \
             previous_offset, next_offset, \
             warning, recommendation, filename = self._get_resumable_chunk_info(resumable_dir, work_dir)
+        identifier = upload_id if upload_id else relevant_dir
         try:
-            group = self._db_get_group(upload_id)
+            group = self._db_get_group(identifier)
         except Exception as e:
             group = None
-        key = None
         try:
-            key = self._db_get_key(upload_id)
+            key = self._db_get_key(identifier)
         except Exception: # for transition
-            pass
+            key = None
         if recommendation == 'end':
             next_offset = 'end'
         info = {
@@ -673,10 +673,16 @@ class SerialResumable(AbstractResumable):
             ).fetchone()[0]
         return True if res > 0 else False
 
-    def _db_get_all_resumable_ids_for_owner(self):
+    def _db_get_all_resumable_ids_for_owner(self, key=None):
         try:
+            params = {}
+            if key:
+                query = 'select id from resumable_uploads where key = :key'
+                params['key'] = key
+            else:
+                query = 'select id from resumable_uploads'
             with session_scope(self.engine) as session:
-                res = session.execute('select id from resumable_uploads').fetchall()
+                res = session.execute(query, params).fetchall()
         except Exception:
             return []
         return res # [(id,), (id,)]
