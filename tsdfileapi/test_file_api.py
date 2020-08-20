@@ -1001,31 +1001,89 @@ class TestFileApi(unittest.TestCase):
     # resumable uploads
 
 
-    def start_new_resumable(self, filepath, chunksize=1, large_file=False, stop_at=None,
-                            token=None, endpoint=None, uploads_folder=None):
+    def resource_name(self, filepath, is_dir, remote_resource_key, group):
+        if not is_dir:
+            return os.path.basename(filepath)
+        elif is_dir and not remote_resource_key:
+            return f'{group}/{filepath[1:]}' # strip leading /
+        elif is_dir and remote_resource_key:
+            return f'{group}/{remote_resource_key}/{os.path.basename(filepath)}'
+
+    def start_new_resumable(
+        self,
+        filepath,
+        chunksize=1,
+        large_file=False,
+        stop_at=None,
+        token=None,
+        endpoint=None,
+        uploads_folder=None,
+        is_dir=None,
+        remote_resource_key=None,
+        group=None
+    ):
+
         if not token:
             token = TEST_TOKENS['VALID']
-        filename = os.path.basename(filepath)
         if not endpoint:
             endpoint = self.stream
-        url = '%s/%s' % (endpoint, filename)
-        resp = fileapi.initiate_resumable('', self.test_project, filepath,
-                                          token, chunksize=chunksize, new=True, group=None,
-                                          verify=False, dev_url=url, stop_at=stop_at)
+        url = '%s/%s' % (endpoint, self.resource_name(
+            filepath, is_dir, remote_resource_key, group)
+        )
+        env = ''
+        resp = fileapi.initiate_resumable(
+            env, self.test_project, filepath, token,
+            chunksize=chunksize, new=True, group=group,
+            verify=False, dev_url=url, stop_at=stop_at
+        )
         if stop_at:
             return resp['id']
         self.assertEqual(resp['max_chunk'], u'end')
         self.assertTrue(resp['id'] is not None)
-        self.assertEqual(resp['filename'], filename)
+        self.assertEqual(resp['filename'], os.path.basename(filepath))
         if not large_file:
             if not uploads_folder:
                 uploads_folder = self.uploads_folder + '/' + self.test_group
-            self.assertEqual(md5sum(filepath),
-                md5sum(uploads_folder + '/' + filename))
+            remote_resource = uploads_folder + '/' + os.path.basename(filepath)
+            self.assertEqual(md5sum(filepath), md5sum(remote_resource))
 
 
     def test_ZM_resume_new_upload_works_is_idempotent(self):
         self.start_new_resumable(self.resume_file1, chunksize=5)
+
+    def test_ZM2_resume_upload_with_directory(self):
+        group = f'{self.test_project}-member-group'
+        remote_resource_key = 'testing123'
+        self.start_new_resumable(
+            self.resume_file1, chunksize=5, group=group,
+            is_dir=True, remote_resource_key=remote_resource_key,
+            uploads_folder='/'.join([self.uploads_folder, group, remote_resource_key])
+        )
+        # create two resumables with the same filename but different keys
+        top_level_dir = 'top'
+        sub_dir = f'{top_level_dir}/sub'
+        top_id = self.start_new_resumable(
+            self.resume_file1, chunksize=5, group=group,
+            is_dir=True, remote_resource_key=top_level_dir,
+            uploads_folder='/'.join([self.uploads_folder, group, top_level_dir]),
+            stop_at=2
+        )
+        sub_id = self.start_new_resumable(
+            self.resume_file1, chunksize=5, group=group,
+            is_dir=True, remote_resource_key=sub_dir,
+            uploads_folder='/'.join([self.uploads_folder, group, sub_dir]),
+            stop_at=3
+        )
+        # get_resumable: finds the correct resumable based on filename and key
+        from urllib.parse import quote
+        target = os.path.basename(self.resume_file1)
+        url = f'{self.resumables}/{target}?key={quote(top_level_dir, safe="")}'
+        env = '' # not used when passing url
+        resp = fileapi.get_resumable(env, self.test_project, TEST_TOKENS['VALID'], dev_url=url)
+        self.assertEqual(resp['id'], top_id)
+        url = f'{self.resumables}/{target}?key={quote(sub_dir, safe="")}'
+        resp = fileapi.get_resumable(env, self.test_project, TEST_TOKENS['VALID'], dev_url=url)
+        self.assertEqual(resp['id'], sub_id)
 
 
     def test_ZN_resume_works_with_upload_id_match(self):
@@ -2241,6 +2299,7 @@ def main():
         'test_ZZZ_put_file_to_dir',
         'test_ZZZ_patch_resumable_file_to_dir',
         'test_ZZZ_get_file_from_dir',
+        'test_ZM2_resume_upload_with_directory',
     ]
     listing = [
         'test_ZZZ_listing_dirs',
