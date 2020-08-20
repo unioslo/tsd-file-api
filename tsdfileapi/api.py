@@ -717,14 +717,21 @@ class ResumablesHandler(AuthRequestHandler):
                 upload_id = url_unescape(self.get_query_argument('id'))
             except Exception:
                 upload_id = None
+            try:
+                key = url_unescape(self.get_query_argument('key'))
+            except Exception:
+                key = None
             res = SerialResumable(self.tenant_dir, self.requestor)
             if not filename:
-                info = res.list_all(self.tenant_dir, self.requestor)
+                info = res.list_all(self.tenant_dir, self.requestor, key=key)
             else:
                 try:
-                    info = res.info(self.tenant_dir, secured_filename, upload_id, self.requestor)
-                except ResumableNotFoundError:
+                    info = res.info(
+                        self.tenant_dir, secured_filename, upload_id, self.requestor, key=key
+                    )
+                except ResumableNotFoundError as e:
                     status = 400
+                    raise e
             self.set_status(200)
             self.write(info)
         except Exception as e:
@@ -1012,8 +1019,7 @@ class StreamHandler(AuthRequestHandler):
                         # because this is handled transparently
                         # (for better or for worse)
                         if self.group_config['enabled']:
-                            self.res_key = url_dirs.replace(self.group_name, '')
-                            # potentially replace '' with None
+                            self.res_key = url_dirs.replace(self.group_name, '')[1:] # strip starting /
                             self.res_key = None if not self.res_key else self.res_key
                         else:
                             self.res_key = url_dirs
