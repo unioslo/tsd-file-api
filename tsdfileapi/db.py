@@ -268,9 +268,12 @@ class PostgresBackend(object):
         self.requestor = requestor
 
     def initialise(self):
-        with postgres_session(self.pool) as session:
-            for stmt in self.generator_class.db_init_sql:
-                    session.execute(stmt)
+        try:
+            with postgres_session(self.pool) as session:
+                for stmt in self.generator_class.db_init_sql:
+                        session.execute(stmt)
+        except psycopg2.InternalError as e:
+            pass # throws a tuple concurrently updated when restarting many processes
         return True
 
     def tables_list(self):
