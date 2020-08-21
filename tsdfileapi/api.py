@@ -303,8 +303,8 @@ class AuthRequestHandler(RequestHandler):
         --------
         One of either:
 
-        1. hidden files
-            - starting with .
+        1. resumable db files
+            - starting with .resumables-
         2. merged resumable files
             - endswith .uuid
         3. partial upload files
@@ -318,10 +318,10 @@ class AuthRequestHandler(RequestHandler):
 
         """
         resource_dir = resource.split('/')[0]
-        if resource.startswith('.'):
-            logging.error('hidden files/folder not accessible')
+        if resource.startswith('.resumables-') and resource.endswith('.db'):
+            logging.error('resumable dbs not accessible')
             return False
-        elif re.match(r'(.+).([a-f\d0-9-]{32,36})$', resource):
+        elif re.match(r'(.+)\.([a-f\d0-9-]{32,36})$', resource):
             logging.error('merged resumable files not accessible')
             return False
         elif re.match(r'(.+).([a-f\d0-9-]{32,36}).part$', resource):

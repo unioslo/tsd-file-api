@@ -1481,7 +1481,7 @@ class TestFileApi(unittest.TestCase):
     def test_ZZZ_reserved_resources(self):
         headers = {'Authorization': 'Bearer ' + TEST_TOKENS['VALID']}
         # 1. hidden files
-        file = url_escape('.p11-user.db')
+        file = url_escape('.resumables-p11-user.db')
         resp = requests.put(f'{self.store_import}/{file}',
                             data=lazy_file_reader(self.so_sweet),
                             headers=headers)
