@@ -1729,6 +1729,7 @@ class ProxyHandler(AuthRequestHandler):
             sizes = []
             mimes = []
             owners = []
+            etags = []
             if not self.group_config['enabled']:
                 default_owner = options.default_file_owner.replace(options.tenant_string_pattern, tenant)
                 for file in files:
@@ -1746,6 +1747,7 @@ class ProxyHandler(AuthRequestHandler):
                         raise Exception
                     path_stat = file.stat()
                     latest = path_stat.st_mtime
+                    etag = self.mtime_to_digest(latest)
                     date_time = str(datetime.datetime.fromtimestamp(latest).isoformat())
                     if self.has_posix_ownership:
                         try:
@@ -1769,6 +1771,7 @@ class ProxyHandler(AuthRequestHandler):
                     sizes.append(size)
                     mimes.append(mime_type)
                     owners.append(owner)
+                    etags.append(etag)
             else: # then it is the TSD import dir
                 group_memberships = self.claims.get('groups')
                 if root:
@@ -1786,9 +1789,11 @@ class ProxyHandler(AuthRequestHandler):
                         if not disable_metadata:
                             path_stat = file.stat()
                             latest = path_stat.st_mtime
+                            etag = self.mtime_to_digest(latest)
                             date_time = str(datetime.datetime.fromtimestamp(latest).isoformat())
                         else:
                             date_time = None
+                            etag = None
                         names.append(file.name)
                         times.append(date_time)
                         exportable.append(False)
@@ -1796,19 +1801,30 @@ class ProxyHandler(AuthRequestHandler):
                         sizes.append(None)
                         mimes.append(None)
                         owners.append(None)
+                        etags.append(etag)
             file_info = []
-            for f, t, e, r, s, m, o in zip(names, times, exportable, reasons, sizes, mimes, owners):
+            for f, t, e, r, s, m, o, g in zip(
+                names, times, exportable, reasons, sizes, mimes, owners, etags
+            ):
                 href = '%s/%s' % (self.request.uri, url_escape(f))
-                file_info.append({'filename': f,
-                                  'size': s,
-                                  'modified_date': t,
-                                  'href': href,
-                                  'exportable': e,
-                                  'reason': r,
-                                  'mime-type': m,
-                                  'owner': o})
+                file_info.append(
+                    {
+                        'filename': f,
+                        'size': s,
+                        'modified_date': t,
+                        'href': href,
+                        'exportable': e,
+                        'reason': r,
+                        'mime-type': m,
+                        'owner': o,
+                        'etag': g
+                    }
+                )
             logging.info('%s listed %s', self.requestor, path)
             self.write({'files': file_info, 'page': nextref})
+
+    def mtime_to_digest(self, mtime):
+        return hashlib.md5(str(mtime).encode('utf-8')).hexdigest()
 
 
     def compute_etag(self):
@@ -1828,7 +1844,7 @@ class ProxyHandler(AuthRequestHandler):
         try:
             if self.filepath:
                 mtime = os.stat(self.filepath).st_mtime
-                etag = hashlib.md5(str(mtime).encode('utf-8')).hexdigest()
+                etag = self.mtime_to_digest(mtime)
                 return etag
         except (Exception, AttributeError) as e:
             return None
