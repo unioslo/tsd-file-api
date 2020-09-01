@@ -1636,15 +1636,18 @@ class ProxyHandler(AuthRequestHandler):
     def get_file_metadata(self, filename):
         filename_raw_utf8 = filename.encode('utf-8')
         mime_type = 'unknown'
-        if os.path.isdir(filename):
-            subprocess.call(['sudo', 'chmod', '-R', 'g+r,o+rx', filename])
-            return os.stat(filename).st_size, 'directory'
         try:
             mime_type = magic.from_file(filename_raw_utf8, mime=True)
+        except IsADirectoryError:
+            mime_type = 'directory'
         except PermissionError:
             # so the API user can read, and delete files owned by others
-            subprocess.call(['sudo', 'chmod', '-R', 'g+r,o+rx', filename])
-            mime_type = magic.from_file(filename_raw_utf8, mime=True)
+            if os.path.isdir(filename):
+                subprocess.call(['sudo', 'chmod', '-R', 'g+r,o+rx', filename])
+                mime_type = 'directory'
+            else:
+                subprocess.call(['sudo', 'chmod', 'g+r,o+rx', filename])
+                mime_type = magic.from_file(filename_raw_utf8, mime=True)
         size = os.stat(filename).st_size
         return size, mime_type
 
