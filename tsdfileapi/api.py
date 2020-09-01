@@ -1635,17 +1635,15 @@ class ProxyHandler(AuthRequestHandler):
 
     def get_file_metadata(self, filename):
         filename_raw_utf8 = filename.encode('utf-8')
-        if self.has_posix_ownership:
-            # to be able to stat top level files
-            # where api user is owner of top level dir
-            subprocess.call(['sudo', 'chmod', 'go+r', filename])
-            if os.path.isdir(filename):
-                # to be able to stat files down the tree
-                # where someone else is owner of dir
-                subprocess.call(['sudo', 'chmod', 'o+x', filename])
+        mime_type = 'unknown'
         if os.path.isdir(filename):
             return os.stat(filename).st_size, 'directory'
-        mime_type = magic.from_file(filename_raw_utf8, mime=True)
+        try:
+            mime_type = magic.from_file(filename_raw_utf8, mime=True)
+        except PermissionError:
+            # so the API user can read, and delete files owned by others
+            subprocess.call(['sudo', 'chmod', '-R', 'g+r,o+rx', self.export_dir])
+            mime_type = magic.from_file(filename_raw_utf8, mime=True)
         size = os.stat(filename).st_size
         return size, mime_type
 
@@ -1713,11 +1711,12 @@ class ProxyHandler(AuthRequestHandler):
             if paginate and not current_page:
                 next_page = 1
             elif paginate:
-                next_page = str(current_page) + 1
+                next_page = int(current_page) + 1
             else:
                 next_page = None
             baseuri = self.request.uri.split('?')[0]
-            nextref = f'{baseuri}?next={next_page}' if next_page else None
+            # think need to replace next with page
+            nextref = f'{baseuri}?page={next_page}' if next_page else None
             if self.export_max and len(files) > self.export_max:
                 self.set_status(400)
                 self.message = 'too many files, create a zip archive'
@@ -1806,7 +1805,7 @@ class ProxyHandler(AuthRequestHandler):
             for f, t, e, r, s, m, o, g in zip(
                 names, times, exportable, reasons, sizes, mimes, owners, etags
             ):
-                href = '%s/%s' % (self.request.uri, url_escape(f))
+                href = '%s/%s' % (baseuri, url_escape(f))
                 file_info.append(
                     {
                         'filename': f,
@@ -2007,10 +2006,6 @@ class ProxyHandler(AuthRequestHandler):
                 logging.error('%s tried to access a file that does not exist', self.requestor)
                 self.set_status(404)
                 self.message = 'File does not exist'
-                raise Exception
-            if os.path.isdir(self.filepath):
-                self.set_status(403)
-                self.message = 'Cannot perform HEAD on directory'
                 raise Exception
             size, mime_type = self.get_file_metadata(self.filepath)
             status = self.enforce_export_policy(self.export_policy, self.filepath, tenant, size, mime_type)
