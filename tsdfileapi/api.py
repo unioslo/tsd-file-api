@@ -1715,7 +1715,6 @@ class ProxyHandler(AuthRequestHandler):
             else:
                 next_page = None
             baseuri = self.request.uri.split('?')[0]
-            # think need to replace next with page
             nextref = f'{baseuri}?page={next_page}' if next_page else None
             if self.export_max and len(files) > self.export_max:
                 self.set_status(400)
