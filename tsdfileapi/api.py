@@ -1882,17 +1882,18 @@ class ProxyHandler(AuthRequestHandler):
         try:
             assert options.valid_tenant.match(tenant)
             self.path = self.export_dir
-            if not filename or os.path.isdir(f'{self.path}/{self.resource}'):
+            resource = url_unescape(self.resource)
+            if not filename or os.path.isdir(f'{self.path}/{resource}'):
                 if not self.allow_list:
                     self.message = 'Method not allowed'
                     self.set_status(403)
                     raise Exception
-                if filename and os.path.isdir(f'{self.path}/{self.resource}'):
-                    self.path += f'/{self.resource}'
+                if filename and os.path.isdir(f'{self.path}/{resource}'):
+                    self.path += f'/{resource}'
                 root = True if self.resource == self.path else False
                 self.list_files(self.path, tenant, root)
                 return
-            if not os.path.lexists(f'{self.path}/{self.resource}'):
+            if not os.path.lexists(f'{self.path}/{resource}'):
                     self.set_status(404)
                     self.message = 'Resource not found'
                     raise Exception
@@ -2034,6 +2035,7 @@ class ProxyHandler(AuthRequestHandler):
 
 
     def delete(self, tenant, filename):
+        # TODO: maybe allow deleting a dir
         self.message = 'Unknown error, please contact TSD'
         try:
             if not self.allow_delete:
