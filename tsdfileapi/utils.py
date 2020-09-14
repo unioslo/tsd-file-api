@@ -137,3 +137,8 @@ def move_data_to_folder(path, dest):
         logging.error(e)
         logging.error('could not move file: %s', path)
         return False
+
+def set_mtime(path, mtime):
+    mtime = mtime
+    atime = mtime
+    os.utime(path, (mtime, atime))
