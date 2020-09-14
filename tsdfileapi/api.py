@@ -2092,7 +2092,7 @@ class ProxyHandler(AuthRequestHandler):
                     self.message = 'Cannot perform DELETE on base directory'
                     raise Exception
                 else:
-                    os.rmtree(self.filepath)
+                    shutil.rmtree(self.filepath)
                     return
             try:
                 # Allow the file to be deleted by changing the rights temporary of the parent directory
