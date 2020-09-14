@@ -1632,11 +1632,15 @@ class TestFileApi(unittest.TestCase):
                             data=lazy_file_reader(self.so_sweet),
                             headers=headers)
         self.assertEqual(resp.status_code, 201)
+        resp = requests.delete(f'{self.store_export}', headers=headers)
+        self.assertEqual(resp.status_code, 403)
+        resp = requests.delete(f'{self.store_export}/', headers=headers)
+        self.assertEqual(resp.status_code, 401)
         resp = requests.delete(f'{self.store_export}/topdir/bottomdir/file1', headers=headers)
         self.assertEqual(resp.status_code, 200)
         self.assertTrue('file1' not in os.listdir(dirs))
         resp = requests.delete(f'{self.store_export}/topdir/bottomdir', headers=headers)
-        self.assertEqual(resp.status_code, 403)
+        self.assertEqual(resp.status_code, 200)
         resp = requests.delete(f'{self.store_export}/topdir/bottomdir/nofile', headers=headers)
         self.assertEqual(resp.status_code, 404)
         try:
