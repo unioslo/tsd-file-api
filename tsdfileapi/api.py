@@ -2034,8 +2034,7 @@ class ProxyHandler(AuthRequestHandler):
             self.finish()
 
 
-    def delete(self, tenant, filename):
-        # TODO: maybe allow deleting a dir
+    def delete(self, tenant, filename=''):
         self.message = 'Unknown error, please contact TSD'
         try:
             if not self.allow_delete:
@@ -2055,7 +2054,9 @@ class ProxyHandler(AuthRequestHandler):
             # only TSD import dir which is not the same dir
             self.path = self.export_dir
             if not filename:
-                raise Exception('No file to delete')
+                self.message = 'No resource to delete'
+                self.set_status(403)
+                raise Exception
             try:
                 secured_filename = check_filename(url_unescape(filename),
                                                   disallowed_start_chars=options.start_chars)
@@ -2068,16 +2069,18 @@ class ProxyHandler(AuthRequestHandler):
                 self.message = f'File does not exist {self.filepath}'
                 raise Exception
             if os.path.isdir(self.filepath):
-                self.set_status(403)
-                self.message = 'Cannot perform DELETE on directory - delete files individually'
-                raise Exception
+                if not filename:
+                    self.set_status(403)
+                    self.message = 'Cannot perform DELETE on base directory'
+                    raise Exception
+                else:
+                    os.rmtree(self.filepath)
+                    return
             try:
                 # Allow the file to be deleted by changing the rights temporary of the parent directory
                 if self.has_posix_ownership:
                     subprocess.call(['sudo', 'chmod', 'o+w',  os.path.dirname(self.filepath)])
-
                 os.remove(self.filepath)
-
                 # Restoring the rights of the parent directory
                 if self.has_posix_ownership:
                     subprocess.call(['sudo', 'chmod', 'o-w',  os.path.dirname(self.filepath)])
