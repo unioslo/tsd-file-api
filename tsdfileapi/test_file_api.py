@@ -2210,6 +2210,52 @@ class TestFileApi(unittest.TestCase):
         resp = requests.post(maintenance_off)
 
 
+    def test_mtime_functionality(self):
+        # setting mtime on upload
+        original_file_mtime = os.stat(self.so_sweet).st_mtime
+        headers = {
+            'Authorization': 'Bearer ' + TEST_TOKENS['VALID'],
+            'Modified-Time': str(original_file_mtime)
+        }
+        name = 'file-with-mtime.txt'
+        file = url_escape(name)
+        url = f'{self.stream}/{self.test_group}/{file}'
+        resp = requests.put(
+            url,
+            data=lazy_file_reader(self.so_sweet),
+            headers=headers
+        )
+        self.assertEqual(resp.status_code, 201)
+        new_file_mtime = os.stat(
+            f'{self.uploads_folder}/{self.test_group}/{name}'
+        ).st_mtime
+        self.assertEqual(new_file_mtime, original_file_mtime)
+        # with info
+        resp = requests.head(url, headers=headers)
+        self.assertEqual(
+            float(resp.headers.get('Modified-Time')),
+            original_file_mtime
+        )
+        # with list
+        resp = requests.get(url.replace(f'/{name}', ''), headers=headers)
+        data = json.loads(resp.text)
+        for entry in data['files']:
+            if entry['filename'] == name:
+                self.assertEqual(entry['mtime'], original_file_mtime)
+        # with download
+        url = f'{self.apps}/app1/files/{name}'
+        resp = requests.put(
+            url,
+            data=lazy_file_reader(self.so_sweet),
+            headers=headers
+        )
+        resp = requests.get(url, headers=headers)
+        self.assertEqual(
+            float(resp.headers.get('Modified-Time')),
+            original_file_mtime
+        )
+
+
 def main():
     tests = []
     base = [
@@ -2336,6 +2382,9 @@ def main():
     maintenance = [
         'test_maintenance_mode',
     ]
+    mtime = [
+        'test_mtime_functionality',
+    ]
     if len(sys.argv) == 2:
         print('usage:')
         print('python3 tsdfileapi/test_file_api.py config.yaml ARGS')
@@ -2377,6 +2426,8 @@ def main():
         tests.extend(crypt)
     if 'maintenance' in sys.argv:
         tests.extend(maintenance)
+    if 'mtime' in sys.argv:
+        tests.extend(mtime)
     if 'all' in sys.argv:
         tests.extend(base)
         tests.extend(names)
@@ -2394,6 +2445,7 @@ def main():
         tests.extend(db)
         tests.extend(crypt)
         tests.extend(form_data)
+        tests.extend(mtime)
     tests.sort()
     suite = unittest.TestSuite()
     for test in tests:

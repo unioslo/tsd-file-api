@@ -42,14 +42,15 @@ from tornado import gen
 from tornado.httpclient import AsyncHTTPClient
 from tornado.ioloop import IOLoop
 from tornado.options import parse_command_line, define, options
-from tornado.web import Application, RequestHandler, stream_request_body, \
-                        HTTPError, MissingArgumentError
+from tornado.web import (Application, RequestHandler, stream_request_body,
+                         HTTPError, MissingArgumentError)
 
 from auth import process_access_token
-from utils import call_request_hook, sns_dir, \
-                  check_filename, _IS_VALID_UUID, \
-                  md5sum, tenant_from_url, create_cluster_dir_if_not_exists, \
-                  move_data_to_folder
+from utils import (call_request_hook, sns_dir,
+                   check_filename, _IS_VALID_UUID,
+                   md5sum, tenant_from_url,
+                   create_cluster_dir_if_not_exists,
+                   move_data_to_folder, set_mtime)
 from db import sqlite_init, SqliteBackend, postgres_init, PostgresBackend
 from resumables import SerialResumable, ResumableNotFoundError
 from pgp import _import_keys
@@ -1257,6 +1258,9 @@ class StreamHandler(AuthRequestHandler):
                 else:
                     path = self.completed_resumable_filename
                 resource_path = move_data_to_folder(path, self.resource_dir)
+                client_mtime = self.request.headers.get('Modified-Time')
+                if client_mtime:
+                    set_mtime(resource_path, float(client_mtime))
             except Exception as e:
                 logging.info('could not move data to destination folder')
                 logging.info(e)
@@ -1305,6 +1309,9 @@ class StreamHandler(AuthRequestHandler):
                 )
                 if resource_created:
                     resource_path = move_data_to_folder(path, self.resource_dir)
+                    client_mtime = self.request.headers.get('Modified-Time')
+                    if client_mtime:
+                        set_mtime(resource_path, float(client_mtime))
                     if self.request_hook['enabled']:
                         call_request_hook(
                             self.request_hook['path'],
@@ -1471,7 +1478,10 @@ class ProxyHandler(AuthRequestHandler):
                 raise e
             # 7. Set headers for internal request
             try:
-                headers = {'Authorization': 'Bearer ' + self.jwt, 'Original-Uri': self.request.uri}
+                headers = {
+                    'Authorization': f'Bearer {self.jwt}',
+                    'Original-Uri': self.request.uri
+                }
                 header_keys = self.request.headers.keys()
                 if 'Content-Type' not in header_keys:
                     content_type = 'application/octet-stream'
@@ -1492,6 +1502,8 @@ class ProxyHandler(AuthRequestHandler):
                     headers['Aes-Key'] = self.request.headers['Aes-Key']
                 if 'Aes-Iv' in header_keys:
                     headers['Aes-Iv'] = self.request.headers['Aes-Iv']
+                if 'Modified-Time' in header_keys:
+                    headers['Modified-Time'] = self.request.headers['Modified-Time']
                 headers['Content-Type'] = content_type
             except Exception as e:
                 self.error = 'Could not prepare headers for async request handling'
@@ -1649,7 +1661,8 @@ class ProxyHandler(AuthRequestHandler):
                 subprocess.call(['sudo', 'chmod', 'g+r,o+rx', filename])
                 mime_type = magic.from_file(filename_raw_utf8, mime=True)
         size = os.stat(filename).st_size
-        return size, mime_type
+        mtime = os.stat(filename).st_mtime
+        return size, mime_type, mtime
 
 
     def list_files(self, path, tenant, root):
@@ -1732,12 +1745,13 @@ class ProxyHandler(AuthRequestHandler):
             mimes = []
             owners = []
             etags = []
+            mtimes = []
             if not self.group_config['enabled']:
                 default_owner = options.default_file_owner.replace(options.tenant_string_pattern, tenant)
                 for file in files:
                     filepath = file.path
                     try:
-                        size, mime_type = self.get_file_metadata(filepath)
+                        size, mime_type, latest = self.get_file_metadata(filepath)
                         status = self.enforce_export_policy(self.export_policy, filepath, tenant, size, mime_type)
                         if status:
                             reason = None
@@ -1748,7 +1762,6 @@ class ProxyHandler(AuthRequestHandler):
                         logging.error('could not enforce export policy when listing dir')
                         raise Exception
                     path_stat = file.stat()
-                    latest = path_stat.st_mtime
                     etag = self.mtime_to_digest(latest)
                     date_time = str(datetime.datetime.fromtimestamp(latest).isoformat())
                     if self.has_posix_ownership:
@@ -1774,6 +1787,7 @@ class ProxyHandler(AuthRequestHandler):
                     mimes.append(mime_type)
                     owners.append(owner)
                     etags.append(etag)
+                    mtimes.append(latest)
             else: # then it is the TSD import dir
                 group_memberships = self.claims.get('groups')
                 if root:
@@ -1793,11 +1807,11 @@ class ProxyHandler(AuthRequestHandler):
                             latest = path_stat.st_mtime
                             etag = self.mtime_to_digest(latest)
                             date_time = str(datetime.datetime.fromtimestamp(latest).isoformat())
-                            size, mime_type = self.get_file_metadata(file.path)
+                            size, mime_type, mtime = self.get_file_metadata(file.path)
                         else:
                             date_time = None
                             etag = None
-                            size, mime_type = None, None
+                            size, mime_type, mtime = None, None, None
                         names.append(file.name)
                         times.append(date_time)
                         exportable.append(False)
@@ -1806,9 +1820,10 @@ class ProxyHandler(AuthRequestHandler):
                         mimes.append(mime_type)
                         owners.append(None)
                         etags.append(etag)
+                        mtimes.append(mtime)
             file_info = []
-            for f, t, e, r, s, m, o, g in zip(
-                names, times, exportable, reasons, sizes, mimes, owners, etags
+            for f, t, e, r, s, m, o, g, d in zip(
+                names, times, exportable, reasons, sizes, mimes, owners, etags, mtimes
             ):
                 href = '%s/%s' % (baseuri, url_escape(f))
                 file_info.append(
@@ -1821,7 +1836,8 @@ class ProxyHandler(AuthRequestHandler):
                         'reason': r,
                         'mime-type': m,
                         'owner': o,
-                        'etag': g
+                        'etag': g,
+                        'mtime': d
                     }
                 )
             logging.info('%s listed %s', self.requestor, path)
@@ -1914,7 +1930,7 @@ class ProxyHandler(AuthRequestHandler):
                 self.message = 'File does not exist'
                 raise Exception
             try:
-                size, mime_type = self.get_file_metadata(self.filepath)
+                size, mime_type, mtime = self.get_file_metadata(self.filepath)
                 status = self.enforce_export_policy(self.export_policy, self.filepath, tenant, size, mime_type)
                 assert status
             except (Exception, AssertionError) as e:
@@ -1922,6 +1938,7 @@ class ProxyHandler(AuthRequestHandler):
                 self.set_status(400)
                 raise Exception
             self.set_header('Content-Type', mime_type)
+            self.set_header('Modified-Time', str(mtime))
             if 'Range' not in self.request.headers:
                 self.set_header('Content-Length', size)
                 self.flush()
@@ -2017,7 +2034,7 @@ class ProxyHandler(AuthRequestHandler):
                 self.set_status(404)
                 self.message = 'File does not exist'
                 raise Exception
-            size, mime_type = self.get_file_metadata(self.filepath)
+            size, mime_type, mtime = self.get_file_metadata(self.filepath)
             status = self.enforce_export_policy(self.export_policy, self.filepath, tenant, size, mime_type)
             self.message = 'export policy violation'
             assert status, self.message
@@ -2025,6 +2042,7 @@ class ProxyHandler(AuthRequestHandler):
             self.set_header('Content-Length', size)
             self.set_header('Accept-Ranges', 'bytes')
             self.set_header('Content-Type', mime_type)
+            self.set_header('Modified-Time', str(mtime))
             self.set_status(200)
         except Exception as e:
             logging.error(e)
