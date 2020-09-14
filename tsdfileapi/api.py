@@ -1793,15 +1793,17 @@ class ProxyHandler(AuthRequestHandler):
                             latest = path_stat.st_mtime
                             etag = self.mtime_to_digest(latest)
                             date_time = str(datetime.datetime.fromtimestamp(latest).isoformat())
+                            size, mime_type = self.get_file_metadata(file.path)
                         else:
                             date_time = None
                             etag = None
+                            size, mime_type = None, None
                         names.append(file.name)
                         times.append(date_time)
                         exportable.append(False)
                         reasons.append(None)
-                        sizes.append(None)
-                        mimes.append(None)
+                        sizes.append(size)
+                        mimes.append(mime_type)
                         owners.append(None)
                         etags.append(etag)
             file_info = []
@@ -1890,6 +1892,10 @@ class ProxyHandler(AuthRequestHandler):
                 root = True if self.resource == self.path else False
                 self.list_files(self.path, tenant, root)
                 return
+            if not os.path.lexists(f'{self.path}/{self.resource}'):
+                    self.set_status(404)
+                    self.message = 'Resource not found'
+                    raise Exception
             if not self.allow_export:
                 self.message = 'Method not allowed'
                 self.set_status(403)
