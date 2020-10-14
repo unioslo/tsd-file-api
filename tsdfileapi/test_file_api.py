@@ -1808,6 +1808,12 @@ class TestFileApi(unittest.TestCase):
         self.assertEqual(out, [{'x': 88}])
         out = test_select_query('select=x&where=a.k3[0|h]=eq.0')
         self.assertEqual(out, [{'x': 107}])
+        # timestamps
+        out = test_select_query('select=x,timestamp&where=timestamp=gt.2020-10-14')
+        self.assertTrue(len(out) == 3)
+        out = test_select_query('select=x,timestamp&where=timestamp=lt.2020-10-14')
+        self.assertTrue(len(out) == 2)
+
 
         # ORDER
         # Note: postgres and sqlite treat NULLs different in ordering
@@ -1824,6 +1830,11 @@ class TestFileApi(unittest.TestCase):
         self.assertTrue(out[0]['x'] == 107)
         out = test_select_query('select=x,a&where=a.k3[0|h]=not.is.null&order=a.k3[0|h].desc')
         self.assertTrue(out[0]['x'] == 107)
+        # timestamps
+        out = test_select_query('select=x,timestamp&order=timestamp.desc')
+        self.assertTrue(out[0]['timestamp'] == '2020-10-14T20:20:34.388511')
+        out = test_select_query('select=x,timestamp&order=timestamp.asc')
+        self.assertTrue(out[0]['timestamp'] == '2020-10-13T10:15:26.388573')
 
         # RANGE
         out = test_select_query('select=x&where=x=not.is.null&order=x.desc&range=0.2')
@@ -1843,7 +1854,6 @@ class TestFileApi(unittest.TestCase):
         self.assertTrue(out is True)
         out = test_select_query('select=x&where=x=lt.1000')
         self.assertEqual(out, [])
-        # TODO: ensure date support, with a test
 
 
     def test_all_db_backends(self):
@@ -1854,7 +1864,8 @@ class TestFileApi(unittest.TestCase):
                 'z': 5,
                 'b':[1, 2, 5, 1],
                 'c': None,
-                'd': 'string1'
+                'd': 'string1',
+                'timestamp': '2020-10-13T10:15:26.388573',
             },
             {
                 'y': 11,
@@ -1877,7 +1888,8 @@ class TestFileApi(unittest.TestCase):
                         'h': 0
                     }
                 ],
-                'd': 'string2'
+                'd': 'string2',
+                'timestamp': '2020-10-13T12:11:21.3885750',
             },
             {
                 'a': {
@@ -1889,7 +1901,8 @@ class TestFileApi(unittest.TestCase):
                 },
                 'z': 0,
                 'x': 88,
-                'd': 'string3'
+                'd': 'string3',
+                'timestamp': '2020-10-14T13:15:46.187575',
             },
             {
                 'a': {
@@ -1901,17 +1914,21 @@ class TestFileApi(unittest.TestCase):
                     'k3': [{'h': 0}]
                 },
                 'z': 10,
-                'x': 107
+                'x': 107,
+                'timestamp': '2020-10-14T16:15:26.388575',
             },
             {
-                'x': 10
+                'x': 10,
+                'timestamp': '2020-10-14T20:20:34.388511',
             }
         ]
         engine = sqlite_init('/tmp', name='api-test.db', builtin=True)
         try:
-            if self.config['backends']['postgres']['dbconfig']:
-                pool = postgres_init(self.config['backends']['postgres']['dbconfig'])
+            pgconf = self.config['backends']['dbs']['survey']['db']['dbconfig']
+            if pgconf:
+                pool = postgres_init(pgconf)
         except KeyError as e:
+            print('no postgres pool found - not testing postgres backend')
             pool = None
         self.test_db_backend(
             data,
