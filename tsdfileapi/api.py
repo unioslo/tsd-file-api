@@ -2144,7 +2144,7 @@ class GenericTableHandler(AuthRequestHandler):
 
     def get_uri_query(self, uri):
         if '?' in uri:
-            return uri.split('?')[-1]
+            return url_unescape(uri.split('?')[-1])
         else:
             return ''
 
