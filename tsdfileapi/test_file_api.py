@@ -2468,6 +2468,7 @@ def main():
     for test in tests:
         suite.addTest(TestFileApi(test))
     runner = unittest.TextTestRunner()
+#    runner = unittest.TextTestRunner(verbosity=3, failfast=True)
     runner.run(suite)
 
 

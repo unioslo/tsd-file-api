@@ -233,7 +233,11 @@ class SqliteBackend(DatabaseBackend):
     def table_delete(self, table_name, uri_query):
         sql = self.generator_class(f'"{table_name}"', uri_query)
         with sqlite_session(self.engine) as session:
-            session.execute(sql.delete_query)
+            try:
+                session.execute(sql.delete_query)
+            except sqlite3.OperationalError as e:
+                logging.error(f'Syntax error?: {sql.delete_query}')
+                raise e
         return True
 
     def table_select(self, table_name, uri_query):

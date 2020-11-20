@@ -1,4 +1,4 @@
-#!/bin env python
+#!/usr/bin/env python
 
 """
 Called in a sub-process by the file-api as a request hook:
