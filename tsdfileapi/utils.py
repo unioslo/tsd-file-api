@@ -92,7 +92,7 @@ def sns_dir(base_pattern, tenant, uri, tenant_string_pattern, test=False):
             os.makedirs(_path)
             subprocess.call(['chmod', '2770', _path])
         return _path
-    except (Exception, AssertionError) as e:
+    except (Exception, AssertionError, IndexError) as e:
         logging.error(e)
         raise e
 

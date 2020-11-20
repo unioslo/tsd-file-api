@@ -23,6 +23,7 @@ import json
 import re
 import sqlite3
 import time
+import traceback
 
 from uuid import uuid4
 from sys import argv
@@ -59,7 +60,6 @@ from rmq import PikaClient
 
 _RW______ = stat.S_IREAD | stat.S_IWRITE
 _RW_RW___ = _RW______ | stat.S_IRGRP | stat.S_IWGRP
-_IS_VALID_UUID = re.compile(r'([a-f\d0-9-]{32,36})')
 
 
 def read_config(filename):
@@ -76,7 +76,7 @@ def set_config():
         print(colored('WARNING: do _not_ do this in production', 'red'))
         from defaults import _config
         from tokens import tkn
-        for k,v in _config.items():
+        for k, v in _config.items():
             print(colored(f'{k}:', 'yellow'), colored(f'{v}', 'magenta'))
         print(colored('JWT token for dev purposes:', 'cyan'))
         print(tkn(
@@ -109,7 +109,7 @@ def set_config():
     define('default_file_owner', _config['default_file_owner'])
     define('create_tenant_dir', _config['create_tenant_dir'])
     define('jwt_secret', _config['jwt_secret'] if 'jwt_secret' in _config.keys() else None)
-    define('max_nacl_chunksize', 500000) # don't want more than 0.5MB
+    define('max_nacl_chunksize', 500000)  # don't want more than 0.5MB
     define('sealed_box', libnacl.sealed.SealedBox(
             libnacl.public.SecretKey(
                 base64.b64decode(_config['nacl_public']['private'])
@@ -293,8 +293,8 @@ class AuthRequestHandler(RequestHandler):
             if group_config['enforce_membership']:
                 assert group_name in group_memberships
         except (AssertionError, Exception) as e:
-           logging.error('user not member of group')
-           raise e
+            logging.error(f'user not member of {group_name}')
+            raise e
 
     def is_reserved_resource(self, work_dir, resource):
         """
@@ -320,7 +320,7 @@ class AuthRequestHandler(RequestHandler):
         """
         resource_dir = resource.split('/')[0]
         if resource.startswith('.resumables-') and resource.endswith('.db'):
-            logging.error('resumable dbs not accessible')
+            logging.error(f'resumable dbs not accessible {resource}')
             return False
         elif re.match(r'(.+)\.([a-f\d0-9-]{32,36})$', resource):
             logging.error('merged resumable files not accessible')
@@ -334,7 +334,7 @@ class AuthRequestHandler(RequestHandler):
                 content = os.listdir(potential_target)
                 for entry in content:
                     if re.match(r'(.+).chunk.[0-9]+$', entry):
-                        logging.error('resumable directories not accessible')
+                        logging.error(f'resumable directories not accessible {entry}')
                         return False
         return True
 
@@ -395,7 +395,7 @@ class AuthRequestHandler(RequestHandler):
         try:
             default_version = 'v1'
             default_rkey = f'k.{default_version}.{self.tenant}.{self.endpoint}'
-            ex =  mq_config.get('exchange')
+            ex = mq_config.get('exchange')
             ver = (
                 default_version if not mq_config.get('version')
                 else mq_config.get('version')
@@ -417,7 +417,7 @@ class AuthRequestHandler(RequestHandler):
                 data=data
             )
         except Exception as e:
-            summary = f'exchange: {exchange}, routing_key: {rkey}, version: {ver}'
+            summary = f'exchange: {ex}, routing_key: {rkey}, version: {ver}'
             msg = f'problem publishing message, {summary}'
             logging.error(msg)
             logging.error(e)
@@ -434,7 +434,7 @@ class GenericFormDataHandler(AuthRequestHandler):
             assert options.valid_tenant.match(self.tenant)
             self.tenant_dir_pattern = options.config['backends']['disk'][backend]['import_path']
             self.tsd_hidden_folder = None
-            if backend == 'sns': # hope to deprecate this with new nettskjema integration
+            if backend == 'sns':  # hope to deprecate this with new nettskjema integration
                 self.tsd_hidden_folder_pattern = options.config['backends']['disk'][backend]['subfolder_path']
             self.request_hook = options.config['backends']['disk'][backend]['request_hook']
             self.check_tenant = options.config['backends']['disk'][backend].get('check_tenant')
@@ -453,7 +453,10 @@ class GenericFormDataHandler(AuthRequestHandler):
             except Exception as e:
                 self.group_config = disabled_group_config
         except (Exception, AssertionError) as e:
-            logging.error('could not initalize form data handler')
+            logging.error('could not initalize form data handler:')
+            logging.error(e)
+            logging.error(traceback.format_exc())
+
 
     def prepare(self):
         try:
@@ -556,7 +559,7 @@ class GenericFormDataHandler(AuthRequestHandler):
             return False
 
     def on_finish(self):
-        if self.request.method in ('PUT','POST', 'PATCH'):
+        if self.request.method in ('PUT', 'POST', 'PATCH'):
             try:
                 if self.request_hook['enabled']:
                     for path in self.new_paths:
@@ -768,7 +771,7 @@ class ResumablesHandler(AuthRequestHandler):
 @stream_request_body
 class StreamHandler(AuthRequestHandler):
 
-    #pylint: disable=line-too-long
+    # pylint: disable=line-too-long
 
     """
     This class writes request data to files for PUT, POST and PATCH methods,
@@ -837,7 +840,9 @@ class StreamHandler(AuthRequestHandler):
         try:
             decr_aes_key = self.decrypt_aes_key(self.request.headers['Aes-Key'])
         except Exception as e:
+            logging.error('decrypt_aes_key failed with:')
             logging.error(e)
+            logging.error(traceback.format_exc())
         if "Aes-Iv" in self.request.headers:
             return ['-iv', self.request.headers["Aes-Iv"], '-K', decr_aes_key]
         else:
@@ -1005,7 +1010,7 @@ class StreamHandler(AuthRequestHandler):
                                 try:
                                     if self.group_config['enabled']:
                                         subprocess.call(['chmod', '2770', target])
-                                        owner = options.api_user # so it can move the file into the dir
+                                        owner = options.api_user  # so it can move the file into the dir
                                         subprocess.call(['sudo', 'chown', f'{owner}:{self.group_name}', target])
                                 except (Exception, OSError):
                                     logging.error('could not set permissions on upload directories')
@@ -1100,7 +1105,8 @@ class StreamHandler(AuthRequestHandler):
                     logging.error('No file to close after all - so nothing to worry about')
                     raise e
         except Exception as e:
-            logging.error('stream handler failed')
+            logging.error('stream handler failed with:')
+            logging.error(traceback.format_exc())
             info = 'stream processing failed'
             if self.chunk_order_correct is False:
                 self.set_status(200)
@@ -1220,9 +1226,7 @@ class StreamHandler(AuthRequestHandler):
             'filename': filename,
             'id': self.upload_id,
             'max_chunk': self.chunk_num,
-            'key': self.res_key
-            }
-        )
+            'key': self.res_key})
 
 
     def head(self, tenant, uri_filename=None):
@@ -1247,9 +1251,7 @@ class StreamHandler(AuthRequestHandler):
         resource_created = (
             self.request.method == 'PUT' or (
                 self.request.method == 'PATCH' and
-                self.chunk_num == 'end'
-            )
-        )
+                self.chunk_num == 'end'))
         if resource_created:
             try:
                 # switch path variables back
@@ -1446,7 +1448,7 @@ class ProxyHandler(AuthRequestHandler):
                     else:
                         self.filename = None # do not need it here
             except Exception as e:
-                self.error = 'could not process URI'
+                self.error = f'could not process URI {uri}'
                 logging.error(e)
                 logging.error(self.error)
                 raise Exception
@@ -1463,7 +1465,7 @@ class ProxyHandler(AuthRequestHandler):
                 else:
                     assert self.is_reserved_resource(work_dir, url_unescape(resource))
             except (AssertionError, Exception) as e:
-                self.error = 'reserved resource name'
+                self.error = f'reserved resource name {resource}'
                 logging.error(self.error)
                 self.set_status(400)
                 raise Exception
@@ -1522,7 +1524,7 @@ class ProxyHandler(AuthRequestHandler):
             if self.group_config['enabled'] and self.request.method in ['PUT', 'PATCH']:
                 # 8.2.1 if a directory is present, and not the same as the group
                 if url_unescape(uri_parts[5]) != self.filename and uri_parts[5] != group_name:
-                    logging.error('inconsistent group permissions')
+                    logging.error(f'inconsistent group permissions {group_name} != ' + uri_parts[5])
                     raise Exception
                 # 8.2.2 if group folder not in url, inject it from group_name
                 if url_unescape(uri_parts[5]) == self.filename:
@@ -1911,7 +1913,7 @@ class ProxyHandler(AuthRequestHandler):
                 return
             if not os.path.lexists(f'{self.path}/{resource}'):
                     self.set_status(404)
-                    self.message = 'Resource not found'
+                    self.message = f'Resource {self.path}/{resource} not found'
                     raise Exception
             if not self.allow_export:
                 self.message = 'Method not allowed'
@@ -2082,14 +2084,14 @@ class ProxyHandler(AuthRequestHandler):
                 raise Exception
             self.filepath = '%s/%s' % (self.path, secured_filename)
             if not os.path.lexists(self.filepath):
-                logging.error('%s tried to delete a file that does not exist', self.requestor)
+                logging.error(f'{self.requestor} tried to delete a file that does not exist {self.filepath}')
                 self.set_status(404)
                 self.message = f'File does not exist {self.filepath}'
                 raise Exception
             if os.path.isdir(self.filepath):
                 if not filename:
                     self.set_status(403)
-                    self.message = 'Cannot perform DELETE on base directory'
+                    self.message = f'Cannot perform DELETE on base directory {self.filepath}'
                     raise Exception
                 else:
                     shutil.rmtree(self.filepath)
@@ -2097,11 +2099,11 @@ class ProxyHandler(AuthRequestHandler):
             try:
                 # Allow the file to be deleted by changing the rights temporary of the parent directory
                 if self.has_posix_ownership:
-                    subprocess.call(['sudo', 'chmod', 'o+w',  os.path.dirname(self.filepath)])
+                    subprocess.call(['sudo', 'chmod', 'o+w', os.path.dirname(self.filepath)])
                 os.remove(self.filepath)
                 # Restoring the rights of the parent directory
                 if self.has_posix_ownership:
-                    subprocess.call(['sudo', 'chmod', 'o-w',  os.path.dirname(self.filepath)])
+                    subprocess.call(['sudo', 'chmod', 'o-w', os.path.dirname(self.filepath)])
                 self.message = 'Deleted %s' % self.filepath
             except OSError as e:
                 self.set_status(500)
@@ -2179,7 +2181,7 @@ class GenericTableHandler(AuthRequestHandler):
                     app_name = self.request.uri.split('/')[4]
                     self.db_name = f'.{self.backend}_{app_name}.db'
                 else:
-                    self.db_name =  f'.{self.backend}.db'
+                    self.db_name = f'.{self.backend}.db'
                 self.engine = sqlite_init(self.tenant_dir, name=self.db_name, builtin=True)
                 self.db = SqliteBackend(self.engine, requestor=self.requestor)
             elif self.dbtype == 'postgres':
@@ -2364,7 +2366,7 @@ class GenericTableHandler(AuthRequestHandler):
             data = json_decode(new_data)
             self.set_resource_identifier_info(data)
             query = self.get_uri_query(self.request.uri)
-            out = self.db.table_update(table_name, query, data)
+            self.db.table_update(table_name, query, data)
             self.set_status(200)
             self.write({'data': 'data updated'})
         except Exception as e:
@@ -2388,6 +2390,7 @@ class GenericTableHandler(AuthRequestHandler):
             self.write({'data': data})
         except Exception as e:
             logging.error(e)
+            logging.error(traceback.format_exc())
             if not self._status_code == 403:
                 self.set_status(400)
             self.write({'message': self.error})
@@ -2525,10 +2528,10 @@ class Backends(object):
             ('/v1/(.*)/store/export', ProxyHandler, dict(backend='store', namespace='store', endpoint='export')),
             ('/v1/(.*)/store/export/(.*)', ProxyHandler, dict(backend='store', namespace='store', endpoint='export')),
         ],
-        'apps_files' : [
+        'apps_files': [
             ('/v1/(.*)/apps/.+/resumables', ResumablesHandler, dict(backend='apps_files')),
             ('/v1/(.*)/apps/.+/resumables/(.*)', ResumablesHandler, dict(backend='apps_files')),
-            ('/v1/(.*)/apps/upload_stream/(.*)',  StreamHandler, dict(backend='apps_files')),
+            ('/v1/(.*)/apps/upload_stream/(.*)', StreamHandler, dict(backend='apps_files')),
             ('/v1/(.*)/apps/(.+/files.*)', ProxyHandler, dict(backend='apps_files', namespace='apps', endpoint=None)),
         ],
         'apps_tables': [

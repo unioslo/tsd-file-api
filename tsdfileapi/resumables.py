@@ -244,7 +244,8 @@ class SerialResumable(AbstractResumable):
             fd.write(chunk)
 
     def close_file(self, fd):
-        fd.close()
+        if fd:
+            fd.close()
 
     def _refuse_upload_if_not_in_sequential_order(self, work_dir, upload_id, chunk_num):
         chunk_order_correct = True
