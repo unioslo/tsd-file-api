@@ -2185,7 +2185,12 @@ class GenericTableHandler(AuthRequestHandler):
                 self.engine = sqlite_init(self.tenant_dir, name=self.db_name, builtin=True)
                 self.db = SqliteBackend(self.engine, requestor=self.requestor)
             elif self.dbtype == 'postgres':
-                self.db = PostgresBackend(options.pgpool, schema=self.tenant, requestor=self.requestor)
+                if self.backend == 'apps_tables':
+                    app_name = self.request.uri.split('/')[4]
+                    schema = f'{self.tenant}_{app_name}'
+                else:
+                    schema = self.tenant
+                self.db = PostgresBackend(options.pgpool, schema=schema, requestor=self.requestor)
         except Exception as e:
             if self._status_code != 503:
                 self.set_status(401)
@@ -2586,7 +2591,10 @@ class Backends(object):
         engine_type = options.config['backends']['dbs'][name]['db']['engine']
         if engine_type == 'postgres':
             pool = postgres_init(options.config['backends']['dbs'][name]['db']['dbconfig'])
-            define('pgpool', pool)
+            try:
+                define('pgpool', pool)
+            except tornado.options.Error:
+                pass # already defined ^
             db = PostgresBackend(pool)
             db.initialise()
         else:
