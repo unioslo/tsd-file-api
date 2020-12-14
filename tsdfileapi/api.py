@@ -2543,6 +2543,7 @@ class Backends(object):
             ('/v1/(.*)/apps/(.+)/tables/audit', GenericTableHandler, dict(backend='apps_tables')),
             ('/v1/(.*)/apps/(.+)/tables/metadata', GenericTableHandler, dict(backend='apps_tables')),
             ('/v1/(.*)/apps/.+/tables/(.+)$', GenericTableHandler, dict(backend='apps_tables')),
+            ('/v1/(.*)/apps/crypto/key', NaclKeyHander),
         ]
     }
 
