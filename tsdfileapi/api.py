@@ -50,7 +50,6 @@ from auth import process_access_token
 from utils import (call_request_hook, sns_dir,
                    check_filename, _IS_VALID_UUID,
                    md5sum, tenant_from_url,
-                   create_cluster_dir_if_not_exists,
                    move_data_to_folder, set_mtime)
 from db import sqlite_init, SqliteBackend, postgres_init, PostgresBackend
 from resumables import SerialResumable, ResumableNotFoundError
@@ -670,7 +669,6 @@ class ResumablesHandler(AuthRequestHandler):
             self.tenant = tenant_from_url(self.request.uri)
             assert options.valid_tenant.match(self.tenant)
             self.import_dir = options.config['backends']['disk'][backend]['import_path']
-            assert create_cluster_dir_if_not_exists(self.import_dir, self.tenant, options.tenant_string_pattern)
             self.tenant_dir = self.import_dir.replace(options.tenant_string_pattern, self.tenant)
             self.check_tenant = options.config['backends']['disk'][backend].get('check_tenant')
         except (AssertionError, Exception) as e:
@@ -924,7 +922,6 @@ class StreamHandler(AuthRequestHandler):
             self.tenant = tenant_from_url(self.request.uri)
             assert options.valid_tenant.match(self.tenant)
             self.import_dir = options.config['backends']['disk'][backend]['import_path']
-            assert create_cluster_dir_if_not_exists(self.import_dir, self.tenant, options.tenant_string_pattern)
             self.tenant_dir = self.import_dir.replace(options.tenant_string_pattern, self.tenant)
             self.backend = backend
             self.request_hook = options.config['backends']['disk'][backend]['request_hook']
@@ -2485,16 +2482,6 @@ class Backends(object):
     }
 
     optional_routes = {
-        'cluster': [
-            ('/v1/(.*)/cluster/upload_stream', StreamHandler, dict(backend='cluster')),
-            ('/v1/(.*)/cluster/upload_stream/(.*)', StreamHandler, dict(backend='cluster')),
-            ('/v1/(.*)/cluster/stream', ProxyHandler, dict(backend='cluster', namespace='cluster', endpoint='stream')),
-            ('/v1/(.*)/cluster/stream/(.*)', ProxyHandler, dict(backend='cluster', namespace='cluster', endpoint='stream')),
-            ('/v1/(.*)/cluster/resumables', ResumablesHandler, dict(backend='cluster')),
-            ('/v1/(.*)/cluster/resumables/(.*)', ResumablesHandler, dict(backend='cluster')),
-            ('/v1/(.*)/cluster/export', ProxyHandler, dict(backend='cluster', namespace='cluster', endpoint='export')),
-            ('/v1/(.*)/cluster/export/(.*)', ProxyHandler, dict(backend='cluster', namespace='cluster', endpoint='export')),
-        ],
         'files_import': [
             ('/v1/(.*)/files/upload_stream', StreamHandler, dict(backend='files_import')),
             ('/v1/(.*)/files/upload_stream/(.*)', StreamHandler, dict(backend='files_import')),

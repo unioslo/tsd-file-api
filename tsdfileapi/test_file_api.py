@@ -75,16 +75,18 @@ import unittest
 import pwd
 import uuid
 import shutil
+
 from datetime import datetime
 
-from pretty_bad_protocol import gnupg
+import pretty_bad_protocol._parsers
 import requests
 import yaml
+
+from pretty_bad_protocol import gnupg
 from sqlalchemy.exc import OperationalError
 from tsdapiclient import fileapi
 from tornado.escape import url_escape
 
-import pretty_bad_protocol._parsers
 pretty_bad_protocol._parsers.Verify.TRUST_LEVELS["ENCRYPTION_COMPLIANCE_MODE"] = 23
 
 # pylint: disable=relative-import
@@ -189,8 +191,6 @@ class TestFileApi(unittest.TestCase):
         cls.upload_stream = cls.base_url + '/files/upload_stream'
         cls.export = cls.base_url + '/files/export'
         cls.resumables = cls.base_url + '/files/resumables'
-        cls.cluster = cls.base_url + '/cluster/stream'
-        cls.export_cluster = cls.base_url + '/cluster/export'
         cls.store_import = cls.base_url + '/store/import'
         cls.store_export = cls.base_url + '/store/export'
         cls.survey = cls.base_url + '/survey'
@@ -1385,28 +1385,6 @@ class TestFileApi(unittest.TestCase):
                             headers=headers)
         self.assertEqual(resp.status_code, 401)
 
-    # cluster import
-
-    def test_ZZe_cluster_uploads(self):
-        token = gen_test_token_for_user(self.config, self.test_user)
-        headers = {'Authorization': 'Bearer ' + token,
-                   'Expect': '100-Continue'}
-        url = self.cluster + '/cluster-upload.csv?group=p11-member-group'
-        resp = requests.put(url,
-                            data=lazy_file_reader(self.example_csv),
-                            headers=headers)
-        self.assertEqual(resp.status_code, 201)
-
-    # Cluster export
-
-    def test_ZZf_cluster_export_works(self):
-        url = self.export_cluster + '/file1'
-        headers = {'Authorization': 'Bearer ' + TEST_TOKENS['EXPORT']}
-        resp1 = requests.head(url, headers=headers)
-        self.assertEqual(resp1.status_code, 200)
-        resp2 = requests.get(url, headers=headers)
-        self.assertEqual(resp2.status_code, 200)
-
     # TODO: store system backend
 
     def test_ZZg_store_import_and_export(self):
@@ -2305,9 +2283,6 @@ def main():
         'test_ZU_sending_uneven_chunks_resume_works',
         'test_ZV_resume_chunk_order_enforced',
         'test_ZW_resumables_access_control',
-        # cluster
-        'test_ZZe_cluster_uploads',
-        'test_ZZf_cluster_export_works',
         # store backend
         'test_ZZg_store_import_and_export',
     ]
