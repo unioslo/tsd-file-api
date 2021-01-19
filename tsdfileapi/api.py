@@ -2267,7 +2267,7 @@ class GenericTableHandler(AuthRequestHandler):
         contained in the request body. Clients can optionally
         provide information about which key(s) in the request
         data contain unique references to their data, by setting
-        the Resource-Identifier header.
+        the Resource-Identifier-Key header.
 
         This function will then put both the key, and the value(s)
         produced by using the key, in the payload of the rabbitmq
