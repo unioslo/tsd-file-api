@@ -1949,7 +1949,7 @@ class TestFileApi(unittest.TestCase):
             {'key1': 99, 'key3': False, 'id': random.randint(0, 1000000)}
         ]
         headers['Content-Type'] = 'application/json'
-        headers['Resource-Identifier'] = 'id'
+        headers['Resource-Identifier-Key'] = 'id'
         resp = requests.put(
             f'{self.apps}/ega/tables/user_data',
             data=json.dumps(data),
