@@ -2239,6 +2239,20 @@ class GenericTableHandler(AuthRequestHandler):
             out += decrypted
         return out.decode()
 
+    def get_nested_data(self, keys, data):
+        values = []
+        if isinstance(data, dict):
+            target = data
+            for key in keys:
+                target = target.get(key)
+            values.append(target)
+        elif isinstance(data, list):
+            for entry in data:
+                target = entry
+                for key in keys:
+                    target = target.get(key)
+                values.append(target)
+        return values
 
     def set_resource_identifier_info(self, data):
         """
@@ -2260,15 +2274,28 @@ class GenericTableHandler(AuthRequestHandler):
         message.  Downstream queue consumers can then use these
         references to fetch the target resources from the API.
 
+        Providing the Resource-Identifier is optional in this
+        scheme, while providing the Resource-Identifier-Key is
+        necessary (in order for downstream data processors to
+        identify new resources).
+
+        Keys can support nesting, e.g. given data:
+
+            {'metadata':{'id': 123}"}
+
+        The following header will allow the API to find the value
+        if not provided in the Resource-Identifier:
+
+            Resource-Identifier-Key: metadata.id
+
         """
-        rid_key = self.request.headers.get('Resource-Identifier')
-        if rid_key:
-            if isinstance(data, dict):
-                rid_values = [data.get(rid_key)]
-            elif isinstance(data, list):
-                rid_values = []
-                for entry in data:
-                    rid_values.append(entry.get(rid_key))
+        rid_key = self.request.headers.get('Resource-Identifier-Key')
+        rid = self.request.headers.get('Resource-Identifier')
+        if rid_key and rid:
+            self.rid_info = {'key': rid_key, 'values': [rid]}
+        if rid_key and not rid: # then we look into the data
+            keys = rid_key.split('.')
+            rid_values = self.get_nested_data(keys, data)
             self.rid_info = {'key': rid_key, 'values': rid_values}
 
 
