@@ -117,6 +117,7 @@ def set_config():
     )
     define('rabbitmq', _config.get('rabbitmq', {}))
     define('maintenance_mode_enabled', False)
+    define('request_log', _config.get('request_log'))
     options.logging = _config.get('log_level', 'info')
 
 set_config()
@@ -421,6 +422,76 @@ class AuthRequestHandler(RequestHandler):
             logging.error(msg)
             logging.error(e)
         return
+
+    def _log_db_name(self, backend, app):
+        name = f'{backend}_{app}' if app else backend
+        return f'.request_log_{name}.db'
+
+    def _log_table_name(self, backend, app):
+        return f'{backend}' if not app else f'{backend}_{app}'
+
+    def _log_db_path(self, tenant):
+        path_pattern = options.request_log.get('db').get('path')
+        return path_pattern.replace(options.tenant_string_pattern, tenant)
+
+    def _sqlite_log_engine(self, tenant, backend, app):
+        db_path = self._log_db_path(tenant)
+        db_name = self._log_db_name(backend, app)
+        engine = sqlite_init(db_path, name=db_name, builtin=True)
+        return engine
+
+    def get_log_db(self, tenant, backend, engine_type, app=None):
+        if engine_type == 'postgres':
+            db = PostgresBackend(options.pgpool_request_log, schema=tenant)
+        elif engine_type == 'sqlite':
+            engine = self._sqlite_log_engine(tenant, backend, app)
+            db = SqliteBackend(engine)
+        return db
+
+    def get_app_name(self, uri):
+        if 'apps' not in uri:
+            return None
+        parts = uri.split('apps')
+        return parts[1].split('/')[1]
+
+    def update_request_log(
+        self,
+        *,
+        tenant,
+        backend,
+        requestor,
+        method,
+        uri,
+        app=None,
+    ):
+        """
+        Log request information - for audit purposes.
+
+        """
+        try:
+            backends = options.request_log.get('backends')
+            if (
+                not options.request_log
+                or not backends.get(backend)
+                or method not in backends.get(backend).get('methods')
+            ):
+                return
+            engine_type = options.request_log.get('db').get('engine')
+            assert engine_type in ['postgres', 'sqlite'], \
+                f'unsupported engine_type: {engine_type}'
+            db = self.get_log_db(tenant, backend, engine_type)
+            data = {
+                'timestamp': datetime.datetime.utcnow().isoformat(),
+                'requestor': requestor,
+                'method': method,
+                'uri': uri,
+            }
+            table_name = self._log_table_name(backend, app)
+            db.table_insert(table_name, data)
+        except (AttributeError, KeyError, AssertionError) as e:
+            logging.warning(f'could not initiate request audit log: {e}')
+        except Exception as e:
+            logging.warning(f'could not initiate request audit log: {e}')
 
 
 class GenericFormDataHandler(AuthRequestHandler):
@@ -1237,6 +1308,7 @@ class StreamHandler(AuthRequestHandler):
         1. Clean up any open files, if an error occurred
         2. Call the request hook, if configured
         3. Publish message to rabbitmq, if configured
+        4. Update the request log, if configured
 
         """
         try:
@@ -1246,9 +1318,10 @@ class StreamHandler(AuthRequestHandler):
         except AttributeError as e:
             pass
         resource_created = (
-            self.request.method == 'PUT' or (
-                self.request.method == 'PATCH' and
-                self.chunk_num == 'end'))
+            (self.request.method == 'PUT'
+            or (self.request.method == 'PATCH' and self.chunk_num == 'end'))
+            and self._status_code < 300
+        )
         if resource_created:
             try:
                 # switch path variables back
@@ -1285,6 +1358,17 @@ class StreamHandler(AuthRequestHandler):
                 )
             except Exception as e:
                 logging.error(e)
+            try:
+                self.update_request_log(
+                    tenant=self.tenant,
+                    backend=self.backend,
+                    requestor=self.requestor,
+                    method=self.request.method,
+                    uri=self.request.uri,
+                    app=self.get_app_name(self.request.uri),
+                )
+            except Exception as e:
+                logger.warn(e)
             self.on_finish_called = True
 
 
@@ -1294,6 +1378,7 @@ class StreamHandler(AuthRequestHandler):
 
         1. Close open file, move it to destination
         2. Publish message to rabbitmq, if configured
+        3. Update the request log, if configured
 
         """
         try:
@@ -1326,6 +1411,14 @@ class StreamHandler(AuthRequestHandler):
                         self.handle_mq_publication(
                             mq_config=self.mq_config,
                             data=message_data
+                        )
+                        self.update_request_log(
+                            tenant=self.tenant,
+                            backend=self.backend,
+                            requestor=self.requestor,
+                            method=self.request.method,
+                            uri=self.request.uri,
+                            app=self.get_app_name(self.request.uri),
                         )
                 # otherwise leave the partial upload in place, as is
                 # most likely a client that closed the connection
@@ -1770,7 +1863,7 @@ class ProxyHandler(AuthRequestHandler):
                             try:
                                 default_owner_id = pwd.getpwnam(default_owner).pw_uid
                                 group_id = path_stat.st_gid
-                                os.chown(group_folder, file_api_user_id, group_id)
+                                os.chown(file.path, file_api_user_id, group_id)
                                 owner = default_owner
                             except (KeyError, Exception) as e:
                                 logging.error(e)
@@ -2115,8 +2208,11 @@ class ProxyHandler(AuthRequestHandler):
             self.finish({'message': self.message})
 
     def on_finish(self):
-        if (self.request.method in ('GET', 'HEAD', 'DELETE')
-            and not options.maintenance_mode_enabled):
+        if (
+            self.request.method in ('GET', 'HEAD', 'DELETE')
+            and not options.maintenance_mode_enabled
+            and self._status_code < 300
+        ):
             try:
                 message_data = {
                     'path': None,
@@ -2126,6 +2222,14 @@ class ProxyHandler(AuthRequestHandler):
                 self.handle_mq_publication(
                     mq_config=self.mq_config,
                     data=message_data
+                )
+                self.update_request_log(
+                    tenant=self.tenant,
+                    backend=self.backend,
+                    requestor=self.requestor,
+                    method=self.request.method,
+                    uri=self.request.uri,
+                    app=self.get_app_name(self.request.uri),
                 )
             except Exception as e:
                 logging.error(e)
@@ -2427,7 +2531,7 @@ class GenericTableHandler(AuthRequestHandler):
 
     def on_finish(self):
         try:
-            if not options.maintenance_mode_enabled:
+            if not options.maintenance_mode_enabled and self._status_code < 300:
                 message_data = {
                     'path': None,
                     'requestor': self.requestor,
@@ -2437,6 +2541,14 @@ class GenericTableHandler(AuthRequestHandler):
                 self.handle_mq_publication(
                     mq_config=self.mq_config,
                     data=message_data
+                )
+                self.update_request_log(
+                    tenant=self.tenant,
+                    backend=self.backend,
+                    requestor=self.requestor,
+                    method=self.request.method,
+                    uri=self.request.uri,
+                    app=self.get_app_name(self.request.uri),
                 )
         except Exception as e:
             logging.error(e)
@@ -2602,6 +2714,10 @@ class Backends(object):
                 for name, backend in options.config['backends'][backend_set].items():
                     self.find_exchanges(name, backend)
 
+        if self.config.get('request_log'):
+            print(colored('Initialising request log db', 'magenta'))
+            self.initdb_request_log()
+
     def initdb(self, name):
         engine_type = options.config['backends']['dbs'][name]['db']['engine']
         if engine_type == 'postgres':
@@ -2613,6 +2729,21 @@ class Backends(object):
             db = PostgresBackend(pool)
             db.initialise()
         else:
+            return
+
+    def initdb_request_log(self):
+        if not options.request_log:
+            return
+        engine_type = options.request_log.get('db').get('engine')
+        if engine_type == 'postgres':
+            pool = postgres_init(options.request_log.get('db').get('dbconfig'))
+            try:
+                define('pgpool_request_log', pool)
+            except tornado.options.Error:
+                pass # already defined ^
+            logdb = PostgresBackend(pool)
+            logdb.initialise()
+        else: # sqlite
             return
 
     def find_exchanges(self, name, backend_config):
