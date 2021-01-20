@@ -195,6 +195,7 @@ class TestFileApi(unittest.TestCase):
         cls.store_export = cls.base_url + '/store/export'
         cls.survey = cls.base_url + '/survey'
         cls.apps = cls.base_url + '/apps'
+        cls.logs = cls.base_url + '/logs'
         cls.test_project = cls.test_project
         cls.tenant_string_pattern = cls.config['tenant_string_pattern']
 
@@ -2250,6 +2251,20 @@ class TestFileApi(unittest.TestCase):
             original_file_mtime
         )
 
+    def test_log_viewer(self):
+        # TODO: test with both sqlite and postgres
+        headers = {'Authorization': f"Bearer {TEST_TOKENS['VALID']}"}
+        resp = requests.get(f'{self.logs}', headers=headers)
+        self.assertEqual(resp.status_code, 200)
+        available_backends = json.loads(resp.text).get('logs')
+        self.assertTrue(isinstance(available_backends, list))
+        for backend in ['files_import', 'files_export', 'apps/ega']:
+            resp = requests.get(f'{self.logs}/{backend}', headers=headers)
+            self.assertEqual(resp.status_code, 200)
+        resp = requests.get(f'{self.logs}/apps', headers=headers)
+        self.assertEqual(resp.status_code, 200)
+        self.assertTrue(isinstance(json.loads(resp.text).get('apps'), list))
+
 
 def main():
     tests = []
@@ -2377,6 +2392,9 @@ def main():
     mtime = [
         'test_mtime_functionality',
     ]
+    logs = [
+        'test_log_viewer',
+    ]
     if len(sys.argv) == 2:
         print('usage:')
         print('python3 tsdfileapi/test_file_api.py config.yaml ARGS')
@@ -2420,6 +2438,8 @@ def main():
         tests.extend(maintenance)
     if 'mtime' in sys.argv:
         tests.extend(mtime)
+    if 'logs' in sys.argv:
+        tests.extend(logs)
     if 'all' in sys.argv:
         tests.extend(base)
         tests.extend(names)
@@ -2438,6 +2458,7 @@ def main():
         tests.extend(crypt)
         tests.extend(form_data)
         tests.extend(mtime)
+        tests.extend(logs)
     tests.sort()
     suite = unittest.TestSuite()
     for test in tests:

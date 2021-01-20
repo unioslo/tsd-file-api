@@ -423,12 +423,14 @@ class AuthRequestHandler(RequestHandler):
             logging.error(e)
         return
 
+    # audit log tools
+
     def _log_db_name(self, backend, app):
-        name = f'{backend}_{app}' if app else backend
+        name = f'apps_{app}' if app else backend
         return f'.request_log_{name}.db'
 
     def _log_table_name(self, backend, app):
-        return f'{backend}' if not app else f'{backend}_{app}'
+        return f'{backend}' if not app else f'apps_{app}'
 
     def _log_db_path(self, tenant):
         path_pattern = options.request_log.get('db').get('path')
@@ -449,10 +451,21 @@ class AuthRequestHandler(RequestHandler):
         return db
 
     def get_app_name(self, uri):
-        if 'apps' not in uri:
+        if '/apps/' not in uri:
             return None
         parts = uri.split('apps')
         return parts[1].split('/')[1]
+
+    def get_log_apps(self, tenant, backend, engine_type):
+        if engine_type == 'postgres':
+            db = PostgresBackend(options.pgpool_request_log, schema=tenant)
+            tables = db.tables_list()
+            return [table for table in tables if table.startswith('apps_')]
+        elif engine_type == 'sqlite':
+            path = self._log_db_path(tenant)
+            dbs = os.listdir(path)
+            return [db for db in dbs if db.endswith('.db')]
+
 
     def update_request_log(
         self,
@@ -2609,6 +2622,52 @@ class RunTimeConfigurationHandler(RequestHandler):
         self.write({'maintenance_mode_enabled': options.maintenance_mode_enabled})
 
 
+class AuditLogViewerHandler(AuthRequestHandler):
+
+    def get_uri_query(self, uri):
+        if '?' in uri:
+            return url_unescape(uri.split('?')[-1])
+        else:
+            return ''
+
+    def get(self, tenant, backend=None):
+        if not backend:
+            backends = list(options.request_log.get('backends').keys())
+            available = []
+            for backend in backends:
+                if backend.startswith('apps_'):
+                    backend = 'apps'
+                if 'apps' in available:
+                    continue
+                available.append(backend)
+            self.set_status(200)
+            self.write({'logs': available})
+        elif backend == 'apps':
+            engine_type = options.request_log.get('db').get('engine')
+            log_apps = self.get_log_apps(tenant, backend, engine_type)
+            self.set_status(200)
+            self.write({'apps': log_apps})
+        else:
+            app = self.get_app_name(self.request.uri)
+            engine_type = options.request_log.get('db').get('engine')
+            db = self.get_log_db(tenant, backend, engine_type, app=app)
+            self.set_status(200)
+            self.set_header('Content-Type', 'application/json')
+            self.write('[')
+            self.flush()
+            first = True
+            query = self.get_uri_query(self.request.uri)
+            table_name = self._log_table_name(backend, app)
+            for row in db.table_select(table_name, query):
+                if not first:
+                    self.write(',')
+                self.write(row)
+                self.flush()
+                first = False
+            self.write(']')
+            self.flush()
+
+
 class Backends(object):
 
     default_routes = {
@@ -2617,7 +2676,11 @@ class Backends(object):
         ],
         'runtime_configuration': [
             ('/v1/admin.*', RunTimeConfigurationHandler),
-        ]
+        ],
+        'audit_log_viewer': [
+            ('/v1/(.+)/logs', AuditLogViewerHandler),
+            ('/v1/(.+)/logs/(.+)', AuditLogViewerHandler),
+        ],
     }
 
     optional_routes = {
