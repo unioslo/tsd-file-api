@@ -1320,8 +1320,6 @@ class StreamHandler(AuthRequestHandler):
 
         1. Clean up any open files, if an error occurred
         2. Call the request hook, if configured
-        3. Publish message to rabbitmq, if configured
-        4. Update the request log, if configured
 
         """
         try:
@@ -1367,8 +1365,6 @@ class StreamHandler(AuthRequestHandler):
         Called when clients close the connection.
 
         1. Close open file, move it to destination
-        2. Publish message to rabbitmq, if configured
-        3. Update the request log, if configured
 
         """
         try:
