@@ -2252,7 +2252,6 @@ class TestFileApi(unittest.TestCase):
         )
 
     def test_log_viewer(self):
-        # TODO: test with both sqlite and postgres
         headers = {'Authorization': f"Bearer {TEST_TOKENS['VALID']}"}
         resp = requests.get(f'{self.logs}', headers=headers)
         self.assertEqual(resp.status_code, 200)

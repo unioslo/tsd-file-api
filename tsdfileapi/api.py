@@ -492,7 +492,7 @@ class AuthRequestHandler(RequestHandler):
             engine_type = options.request_log.get('db').get('engine')
             assert engine_type in ['postgres', 'sqlite'], \
                 f'unsupported engine_type: {engine_type}'
-            db = self.get_log_db(tenant, backend, engine_type)
+            db = self.get_log_db(tenant, backend, engine_type, app)
             data = {
                 'timestamp': datetime.datetime.utcnow().isoformat(),
                 'requestor': requestor,
@@ -1576,11 +1576,14 @@ class ProxyHandler(AuthRequestHandler):
                 raise e
             # 8. Build URL
             # 8.1 collect params
+            upload_id, chunk_num = None, None
             try:
-                upload_id, chunk_num = None, None
                 chunk_num = url_unescape(self.get_query_argument('chunk'))
+            except Exception:
+                pass
+            self.chunk_num = chunk_num # used in on_finish
+            try:
                 upload_id = url_unescape(self.get_query_argument('id'))
-                self.chunk_num = chunk_num # used in on_finish
             except Exception:
                 pass
             # 8.2 enfore group logic, if enabled
@@ -2595,6 +2598,9 @@ class AuditLogViewerHandler(AuthRequestHandler):
             return ''
 
     def get(self, tenant, backend=None):
+        if not options.request_log:
+            self.set_status(503)
+            self.write({'message': 'logging has not been configured'})
         if not backend:
             backends = list(options.request_log.get('backends').keys())
             available = []
