@@ -502,9 +502,9 @@ class AuthRequestHandler(RequestHandler):
             table_name = self._log_table_name(backend, app)
             db.table_insert(table_name, data)
         except (AttributeError, KeyError, AssertionError) as e:
-            logging.warning(f'could not initiate request audit log: {e}')
+            logging.warning(f'could not update audit log: {e}')
         except Exception as e:
-            logging.warning(f'could not initiate request audit log: {e}')
+            logging.warning(f'could not update audit log: {e}')
 
 
 class GenericFormDataHandler(AuthRequestHandler):
@@ -1359,29 +1359,6 @@ class StreamHandler(AuthRequestHandler):
             except Exception as e:
                 logging.info('problem calling request hook')
                 logging.info(e)
-            try:
-                message_data = {
-                    'path': resource_path,
-                    'requestor': self.requestor,
-                    'group': self.group_name
-                }
-                self.handle_mq_publication(
-                    mq_config=self.mq_config,
-                    data=message_data
-                )
-            except Exception as e:
-                logging.error(e)
-            try:
-                self.update_request_log(
-                    tenant=self.tenant,
-                    backend=self.backend,
-                    requestor=self.requestor,
-                    method=self.request.method,
-                    uri=self.request.uri,
-                    app=self.get_app_name(self.request.uri),
-                )
-            except Exception as e:
-                logger.warn(e)
             self.on_finish_called = True
 
 
@@ -1414,24 +1391,6 @@ class StreamHandler(AuthRequestHandler):
                             self.request_hook['path'],
                             [resource_path, self.requestor, options.api_user, self.group_name],
                             as_sudo=self.request_hook['sudo']
-                        )
-                    if not self.on_finish_called:
-                        message_data = {
-                            'path': resource_path,
-                            'requestor': self.requestor,
-                            'group': self.group_name
-                        }
-                        self.handle_mq_publication(
-                            mq_config=self.mq_config,
-                            data=message_data
-                        )
-                        self.update_request_log(
-                            tenant=self.tenant,
-                            backend=self.backend,
-                            requestor=self.requestor,
-                            method=self.request.method,
-                            uri=self.request.uri,
-                            app=self.get_app_name(self.request.uri),
                         )
                 # otherwise leave the partial upload in place, as is
                 # most likely a client that closed the connection
@@ -1621,6 +1580,7 @@ class ProxyHandler(AuthRequestHandler):
                 upload_id, chunk_num = None, None
                 chunk_num = url_unescape(self.get_query_argument('chunk'))
                 upload_id = url_unescape(self.get_query_argument('id'))
+                self.chunk_num = chunk_num # used in on_finish
             except Exception:
                 pass
             # 8.2 enfore group logic, if enabled
@@ -2224,6 +2184,10 @@ class ProxyHandler(AuthRequestHandler):
         if (
             self.request.method in ('GET', 'HEAD', 'DELETE')
             and not options.maintenance_mode_enabled
+            and self._status_code < 300
+        ) or (
+            (self.request.method == 'PUT'
+            or (self.request.method == 'PATCH' and self.chunk_num == 'end'))
             and self._status_code < 300
         ):
             try:
