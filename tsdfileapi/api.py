@@ -2185,13 +2185,10 @@ class ProxyHandler(AuthRequestHandler):
 
     def on_finish(self):
         if (
-            self.request.method in ('GET', 'HEAD', 'DELETE')
-            and not options.maintenance_mode_enabled
+            not options.maintenance_mode_enabled
             and self._status_code < 300
-        ) or (
-            (self.request.method == 'PUT'
+            and (self.request.method in ('GET', 'HEAD', 'DELETE', 'PUT')
             or (self.request.method == 'PATCH' and self.chunk_num == 'end'))
-            and self._status_code < 300
         ):
             try:
                 message_data = {
