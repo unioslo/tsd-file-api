@@ -2405,7 +2405,7 @@ class GenericTableHandler(AuthRequestHandler):
                             table_name = self.create_table_name(table_name, suffix)
                     self.set_status(200)
                     self.set_header('Content-Type', 'application/json')
-                    self.write('{"data": [')
+                    self.write('[')
                     self.flush()
                     first = True
                     query = self.get_uri_query(self.request.uri)
@@ -2415,7 +2415,7 @@ class GenericTableHandler(AuthRequestHandler):
                         self.write(row)
                         self.flush()
                         first = False
-                    self.write(']}')
+                    self.write(']')
                     self.flush()
         except Exception as e:
             logging.error(e)
