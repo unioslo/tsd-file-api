@@ -519,6 +519,7 @@ class SqlGenerator(object):
     # which are implemented for specific SQL backend implementations
 
     def _term_to_sql_select(self, term):
+        #print(f'generated column: {self._gen_sql_col(term)}')
         rev = term.parsed.copy()
         rev.reverse()
         out = []
@@ -702,21 +703,25 @@ class SqliteQueryGenerator(SqlGenerator):
         return selection
 
     def _gen_sql_col(self, term):
-        if len(term.parsed[0].select_term.parsed) > 1:
-            test_select_term = term.parsed[0].select_term.parsed[-1]
+        if isinstance(term, WhereTerm) or isinstance(term, OrderTerm):
+            select_term = term.parsed[0].select_term
+        elif isinstance(term, SelectTerm):
+            select_term = term
+        if len(select_term.parsed) > 1:
+            test_select_term = select_term.parsed[-1]
             if isinstance(test_select_term, ArraySpecific):
-                target = term.parsed[0].select_term.original
+                target = select_term.original
             elif isinstance(test_select_term, ArraySpecificSingle):
-                _key = term.parsed[0].select_term.bare_term
-                _idx = term.parsed[0].select_term.parsed[-1].idx
-                _col = term.parsed[0].select_term.parsed[-1].sub_selections[0]
+                _key = select_term.bare_term
+                _idx = select_term.parsed[-1].idx
+                _col = select_term.parsed[-1].sub_selections[0]
                 target = f'{_key}[{_idx}].{_col}'
             else:
-                raise Exception(f'Unsupported term {term.original}')
+                target = select_term.bare_term
         else:
-            if not isinstance(term.parsed[0].select_term.parsed[0], Key):
+            if not isinstance(select_term.parsed[0], Key):
                 raise Exception(f'Invalid term {term.original}')
-            target = term.parsed[0].select_term.parsed[0].element
+            target = select_term.parsed[0].element
         col = f"json_extract(data, '$.{target}')"
         return col
 
@@ -804,30 +809,33 @@ class PostgresQueryGenerator(SqlGenerator):
         return selection
 
     def _gen_sql_col(self, term):
-        if len(term.parsed[0].select_term.parsed) > 1:
-            test_select_term = term.parsed[0].select_term.parsed[-1]
+        if isinstance(term, WhereTerm) or isinstance(term, OrderTerm):
+            select_term = term.parsed[0].select_term
+        elif isinstance(term, SelectTerm):
+            select_term = term
+        if isinstance(term, WhereTerm):
+            final_select_op = '#>>' # due to integer comparisons
+        else:
+            final_select_op = '#>'
+        if len(select_term.parsed) > 1:
+            test_select_term = select_term.parsed[-1]
             if isinstance(test_select_term, ArraySpecific):
-                target = self._gen_select_target(term.parsed[0].select_term.bare_term)
-                _idx = term.parsed[0].select_term.parsed[-1].idx
-                if isinstance(term, OrderTerm):
-                    col = f"data#>'{{{target}}}'#>'{{{_idx}}}'"
-                else:
-                    col = f"data#>'{{{target}}}'#>>'{{{_idx}}}'"
+                target = self._gen_select_target(select_term.bare_term)
+                _idx = select_term.parsed[-1].idx
+                col = f"data#>'{{{target}}}'{final_select_op}'{{{_idx}}}'"
             elif isinstance(test_select_term, ArraySpecificSingle):
-                target = self._gen_select_target(term.parsed[0].select_term.bare_term)
-                _idx = term.parsed[0].select_term.parsed[-1].idx
-                _col = term.parsed[0].select_term.parsed[-1].sub_selections[0]
+                target = self._gen_select_target(select_term.bare_term)
+                _idx = select_term.parsed[-1].idx
+                _col = select_term.parsed[-1].sub_selections[0]
                 col = f"data#>'{{{target}}}'#>'{{{_idx}}}'#>'{{{_col}}}'"
             else:
-                raise Exception(f'Unsupported term {term.original}')
+                target = self._gen_select_target(select_term.bare_term)
+                col = f"data{final_select_op}'{{{target}}}'"
         else:
-            if not isinstance(term.parsed[0].select_term.parsed[0], Key):
+            if not isinstance(select_term.parsed[0], Key):
                 raise Exception(f'Invalid term {term.original}')
-            target = term.parsed[0].select_term.parsed[0].element
-            if isinstance(term, OrderTerm):
-                col = f"data#>'{{{target}}}'"
-            else:
-                col = f"data#>>'{{{target}}}'"
+            target = select_term.parsed[0].element
+            col = f"data{final_select_op}'{{{target}}}'"
         if isinstance(term, WhereTerm):
             try:
                 integer_ops = ['eq', 'gt', 'gte', 'lt', 'lte', 'neq']
