@@ -131,29 +131,11 @@ extension, and 2) the ability to keep the code generation code maintainable.
 -- is generated
 
 select json_extract(data, '$.x') from mytable;
--- this produces a simplified result, throwing away the JSON structure
--- the HTTP/JSON query language will preserve the shape, so this
--- has to be implemented by rebuilding the original JSON
+-- this produces a simplified result
 
-select json_object('x', json_extract(data, '$.x')) from mytable;
--- and this is the SQL generation target:
--- json_object(key1, json_extract(data, '$.key1'), key2, json_extract(data, '$.key2'))
--- the above strategy is good enough for key selection which does not involve arrays
--- for selecting specific entries in an array like key2[0] we can rely on array
--- functionality in the json1 extension, e.g.
-
+-- array values are selected as such:
 select json_object(data, '$.b[0]') from mytable;
--- this once again return the simplified result, discarding json structure
--- to reconstruct the original we do the following
-
-select json_object(
-    'b',
-    case when json_extract(data, '$.b[0]') is not null
-    then json_array(json_extract(data, '$.b[0]'))
-    else null end) from mytable;
--- the reason for wrapping the call to json_extract(data, '$.b[0]') in a case statement
--- is that it will otherwise return [null] instead of null
--- this is the second SQL generation target
+-- this once again return the simplified result
 
 -- when array elements are maps, instead of single elements like strings, or scalars
 -- then one typically wants to perform key selection inside the array elements
@@ -173,24 +155,24 @@ select key, value, fullkey, path from mytable, json_tree(mytable.data);
 -- broadcasting over the array and thereby the third SQL generation
 -- strategy. Shown below:
 
-select json_object(
-    -- key
-    'c',
+-- selecting x, and nested values in c
+select json_array(
+    json_extract(data, '$.x'),
     -- slice and select in array elements
     (case when json_extract(data, '$.c') is not null then (
         select json_group_array(vals) from (
-            select json_object(
+            select json_array(
                 -- specify keys to select
-                'h', json_extract(value, '$.h'),
-                'p', json_extract(value, '$.p')) as vals
-            from (
+                json_extract(value, '$.h'),
+                json_extract(value, '$.p')
+            ) as vals from (
                 select key, value, fullkey, path
-                from mytable, json_tree(mytable.data)
+                from test_table, json_tree(test_table.data)
                 where path = '$.c'
                 -- add optional index value "n"
-                -- and fullkey = '$.c[n]'
-                )
+                -- and fullkey = '$.c[0]'
             )
         )
+    )
     else null end)
 ) from mytable;
