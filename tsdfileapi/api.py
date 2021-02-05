@@ -489,6 +489,9 @@ class AuthRequestHandler(RequestHandler):
                 or method not in backends.get(backend).get('methods')
             ):
                 return
+        except (AttributeError, KeyError, AssertionError) as e:
+            return
+        try:
             engine_type = options.request_log.get('db').get('engine')
             assert engine_type in ['postgres', 'sqlite'], \
                 f'unsupported engine_type: {engine_type}'
@@ -501,8 +504,6 @@ class AuthRequestHandler(RequestHandler):
             }
             table_name = self._log_table_name(backend, app)
             db.table_insert(table_name, data)
-        except (AttributeError, KeyError, AssertionError) as e:
-            logging.warning(f'could not update audit log: {e}')
         except Exception as e:
             logging.warning(f'could not update audit log: {e}')
 
