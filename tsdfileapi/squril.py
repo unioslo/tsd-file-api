@@ -355,8 +355,8 @@ class SqlGenerator(object):
 
     """
 
-    json_object_sql = None
     db_init_sql = None
+    json_array_sql = None
 
     def __init__(self, table_name, uri_query, data=None):
         self.table_name = table_name
@@ -376,8 +376,8 @@ class SqlGenerator(object):
             'is': 'is',
             'in': 'in'
         }
-        if not self.json_object_sql:
-            msg = 'Extending the SqlGenerator requires setting the class level property: json_object_sql'
+        if not self.json_array_sql:
+            msg = 'Extending the SqlGenerator requires setting the class level property: json_array_sql'
             raise Exception(msg)
         self.select_query = self.sql_select()
         self.update_query = self.sql_update()
@@ -519,7 +519,6 @@ class SqlGenerator(object):
     # which are implemented for specific SQL backend implementations
 
     def _term_to_sql_select(self, term):
-        #print(f'generated column: {self._gen_sql_col(term)}')
         rev = term.parsed.copy()
         rev.reverse()
         out = []
@@ -528,19 +527,15 @@ class SqlGenerator(object):
             if isinstance(parsed, Key):
                 if not first_done:
                     selection = self._gen_sql_key_selection(term, parsed)
-                else:
-                    # last call, wrapping up the selections
-                    selection = f"'{parsed.element}', {self.json_object_sql}({selection})"
             elif isinstance(parsed, ArraySpecific):
                 selection = self._gen_sql_array_selection(term, parsed)
-            elif isinstance(parsed, ArraySpecificSingle):
-                selection = self._gen_sql_array_sub_selection(term, parsed, specific=True)
-            elif isinstance(parsed, ArraySpecificMultiple):
-                selection = self._gen_sql_array_sub_selection(term, parsed, specific=True)
-            elif isinstance(parsed, ArrayBroadcastSingle):
-                selection = self._gen_sql_array_sub_selection(term, parsed, specific=False)
-            elif isinstance(parsed, ArrayBroadcastMultiple):
-                selection = self._gen_sql_array_sub_selection(term, parsed, specific=False)
+            elif (
+                isinstance(parsed, ArraySpecificSingle)
+                or isinstance(parsed, ArraySpecificMultiple)
+                or isinstance(parsed, ArrayBroadcastSingle)
+                or isinstance(parsed, ArrayBroadcastMultiple)
+            ):
+                selection = self._gen_sql_array_sub_selection(term, parsed)
             else:
                 raise Exception(f'Could not parse {term.original}')
             first_done = True
@@ -604,7 +599,7 @@ class SqlGenerator(object):
             sql_select = f'select * from {self.table_name}'
         else:
             joined = ",".join(out)
-            sql_select = f"select {self.json_object_sql}({joined}) from {self.table_name}"
+            sql_select = f"select {self.json_array_sql}({joined}) from {self.table_name}"
         return sql_select
 
     def _gen_sql_where_clause(self):
@@ -657,43 +652,41 @@ class SqliteQueryGenerator(SqlGenerator):
 
     """Generate SQL for SQLite json1 backed tables, from a given UriQuery."""
 
-    json_object_sql = 'json_object'
     db_init_sql = None
+    json_array_sql = 'json_array'
 
     # Helper functions - used by mappers
 
     def _gen_sql_key_selection(self, term, parsed):
-        selection = f"\"{parsed.element}\", json_extract(data, '$.{term.original}')"
-        return selection
+        return f"json_extract(data, '$.{term.original}')"
 
     def _gen_sql_array_selection(self, term, parsed):
-        selection = f"""
-            \"{parsed.bare_key}\",
-            case when json_extract(data, '$.{term.original}') is not null then
-                json_array(json_extract(data, '$.{term.original}'))
-            else null end
-            """
-        return selection
+        return f"json_extract(data, '$.{term.original}')"
 
-    def _gen_sql_array_sub_selection(self, term, parsed, specific=None):
-        if specific:
-            fullkey = f"and fullkey = '$.{parsed.bare_key}[{parsed.idx}]'"
+    def _gen_sql_array_sub_selection(self, term, parsed):
+        if (
+            isinstance(parsed, ArraySpecificSingle)
+            or isinstance(parsed, ArraySpecificMultiple)
+        ):
+            fullkey = f"and fullkey = '$.{term.bare_term}[{parsed.idx}]'"
+            vals = 'vals'
         else:
             fullkey = ''
+            vals = 'json_group_array(vals)'
         temp = []
         for key in parsed.sub_selections:
-            temp.append(f"\"{key}\", json_extract(value, '$.{key}')")
+            temp.append(f"json_extract(value, '$.{key}')")
         sub_selections = ','.join(temp)
+        sub_selections = f'json_array({sub_selections})' if len(temp) > 1 else f'{sub_selections}'
         selection = f"""
-                \"{parsed.bare_key}\",
                 (case when json_extract(data, '$.{term.bare_term}') is not null then (
-                    select json_group_array(vals) from (
-                        select json_object(
-                            {sub_selections}) as vals
+                    select {vals} from (
+                        select
+                            {sub_selections} as vals
                         from (
                             select key, value, fullkey, path
                             from {self.table_name}, json_tree({self.table_name}.data)
-                            where path = '$.{parsed.bare_key}'
+                            where path = '$.{term.bare_term}'
                             {fullkey}
                             )
                         )
@@ -735,7 +728,7 @@ class SqliteQueryGenerator(SqlGenerator):
 
 class PostgresQueryGenerator(SqlGenerator):
 
-    json_object_sql = 'jsonb_build_object'
+    json_array_sql = 'jsonb_build_array'
     db_init_sql = [
         """
         create or replace function filter_array_elements(data jsonb, keys text[])
@@ -744,20 +737,26 @@ class PostgresQueryGenerator(SqlGenerator):
             declare element jsonb;
             declare filtered jsonb;
             declare out jsonb;
+            declare val jsonb;
             begin
+                create temporary table if not exists info(v jsonb) on commit drop;
                 for element in select jsonb_array_elements(data) loop
                     for key in select unnest(keys) loop
                         if filtered is not null then
-                            filtered := filtered || jsonb_build_object(key, jsonb_extract_path(element, key));
+                            filtered := filtered || jsonb_extract_path(element, key);
                         else
-                            filtered := jsonb_build_object(key, jsonb_extract_path(element, key));
+                            filtered := jsonb_extract_path(element, key);
                         end if;
-                    end loop;
-                    if out is not null then
-                        out := out || jsonb_build_array(filtered)::jsonb;
-                    else
-                        out := jsonb_build_array(filtered)::jsonb;
+                    if filtered is null then
+                        filtered := '[]'::jsonb;
                     end if;
+                    end loop;
+                insert into info values (filtered);
+                filtered := null;
+                end loop;
+                out := '[]'::jsonb;
+                for val in select * from info loop
+                    out := out || jsonb_build_array(val);
                 end loop;
                 return out;
             end;
@@ -779,27 +778,28 @@ class PostgresQueryGenerator(SqlGenerator):
 
     def _gen_sql_key_selection(self, term, parsed):
         target = self._gen_select_target(term.original)
-        selection = f"'{parsed.element}', data#>'{{{target}}}'"
+        selection = f"data#>'{{{target}}}'"
         return selection
 
     def _gen_sql_array_selection(self, term, parsed):
         target = self._gen_select_target(term.bare_term)
         selection = f"""
-            '{parsed.bare_key}',
             case when data#>'{{{target}}}'->{parsed.idx} is not null then
-                array[data#>'{{{target}}}'->{parsed.idx}]
+                data#>'{{{target}}}'->{parsed.idx}
             else null end
             """
         return selection
 
-    def _gen_sql_array_sub_selection(self, term, parsed, specific=None):
+    def _gen_sql_array_sub_selection(self, term, parsed):
         target = self._gen_select_target(term.bare_term)
         sub_selections = ','.join(parsed.sub_selections)
         data_selection_expr = f"filter_array_elements(data#>'{{{target}}}','{{{sub_selections}}}')"
-        if specific:
-            data_selection_expr = f'array[{data_selection_expr}->{parsed.idx}]'
+        if (
+            isinstance(parsed, ArraySpecificSingle)
+            or isinstance(parsed, ArraySpecificMultiple)
+        ):
+            data_selection_expr = f'{data_selection_expr}->{parsed.idx}'
         selection = f"""
-            '{parsed.bare_key}',
             case
                 when data#>'{{{target}}}' is not null
                 and jsonb_typeof(data#>'{{{target}}}') = 'array'

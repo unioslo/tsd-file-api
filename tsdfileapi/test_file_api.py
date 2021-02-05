@@ -84,6 +84,7 @@ import yaml
 
 from pretty_bad_protocol import gnupg
 from sqlalchemy.exc import OperationalError
+from termcolor import colored
 from tsdapiclient import fileapi
 from tornado.escape import url_escape
 
@@ -1658,16 +1659,16 @@ class TestFileApi(unittest.TestCase):
         ):
             out = []
             if verbose:
-                print(uri_query)
+                print(colored(uri_query, 'magenta'))
             q = SqlGeneratorCls(table, uri_query)
             if verbose:
-                print(q.select_query)
+                print(colored(q.select_query, 'yellow'))
             with session_func(engine) as session:
                 session.execute(q.select_query)
                 resp = session.fetchall()
             for row in resp:
                 target = row[0]
-                if isinstance(target, dict):
+                if isinstance(target, dict) or isinstance(target, list):
                     _in = target
                 else:
                     _in = json.loads(target)
@@ -1718,117 +1719,142 @@ class TestFileApi(unittest.TestCase):
         db.table_insert('test_table', data)
 
         # SELECT
+        if verbose:
+            print('\n===> SELECT\n')
         # simple key selection
         out = test_select_query('select=x')
         for entry in out:
-            self.assertTrue('x' in entry.keys())
-            self.assertTrue(len(entry.keys()) == 1)
+            self.assertTrue(isinstance(entry, list))
+        self.assertEqual(out[0][0], 1900)
         # more than one simple key
         out = test_select_query('select=x,z')
-        for entry in out:
-            self.assertTrue('x' in entry.keys() and 'z' in entry.keys())
-            self.assertTrue(len(entry.keys()) == 2)
+        self.assertTrue(len(out[0]) == 2)
         # nested key
         out = test_select_query('select=a.k1')
-        self.assertEqual(out[1]['a']['k1'], None)
-        self.assertEqual(out[2]['a']['k1'], {'r1': [1, 2], 'r2': 2})
+        self.assertEqual(len(out[0]), 1)
+        self.assertEqual(out[2], [{'r1': [1, 2], 'r2': 2}])
         # simple array slice
         out = test_select_query('select=x,b[1]')
-        self.assertEqual(out[0]['b'], [2])
-        self.assertEqual(out[1]['b'], None)
+        self.assertEqual(out[0][1], 2)
+        self.assertEqual(out[1][1], None)
         # nested simple array slice
         out = test_select_query('select=x,a.k2[1]')
-        self.assertEqual(out[2]['a']['k2'], [9])
+        self.assertEqual(out[2], [88, 9])
         # selecting a key inside an array slice
         out = test_select_query('select=x,c[1|h]')
-        self.assertEqual(out[0]['c'], None)
-        self.assertEqual(out[1]['c'], [{'h': 32}])
+        self.assertEqual(out[0][1], None)
+        self.assertEqual(out[1][1], 32)
         # selecting keys inside an array slice
         out = test_select_query('select=x,c[1|h,p]')
-        self.assertEqual(out[0]['c'], None)
-        self.assertEqual(out[1]['c'], [{'h': 32, 'p': False}])
+        self.assertEqual(out[0][1], None)
+        self.assertEqual(out[1][1], [32, 0])
         # broadcast key selection inside array - single key
         out = test_select_query('select=x,c[*|h]')
-        self.assertTrue(len(out[1]['c']) == 3)
+        self.assertTrue(len(out[1][1]) == 3)
+        self.assertEqual(out[1][1], [3, 32, 0])
         # broadcast key selection inside array - mutliple keys
         out = test_select_query('select=x,c[*|h,p]')
-        self.assertTrue(len(out[1]['c']) == 3)
-        self.assertEqual(out[1]['c'][0], {'h': 3, 'p': 99})
+        self.assertTrue(len(out[1][1]) == 3)
+        self.assertEqual(out[1][1][0], [3, 99])
         # nested array selection
         out = test_select_query('select=a.k1.r1[0]')
-        self.assertEqual(out[2]['a']['k1']['r1'], [1])
-        # nested key selection inside array
-        out = test_select_query('select=a.k3[0|h,z]')
+        self.assertEqual(out[2], [1])
+        # nested keys
+        # with single selection inside array, specific element
+        out = test_select_query('select=a.k3[0|h]')
+        self.assertEqual(out[3], [0])
+        # with single selection inside array, broadcast
+        out = test_select_query('select=a.k3[*|h]')
+        self.assertEqual(out[3], [[0, 63]])
+        # now multiple sub-selections
+        out = test_select_query('select=a.k3[0|h,s]')
+        self.assertEqual(out[3], [[0, 521]])
+        out = test_select_query('select=a.k3[*|h,s]')
+        self.assertEqual(out[3], [[[0, 521], [63, 333]]])
+        # multiple sub-keys
+        out = test_select_query('select=a.k1,a.k3')
+        self.assertEqual(out[3], [{'r1': [33, 200], 'r2': 90}, [{'h': 0, 'r': 77, 's': 521}, {'h': 63, 's': 333}]])
 
         # WHERE
+        if verbose:
+            print('\n===> WHERE\n')
         # simple key op
-        out = test_select_query('select=x&where=x=gt.1000')
-        self.assertEqual(out, [{'x': 1900}])
+        out = test_select_query('where=x=gt.1000')
+        self.assertEqual(out[0]['x'], 1900)
         # multipart simple key ops
-        out = test_select_query('select=x&where=x=gt.1000,or:y=eq.11')
-        self.assertEqual(out[0], {'x': 1900})
-        self.assertEqual(out[1], {'x': None})
-        out = test_select_query('select=x&where=x=lt.1000,and:y=eq.11')
+        out = test_select_query('where=x=gt.1000,or:y=eq.11')
+        self.assertEqual(len(out), 2)
+        out = test_select_query('where=x=lt.1000,and:y=eq.11')
         self.assertEqual(out, [])
-        # groups
+        # groups (with a select)
         out = test_select_query('select=x&where=((x=lt.1000,and:y=eq.11),or:x=gt.1000)')
-        self.assertEqual(out, [{'x': 1900}])
+        self.assertEqual(out, [[1900]])
         # is, not, like, and null
-        out = test_select_query('select=x&where=x=not.is.null')
+        out = test_select_query('where=x=not.is.null')
         self.assertTrue(len(out) == 4)
         out = test_select_query('select=d&where=d=not.like.*g3')
         self.assertTrue(len(out) == 2)
         # in
         out = test_select_query('select=d&where=d=in.[string1,string2]')
         self.assertTrue(len(out) == 2)
-        self.assertEqual(out, [{'d': 'string1'}, {'d': 'string2'}])
+        self.assertEqual(out, [['string1'], ['string2']])
         # nested key ops
+        out = test_select_query('where=a.k1.r2=eq.90')
+        self.assertTrue(len(out) == 1)
+        # nested key ops with slicing
         out = test_select_query('select=x&where=a.k1.r1[0]=eq.1')
-        self.assertEqual(out, [{'x': 88}])
+        self.assertEqual(out[0][0], 88)
         out = test_select_query('select=x&where=a.k3[0|h]=eq.0')
-        self.assertEqual(out, [{'x': 107}])
+        self.assertEqual(out[0][0], 107)
         # timestamps
         out = test_select_query('select=x,timestamp&where=timestamp=gt.2020-10-14')
         self.assertTrue(len(out) == 3)
         out = test_select_query('select=x,timestamp&where=timestamp=lt.2020-10-14')
         self.assertTrue(len(out) == 2)
 
-
         # ORDER
+        if verbose:
+            print('\n===> ORDER\n')
         # Note: postgres and sqlite treat NULLs different in ordering
         # postgres puts them first, sqlite puts them last, so be it
         # simple key
         out = test_select_query('select=x&where=x=not.is.null&order=x.desc')
-        x_array = [1900, 107, 88, 10]
-        self.assertEqual(list(map(lambda x: x['x'], out)), x_array)
+        x_array = [[1900], [107], [88], [10]]
+        self.assertEqual(out, x_array)
         x_array.reverse()
         out = test_select_query('select=x&where=x=not.is.null&order=x.asc')
-        self.assertEqual(list(map(lambda x: x['x'], out)), x_array)
+        self.assertEqual(out, x_array)
         # array selections
         out = test_select_query('select=x,a&where=a.k1.r1[0]=not.is.null&order=a.k1.r1[0].desc')
-        self.assertTrue(out[0]['x'] == 107)
+        self.assertTrue(out[0][0] == 107)
         out = test_select_query('select=x,a&where=a.k3[0|h]=not.is.null&order=a.k3[0|h].desc')
-        self.assertTrue(out[0]['x'] == 107)
+        self.assertTrue(out[0][0] == 107)
         # timestamps
         out = test_select_query('select=x,timestamp&order=timestamp.desc')
-        self.assertTrue(out[0]['timestamp'] == '2020-10-14T20:20:34.388511')
+        self.assertTrue(out[0][1] == '2020-10-14T20:20:34.388511')
         out = test_select_query('select=x,timestamp&order=timestamp.asc')
-        self.assertTrue(out[0]['timestamp'] == '2020-10-13T10:15:26.388573')
+        self.assertTrue(out[0][1] == '2020-10-13T10:15:26.388573')
 
         # RANGE
+        if verbose:
+            print('\n===> RANGE\n')
         out = test_select_query('select=x&where=x=not.is.null&order=x.desc&range=0.2')
-        self.assertEqual(out, [{'x': 1900}, {'x': 107}])
+        self.assertEqual(out, [[1900], [107]])
         out = test_select_query('select=x&where=x=not.is.null&order=x.desc&range=1.2')
-        self.assertEqual(out, [{'x': 107}, {'x': 88}])
+        self.assertEqual(out, [[107], [88]])
 
         # UPDATE
+        if verbose:
+            print('\n===> UPDATE\n')
         # TODO: select data, check results
         out = test_update_query('set=x&where=x=lt.1000', data={'x': 999})
         out = test_select_query('select=x&where=x=eq.999')
-        self.assertEqual(out[0]['x'], 999)
+        self.assertEqual(out[0][0], 999)
         self.assertTrue(len(out) == 3)
 
         # DELETE
+        if verbose:
+            print('\n===> DELETE\n')
         out = test_delete_query('where=x=lt.1000')
         self.assertTrue(out is True)
         out = test_select_query('select=x&where=x=lt.1000')
@@ -1890,7 +1916,7 @@ class TestFileApi(unittest.TestCase):
                         'r2': 90
                     },
                     'k2': ['val222', 90],
-                    'k3': [{'h': 0}]
+                    'k3': [{'h': 0, 'r': 77, 's': 521}, {'h': 63, 's': 333}]
                 },
                 'z': 10,
                 'x': 107,
@@ -1909,6 +1935,8 @@ class TestFileApi(unittest.TestCase):
         except KeyError as e:
             print('no postgres pool found - not testing postgres backend')
             pool = None
+        if self.verbose:
+            print('Testing sqlite\n')
         self.test_db_backend(
             data,
             engine,
@@ -1918,6 +1946,8 @@ class TestFileApi(unittest.TestCase):
             self.verbose
         )
         if pool:
+            if self.verbose:
+                print('Testing postgres\n')
             self.test_db_backend(
                 data,
                 pool,
