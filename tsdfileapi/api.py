@@ -2413,7 +2413,7 @@ class GenericTableHandler(AuthRequestHandler):
                     for row in self.db.table_select(table_name, query):
                         if not first:
                             self.write(',')
-                        self.write(row)
+                        self.write(json.dumps(row))
                         self.flush()
                         first = False
                     self.write(']')
