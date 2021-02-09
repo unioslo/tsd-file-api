@@ -1983,8 +1983,10 @@ class ProxyHandler(AuthRequestHandler):
                 self.set_status(403)
                 raise Exception
             try:
-                secured_filename = check_filename(url_unescape(filename),
-                                                  disallowed_start_chars=options.start_chars)
+                secured_filename = check_filename(
+                    url_unescape(filename),
+                    disallowed_start_chars=options.start_chars
+                )
             except Exception as e:
                 self.set_status(403)
                 raise Exception
@@ -2743,7 +2745,10 @@ class Backends(object):
 
         if self.config.get('request_log'):
             print(colored('Initialising request log db', 'magenta'))
-            self.initdb_request_log()
+            try:
+                self.initdb_request_log()
+            except Exception as e:
+                logging.warning(f'could not connect to request log db: {e}')
 
     def initdb(self, name):
         engine_type = options.config['backends']['dbs'][name]['db']['engine']
