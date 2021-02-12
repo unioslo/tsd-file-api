@@ -2229,7 +2229,6 @@ class ProxyHandler(AuthRequestHandler):
         if (
             not options.maintenance_mode_enabled
             and self._status_code < 300
-            # TODO: avoid request log update and MQ for listing dirs
             and self.request.method in ('GET', 'HEAD', 'DELETE')
         ):
             try:
