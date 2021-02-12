@@ -1358,6 +1358,26 @@ class StreamHandler(AuthRequestHandler):
             except Exception as e:
                 logging.info('problem calling request hook')
                 logging.info(e)
+            try:
+                message_data = {
+                        'path': resource_path,
+                        'requestor': self.requestor,
+                        'group': self.group_name,
+                    }
+                self.handle_mq_publication(
+                    mq_config=self.mq_config,
+                    data=message_data,
+                )
+                self.update_request_log(
+                    tenant=self.tenant,
+                    backend=self.backend,
+                    requestor=self.requestor,
+                    method=self.request.method,
+                    uri=self.request.headers.get('Original-Uri'),
+                    app=self.get_app_name(self.request.uri),
+                )
+            except Exception as e:
+                logging.error(e)
             self.on_finish_called = True
 
 
@@ -1392,6 +1412,27 @@ class StreamHandler(AuthRequestHandler):
                 # otherwise leave the partial upload in place, as is
                 # most likely a client that closed the connection
                 # while uploading a chunk, that was never finished
+                if not self.on_finish_called:
+                    try:
+                        message_data = {
+                                'path': resource_path,
+                                'requestor': self.requestor,
+                                'group': self.group_name,
+                            }
+                        self.handle_mq_publication(
+                            mq_config=self.mq_config,
+                            data=message_data,
+                        )
+                        self.update_request_log(
+                            tenant=self.tenant,
+                            backend=self.backend,
+                            requestor=self.requestor,
+                            method=self.request.method,
+                            uri=self.request.headers.get('Original-Uri'),
+                            app=self.get_app_name(self.request.uri),
+                        )
+                    except Exception as e:
+                        logging.error(e)
         except (AttributeError, Exception) as e:
             logging.error(e)
 
@@ -2186,8 +2227,8 @@ class ProxyHandler(AuthRequestHandler):
         if (
             not options.maintenance_mode_enabled
             and self._status_code < 300
-            and (self.request.method in ('GET', 'HEAD', 'DELETE', 'PUT')
-            or (self.request.method == 'PATCH' and self.chunk_num == 'end'))
+            # TODO: avoid request log update and MQ for listing dirs
+            and self.request.method in ('GET', 'HEAD', 'DELETE')
         ):
             try:
                 message_data = {
