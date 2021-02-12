@@ -1501,6 +1501,7 @@ class ProxyHandler(AuthRequestHandler):
                     raise Exception
                 else:
                     body = self.body_producer
+                self.listing_dir = False
             except Exception as e:
                 logging.error('Could not set up internal async variables')
                 raise e
@@ -1791,6 +1792,7 @@ class ProxyHandler(AuthRequestHandler):
         dict
 
         """
+        self.listing_dir = True
         current_page = 0
         pagination_value = 100
         disable_metadata = self.get_query_argument('disable_metadata', None)
@@ -2240,14 +2242,15 @@ class ProxyHandler(AuthRequestHandler):
                     mq_config=self.mq_config,
                     data=message_data
                 )
-                self.update_request_log(
-                    tenant=self.tenant,
-                    backend=self.backend,
-                    requestor=self.requestor,
-                    method=self.request.method,
-                    uri=self.request.uri,
-                    app=self.get_app_name(self.request.uri),
-                )
+                if not self.listing_dir:
+                    self.update_request_log(
+                        tenant=self.tenant,
+                        backend=self.backend,
+                        requestor=self.requestor,
+                        method=self.request.method,
+                        uri=self.request.uri,
+                        app=self.get_app_name(self.request.uri),
+                    )
             except Exception as e:
                 logging.error(e)
 
