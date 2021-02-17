@@ -1,7 +1,9 @@
 
 import json
 import logging
+import time
 import urllib
+import uuid
 
 import pika
 
@@ -99,7 +101,9 @@ class PikaClient(object):
             body=message,
             properties=pika.BasicProperties(
                 content_type='application/json',
-                delivery_mode=delivery_mode
+                delivery_mode=delivery_mode,
+                timestamp=int(time.time()),
+                message_id=str(uuid.uuid4()),
             )
         )
         return
