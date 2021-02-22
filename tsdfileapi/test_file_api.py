@@ -180,7 +180,7 @@ class TestFileApi(unittest.TestCase):
             cls.config['tenant_string_pattern'],
             test=True
         )
-        cls.store_import_folder = cls.config['backends']['disk']['store']['import_path'].replace('pXX', cls.config['test_project'])
+        cls.publication_import_folder = cls.config['backends']['disk']['publication']['import_path'].replace('pXX', cls.config['test_project'])
         cls.apps_import_folder = cls.config['backends']['disk']['apps_files']['import_path'].replace('pXX', cls.config['test_project'])
         cls.verbose = cls.config.get('verbose')
 
@@ -192,8 +192,8 @@ class TestFileApi(unittest.TestCase):
         cls.upload_stream = cls.base_url + '/files/upload_stream'
         cls.export = cls.base_url + '/files/export'
         cls.resumables = cls.base_url + '/files/resumables'
-        cls.store_import = cls.base_url + '/store/import'
-        cls.store_export = cls.base_url + '/store/export'
+        cls.publication_import = cls.base_url + '/publication/import'
+        cls.publication_export = cls.base_url + '/publication/export'
         cls.survey = cls.base_url + '/survey'
         cls.apps = cls.base_url + '/apps'
         cls.logs = cls.base_url + '/logs'
@@ -1387,16 +1387,16 @@ class TestFileApi(unittest.TestCase):
                             headers=headers)
         self.assertEqual(resp.status_code, 401)
 
-    # TODO: store system backend
+    # TODO: publication system backend
 
-    def test_ZZg_store_import_and_export(self):
+    def test_ZZg_publication_import_and_export(self):
         headers = {'Authorization': 'Bearer ' + TEST_TOKENS['VALID']}
-        resp = requests.put(self.store_import + '/' + url_escape('så_søt(1).txt'),
+        resp = requests.put(self.publication_import + '/' + url_escape('så_søt(1).txt'),
                             data=lazy_file_reader(self.so_sweet),
                             headers=headers)
         self.assertEqual(resp.status_code, 201)
         headers = {'Authorization': 'Bearer ' + TEST_TOKENS['EXPORT']}
-        resp = requests.get(self.store_export + '/' + url_escape('så_søt(1).txt'), headers=headers)
+        resp = requests.get(self.publication_export + '/' + url_escape('så_søt(1).txt'), headers=headers)
         self.assertEqual(resp.status_code, 200)
 
     # directories
@@ -1446,7 +1446,7 @@ class TestFileApi(unittest.TestCase):
         self.assertEqual(resp.status_code, 201)
         # 2. backend without group logic
         file = url_escape('no-group-logic.txt')
-        resp = requests.put(f'{self.store_import}/dir1/{file}',
+        resp = requests.put(f'{self.publication_import}/dir1/{file}',
                             data=lazy_file_reader(self.so_sweet),
                             headers=headers)
         self.assertEqual(resp.status_code, 201)
@@ -1454,54 +1454,54 @@ class TestFileApi(unittest.TestCase):
 
     def test_ZZZ_patch_resumable_file_to_dir(self):
         self.start_new_resumable(
-            self.resume_file1, chunksize=5, endpoint=f'{self.store_import}/dir77',
-            uploads_folder=f'{self.store_import_folder}/dir77')
+            self.resume_file1, chunksize=5, endpoint=f'{self.publication_import}/dir77',
+            uploads_folder=f'{self.publication_import_folder}/dir77')
 
 
     def test_ZZZ_reserved_resources(self):
         headers = {'Authorization': 'Bearer ' + TEST_TOKENS['VALID']}
         # 1. hidden files
         file = url_escape('.resumables-p11-user.db')
-        resp = requests.put(f'{self.store_import}/{file}',
+        resp = requests.put(f'{self.publication_import}/{file}',
                             data=lazy_file_reader(self.so_sweet),
                             headers=headers)
         self.assertEqual(resp.status_code, 401)
         # 2. resumable data folders
         file = url_escape('myfile.chunk.2')
         test_dir = str(uuid.uuid4())
-        test_res_dir = f'{self.store_import_folder}/{test_dir}'
+        test_res_dir = f'{self.publication_import_folder}/{test_dir}'
         os.makedirs(test_res_dir)
-        with open(f'{self.store_import_folder}/{test_dir}/{file}', 'w') as f:
+        with open(f'{self.publication_import_folder}/{test_dir}/{file}', 'w') as f:
             f.write('some data')
-        resp = requests.put(f'{self.store_import}/{test_dir}/{file}',
+        resp = requests.put(f'{self.publication_import}/{test_dir}/{file}',
                             data=lazy_file_reader(self.so_sweet),
                             headers=headers)
         self.assertEqual(resp.status_code, 401)
         try:
-            shutil.rmtree(f'{self.store_import_folder}/{test_dir}')
+            shutil.rmtree(f'{self.publication_import_folder}/{test_dir}')
         except OSError as e:
             pass
         # 3. merged resumable files
         file = 'file.{0}'.format(str(uuid.uuid4()))
-        resp = requests.put(f'{self.store_import}/{test_dir}/{file}',
+        resp = requests.put(f'{self.publication_import}/{test_dir}/{file}',
                             data=lazy_file_reader(self.so_sweet),
                             headers=headers)
         self.assertEqual(resp.status_code, 401)
         # 4. parial upload files
         file = 'file.{0}.part'.format(str(uuid.uuid4()))
-        resp = requests.put(f'{self.store_import}/{test_dir}/{file}',
+        resp = requests.put(f'{self.publication_import}/{test_dir}/{file}',
                             data=lazy_file_reader(self.so_sweet),
                             headers=headers)
         self.assertEqual(resp.status_code, 401)
         # 5. export
         file = 'file.{0}.part'.format(str(uuid.uuid4()))
-        resp = requests.get(f'{self.store_import}/{test_dir}/{file}',
+        resp = requests.get(f'{self.publication_import}/{test_dir}/{file}',
                             data=lazy_file_reader(self.so_sweet),
                             headers=headers)
         self.assertEqual(resp.status_code, 401)
         # 6. delete
         file = 'file.{0}.part'.format(str(uuid.uuid4()))
-        resp = requests.delete(f'{self.store_import}/{test_dir}/{file}',
+        resp = requests.delete(f'{self.publication_import}/{test_dir}/{file}',
                             data=lazy_file_reader(self.so_sweet),
                             headers=headers)
         self.assertEqual(resp.status_code, 401)
@@ -1511,9 +1511,9 @@ class TestFileApi(unittest.TestCase):
         headers = {'Authorization': 'Bearer ' + TEST_TOKENS['EXPORT']}
         resp = requests.get(self.export, headers=headers)
         self.assertEqual(resp.status_code, 200)
-        resp = requests.get(self.store_export, headers=headers)
+        resp = requests.get(self.publication_export, headers=headers)
         self.assertEqual(resp.status_code, 200)
-        dirs = f'{self.store_import_folder}/topdir/bottomdir'
+        dirs = f'{self.publication_import_folder}/topdir/bottomdir'
         try:
             os.makedirs(dirs)
         except OSError:
@@ -1521,27 +1521,27 @@ class TestFileApi(unittest.TestCase):
         for i in range(101):
             with open(f'{dirs}/file{i}', 'w') as f:
                 f.write(f'hi there number {i}')
-        resp = requests.get(f'{self.store_export}/topdir', headers=headers)
+        resp = requests.get(f'{self.publication_export}/topdir', headers=headers)
         self.assertEqual(resp.status_code, 200)
-        resp = requests.get(f'{self.store_export}/topdir/bottomdir', headers=headers)
+        resp = requests.get(f'{self.publication_export}/topdir/bottomdir', headers=headers)
         self.assertEqual(resp.status_code, 200)
-        resp = requests.get(f'{self.store_export}/topdir/bottomdir?page=0', headers=headers)
+        resp = requests.get(f'{self.publication_export}/topdir/bottomdir?page=0', headers=headers)
         self.assertEqual(resp.status_code, 200)
         data1 = json.loads(resp.text)
-        resp = requests.get(f'{self.store_export}/topdir/bottomdir?page=1', headers=headers)
+        resp = requests.get(f'{self.publication_export}/topdir/bottomdir?page=1', headers=headers)
         self.assertEqual(resp.status_code, 200)
         data2 = json.loads(resp.text)
         self.assertTrue(data2['files'][0] not in data1['files'])
-        resp = requests.get(f'{self.store_export}/topdir/bottomdir?page=0&per_page=103', headers=headers)
+        resp = requests.get(f'{self.publication_export}/topdir/bottomdir?page=0&per_page=103', headers=headers)
         data = json.loads(resp.text)
         self.assertEqual(resp.status_code, 200)
         self.assertEqual(len(data['files']), 101)
         # fail gracefully
-        resp = requests.get(f'{self.store_export}/topdir/bottomdir?page=-1', headers=headers)
+        resp = requests.get(f'{self.publication_export}/topdir/bottomdir?page=-1', headers=headers)
         self.assertEqual(resp.status_code, 400)
-        resp = requests.get(f'{self.store_export}/topdir/bottomdir?page=blabla', headers=headers)
+        resp = requests.get(f'{self.publication_export}/topdir/bottomdir?page=blabla', headers=headers)
         self.assertEqual(resp.status_code, 400)
-        resp = requests.get(f'{self.store_export}/topdir/bottomdir?page=1&per_page=1001', headers=headers)
+        resp = requests.get(f'{self.publication_export}/topdir/bottomdir?page=1&per_page=1001', headers=headers)
         self.assertEqual(resp.status_code, 400)
         try:
             shutil.rmtree(f'{dirs}')
@@ -1583,7 +1583,7 @@ class TestFileApi(unittest.TestCase):
 
     def test_ZZZ_get_file_from_dir(self):
         headers = {'Authorization': 'Bearer ' + TEST_TOKENS['EXPORT']}
-        dirs = f'{self.store_import_folder}/topdir/bottomdir'
+        dirs = f'{self.publication_import_folder}/topdir/bottomdir'
         try:
             os.makedirs(dirs)
         except OSError:
@@ -1592,12 +1592,12 @@ class TestFileApi(unittest.TestCase):
             f.write('hi there')
         with open(f'{dirs}/file2', 'w') as f:
             f.write('how are you?')
-        resp = requests.get(f'{self.store_export}/topdir/bottomdir/file1', headers=headers)
+        resp = requests.get(f'{self.publication_export}/topdir/bottomdir/file1', headers=headers)
         self.assertEqual(resp.status_code, 200)
         self.assertEqual(resp.text, 'hi there')
-        resp = requests.head(f'{self.store_export}/topdir/bottomdir/file1', headers=headers)
+        resp = requests.head(f'{self.publication_export}/topdir/bottomdir/file1', headers=headers)
         self.assertEqual(resp.status_code, 200)
-        resp = requests.head(f'{self.store_export}/topdir/bottomdir', headers=headers)
+        resp = requests.head(f'{self.publication_export}/topdir/bottomdir', headers=headers)
         self.assertEqual(resp.status_code, 200)
         try:
             shutil.rmtree(f'{dirs}')
@@ -1607,21 +1607,21 @@ class TestFileApi(unittest.TestCase):
 
     def test_ZZZ_delete(self):
         headers = {'Authorization': 'Bearer ' + TEST_TOKENS['EXPORT']}
-        dirs = f'{self.store_import_folder}/topdir/bottomdir'
-        resp = requests.put(f'{self.store_import}/topdir/bottomdir/file1',
+        dirs = f'{self.publication_import_folder}/topdir/bottomdir'
+        resp = requests.put(f'{self.publication_import}/topdir/bottomdir/file1',
                             data=lazy_file_reader(self.so_sweet),
                             headers=headers)
         self.assertEqual(resp.status_code, 201)
-        resp = requests.delete(f'{self.store_export}', headers=headers)
+        resp = requests.delete(f'{self.publication_export}', headers=headers)
         self.assertEqual(resp.status_code, 403)
-        resp = requests.delete(f'{self.store_export}/', headers=headers)
+        resp = requests.delete(f'{self.publication_export}/', headers=headers)
         self.assertEqual(resp.status_code, 401)
-        resp = requests.delete(f'{self.store_export}/topdir/bottomdir/file1', headers=headers)
+        resp = requests.delete(f'{self.publication_export}/topdir/bottomdir/file1', headers=headers)
         self.assertEqual(resp.status_code, 200)
         self.assertTrue('file1' not in os.listdir(dirs))
-        resp = requests.delete(f'{self.store_export}/topdir/bottomdir', headers=headers)
+        resp = requests.delete(f'{self.publication_export}/topdir/bottomdir', headers=headers)
         self.assertEqual(resp.status_code, 200)
-        resp = requests.delete(f'{self.store_export}/topdir/bottomdir/nofile', headers=headers)
+        resp = requests.delete(f'{self.publication_export}/topdir/bottomdir/nofile', headers=headers)
         self.assertEqual(resp.status_code, 404)
         try:
             shutil.rmtree(f'{dirs}')
@@ -2327,8 +2327,8 @@ def main():
         'test_ZU_sending_uneven_chunks_resume_works',
         'test_ZV_resume_chunk_order_enforced',
         'test_ZW_resumables_access_control',
-        # store backend
-        'test_ZZg_store_import_and_export',
+        # publication backend
+        'test_ZZg_publication_import_and_export',
     ]
     form_data = [
         # form-data
