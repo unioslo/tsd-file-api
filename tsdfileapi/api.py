@@ -2730,6 +2730,8 @@ class Backends(object):
             ('/v1/(.*)/publication/resumables/(.*)', ResumablesHandler, dict(backend='publication')),
             ('/v1/(.*)/publication/export', ProxyHandler, dict(backend='publication', namespace='publication', endpoint='export')),
             ('/v1/(.*)/publication/export/(.*)', ProxyHandler, dict(backend='publication', namespace='publication', endpoint='export')),
+            ('/v1/(.*)/publication/tables/(.+)', GenericTableHandler, dict(backend='publication')),
+            ('/v1/(.*)/publication/tables', GenericTableHandler, dict(backend='publication')),
         ],
         'apps_files': [
             ('/v1/(.*)/apps/.+/resumables', ResumablesHandler, dict(backend='apps_files')),
@@ -2777,7 +2779,7 @@ class Backends(object):
         for name, backend in self.config['backends']['dbs'].items():
             db_backend = self.database_backends[backend['db']['engine']]
             if db_backend.generator_class.db_init_sql:
-                print(colored(f"DB backend: {backend['db']['engine']}", 'cyan'))
+                print(colored(f"DB backend: {backend['db']['engine']}, {name}", 'cyan'))
                 self.initdb(name)
 
         if self.config.get('rabbitmq', {}).get('enabled'):
