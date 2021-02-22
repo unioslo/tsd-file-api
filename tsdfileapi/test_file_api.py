@@ -194,6 +194,7 @@ class TestFileApi(unittest.TestCase):
         cls.resumables = cls.base_url + '/files/resumables'
         cls.publication_import = cls.base_url + '/publication/import'
         cls.publication_export = cls.base_url + '/publication/export'
+        cls.publication_tables = cls.base_url + '/publication/tables'
         cls.survey = cls.base_url + '/survey'
         cls.apps = cls.base_url + '/apps'
         cls.logs = cls.base_url + '/logs'
@@ -1387,17 +1388,37 @@ class TestFileApi(unittest.TestCase):
                             headers=headers)
         self.assertEqual(resp.status_code, 401)
 
-    # TODO: publication system backend
+    # publication system backend
 
-    def test_ZZg_publication_import_and_export(self):
+    def test_ZZg_publication(self):
+        # files
         headers = {'Authorization': 'Bearer ' + TEST_TOKENS['VALID']}
-        resp = requests.put(self.publication_import + '/' + url_escape('så_søt(1).txt'),
-                            data=lazy_file_reader(self.so_sweet),
-                            headers=headers)
+        resp = requests.put(
+            self.publication_import + '/' + url_escape('så_søt(1).txt'),
+            data=lazy_file_reader(self.so_sweet),
+            headers=headers,
+        )
         self.assertEqual(resp.status_code, 201)
         headers = {'Authorization': 'Bearer ' + TEST_TOKENS['EXPORT']}
-        resp = requests.get(self.publication_export + '/' + url_escape('så_søt(1).txt'), headers=headers)
+        resp = requests.get(
+            self.publication_export + '/' + url_escape('så_søt(1).txt'),
+            headers=headers,
+        )
         self.assertEqual(resp.status_code, 200)
+        # tables
+        headers = {'Authorization': 'Bearer ' + TEST_TOKENS['VALID']}
+        resp = requests.put(
+            f'{self.publication_tables}/tables/mydata',
+            data=json.dumps({'id': str(uuid.uuid4()), 'data': [1,2,3]}),
+            headers=headers,
+        )
+        self.assertEqual(resp.status_code, 201)
+        resp = requests.get(
+            f'{self.publication_tables}/tables/mydata',
+            headers=headers,
+        )
+        self.assertEqual(resp.status_code, 200)
+
 
     # directories
 
@@ -2328,7 +2349,7 @@ def main():
         'test_ZV_resume_chunk_order_enforced',
         'test_ZW_resumables_access_control',
         # publication backend
-        'test_ZZg_publication_import_and_export',
+        'test_ZZg_publication',
     ]
     form_data = [
         # form-data
