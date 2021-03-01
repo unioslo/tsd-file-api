@@ -34,9 +34,8 @@ import magic
 import tornado.queues
 import libnacl.sealed
 import libnacl.public
-
 import tornado.log
-from pandas import DataFrame
+
 from termcolor import colored
 from tornado.escape import json_decode, url_unescape, url_escape
 from tornado import gen
