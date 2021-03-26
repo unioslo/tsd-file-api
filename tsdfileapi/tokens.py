@@ -1,11 +1,14 @@
 
 """Helper functions for testing JWT."""
 
-import string
+
 import base64
-import random
 import os
+import random
+import string
 import time
+import uuid
+
 from datetime import datetime, timedelta
 
 from jwcrypto import jwt, jwk
@@ -39,7 +42,10 @@ def tkn(secret, exp=1, role=None, tenant=None, user=None):
                 'exp': exp,
                 'proj': tenant,
                 'user': user,
-                'groups': [tenant + '-member-group']
+                'groups': [tenant + '-member-group'],
+                'pid': str(uuid.uuid4()),
+                'name': 'import',
+                'host': 'test.api.tsd.usit.no',
             }
         else:
             claims = {'role': role, 'exp': exp}
