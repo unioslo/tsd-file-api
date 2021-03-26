@@ -475,6 +475,7 @@ class AuthRequestHandler(RequestHandler):
         method,
         uri,
         app=None,
+        claims={},
     ):
         """
         Log request information - for audit purposes.
@@ -501,6 +502,12 @@ class AuthRequestHandler(RequestHandler):
                 'method': method,
                 'uri': uri,
             }
+            added_claims = backends.get('claims')
+            if added_claims:
+                info = {}
+                for claim in added_claims:
+                    info[claim] = claims.get(claim)
+                data['claims'] = info
             table_name = self._log_table_name(backend, app)
             db.table_insert(table_name, data)
         except Exception as e:
@@ -1374,6 +1381,7 @@ class StreamHandler(AuthRequestHandler):
                     method=self.request.method,
                     uri=self.request.headers.get('Original-Uri'),
                     app=self.get_app_name(self.request.uri),
+                    claims=self.claims,
                 )
             except Exception as e:
                 logging.error(e)
@@ -1429,6 +1437,7 @@ class StreamHandler(AuthRequestHandler):
                             method=self.request.method,
                             uri=self.request.headers.get('Original-Uri'),
                             app=self.get_app_name(self.request.uri),
+                            claims=self.claims,
                         )
                     except Exception as e:
                         logging.error(e)
@@ -2248,6 +2257,7 @@ class ProxyHandler(AuthRequestHandler):
                         method=self.request.method,
                         uri=self.request.uri,
                         app=self.get_app_name(self.request.uri),
+                        claims=self.claims,
                     )
             except Exception as e:
                 logging.error(e)
@@ -2567,6 +2577,7 @@ class GenericTableHandler(AuthRequestHandler):
                     method=self.request.method,
                     uri=self.request.uri,
                     app=self.get_app_name(self.request.uri),
+                    claims=self.claims,
                 )
         except Exception as e:
             logging.error(e)
