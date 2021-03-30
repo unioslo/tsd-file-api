@@ -1802,7 +1802,7 @@ class ProxyHandler(AuthRequestHandler):
         """
         self.listing_dir = True
         current_page = 0
-        pagination_value = 100
+        pagination_value = 10000
         disable_metadata = self.get_query_argument('disable_metadata', None)
         try:
             current_page = int(self.get_query_argument('page'))
@@ -1817,7 +1817,7 @@ class ProxyHandler(AuthRequestHandler):
             self.set_status(400)
             self.message = 'next values are natural numbers'
             raise Exception
-        if pagination_value > 1000:
+        if pagination_value > 50000:
             self.set_status(400)
             self.message = 'per_page cannot exceed 1000'
             raise Exception
