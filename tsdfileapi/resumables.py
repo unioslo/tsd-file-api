@@ -471,7 +471,12 @@ class SerialResumable(AbstractResumable):
     def _get_full_chunks_on_disk(self, work_dir, upload_id, chunk_num):
         chunks_on_disk = os.listdir(work_dir + '/' + upload_id)
         chunks_on_disk.sort(key=_natural_keys)
-        full_chunks_on_disk = [ c for c in chunks_on_disk if '.part' not in c ]
+        full_chunks_on_disk = [
+            c for c in chunks_on_disk if (
+                '.part' not in c
+                and '.chunk' in c
+            )
+        ]
         return full_chunks_on_disk
 
     def delete(self, work_dir, filename, upload_id, owner):
