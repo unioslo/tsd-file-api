@@ -1562,7 +1562,7 @@ class TestFileApi(unittest.TestCase):
         self.assertEqual(resp.status_code, 400)
         resp = requests.get(f'{self.publication_export}/topdir/bottomdir?page=blabla', headers=headers)
         self.assertEqual(resp.status_code, 400)
-        resp = requests.get(f'{self.publication_export}/topdir/bottomdir?page=1&per_page=1001', headers=headers)
+        resp = requests.get(f'{self.publication_export}/topdir/bottomdir?page=1&per_page=500001', headers=headers)
         self.assertEqual(resp.status_code, 400)
         try:
             shutil.rmtree(f'{dirs}')
