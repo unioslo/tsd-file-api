@@ -8,13 +8,13 @@ import logging
 from jwcrypto import jwt, jwk, jws
 
 
-def b64_padder(payload):
+def b64_padder(payload: str) -> str:
     if payload is not None:
         payload += '=' * (-len(payload) % 4)
         return payload
 
 
-def extract_claims(token):
+def extract_claims(token: str) -> dict:
     enc_claim_text = token.split('.')[1]
     dec_claim_text = base64.b64decode(b64_padder(enc_claim_text))
     claims = json.loads(dec_claim_text)
@@ -22,12 +22,13 @@ def extract_claims(token):
 
 
 def process_access_token(
-        auth_header,
-        tenant,
-        check_tenant,
-        check_exp,
-        tenant_claim_name,
-        verify_with_secret=None):
+    auth_header: str,
+    tenant: str,
+    check_tenant: bool,
+    check_exp: bool,
+    tenant_claim_name: str,
+    verify_with_secret: bool = None,
+ ) -> dict:
     """
     Extract claims, check tenant access, and expiry.
 
