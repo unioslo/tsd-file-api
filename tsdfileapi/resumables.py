@@ -1,16 +1,20 @@
 
 import functools
-import re
+import hashlib
+import io
 import logging
 import os
+import re
 import shutil
-import uuid
 import stat
 import sqlite3
-import hashlib
+import uuid
 
 from abc import ABC, abstractmethod
 from contextlib import contextmanager
+from typing import ContextManager, Union
+
+import sqlalchemy
 
 from sqlalchemy.pool import QueuePool
 from sqlalchemy.orm import sessionmaker
@@ -25,11 +29,14 @@ _RW______ = stat.S_IREAD | stat.S_IWRITE
 class ResumableNotFoundError(Exception):
     pass
 
-def _atoi(text):
+class ResumableIncorrectChunkOrderError(Exception):
+    pass
+
+def _atoi(text: str) -> Union[int, str]:
     return int(text) if text.isdigit() else text
 
 
-def _natural_keys(text):
+def _natural_keys(text: str) -> list:
     """
     alist.sort(key=_natural_keys) sorts in human order
     http://nedbatchelder.com/blog/200712/human_sorting.html
@@ -37,7 +44,7 @@ def _natural_keys(text):
     return [ _atoi(c) for c in re.split(r'(\d+)', text) ]
 
 
-def _resumables_cmp(a, b):
+def _resumables_cmp(a: tuple, b: tuple) -> int:
     a_time = a[0]
     b_time = b[0]
     if a_time > b_time:
@@ -48,7 +55,11 @@ def _resumables_cmp(a, b):
         return 1
 
 
-def db_init(path, name='api-data.db', builtin=False):
+def db_init(
+    path: str,
+    name: str = 'api-data.db',
+    builtin: bool = False,
+) -> Union[sqlalchemy.engine.Engine, sqlite3.Connection]:
     dbname = name
     if not builtin:
         dburl = 'sqlite:///' + path + '/' + dbname
@@ -59,7 +70,9 @@ def db_init(path, name='api-data.db', builtin=False):
 
 
 @contextmanager
-def session_scope(engine):
+def session_scope(
+    engine: sqlalchemy.engine.Engine,
+) -> ContextManager[sqlalchemy.orm.session.Session]:
     Session = sessionmaker(bind=engine)
     session = Session()
     try:
@@ -72,7 +85,7 @@ def session_scope(engine):
         session.close()
 
 
-def md5sum(filename, blocksize=65536):
+def md5sum(filename: str, blocksize: int = 65536) -> str:
     _hash = hashlib.md5()
     with open(filename, "rb") as f:
         for block in iter(lambda: f.read(blocksize), b""):
@@ -82,67 +95,85 @@ def md5sum(filename, blocksize=65536):
 
 class AbstractResumable(ABC):
 
-    def __init__(self, work_dir=None, owner=None):
+    def __init__(self, work_dir: str = None, owner: str = None):
         super(AbstractResumable, self).__init__()
         self.work_dir = work_dir
         self.owner = owner
 
     @abstractmethod
     def prepare(
-            self,
-            work_dir,
-            in_filename,
-            url_chunk_num,
-            url_upload_id,
-            url_group,
-            owner,
-            key=None
-        ):
-        pass
+        self,
+        work_dir: str,
+        in_filename: str,
+        url_chunk_num: int,
+        url_upload_id: str,
+        url_group: str,
+        owner: str,
+        key: str = None,
+    ) -> tuple:
+        raise NotImplementedError
 
     @abstractmethod
-    def open_file(self, filename, mode):
-        pass
+    def open_file(self, filename: str, mode: str) -> io.BufferedRandom:
+        raise NotImplementedError
 
     @abstractmethod
-    def add_chunk(self, fd, chunk):
-        pass
+    def add_chunk(self, fd: io.BufferedRandom, chunk: bytes) -> None:
+        raise NotImplementedError
 
     @abstractmethod
-    def close_file(self, filename):
-        pass
+    def close_file(self, filename: str) -> None:
+        raise NotImplementedError
 
     @abstractmethod
     def merge_chunk(
-            self,
-            work_dir,
-            last_chunk_filename,
-            upload_id,
-            owner
-        ):
-        pass
+        self,
+        work_dir: str,
+        last_chunk_filename: str,
+        upload_id: str,
+        owner: str,
+    ) -> str:
+        raise NotImplementedError
 
     @abstractmethod
     def finalise(
-            self,
-            work_dir,
-            last_chunk_filename,
-            upload_id,
-            owner
-        ):
-        pass
+        self,
+        work_dir: str,
+        last_chunk_filename: str,
+        upload_id: str,
+        owner: str,
+    ) -> str:
+        raise NotImplementedError
 
     @abstractmethod
-    def list_all(self, work_dir, owner, key=None):
-        pass
+    def list_all(
+        self,
+        work_dir: str,
+        owner: str,
+        key: str = None,
+    ) -> dict:
+        raise NotImplementedError
 
     @abstractmethod
-    def info(self, work_dir, filename, upload_id, owner, key=None):
-        pass
+    def info(
+        self,
+        work_dir: str,
+        filename: str,
+        upload_id: str,
+        owner: str,
+        key: str = None,
+    ) -> dict:
+        raise NotImplementedError
 
     @abstractmethod
-    def delete(self, work_dir, filename, upload_id, owner):
-        pass
+    def delete(
+        self,
+        work_dir: str,
+        filename: str,
+        upload_id: str,
+        owner: str,
+    ) -> bool:
+        raise NotImplementedError
 
 
 class SerialResumable(AbstractResumable):
@@ -170,13 +201,17 @@ class SerialResumable(AbstractResumable):
 
     """
 
-    def __init__(self, work_dir=None, owner=None):
+    def __init__(self, work_dir: str = None, owner: str = None):
         super(SerialResumable, self).__init__(work_dir, owner)
         self.work_dir = work_dir
         self.owner = owner
         self.engine = self._init_db(owner, work_dir)
 
-    def _init_db(self, owner, work_dir):
+    def _init_db(
+        self,
+        owner: str,
+        work_dir: str,
+    ) -> Union[sqlalchemy.engine.Engine, sqlite3.Connection]:
         dbname = '{0}{1}{2}'.format('.resumables-', owner, '.db')
         rdb = db_init(work_dir, name=dbname)
         db_path = '{0}/{1}'.format(work_dir, dbname)
@@ -185,15 +220,15 @@ class SerialResumable(AbstractResumable):
         return rdb
 
     def prepare(
-            self,
-            work_dir,
-            in_filename,
-            url_chunk_num,
-            url_upload_id,
-            url_group,
-            owner,
-            key=None
-        ):
+        self,
+        work_dir: str,
+        in_filename: str,
+        url_chunk_num: int,
+        url_upload_id: str,
+        url_group: str,
+        owner: str,
+        key: str = None,
+    ) -> tuple:
         """
         The following cases are handled:
 
@@ -232,31 +267,42 @@ class SerialResumable(AbstractResumable):
             completed_resumable_file = None
         return chunk_num, upload_id, completed_resumable_file, chunk_order_correct, filename
 
-    def open_file(self, filename, mode):
+    def open_file(self, filename: str, mode: str) -> io.BufferedRandom:
         fd = open(filename, mode)
         os.chmod(filename, _RW______)
         return fd
 
-    def add_chunk(self, fd, chunk):
+    def add_chunk(self, fd: io.BufferedRandom, chunk: bytes) -> None:
         if not fd:
             return
         else:
             fd.write(chunk)
 
-    def close_file(self, fd):
+    def close_file(self, fd: str) -> None:
         if fd:
             fd.close()
 
-    def _refuse_upload_if_not_in_sequential_order(self, work_dir, upload_id, chunk_num):
+    def _refuse_upload_if_not_in_sequential_order(
+        self,
+        work_dir: str,
+        upload_id: str,
+        chunk_num: int,
+    ) -> bool:
         chunk_order_correct = True
-        full_chunks_on_disk = self._get_full_chunks_on_disk(work_dir, upload_id, chunk_num)
+        full_chunks_on_disk = self._get_full_chunks_on_disk(work_dir, upload_id)
         previous_chunk_num = int(full_chunks_on_disk[-1].split('.chunk.')[-1])
         if chunk_num <= previous_chunk_num or (chunk_num - previous_chunk_num) >= 2:
             chunk_order_correct = False
             logging.error('chunks must be uploaded in sequential order')
         return chunk_order_correct
 
-    def _find_nth_chunk(self, work_dir, upload_id, filename, n):
+    def _find_nth_chunk(
+        self,
+        work_dir: str,
+        upload_id: str,
+        filename: str,
+        n: int,
+    ) -> str:
         n = n - 1 # chunk numbers start at 1, but keep 0-based for the signaure
         current_resumable = '%s/%s' % (work_dir, upload_id)
         files = os.listdir(current_resumable)
@@ -265,7 +311,13 @@ class SerialResumable(AbstractResumable):
         out = completed_chunks[n] if completed_chunks else ''
         return out
 
-    def _find_relevant_resumable_dir(self, work_dir, filename, upload_id, key=None):
+    def _find_relevant_resumable_dir(
+        self,
+        work_dir: str,
+        filename: str,
+        upload_id: str,
+        key: str = None,
+    ) -> str:
         """
         If the client provides an upload_id, then the exact folder is returned.
         If no upload_id is provided, e.g. when the upload_id is lost, then
@@ -302,7 +354,12 @@ class SerialResumable(AbstractResumable):
                     relevant = pr
         return relevant
 
-    def list_all(self, work_dir, owner, key=None):
+    def list_all(
+        self,
+        work_dir: str,
+        owner: str,
+        key: str = None,
+    ) -> dict:
         potential_resumables = self._db_get_all_resumable_ids_for_owner(key=key)
         resumables = []
         info = []
@@ -313,9 +370,9 @@ class SerialResumable(AbstractResumable):
             if _IS_VALID_UUID.match(pr):
                 try:
                     chunk_size, max_chunk, md5sum, \
-                        previous_offset, next_offset, \
-                        warning, recommendation, \
-                        filename = self._get_resumable_chunk_info(current_pr, work_dir)
+                    previous_offset, next_offset, \
+                    warning, recommendation, \
+                    filename = self._get_resumable_chunk_info(current_pr, work_dir)
                     if recommendation == 'end':
                         next_offset = 'end'
                 except (OSError, Exception):
@@ -330,20 +387,28 @@ class SerialResumable(AbstractResumable):
                         key = self._db_get_key(pr)
                     except Exception: # for transition
                         pass
-                    info.append({
-                        'chunk_size': chunk_size,
-                        'max_chunk': max_chunk,
-                        'md5sum': md5sum,
-                        'previous_offset': previous_offset,
-                        'next_offset': next_offset,
-                        'id': pr,
-                        'filename': filename,
-                        'group': group,
-                        'key': key})
+                    info.append(
+                        {
+                            'chunk_size': chunk_size,
+                            'max_chunk': max_chunk,
+                            'md5sum': md5sum,
+                            'previous_offset': previous_offset,
+                            'next_offset': next_offset,
+                            'id': pr,
+                            'filename': filename,
+                            'group': group,
+                            'key': key
+                        }
+                    )
         return {'resumables': info}
 
-    def _repair_inconsistent_resumable(self, merged_file, chunks, merged_file_size,
-                                      sum_chunks_size):
+    def _repair_inconsistent_resumable(
+        self,
+        merged_file: str,
+        chunks: list,
+        merged_file_size: int,
+        sum_chunks_size: int,
+    ) -> tuple:
         """
         If the server process crashed after a chunk was uploaded,
         but while a merge was taking place, it is likey that
@@ -387,7 +452,7 @@ class SerialResumable(AbstractResumable):
             logging.error(e)
             return chunks, 'not sure what to do', 'end'
 
-    def _get_resumable_chunk_info(self, resumable_dir, work_dir):
+    def _get_resumable_chunk_info(self, resumable_dir: str, work_dir: str) -> tuple:
         """
         Get information needed to resume an upload.
         If the server-side data is inconsistent, then
@@ -399,9 +464,9 @@ class SerialResumable(AbstractResumable):
         tuple, (size, chunknum, md5sum, previous_offset, next_offset, key)
 
         """
-        def info(chunks, recommendation=None, warning=None):
+        def info(chunks: list, recommendation: str = None, warning: str = None) -> tuple:
             num = int(chunks[-1].split('.')[-1])
-            latest_size = bytes(chunks[-1])
+            latest_size = _bytes(chunks[-1])
             upload_id = os.path.basename(resumable_dir)
             next_offset = self._db_get_total_size(upload_id)
             previous_offset = next_offset - latest_size
@@ -411,13 +476,13 @@ class SerialResumable(AbstractResumable):
                 # check that the size of the merge file
                 # matches what we calculate from the
                 # chunks recorded in the resumable db
-                assert bytes(merged_file) == next_offset
+                assert _bytes(merged_file) == next_offset
             except AssertionError:
                 try:
                     logging.info('trying to repair inconsistent data')
-                    chunks, warning, recommendation = self._repair_inconsistent_resumable(merged_file,
-                                                                            chunks, bytes(merged_file),
-                                                                            next_offset)
+                    chunks, warning, recommendation = self._repair_inconsistent_resumable(
+                        merged_file, chunks, _bytes(merged_file), next_offset,
+                    )
                     return info(chunks)
                 except Exception as e:
                     logging.error(e)
@@ -425,7 +490,7 @@ class SerialResumable(AbstractResumable):
             return latest_size, num, md5sum(chunks[-1]), \
                    previous_offset, next_offset, recommendation, \
                    warning, filename
-        def bytes(chunk):
+        def _bytes(chunk: str) -> int:
             size = os.stat(chunk).st_size
             return size
         # may contain partial files, due to failed requests
@@ -434,15 +499,27 @@ class SerialResumable(AbstractResumable):
         chunks = [ c for c in all_chunks if '.part' not in c ]
         return info(chunks)
 
-    def info(self, work_dir, filename, upload_id, owner, key=None):
+    def info(
+        self,
+        work_dir: str,
+        filename: str,
+        upload_id: str,
+        owner: str,
+        key: str = None,
+    ) -> dict:
         relevant_dir = self._find_relevant_resumable_dir(work_dir, filename, upload_id, key=key)
         if not relevant_dir:
             logging.error('No resumable found for: %s', filename)
             raise ResumableNotFoundError
         resumable_dir = '%s/%s' % (work_dir, relevant_dir)
-        chunk_size, max_chunk, md5sum, \
-            previous_offset, next_offset, \
-            warning, recommendation, filename = self._get_resumable_chunk_info(resumable_dir, work_dir)
+        chunk_size, \
+        max_chunk, \
+        md5sum, \
+        previous_offset, \
+        next_offset, \
+        warning, \
+        recommendation, \
+        filename = self._get_resumable_chunk_info(resumable_dir, work_dir)
         identifier = upload_id if upload_id else relevant_dir
         try:
             group = self._db_get_group(identifier)
@@ -468,7 +545,7 @@ class SerialResumable(AbstractResumable):
         }
         return info
 
-    def _get_full_chunks_on_disk(self, work_dir, upload_id, chunk_num):
+    def _get_full_chunks_on_disk(self, work_dir: str, upload_id: str) -> list:
         chunks_on_disk = os.listdir(work_dir + '/' + upload_id)
         chunks_on_disk.sort(key=_natural_keys)
         full_chunks_on_disk = [
@@ -479,7 +556,13 @@ class SerialResumable(AbstractResumable):
         ]
         return full_chunks_on_disk
 
-    def delete(self, work_dir, filename, upload_id, owner):
+    def delete(
+        self,
+        work_dir: str,
+        filename: str,
+        upload_id: str,
+        owner: str,
+    ) -> bool:
         try:
             assert self._db_upload_belongs_to_owner(upload_id), 'upload does not belong to user'
             relevant_dir = work_dir + '/' + upload_id
@@ -493,7 +576,13 @@ class SerialResumable(AbstractResumable):
             logging.error('could not complete resumable deletion')
             return False
 
-    def finalise(self, work_dir, last_chunk_filename, upload_id, owner):
+    def finalise(
+        self,
+        work_dir: str,
+        last_chunk_filename: str,
+        upload_id: str,
+        owner: str,
+    ) -> str:
         assert '.part' not in last_chunk_filename
         filename = os.path.basename(last_chunk_filename.split('.chunk')[0])
         out = os.path.normpath(work_dir + '/' + filename + '.' + upload_id)
@@ -511,7 +600,13 @@ class SerialResumable(AbstractResumable):
             logging.error('finalise called on non-end chunk')
         return final
 
-    def merge_chunk(self, work_dir, last_chunk_filename, upload_id, owner):
+    def merge_chunk(
+        self,
+        work_dir: str,
+        last_chunk_filename: str,
+        upload_id: str,
+        owner: str,
+    ) -> str:
         """
         Merge chunks into one file, _in order_.
 
@@ -578,7 +673,12 @@ class SerialResumable(AbstractResumable):
             os.remove(old_chunk)
         return final
 
-    def _db_insert_new_for_owner(self, resumable_id, group, key=None):
+    def _db_insert_new_for_owner(
+        self,
+        resumable_id: str,
+        group: str,
+        key: str = None,
+    ) -> bool:
         """
         A backwards incompatible change introduced the key column
         to the resumable_uploads table. This is why existing tables'
@@ -627,7 +727,12 @@ class SerialResumable(AbstractResumable):
             )
         return True
 
-    def _db_update_with_chunk_info(self, resumable_id, chunk_num, chunk_size):
+    def _db_update_with_chunk_info(
+        self,
+        resumable_id: str,
+        chunk_num: int,
+        chunk_size: int,
+    ) -> bool:
         resumable_table = f'resumable_{resumable_id}'
         with session_scope(self.engine) as session:
             session.execute(f"""
@@ -637,7 +742,7 @@ class SerialResumable(AbstractResumable):
             )
         return True
 
-    def _db_pop_chunk(self, resumable_id, chunk_num):
+    def _db_pop_chunk(self, resumable_id: str, chunk_num: int) -> bool:
         resumable_table = f'resumable_{resumable_id}'
         with session_scope(self.engine) as session:
             res = session.execute(f"""
@@ -647,7 +752,7 @@ class SerialResumable(AbstractResumable):
             )
         return True
 
-    def _db_get_total_size(self, resumable_id):
+    def _db_get_total_size(self, resumable_id: str) -> int:
         resumable_table = f'resumable_{resumable_id}'
         with session_scope(self.engine) as session:
             res = session.execute(
@@ -655,7 +760,7 @@ class SerialResumable(AbstractResumable):
             ).fetchone()[0]
         return res
 
-    def _db_get_group(self, resumable_id):
+    def _db_get_group(self, resumable_id: str) -> str:
         with session_scope(self.engine) as session:
             res = session.execute(
                 'select upload_group from resumable_uploads where id = :resumable_id',
@@ -663,7 +768,7 @@ class SerialResumable(AbstractResumable):
             ).fetchone()[0]
         return res
 
-    def _db_get_key(self, resumable_id):
+    def _db_get_key(self, resumable_id:  str) -> str:
         with session_scope(self.engine) as session:
             res = session.execute(
                 'select key from resumable_uploads where id = :resumable_id',
@@ -671,7 +776,7 @@ class SerialResumable(AbstractResumable):
             ).fetchone()[0]
         return res
 
-    def _db_upload_belongs_to_owner(self, resumable_id):
+    def _db_upload_belongs_to_owner(self, resumable_id: str) -> bool:
         with session_scope(self.engine) as session:
             res = session.execute(
                 'select count(1) from resumable_uploads where id = :resumable_id',
@@ -679,7 +784,7 @@ class SerialResumable(AbstractResumable):
             ).fetchone()[0]
         return True if res > 0 else False
 
-    def _db_get_all_resumable_ids_for_owner(self, key=None):
+    def _db_get_all_resumable_ids_for_owner(self, key: str = None) -> list:
         try:
             params = {}
             if key:
@@ -693,7 +798,7 @@ class SerialResumable(AbstractResumable):
             return []
         return res # [(id,), (id,)]
 
-    def _db_remove_completed_for_owner(self, resumable_id):
+    def _db_remove_completed_for_owner(self, resumable_id: str) -> bool:
         resumable_table = f'resumable_{resumable_id}'
         with session_scope(self.engine) as session:
             session.execute('delete from resumable_uploads where id = :resumable_id',

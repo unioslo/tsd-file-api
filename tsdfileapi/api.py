@@ -51,7 +51,7 @@ from utils import (call_request_hook, sns_dir,
                    md5sum, tenant_from_url,
                    move_data_to_folder, set_mtime)
 from db import sqlite_init, SqliteBackend, postgres_init, PostgresBackend
-from resumables import SerialResumable, ResumableNotFoundError
+from resumables import SerialResumable, ResumableNotFoundError, ResumableIncorrectChunkOrderError
 from pgp import _import_keys
 from rmq import PikaClient
 
@@ -1135,7 +1135,7 @@ class StreamHandler(AuthRequestHandler):
                             )
                         if not self.chunk_order_correct:
                             logging.error('incorrect chunk order')
-                            raise Exception
+                            raise ResumableIncorrectChunkOrderError
                     # 3.4 ensure we do not write to active file
                     self.path = os.path.normpath(self.tenant_dir + '/' + filename)
                     self.path_part = self.path + '.' + str(uuid4()) + '.part'
@@ -1183,6 +1183,8 @@ class StreamHandler(AuthRequestHandler):
                 except KeyError:
                     raise Exception('No content-type - do not know what to do with data')
             # 3.9 handle any errors
+            except ResumableIncorrectChunkOrderError as e:
+                raise ResumableIncorrectChunkOrderError from e
             except Exception as e:
                 try:
                     if self.target_file:

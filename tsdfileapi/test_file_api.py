@@ -1180,7 +1180,7 @@ class TestFileApi(unittest.TestCase):
         url = '%s/%s' % (self.resumables, filename)
         merged_file = self.uploads_folder + '/' + filename + '.' + upload_id
         with open(merged_file, 'ab') as f:
-            f.truncate(cs + (cs/2))
+            f.truncate(int(cs + (cs/2)))
         # this should trigger data recovery, and restart the resumable at chunk1
         print('---> going to resume from chunk 3, after data recovery:')
         resp = fileapi.initiate_resumable(proj, self.test_project, filepath,
@@ -1546,10 +1546,10 @@ class TestFileApi(unittest.TestCase):
         self.assertEqual(resp.status_code, 200)
         resp = requests.get(f'{self.publication_export}/topdir/bottomdir', headers=headers)
         self.assertEqual(resp.status_code, 200)
-        resp = requests.get(f'{self.publication_export}/topdir/bottomdir?page=0', headers=headers)
+        resp = requests.get(f'{self.publication_export}/topdir/bottomdir?page=0&per_page=100', headers=headers)
         self.assertEqual(resp.status_code, 200)
         data1 = json.loads(resp.text)
-        resp = requests.get(f'{self.publication_export}/topdir/bottomdir?page=1', headers=headers)
+        resp = requests.get(f'{self.publication_export}/topdir/bottomdir?page=1&per_page=100', headers=headers)
         self.assertEqual(resp.status_code, 200)
         data2 = json.loads(resp.text)
         self.assertTrue(data2['files'][0] not in data1['files'])
