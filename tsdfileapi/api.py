@@ -1839,7 +1839,7 @@ class ProxyHandler(AuthRequestHandler):
         """
         self.listing_dir = True
         current_page = 0
-        pagination_value = 10000
+        pagination_value = 100
         disable_metadata = self.get_query_argument('disable_metadata', None)
         try:
             current_page = int(self.get_query_argument('page'))
