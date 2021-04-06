@@ -10,31 +10,32 @@ designed for the University of Oslo's Services for Sensitive Data (TSD).
 """
 
 import base64
+import datetime
+import hashlib
+import json
 import logging
 import os
 import pwd
-import datetime
-import hashlib
+import re
 import subprocess
 import stat
 import shutil
-import fileinput
-import json
-import re
 import sqlite3
 import time
 import traceback
 
+from collections import OrderedDict
 from uuid import uuid4
 from sys import argv
-from collections import OrderedDict
+from typing import Union, Optional, Awaitable, Callable, Any
 
-import yaml
-import magic
-import tornado.queues
 import libnacl.sealed
 import libnacl.public
+import magic
+import tornado.httputil
 import tornado.log
+import tornado.queues
+import yaml
 
 from termcolor import colored
 from tornado.escape import json_decode, url_unescape, url_escape
@@ -46,27 +47,27 @@ from tornado.web import (Application, RequestHandler, stream_request_body,
                          HTTPError, MissingArgumentError)
 
 from auth import process_access_token
+from db import sqlite_init, SqliteBackend, postgres_init, PostgresBackend
+from pgp import _import_keys
+from resumables import SerialResumable, ResumableNotFoundError, ResumableIncorrectChunkOrderError
+from rmq import PikaClient
 from utils import (call_request_hook, sns_dir,
                    check_filename, _IS_VALID_UUID,
                    md5sum, tenant_from_url,
                    move_data_to_folder, set_mtime)
-from db import sqlite_init, SqliteBackend, postgres_init, PostgresBackend
-from resumables import SerialResumable, ResumableNotFoundError, ResumableIncorrectChunkOrderError
-from pgp import _import_keys
-from rmq import PikaClient
 
 
 _RW______ = stat.S_IREAD | stat.S_IWRITE
 _RW_RW___ = _RW______ | stat.S_IRGRP | stat.S_IWGRP
 
 
-def read_config(filename):
+def read_config(filename: str) -> dict:
     with open(filename) as f:
         conf = yaml.load(f, Loader=yaml.Loader)
     return conf
 
 
-def set_config():
+def set_config() -> None:
     try:
         _config = read_config(argv[1])
     except IndexError as e:
@@ -154,11 +155,12 @@ class AuthRequestHandler(RequestHandler):
     """
 
     def process_token_and_extract_claims(
-            self,
-            check_tenant=options.check_tenant,
-            check_exp=options.check_exp,
-            tenant_claim_name=options.tenant_claim_name,
-            verify_with_secret=options.jwt_secret):
+        self,
+        check_tenant: bool = options.check_tenant,
+        check_exp: bool = options.check_exp,
+        tenant_claim_name: str = options.tenant_claim_name,
+        verify_with_secret: bool = options.jwt_secret,
+    ) -> dict:
         """
         When performing requests against the API, JWT access tokens are presented
         in the Authorization header of the HTTP request as a Bearer token. Before
@@ -230,7 +232,7 @@ class AuthRequestHandler(RequestHandler):
                 self.set_status(401)
             raise Exception
 
-    def get_group_info(self, tenant, group_config, authnz_status):
+    def get_group_info(self, tenant: str, group_config: dict, authnz_status: dict) -> tuple:
         """
         Set intended group owner of resource, and extract memberships
         of the requestor, falling back to configured defaults, depending
@@ -265,7 +267,13 @@ class AuthRequestHandler(RequestHandler):
                 group_memberships.append(new)
         return group_name, group_memberships
 
-    def enforce_group_logic(self, group_name, group_memberships, tenant, group_config):
+    def enforce_group_logic(
+        self,
+        group_name: str,
+        group_memberships: list,
+        tenant: str,
+        group_config: dict,
+    ) -> None:
         """
         Optionally check that:
             - provided group name matches group name regex pattern
@@ -295,7 +303,7 @@ class AuthRequestHandler(RequestHandler):
             logging.error(f'user not member of {group_name}')
             raise e
 
-    def is_reserved_resource(self, work_dir, resource):
+    def is_reserved_resource(self, work_dir: str, resource: str) -> bool:
         """
         Prevent access to API-owned resources.
 
@@ -337,7 +345,7 @@ class AuthRequestHandler(RequestHandler):
                         return False
         return True
 
-    def handle_mq_publication(self, mq_config=None, data=None):
+    def handle_mq_publication(self, mq_config: dict = None, data: dict = None) -> None:
         """
         Publish a message to RabbitMQ, as the result of a HTTP request.
         NB: The API assumes that a vhost has been created.
@@ -424,24 +432,35 @@ class AuthRequestHandler(RequestHandler):
 
     # audit log tools
 
-    def _log_db_name(self, backend, app):
+    def _log_db_name(self, backend: str, app: str) -> str:
         name = f'apps_{app}' if app else backend
         return f'.request_log_{name}.db'
 
-    def _log_table_name(self, backend, app):
+    def _log_table_name(self, backend: str, app: str) -> str:
         return f'{backend}' if not app else f'apps_{app}'
 
-    def _log_db_path(self, tenant):
+    def _log_db_path(self, tenant: str) -> str:
         path_pattern = options.request_log.get('db').get('path')
         return path_pattern.replace(options.tenant_string_pattern, tenant)
 
-    def _sqlite_log_engine(self, tenant, backend, app):
+    def _sqlite_log_engine(
+        self,
+        tenant: str,
+        backend: str,
+        app: str,
+    ) -> sqlite3.Connection:
         db_path = self._log_db_path(tenant)
         db_name = self._log_db_name(backend, app)
         engine = sqlite_init(db_path, name=db_name, builtin=True)
         return engine
 
-    def get_log_db(self, tenant, backend, engine_type, app=None):
+    def get_log_db(
+        self,
+        tenant: str,
+        backend: str,
+        engine_type: str,
+        app: str = None,
+    ) -> Union[SqliteBackend, PostgresBackend]:
         if engine_type == 'postgres':
             db = PostgresBackend(options.pgpool_request_log, schema=tenant)
         elif engine_type == 'sqlite':
@@ -449,13 +468,13 @@ class AuthRequestHandler(RequestHandler):
             db = SqliteBackend(engine)
         return db
 
-    def get_app_name(self, uri):
+    def get_app_name(self, uri: str) -> str:
         if '/apps/' not in uri:
             return None
         parts = uri.split('apps')
         return parts[1].split('/')[1]
 
-    def get_log_apps(self, tenant, backend, engine_type):
+    def get_log_apps(self, tenant: str, backend: str, engine_type: str) -> list:
         if engine_type == 'postgres':
             db = PostgresBackend(options.pgpool_request_log, schema=tenant)
             tables = db.tables_list()
@@ -469,14 +488,14 @@ class AuthRequestHandler(RequestHandler):
     def update_request_log(
         self,
         *,
-        tenant,
-        backend,
-        requestor,
-        method,
-        uri,
-        app=None,
-        claims={},
-    ):
+        tenant: str,
+        backend: str,
+        requestor: str,
+        method: str,
+        uri: str,
+        app: str = None,
+        claims: dict = {},
+    ) -> None:
         """
         Log request information - for audit purposes.
 
@@ -516,7 +535,7 @@ class AuthRequestHandler(RequestHandler):
 
 class GenericFormDataHandler(AuthRequestHandler):
 
-    def initialize(self, backend):
+    def initialize(self, backend: str) -> None:
         try:
             self.backend = backend
             self.endpoint = self.request.uri.split('/')[3]
@@ -548,7 +567,7 @@ class GenericFormDataHandler(AuthRequestHandler):
             logging.error(traceback.format_exc())
 
 
-    def prepare(self):
+    def prepare(self) -> Optional[Awaitable[None]]:
         try:
             self.err = 'request failed'
             if options.maintenance_mode_enabled:
@@ -588,7 +607,7 @@ class GenericFormDataHandler(AuthRequestHandler):
                 self.set_status(400)
             self.finish()
 
-    def write_files(self, filemode, tenant):
+    def write_files(self, filemode: str, tenant: str) -> bool:
         try:
             for i in range(len(self.request.files['file'])):
                 filename = check_filename(self.request.files['file'][i]['filename'],
@@ -608,7 +627,7 @@ class GenericFormDataHandler(AuthRequestHandler):
             return False
 
 
-    def write_file(self, filemode, filename, filebody, tenant):
+    def write_file(self, filemode: str, filename: str, filebody: bytes, tenant: str) -> bool:
         try:
             if self.backend == 'sns':
                 tsd_hidden_folder = sns_dir(self.tsd_hidden_folder_pattern, tenant, self.request.uri, options.tenant_string_pattern)
@@ -648,7 +667,7 @@ class GenericFormDataHandler(AuthRequestHandler):
             logging.error('Could not write to file')
             return False
 
-    def on_finish(self):
+    def on_finish(self) -> None:
         if self.request.method in ('PUT', 'POST', 'PATCH'):
             try:
                 if self.request_hook['enabled']:
@@ -663,7 +682,7 @@ class GenericFormDataHandler(AuthRequestHandler):
 
 class FormDataHandler(GenericFormDataHandler):
 
-    def handle_data(self, filemode, tenant):
+    def handle_data(self, filemode: str, tenant: str) -> None:
         try:
             assert self.write_files(filemode, tenant)
             self.set_status(201)
@@ -672,22 +691,22 @@ class FormDataHandler(GenericFormDataHandler):
             self.set_status(400)
             self.write({'message': 'could not upload data'})
 
-    def post(self, tenant):
+    def post(self, tenant: str) -> None:
         self.handle_data('ab+', tenant)
 
-    def patch(self, tenant):
+    def patch(self, tenant: str) -> None:
         self.handle_data('ab+', tenant)
 
-    def put(self, tenant):
+    def put(self, tenant: str) -> None:
         self.handle_data('wb+', tenant)
 
-    def head(self, tenant):
+    def head(self, tenant: str) -> None:
         self.set_status(201)
 
 
 class SnsFormDataHandler(GenericFormDataHandler):
 
-    def handle_data(self, filemode, tenant):
+    def handle_data(self, filemode: str, tenant: str) -> None:
         try:
             assert self.write_files(filemode, tenant)
             self.set_status(201)
@@ -696,16 +715,16 @@ class SnsFormDataHandler(GenericFormDataHandler):
             self.set_status(400)
             self.write({'message': 'could not upload data'})
 
-    def post(self, tenant, keyid, formid):
+    def post(self, tenant: str, keyid: str, formid: str) -> None:
         self.handle_data('ab+', tenant)
 
-    def patch(self, tenant, keyid, formid):
+    def patch(self, tenant: str, keyid: str, formid: str) -> None:
         self.handle_data('ab+', tenant)
 
-    def put(self, tenant, keyid, formid):
+    def put(self, tenant: str, keyid: str, formid: str) -> None:
         self.handle_data('wb+', tenant)
 
-    def head(self, tenant, keyid, formid):
+    def head(self, tenant: str, keyid: str, formid: str) -> None:
         self.set_status(201)
 
 
@@ -753,7 +772,7 @@ class ResumablesHandler(AuthRequestHandler):
 
     """
 
-    def initialize(self, backend):
+    def initialize(self, backend: str) -> None:
         try:
             self.backend = backend
             self.endpoint = self.request.uri.split('/')[3]
@@ -768,7 +787,7 @@ class ResumablesHandler(AuthRequestHandler):
             raise e
 
 
-    def prepare(self):
+    def prepare(self) -> Optional[Awaitable[None]]:
         try:
             self.err = 'Unauthorized'
             if options.maintenance_mode_enabled:
@@ -782,7 +801,7 @@ class ResumablesHandler(AuthRequestHandler):
             self.finish()
 
 
-    def get(self, tenant, filename=None):
+    def get(self, tenant: str, filename: str = None) -> None:
         self.message = {
             'filename': filename,
             'id': None,
@@ -834,7 +853,7 @@ class ResumablesHandler(AuthRequestHandler):
             self.write(self.message)
 
 
-    def delete(self, tenant, filename):
+    def delete(self, tenant: str, filename: str) -> None:
         self.message = {'message': 'cannot delete resumable'}
         try:
             try:
@@ -907,25 +926,27 @@ class StreamHandler(AuthRequestHandler):
 
     """
 
-    def decrypt_aes_key(self, b64encoded_pgpencrypted_key):
+    def decrypt_aes_key(self, b64encoded_pgpencrypted_key: str) -> str:
         gpg = _import_keys(options.config)
         key = base64.b64decode(b64encoded_pgpencrypted_key)
         decr_aes_key = str(gpg.decrypt(key)).strip()
         return decr_aes_key
 
 
-    def start_openssl_proc(self, output_file=None, base64=True):
+    def start_openssl_proc(self, output_file: str = None, base64: bool = True) -> subprocess.Popen:
         cmd = ['openssl', 'enc', '-aes-256-cbc', '-d'] + self.aes_decryption_args_from_headers()
         if output_file is not None:
             cmd = cmd + ['-out', output_file]
         if base64:
             cmd = cmd + ['-a']
-        return subprocess.Popen(cmd,
-                                stdin=subprocess.PIPE,
-                                stdout=subprocess.PIPE if output_file is None else None)
+        return subprocess.Popen(
+            cmd,
+            stdin=subprocess.PIPE,
+            stdout=subprocess.PIPE if output_file is None else None
+        )
 
 
-    def aes_decryption_args_from_headers(self):
+    def aes_decryption_args_from_headers(self) -> list:
         try:
             decr_aes_key = self.decrypt_aes_key(self.request.headers['Aes-Key'])
         except Exception as e:
@@ -938,54 +959,60 @@ class StreamHandler(AuthRequestHandler):
             return ['-pass', 'pass:%s' % decr_aes_key]
 
 
-    def handle_aes(self, content_type):
+    def handle_aes(self, content_type: str) -> None:
         self.custom_content_type = content_type
         self.proc = self.start_openssl_proc(output_file=self.path)
 
 
-    def handle_aes_octet_stream(self, content_type):
+    def handle_aes_octet_stream(self, content_type: str) -> None:
         self.custom_content_type = 'application/aes'
         self.proc = self.start_openssl_proc(output_file=self.path, base64=False)
 
 
-    def handle_tar(self, content_type, tenant_dir):
+    def handle_tar(self, content_type: str, tenant_dir: str) -> None:
         if 'gz' in content_type:
             tarflags = '-xzf'
         else:
             tarflags = '-xf'
         self.custom_content_type = content_type
-        self.proc = subprocess.Popen(['tar', '-C', tenant_dir, tarflags, '-'],
-                                      stdin=subprocess.PIPE)
+        self.proc = subprocess.Popen(
+            ['tar', '-C', tenant_dir, tarflags, '-'], stdin=subprocess.PIPE
+        )
 
 
-    def handle_tar_aes(self, content_type, tenant_dir):
+    def handle_tar_aes(self, content_type: str, tenant_dir: str) -> None:
         if 'gz' in content_type:
             tarflags = '-xzf'
         else:
             tarflags = '-xf'
         self.custom_content_type = content_type
         self.openssl_proc = self.start_openssl_proc()
-        self.tar_proc = subprocess.Popen(['tar', '-C', tenant_dir, tarflags, '-'],
-                                 stdin=self.openssl_proc.stdout)
+        self.tar_proc = subprocess.Popen(
+            ['tar', '-C', tenant_dir, tarflags, '-'], stdin=self.openssl_proc.stdout
+        )
 
 
-    def handle_gz(self, content_type, filemode):
+    def handle_gz(self, content_type: str, filemode: str) -> None:
         self.custom_content_type = content_type
         self.target_file = open(self.path, filemode)
-        self.gunzip_proc = subprocess.Popen(['gunzip', '-c', '-'],
-                                             stdin=subprocess.PIPE,
-                                             stdout=self.target_file)
+        self.gunzip_proc = subprocess.Popen(
+            ['gunzip', '-c', '-'],
+            stdin=subprocess.PIPE,
+            stdout=self.target_file,
+        )
 
 
-    def handle_gz_aes(self, content_type, filemode):
+    def handle_gz_aes(self, content_type: str, filemode: str) -> None:
         self.custom_content_type = content_type
         self.target_file = open(self.path, filemode)
         self.openssl_proc = self.start_openssl_proc()
-        self.gunzip_proc = subprocess.Popen(['gunzip', '-c', '-'],
-                                             stdin=self.openssl_proc.stdout,
-                                             stdout=self.target_file)
+        self.gunzip_proc = subprocess.Popen(
+            ['gunzip', '-c', '-'],
+            stdin=self.openssl_proc.stdout,
+            stdout=self.target_file,
+        )
 
-    def handle_nacl_stream(self, headers):
+    def handle_nacl_stream(self, headers: tornado.httputil.HTTPHeaders) -> None:
         self.custom_content_type = headers['Content-Type']
         self.nacl_stream_buffer = b''
         try:
@@ -1006,7 +1033,7 @@ class StreamHandler(AuthRequestHandler):
             raise Exception
 
 
-    def initialize(self, backend):
+    def initialize(self, backend: str) -> None:
         try:
             self.backend = backend
             self.endpoint = self.request.uri.split('/')[3]
@@ -1026,7 +1053,7 @@ class StreamHandler(AuthRequestHandler):
 
 
     @gen.coroutine
-    def prepare(self):
+    def prepare(self) -> Optional[Awaitable[None]]:
         """
         This sets up state for the part of the request handler which writes data to disk.
 
@@ -1205,7 +1232,7 @@ class StreamHandler(AuthRequestHandler):
 
 
     @gen.coroutine
-    def data_received(self, chunk):
+    def data_received(self, chunk: bytes) -> Optional[Awaitable[None]]:
         try:
             if not self.custom_content_type:
                 if self.request.method == 'PATCH':
@@ -1250,7 +1277,7 @@ class StreamHandler(AuthRequestHandler):
             os.rename(self.path, self.path_part)
             self.send_error("something went wrong")
 
-    def put(self, tenant, uri_filename=None):
+    def put(self, tenant: str, uri_filename: str = None) -> None:
         if not self.custom_content_type:
             self.target_file.close()
             os.rename(self.path, self.path_part)
@@ -1286,7 +1313,7 @@ class StreamHandler(AuthRequestHandler):
         self.write({'message': 'data streamed'})
 
 
-    def patch(self, tenant, uri_filename=None):
+    def patch(self, tenant: str, uri_filename: str = None) -> None:
         if not self.completed_resumable_file:
             self.res.close_file(self.target_file)
             # if the path to which we want to rename the file exists
@@ -1319,11 +1346,11 @@ class StreamHandler(AuthRequestHandler):
             'key': self.res_key})
 
 
-    def head(self, tenant, uri_filename=None):
+    def head(self, tenant: str, uri_filename: str = None) -> None:
         self.set_status(201)
 
 
-    def on_finish(self):
+    def on_finish(self) -> None:
         """
         Called after each request before closing the connection.
 
@@ -1390,7 +1417,7 @@ class StreamHandler(AuthRequestHandler):
             self.on_finish_called = True
 
 
-    def on_connection_close(self):
+    def on_connection_close(self) -> None:
         """
         Called when clients close the connection.
 
@@ -1450,7 +1477,7 @@ class StreamHandler(AuthRequestHandler):
 @stream_request_body
 class ProxyHandler(AuthRequestHandler):
 
-    def initialize(self, backend, namespace, endpoint):
+    def initialize(self, backend: str, namespace: str, endpoint: str) -> None:
         self.backend = backend
         self.namespace = namespace
         self.endpoint = endpoint
@@ -1489,7 +1516,7 @@ class ProxyHandler(AuthRequestHandler):
 
 
     @gen.coroutine
-    def prepare(self):
+    def prepare(self) -> Optional[Awaitable[None]]:
         """Initiate internal async HTTP request to handle body.
         """
         self.error = None
@@ -1664,7 +1691,8 @@ class ProxyHandler(AuthRequestHandler):
                         method=self.request.method,
                         body_producer=body,
                         request_timeout=12000.0, # 3 hours max
-                        headers=headers)
+                        headers=headers,
+                    )
             except Exception as e:
                 logging.error('Problem in async client')
                 logging.error(e)
@@ -1677,7 +1705,7 @@ class ProxyHandler(AuthRequestHandler):
             self.finish()
 
     @gen.coroutine
-    def body_producer(self, write):
+    def body_producer(self, write: Callable) -> Any:
         while True:
             chunk = yield self.chunks.get()
             if chunk is None:
@@ -1685,11 +1713,11 @@ class ProxyHandler(AuthRequestHandler):
             yield write(chunk)
 
     @gen.coroutine
-    def data_received(self, chunk):
+    def data_received(self, chunk: bytes) -> Optional[Awaitable[None]]:
         yield self.chunks.put(chunk)
 
     @gen.coroutine
-    def put(self, tenant, filename=None):
+    def put(self, tenant: str, filename: str = None) -> None:
         """Called after entire body has been read."""
         yield self.chunks.put(None)
         # wait for request to finish.
@@ -1698,7 +1726,7 @@ class ProxyHandler(AuthRequestHandler):
         self.write(response.body)
 
     @gen.coroutine
-    def patch(self, tenant, filename=None):
+    def patch(self, tenant: str, filename: str = None) -> None:
         """Called after entire body has been read."""
         yield self.chunks.put(None)
         # wait for request to finish.
@@ -1716,7 +1744,14 @@ class ProxyHandler(AuthRequestHandler):
         self.write(body)
 
 
-    def enforce_export_policy(self, policy_config, filename, tenant, size, mime_type):
+    def enforce_export_policy(
+        self,
+        policy_config: dict,
+        filename: str,
+        tenant: str,
+        size: int,
+        mime_type: str,
+    ) -> bool:
         """
         Check file to ensure it meets the requirements of the export policy
 
@@ -1762,7 +1797,7 @@ class ProxyHandler(AuthRequestHandler):
         return status
 
 
-    def get_file_metadata(self, filename):
+    def get_file_metadata(self, filename: str) -> tuple:
         filename_raw_utf8 = filename.encode('utf-8')
         mime_type = 'unknown'
         try:
@@ -1782,7 +1817,7 @@ class ProxyHandler(AuthRequestHandler):
         return size, mime_type, mtime
 
 
-    def list_files(self, path, tenant, root):
+    def list_files(self, path: str, tenant: str, root: str) -> None:
         """
         List a directory.
 
@@ -1961,11 +1996,11 @@ class ProxyHandler(AuthRequestHandler):
             logging.info('%s listed %s', self.requestor, path)
             self.write({'files': file_info, 'page': nextref})
 
-    def mtime_to_digest(self, mtime):
+    def mtime_to_digest(self, mtime: int) -> str:
         return hashlib.md5(str(mtime).encode('utf-8')).hexdigest()
 
 
-    def compute_etag(self):
+    def compute_etag(self) -> Optional[str]:
         """
         If there is a file resource, compute the Etag header.
         Custom values: md5sum of string value of last modified
@@ -1991,7 +2026,7 @@ class ProxyHandler(AuthRequestHandler):
 
 
     @gen.coroutine
-    def get(self, tenant, filename=None):
+    def get(self, tenant: str, filename: str = None) -> None:
         """
         List the export dir, or serve a file, asynchronously.
 
@@ -2126,7 +2161,7 @@ class ProxyHandler(AuthRequestHandler):
             self.finish()
 
 
-    def head(self, tenant, filename):
+    def head(self, tenant: str, filename: str) -> None:
         """
         Return information about a specific file.
 
@@ -2172,7 +2207,7 @@ class ProxyHandler(AuthRequestHandler):
             self.finish()
 
 
-    def delete(self, tenant, filename=''):
+    def delete(self, tenant: str, filename: str = '') -> None:
         self.message = 'Unknown error, please contact TSD'
         try:
             if not self.allow_delete:
@@ -2235,7 +2270,7 @@ class ProxyHandler(AuthRequestHandler):
         finally:
             self.finish({'message': self.message})
 
-    def on_finish(self):
+    def on_finish(self) -> None:
         if (
             not options.maintenance_mode_enabled
             and self._status_code < 300
@@ -2272,16 +2307,16 @@ class GenericTableHandler(AuthRequestHandler):
 
     """
 
-    def create_table_name(self, table_name, suffix):
+    def create_table_name(self, table_name: str, suffix: str) -> str:
         return f'{table_name}_{suffix}'
 
-    def get_uri_query(self, uri):
+    def get_uri_query(self, uri: str) -> str:
         if '?' in uri:
             return url_unescape(uri.split('?')[-1])
         else:
             return ''
 
-    def initialize(self, backend):
+    def initialize(self, backend: str) -> None:
         self.backend = backend
         self.tenant = tenant_from_url(self.request.uri)
         assert options.valid_tenant.match(self.tenant)
@@ -2293,7 +2328,7 @@ class GenericTableHandler(AuthRequestHandler):
         self.check_tenant = self.backend_config.get('check_tenant')
 
 
-    def prepare(self):
+    def prepare(self) -> Optional[Awaitable[None]]:
         try:
             self.error = None
             if options.maintenance_mode_enabled:
@@ -2330,7 +2365,7 @@ class GenericTableHandler(AuthRequestHandler):
             self.finish()
 
 
-    def decrypt_nacl_data(self, data, headers):
+    def decrypt_nacl_data(self, data: bytes, headers: tornado.httputil.HTTPHeaders) -> str:
         out = b''
         nacl_stream_buffer = b''
         try:
@@ -2373,7 +2408,7 @@ class GenericTableHandler(AuthRequestHandler):
             out += decrypted
         return out.decode()
 
-    def get_nested_data(self, keys, data):
+    def get_nested_data(self, keys: list, data: Union[list, dict]) -> list:
         values = []
         if isinstance(data, dict):
             target = data
@@ -2388,7 +2423,7 @@ class GenericTableHandler(AuthRequestHandler):
                 values.append(target)
         return values
 
-    def set_resource_identifier_info(self, data):
+    def set_resource_identifier_info(self, data: Union[list, dict]) -> None:
         """
         When publising messages to rabbitmq, it is useful
         for queue consumers to have references to the specific
@@ -2434,7 +2469,7 @@ class GenericTableHandler(AuthRequestHandler):
 
 
     @gen.coroutine
-    def get(self, tenant, table_name=None):
+    def get(self, tenant: str, table_name: str = None) -> None:
         try:
             if not table_name:
                 tables = self.db.tables_list()
@@ -2480,7 +2515,7 @@ class GenericTableHandler(AuthRequestHandler):
             self.write({'message': self.error})
 
 
-    def put(self, tenant, table_name):
+    def put(self, tenant: str, table_name: str) -> None:
         try:
             if self.request.headers.get('Content-Type') == 'application/json+nacl':
                 new_data = self.decrypt_nacl_data(
@@ -2511,7 +2546,7 @@ class GenericTableHandler(AuthRequestHandler):
             self.write({'message': self.error})
 
 
-    def patch(self, tenant, table_name):
+    def patch(self, tenant: str, table_name: str) -> None:
         try:
             if self.request.uri.split('?')[0].endswith('metadata'):
                 table_name = self.create_table_name(table_name, 'metadata')
@@ -2539,7 +2574,7 @@ class GenericTableHandler(AuthRequestHandler):
             self.write({'message': self.error})
 
 
-    def delete(self, tenant, table_name):
+    def delete(self, tenant: str, table_name: str) -> None:
         try:
             if self.request.uri.split('?')[0].endswith('metadata'):
                 table_name = self.create_table_name(table_name, 'metadata')
@@ -2559,7 +2594,7 @@ class GenericTableHandler(AuthRequestHandler):
             self.write({'message': self.error})
 
 
-    def on_finish(self):
+    def on_finish(self) -> None:
         try:
             if not options.maintenance_mode_enabled and self._status_code < 300:
                 message_data = {
@@ -2587,14 +2622,14 @@ class GenericTableHandler(AuthRequestHandler):
 
 class HealthCheckHandler(RequestHandler):
 
-    def head(self, tenant):
+    def head(self, tenant: str) -> None:
         self.set_status(200)
         self.write({'message': 'healthy'})
 
 
 class NaclKeyHander(RequestHandler):
 
-    def get(self, tenant):
+    def get(self, tenant: str) -> None:
         public_key = options.config.get('nacl_public').get('public')
         out = {
             'public_key': public_key,
@@ -2623,7 +2658,7 @@ class NaclKeyHander(RequestHandler):
 
 class RunTimeConfigurationHandler(RequestHandler):
 
-    def post(self):
+    def post(self) -> None:
         try:
             action = url_escape(self.get_query_argument('maintenance'))
             assert action in ['on', 'off'], f'action: {action} not supported'
@@ -2636,19 +2671,19 @@ class RunTimeConfigurationHandler(RequestHandler):
             self.set_status(400)
             logging.error(e)
 
-    def get(self):
+    def get(self) -> None:
         self.write({'maintenance_mode_enabled': options.maintenance_mode_enabled})
 
 
 class AuditLogViewerHandler(AuthRequestHandler):
 
-    def get_uri_query(self, uri):
+    def get_uri_query(self, uri: str) -> str:
         if '?' in uri:
             return url_unescape(uri.split('?')[-1])
         else:
             return ''
 
-    def get(self, tenant, backend=None):
+    def get(self, tenant: str, backend: str = None) -> None:
         if not options.request_log:
             self.set_status(503)
             self.write({'message': 'logging has not been configured'})
@@ -2764,7 +2799,7 @@ class Backends(object):
         'postgres': PostgresBackend
     }
 
-    def __init__(self, config):
+    def __init__(self, config: dict) -> None:
 
         self.config = config
         self.routes = []
@@ -2807,7 +2842,7 @@ class Backends(object):
             except Exception as e:
                 logging.warning(f'could not connect to request log db: {e}')
 
-    def initdb(self, name):
+    def initdb(self, name: str) -> None:
         engine_type = options.config['backends']['dbs'][name]['db']['engine']
         if engine_type == 'postgres':
             pool = postgres_init(options.config['backends']['dbs'][name]['db']['dbconfig'])
@@ -2820,7 +2855,7 @@ class Backends(object):
         else:
             return
 
-    def initdb_request_log(self):
+    def initdb_request_log(self) -> None:
         if not options.request_log:
             return
         engine_type = options.request_log.get('db').get('engine')
@@ -2835,7 +2870,7 @@ class Backends(object):
         else: # sqlite
             return
 
-    def find_exchanges(self, name, backend_config):
+    def find_exchanges(self, name: str, backend_config: dict) -> None:
         mq_config = backend_config.get('mq')
         if not mq_config:
             return
@@ -2851,7 +2886,7 @@ class Backends(object):
             self.exchanges[name] = mq_config
 
 
-def main():
+def main() -> None:
     tornado.log.enable_pretty_logging()
     backends = Backends(options.config)
     pika_client = (
