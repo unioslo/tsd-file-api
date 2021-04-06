@@ -9,13 +9,14 @@ import shlex
 import re
 import shutil
 
+from typing import Union
 
 _VALID_FORMID = re.compile(r'^[0-9]+$')
 _IS_REALISTIC_PGP_KEY_FINGERPRINT = re.compile(r'^[0-9A-Z]{16}$')
 _IS_VALID_UUID = re.compile(r'([a-f\d0-9-]{32,36})')
 
 
-def call_request_hook(path, params, as_sudo=True):
+def call_request_hook(path: str, params: list, as_sudo: bool = True) -> None:
     if as_sudo:
         cmd = ['sudo']
     else:
@@ -29,7 +30,7 @@ class IllegalFilenameException(Exception):
     message = 'Filename not allowed'
 
 
-def tenant_from_url(url):
+def tenant_from_url(url: str) -> list:
     if 'v1' in url:
         idx = 2
     else:
@@ -37,7 +38,7 @@ def tenant_from_url(url):
     return url.split('/')[idx]
 
 
-def check_filename(filename, disallowed_start_chars=[]):
+def check_filename(filename: str, disallowed_start_chars: list = []) -> str:
     try:
         start_char = filename[0]
         if disallowed_start_chars:
@@ -49,20 +50,15 @@ def check_filename(filename, disallowed_start_chars=[]):
     return filename
 
 
-def sns_dir(base_pattern, tenant, uri, tenant_string_pattern, test=False):
+def sns_dir(
+    base_pattern: str,
+    tenant: str,
+    uri: str,
+    tenant_string_pattern: str,
+    test: bool = False,
+) -> str:
     """
     Construct a path for sns uploads.
-
-    Paramaters
-    ----------
-    config: dict
-    tenant: str
-    uri: request uri
-    test: bool
-
-    Returns
-    -------
-    path
 
     """
     try:
@@ -85,7 +81,7 @@ def sns_dir(base_pattern, tenant, uri, tenant_string_pattern, test=False):
         raise e
 
 
-def md5sum(filename, blocksize=65536):
+def md5sum(filename: str, blocksize: int = 65536) -> str:
     _hash = hashlib.md5()
     with open(filename, "rb") as f:
         for block in iter(lambda: f.read(blocksize), b""):
@@ -93,18 +89,9 @@ def md5sum(filename, blocksize=65536):
     return _hash.hexdigest()
 
 
-def move_data_to_folder(path, dest):
+def move_data_to_folder(path: str, dest: str) -> Union[str, bool]:
     """
     Move file/dir at path into and folder at dest.
-
-    Parameters
-    ----------
-    path: str, uploaded file or folder
-    dest: name of the destination folder
-
-    Returns
-    -------
-    boolean
 
     """
     try:
@@ -126,7 +113,7 @@ def move_data_to_folder(path, dest):
         logging.error('could not move file: %s', path)
         return False
 
-def set_mtime(path, mtime):
+def set_mtime(path: str, mtime: int) -> None:
     mtime = mtime
     atime = mtime
     os.utime(path, (mtime, atime))
