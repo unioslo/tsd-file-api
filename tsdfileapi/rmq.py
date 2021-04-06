@@ -12,7 +12,7 @@ from pika.adapters.tornado_connection import TornadoConnection
 
 class PikaClient(object):
 
-    def __init__(self, config, exchanges):
+    def __init__(self, config: dict, exchanges: dict) -> None:
         self.connecting = False
         self.connection = None
         self.channel = None
@@ -38,40 +38,41 @@ class PikaClient(object):
         self.connection.add_on_close_callback(self.on_closed)
         return
 
-    def on_connect(self, connection):
+    def on_connect(self, connection: TornadoConnection) -> None:
         self.connection = connection
         self.channel = self.connection.channel(
             on_open_callback=self.on_channel_open
         )
         return
 
-    def on_channel_open(self, channel):
+    def on_channel_open(self, channel: pika.channel.Channel) -> None:
         for backend, config in self.exchanges.items():
             ex_name = config.get('exchange')
             channel.exchange_declare(
                 ex_name,
                 exchange_type='topic',
-                durable=True
+                durable=True,
             )
             logging.info(f'rabbitmq exchange: {ex_name} declared')
         return
 
-    def on_basic_cancel(self, frame):
+    def on_basic_cancel(self, frame: pika.frame.Frame) -> None:
         self.connection.close()
 
-    def on_closed(self, connection):
+    def on_closed(self, connection: TornadoConnection) -> None:
         tornado.ioloop.IOLoop.instance().stop()
 
     def publish_message(
-            self,
-            exchange=None,
-            routing_key=None,
-            method=None,
-            uri=None,
-            version=None,
-            data=None,
-            persistent=True
-        ):
+        self,
+        *,
+        exchange: str,
+        routing_key: str,
+        method: str,
+        uri: str,
+        version: str,
+        data: dict,
+        persistent: bool = True,
+    ) -> None:
         """
         Publilsh a message to an exchange.
 
@@ -91,7 +92,7 @@ class PikaClient(object):
             'method': method,
             'uri': uri,
             'version': version,
-            'data': data
+            'data': data,
         }
         message = json.dumps(data)
         delivery_mode = 2 if persistent else 1

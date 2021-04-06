@@ -12,7 +12,7 @@ import uuid
 
 from abc import ABC, abstractmethod
 from contextlib import contextmanager
-from typing import ContextManager, Union
+from typing import ContextManager, Union, Optional
 
 import sqlalchemy
 
@@ -95,7 +95,7 @@ def md5sum(filename: str, blocksize: int = 65536) -> str:
 
 class AbstractResumable(ABC):
 
-    def __init__(self, work_dir: str = None, owner: str = None):
+    def __init__(self, work_dir: str = None, owner: str = None) -> None:
         super(AbstractResumable, self).__init__()
         self.work_dir = work_dir
         self.owner = owner
@@ -201,7 +201,7 @@ class SerialResumable(AbstractResumable):
 
     """
 
-    def __init__(self, work_dir: str = None, owner: str = None):
+    def __init__(self, work_dir: str = None, owner: str = None) -> None:
         super(SerialResumable, self).__init__(work_dir, owner)
         self.work_dir = work_dir
         self.owner = owner

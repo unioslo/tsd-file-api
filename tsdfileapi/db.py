@@ -11,7 +11,7 @@ import sqlite3
 
 from abc import ABC, abstractmethod
 from contextlib import contextmanager
-from typing import Union, ContextManager, Iterable
+from typing import Union, ContextManager, Iterable, Optional
 
 import psycopg2
 import psycopg2.extensions
@@ -114,14 +114,14 @@ class DatabaseBackend(ABC):
         ],
         verbose: bool = False,
         requestor: str = None,
-    ):
+    ) -> None:
         super(DatabaseBackend, self).__init__()
         self.engine = engine
         self.verbose = verbose
         self.requestor = requestor
 
     @abstractmethod
-    def initialise(self) -> bool:
+    def initialise(self) -> Optional[bool]:
         pass
 
     @abstractmethod
@@ -186,13 +186,13 @@ class SqliteBackend(DatabaseBackend):
         verbose: bool =False,
         schema: str = None,
         requestor: str = None,
-    ):
+    ) -> None:
         self.engine = engine
         self.verbose = verbose
         self.table_definition = '(data json unique not null)'
         self.requestor = requestor
 
-    def initialise(self):
+    def initialise(self) -> Optional[bool]:
         pass
 
     def tables_list(self) -> list:
@@ -297,14 +297,14 @@ class PostgresBackend(object):
         verbose: bool = False,
         schema: str = None,
         requestor: str = None,
-    ):
+    ) -> None:
         self.pool = pool
         self.verbose = verbose
         self.table_definition = '(data jsonb not null, uniq text unique not null)'
         self.schema = schema if schema else 'public'
         self.requestor = requestor
 
-    def initialise(self) -> bool:
+    def initialise(self) -> Optional[bool]:
         try:
             with postgres_session(self.pool) as session:
                 for stmt in self.generator_class.db_init_sql:
