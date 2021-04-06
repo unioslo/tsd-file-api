@@ -75,9 +75,13 @@ import unittest
 import pwd
 import uuid
 import shutil
+import sqlite3
 
 from datetime import datetime
+from typing import Union, Callable
 
+import psycopg2
+import psycopg2.pool
 import pretty_bad_protocol._parsers
 import requests
 import yaml
@@ -101,12 +105,18 @@ from pgp import _import_keys
 from squril import SqliteQueryGenerator, PostgresQueryGenerator
 
 
-def project_import_dir(config, tenant=None, backend=None, tenant_pattern=None):
+def project_import_dir(
+    config: dict,
+    tenant: str,
+    *,
+    backend: str,
+    tenant_pattern: str,
+) -> str:
     folder = config['backends']['disk'][backend]['import_path'].replace(tenant_pattern, tenant)
     return os.path.normpath(folder)
 
 
-def lazy_file_reader(filename):
+def lazy_file_reader(filename: str) -> bytes:
     with open(filename, 'rb') as f:
         while True:
             data = f.read(10)
@@ -271,7 +281,7 @@ class TestFileApi(unittest.TestCase):
     # Import Auth
     #------------
 
-    def check_endpoints(self, headers):
+    def check_endpoints(self, headers: dict) -> None:
         files = {'file': ('example.csv', open(self.example_csv))}
         for url in [self.upload, self.stream, self.upload_stream, self.upload]:
             resp = requests.put(url, headers=headers, files=files)
@@ -282,12 +292,12 @@ class TestFileApi(unittest.TestCase):
             self.assertEqual(resp.status_code, 401)
 
 
-    def test_D_timed_out_token_rejected(self):
+    def test_D_timed_out_token_rejected(self) -> None:
         headers = {'Authorization': 'Bearer ' + TEST_TOKENS['TIMED_OUT']}
         self.check_endpoints(headers)
 
 
-    def test_E_unauthenticated_request_rejected(self):
+    def test_E_unauthenticated_request_rejected(self) -> None:
         headers = {}
         self.check_endpoints(headers)
 
@@ -297,7 +307,7 @@ class TestFileApi(unittest.TestCase):
 
     # multipart formdata endpoint
 
-    def remove(self, target_uploads_folder, newfilename):
+    def remove(self, target_uploads_folder: str, newfilename: str) -> None:
         try:
             _file = os.path.normpath(target_uploads_folder + '/' + newfilename)
             os.remove(_file)
@@ -305,7 +315,13 @@ class TestFileApi(unittest.TestCase):
             pass
 
 
-    def mp_fd(self, newfilename, target_uploads_folder, url, method):
+    def mp_fd(
+        self,
+        newfilename: str,
+        target_uploads_folder: str,
+        url: str,
+        method: str,
+    ) -> requests.Response:
         headers = {'Authorization': 'Bearer ' + TEST_TOKENS['VALID']}
         f = open(self.example_csv)
         files = {'file': (newfilename, f)}
@@ -322,13 +338,13 @@ class TestFileApi(unittest.TestCase):
         return resp
 
 
-    def check_copied_sns_file_exists(self, filename):
+    def check_copied_sns_file_exists(self, filename: str) -> None:
         file = (self.sns_uploads_folder + '/' + filename)
         hidden_file = file.replace(self.config['public_key_id'], '.tsd/' + self.config['public_key_id'])
         self.assertTrue(os.path.lexists(hidden_file))
 
 
-    def t_post_mp(self, uploads_folder, newfilename, url):
+    def t_post_mp(self, uploads_folder: str, newfilename: str, url: str) -> None:
         target = os.path.normpath(uploads_folder + '/' + newfilename)
         resp = self.mp_fd(newfilename, uploads_folder, url, 'POST')
         self.assertEqual(resp.status_code, 201)
@@ -336,17 +352,17 @@ class TestFileApi(unittest.TestCase):
         self.assertEqual(md5sum(self.example_csv), md5sum(uploaded_file))
 
 
-    def test_F_post_file_multi_part_form_data(self):
+    def test_F_post_file_multi_part_form_data(self) -> None:
         self.t_post_mp(self.uploads_folder, 'uploaded-example.csv', self.upload)
 
 
-    def test_F1_post_file_multi_part_form_data_sns(self):
+    def test_F1_post_file_multi_part_form_data_sns(self) -> None:
         filename = 'sns-uploaded-example.csv'
         self.t_post_mp(self.sns_uploads_folder, filename, self.sns_upload)
         self.check_copied_sns_file_exists(filename)
 
 
-    def test_FA_post_multiple_files_multi_part_form_data(self):
+    def test_FA_post_multiple_files_multi_part_form_data(self) -> None:
         newfilename1 = 'n1'
         newfilename2 = 'n2'
         try:
@@ -371,7 +387,7 @@ class TestFileApi(unittest.TestCase):
         self.assertNotEqual(md5sum(self.example_csv), md5sum(uploaded_file2))
 
 
-    def t_patch_mp(self, uploads_folder, newfilename, url):
+    def t_patch_mp(self, uploads_folder: str, newfilename: str, url: str) -> None:
         target = os.path.normpath(uploads_folder + '/' + newfilename)
         # need to get rid of previous round's file, if present
         self.remove(uploads_folder, newfilename)
@@ -386,17 +402,17 @@ class TestFileApi(unittest.TestCase):
         self.assertNotEqual(md5sum(self.example_csv), md5sum(uploaded_file))
 
 
-    def test_G_patch_file_multi_part_form_data(self):
+    def test_G_patch_file_multi_part_form_data(self) -> None:
         self.t_patch_mp(self.uploads_folder, 'uploaded-example-2.csv', self.upload)
 
 
-    def test_G1_patch_file_multi_part_form_data_sns(self):
+    def test_G1_patch_file_multi_part_form_data_sns(self) -> None:
         filename = 'sns-uploaded-example-2.csv'
         self.t_patch_mp(self.sns_uploads_folder, filename, self.sns_upload)
         self.check_copied_sns_file_exists(filename)
 
 
-    def test_GA_patch_multiple_files_multi_part_form_data(self):
+    def test_GA_patch_multiple_files_multi_part_form_data(self) -> None:
         newfilename1 = 'n3'
         newfilename2 = 'n4'
         try:
@@ -421,7 +437,7 @@ class TestFileApi(unittest.TestCase):
         self.assertNotEqual(md5sum(self.example_csv), md5sum(uploaded_file2))
 
 
-    def t_put_mp(self, uploads_folder, newfilename, url):
+    def t_put_mp(self, uploads_folder: str, newfilename: str, url: str) -> None:
         target = os.path.normpath(uploads_folder + '/' + newfilename)
         # remove file from previous round
         self.remove(uploads_folder, newfilename)
@@ -436,17 +452,17 @@ class TestFileApi(unittest.TestCase):
         self.assertEqual(md5sum(self.example_csv), md5sum(uploaded_file))
 
 
-    def test_H_put_file_multi_part_form_data(self):
+    def test_H_put_file_multi_part_form_data(self) -> None:
         self.t_put_mp(self.uploads_folder, 'uploaded-example-3.csv', self.upload)
 
 
-    def test_H1_put_file_multi_part_form_data_sns(self):
+    def test_H1_put_file_multi_part_form_data_sns(self) -> None:
         filename = 'sns-uploaded-example-3.csv'
         self.t_put_mp(self.sns_uploads_folder, filename, self.sns_upload)
         self.check_copied_sns_file_exists(filename)
 
 
-    def test_HA_put_multiple_files_multi_part_form_data(self):
+    def test_HA_put_multiple_files_multi_part_form_data(self) -> None:
         newfilename1 = 'n5'
         newfilename2 = 'n6'
         files = [('file', (newfilename1, open(self.example_csv, 'rb'), 'text/html')),
@@ -466,7 +482,7 @@ class TestFileApi(unittest.TestCase):
         self.assertEqual(md5sum(self.example_csv), md5sum(uploaded_file2))
 
 
-    def test_H4XX_when_no_keydir_exists(self):
+    def test_H4XX_when_no_keydir_exists(self) -> None:
         newfilename = 'new1'
         target = os.path.normpath(self.sns_uploads_folder + '/' + newfilename)
         resp1 = self.mp_fd(newfilename, target, self.upload_sns_wrong, 'PUT')
@@ -477,7 +493,7 @@ class TestFileApi(unittest.TestCase):
 
     # streaming endpoint
 
-    def test_I_put_file_to_streaming_endpoint_no_chunked_encoding_data_binary(self):
+    def test_I_put_file_to_streaming_endpoint_no_chunked_encoding_data_binary(self) -> None:
         newfilename = 'streamed-not-chunked'
         uploaded_file = os.path.normpath(self.uploads_folder + '/' + self.test_group + '/' + newfilename)
         try:
@@ -491,7 +507,7 @@ class TestFileApi(unittest.TestCase):
         self.assertEqual(md5sum(self.example_csv), md5sum(uploaded_file))
 
 
-    def test_K_put_stream_file_chunked_transfer_encoding(self):
+    def test_K_put_stream_file_chunked_transfer_encoding(self) -> None:
         newfilename = 'streamed-put-example.csv'
         uploaded_file = os.path.normpath(self.uploads_folder + '/' + self.test_group + '/' + newfilename)
         try:
@@ -511,7 +527,7 @@ class TestFileApi(unittest.TestCase):
     # Informational
     #--------------
 
-    def test_N_head_on_uploads_fails_when_it_should(self):
+    def test_N_head_on_uploads_fails_when_it_should(self) -> None:
         resp1 = requests.head(self.upload)
         resp2 = requests.head(self.upload,
                               headers={'Authorization': 'Bearer ' + TEST_TOKENS['VALID']})
@@ -519,30 +535,14 @@ class TestFileApi(unittest.TestCase):
         self.assertEqual(resp2.status_code, 400)
 
 
-    def test_O_head_on_uploads_succeeds_when_conditions_are_met(self):
+    def test_O_head_on_uploads_succeeds_when_conditions_are_met(self) -> None:
         files = {'file': ('example.csv', open(self.example_csv))}
         headers = {'Authorization': 'Bearer ' + TEST_TOKENS['VALID']}
         resp = requests.head(self.upload, headers=headers, files=files)
         self.assertEqual(resp.status_code, 201)
 
 
-    def test_P_head_on_stream_fails_when_it_should(self):
-        pass
-
-
-    def test_Q_head_on_stream_succeeds_when_conditions_are_met(self):
-        pass
-
-    # Support OPTIONS
-
-    # Space issues
-
-    def test_R_report_informative_error_when_running_out_space(self):
-        pass
-        # [Errno 28] No space left on device
-
-
-    def test_W_create_and_insert_into_generic_table(self):
+    def test_W_create_and_insert_into_generic_table(self) -> None:
         # TODO: harden these tests - check return values
         data = [
             {'key1': 7, 'key2': 'bla', 'id': random.randint(0, 1000000)},
@@ -558,7 +558,7 @@ class TestFileApi(unittest.TestCase):
         self.assertTrue(resp.status_code in [200, 201])
 
 
-    def use_generic_table(self, app_route, url_tokens_method):
+    def use_generic_table(self, app_route: str, url_tokens_method: str) -> None:
         methods = {
             'GET': requests.get,
             'PUT': requests.put,
@@ -572,7 +572,7 @@ class TestFileApi(unittest.TestCase):
             self.assertTrue(resp.status_code in [200, 201])
 
 
-    def test_X_use_generic_table(self):
+    def test_X_use_generic_table(self) -> None:
         # TODO: harden these tests - check return values
         generic_url_tokens_method = [
             ('', 'VALID', 'GET'),
@@ -593,7 +593,7 @@ class TestFileApi(unittest.TestCase):
         self.assertEqual(resp.status_code, 200)
 
 
-    def test_XXX_nettskjema_backend(self):
+    def test_XXX_nettskjema_backend(self) -> None:
         data = [
             {'key1': 7, 'key2': 'bla', 'id': random.randint(0, 1000000)},
             {'key1': 99, 'key3': False, 'id': random.randint(0, 1000000)}
@@ -676,7 +676,7 @@ class TestFileApi(unittest.TestCase):
         self.assertEqual(resp.status_code, 200)
 
 
-    def test_XXX_load(self):
+    def test_XXX_load(self) -> None:
         numrows = 250000 # responses per survey
         numkeys = 1500 # questions per survey
 
@@ -711,7 +711,7 @@ class TestFileApi(unittest.TestCase):
     # More Authn+z
     # ------------
 
-    def test_Y_invalid_project_number_rejected(self):
+    def test_Y_invalid_project_number_rejected(self) -> None:
         data = {'submission_id':11, 'age':193}
         headers = {'Authorization': 'Bearer ' + TEST_TOKENS['VALID']}
         resp = requests.put('http://localhost:' + str(self.config['port']) + '/p12-2193-1349213*&^/tables/generic/form_63332',
@@ -719,7 +719,7 @@ class TestFileApi(unittest.TestCase):
         self.assertEqual(resp.status_code, 404)
 
 
-    def test_Z_token_for_other_project_rejected(self):
+    def test_Z_token_for_other_project_rejected(self) -> None:
         data = {'submission_id':11, 'age':193}
         headers = {'Authorization': 'Bearer ' + TEST_TOKENS['WRONG_PROJECT']}
         resp = requests.put(self.base_url + '/survey/63332/submissions',
@@ -743,14 +743,14 @@ class TestFileApi(unittest.TestCase):
     # gz            -> uncompress
     # gz.aes        -> decrypt, uncompress
 
-    def test_Za_stream_tar_without_custom_content_type_works(self):
+    def test_Za_stream_tar_without_custom_content_type_works(self) -> None:
         headers = {'Authorization': 'Bearer ' + TEST_TOKENS['VALID']}
         resp1 = requests.put(self.stream + '/example.tar', data=lazy_file_reader(self.example_tar),
                              headers=headers)
         self.assertEqual(resp1.status_code, 201)
         # checksum comparison
 
-    def test_Zb_stream_tar_with_custom_content_type_untar_works(self):
+    def test_Zb_stream_tar_with_custom_content_type_untar_works(self) -> None:
         headers = {'Authorization': 'Bearer ' + TEST_TOKENS['VALID'],
                    'Content-Type': 'application/tar'}
         resp1 = requests.put(self.stream + '/totar', data=lazy_file_reader(self.example_tar),
@@ -758,7 +758,7 @@ class TestFileApi(unittest.TestCase):
         self.assertEqual(resp1.status_code, 201)
         # check contents
 
-    def test_Zc_stream_tar_gz_with_custom_content_type_untar_works(self):
+    def test_Zc_stream_tar_gz_with_custom_content_type_untar_works(self) -> None:
         headers = {'Authorization': 'Bearer ' + TEST_TOKENS['VALID'],
                    'Content-Type': 'application/tar.gz'}
         resp1 = requests.put(self.stream + '/totar2', data=lazy_file_reader(self.example_tar_gz),
@@ -766,7 +766,7 @@ class TestFileApi(unittest.TestCase):
         self.assertEqual(resp1.status_code, 201)
         # check contents
 
-    def test_Zd_stream_aes_with_custom_content_type_decrypt_works(self):
+    def test_Zd_stream_aes_with_custom_content_type_decrypt_works(self) -> None:
         headers = {'Authorization': 'Bearer ' + TEST_TOKENS['VALID'],
                    'Content-Type': 'application/aes',
                    'Aes-Key': self.enc_symmetric_secret}
@@ -776,7 +776,7 @@ class TestFileApi(unittest.TestCase):
         with open(self.uploads_folder + '/' + self.test_group + '/decrypted-aes.csv', 'r') as uploaded_file:
             self.assertEqual('x,y\n4,5\n2,1\n', uploaded_file.read())
 
-    def test_Zd0_stream_aes_with_iv_and_custom_content_type_decrypt_works(self):
+    def test_Zd0_stream_aes_with_iv_and_custom_content_type_decrypt_works(self) -> None:
         headers = {'Authorization': 'Bearer ' + TEST_TOKENS['VALID'],
                    'Content-Type': 'application/aes',
                    'Aes-Key': self.enc_hex_aes_key,
@@ -788,7 +788,7 @@ class TestFileApi(unittest.TestCase):
         with open(self.uploads_folder + '/' + self.test_group + '/decrypted-aes2.csv', 'r') as uploaded_file:
             self.assertEqual('x,y\n4,5\n2,1\n', uploaded_file.read())
 
-    def test_Zd1_stream_binary_aes_with_iv_and_custom_content_type_decrypt_works(self):
+    def test_Zd1_stream_binary_aes_with_iv_and_custom_content_type_decrypt_works(self) -> None:
         headers = {'Authorization': 'Bearer ' + TEST_TOKENS['VALID'],
                    'Content-Type': 'application/aes-octet-stream',
                    'Aes-Key': self.enc_hex_aes_key,
@@ -800,7 +800,7 @@ class TestFileApi(unittest.TestCase):
         with open(self.uploads_folder + '/' + self.test_group + '/decrypted-binary-aes.csv', 'r') as uploaded_file:
             self.assertEqual('x,y\n4,5\n2,1\n', uploaded_file.read())
 
-    def test_Ze_stream_tar_aes_with_custom_content_type_decrypt_untar_works(self):
+    def test_Ze_stream_tar_aes_with_custom_content_type_decrypt_untar_works(self) -> None:
         headers = {'Authorization': 'Bearer ' + TEST_TOKENS['VALID'],
                    'Content-Type': 'application/tar.aes',
                    'Aes-Key': self.enc_symmetric_secret}
@@ -809,7 +809,7 @@ class TestFileApi(unittest.TestCase):
         self.assertEqual(resp1.status_code, 201)
         # check contents
 
-    def test_Ze0_stream_tar_aes_with_iv_and_custom_content_type_decrypt_untar_works(self):
+    def test_Ze0_stream_tar_aes_with_iv_and_custom_content_type_decrypt_untar_works(self) -> None:
         headers = {'Authorization': 'Bearer ' + TEST_TOKENS['VALID'],
                    'Content-Type': 'application/tar.aes',
                    'Aes-Key': self.enc_hex_aes_key,
@@ -820,7 +820,7 @@ class TestFileApi(unittest.TestCase):
         self.assertEqual(resp1.status_code, 201)
         # check contents
 
-    def test_Zf_stream_tar_aes_with_custom_content_type_decrypt_untar_works(self):
+    def test_Zf_stream_tar_aes_with_custom_content_type_decrypt_untar_works(self) -> None:
         headers = {'Authorization': 'Bearer ' + TEST_TOKENS['VALID'],
                    'Content-Type': 'application/tar.gz.aes',
                    'Aes-Key': self.enc_symmetric_secret}
@@ -829,7 +829,7 @@ class TestFileApi(unittest.TestCase):
         self.assertEqual(resp1.status_code, 201)
         # check contents
 
-    def test_Zf0_stream_tar_aes_with_iv_and_custom_content_type_decrypt_untar_works(self):
+    def test_Zf0_stream_tar_aes_with_iv_and_custom_content_type_decrypt_untar_works(self) -> None:
         headers = {'Authorization': 'Bearer ' + TEST_TOKENS['VALID'],
                    'Content-Type': 'application/tar.gz.aes',
                    'Aes-Key': self.enc_hex_aes_key,
@@ -839,7 +839,7 @@ class TestFileApi(unittest.TestCase):
         self.assertEqual(resp1.status_code, 201)
         # check contents
 
-    def test_Zg_stream_gz_with_custom_header_decompress_works(self):
+    def test_Zg_stream_gz_with_custom_header_decompress_works(self) -> None:
         headers = {'Authorization': 'Bearer ' + TEST_TOKENS['VALID'],
                    'Content-Type': 'application/gz'}
         resp1 = requests.put(self.stream + '/ungz1', data=lazy_file_reader(self.example_gz),
@@ -849,7 +849,7 @@ class TestFileApi(unittest.TestCase):
            self.assertEqual('x,y\n4,5\n2,1\n', uploaded_file.read())
 
 
-    def test_Zh_stream_gz_aes_with_custom_header_decompress_works(self):
+    def test_Zh_stream_gz_aes_with_custom_header_decompress_works(self) -> None:
         headers = {'Authorization': 'Bearer ' + TEST_TOKENS['VALID'],
                    'Content-Type': 'application/gz.aes',
                    'Aes-Key': self.enc_symmetric_secret}
@@ -861,7 +861,7 @@ class TestFileApi(unittest.TestCase):
             self.assertEqual('x,y\n4,5\n2,1\n', uploaded_file.read())
 
 
-    def test_Zh0_stream_gz_with_iv_and_custom_header_decompress_works(self):
+    def test_Zh0_stream_gz_with_iv_and_custom_header_decompress_works(self) -> None:
         headers = {'Authorization': 'Bearer ' + TEST_TOKENS['VALID'],
                    'Content-Type': 'application/gz.aes',
                    'Aes-Key': self.enc_hex_aes_key,
@@ -870,7 +870,7 @@ class TestFileApi(unittest.TestCase):
                              headers=headers)
         self.assertEqual(resp1.status_code, 201)
 
-    def test_ZA_choosing_file_upload_directories_based_on_tenant_works(self):
+    def test_ZA_choosing_file_upload_directories_based_on_tenant_works(self) -> None:
         newfilename = 'uploaded-example-p12.csv'
         try:
             os.remove(os.path.normpath(self.uploads_folder_p12 + '/' + newfilename))
@@ -897,7 +897,7 @@ class TestFileApi(unittest.TestCase):
         uploaded_file2 = os.path.normpath(self.uploads_folder_p12 + '/p12-member-group/' + newfilename2)
         self.assertEqual(md5sum(self.example_csv), md5sum(uploaded_file2))
 
-    def test_ZB_sns_folder_logic_is_correct(self):
+    def test_ZB_sns_folder_logic_is_correct(self) -> None:
         # lowercase in key id
         self.assertRaises(Exception, sns_dir, self.test_sns_dir,
                          'p11', '/v1/p11/sns/255cE5ED50A7558B/98765', self.tenant_string_pattern)
@@ -916,7 +916,7 @@ class TestFileApi(unittest.TestCase):
         except OSError:
             pass
 
-    def test_ZC_setting_ownership_based_on_user_works(self):
+    def test_ZC_setting_ownership_based_on_user_works(self) -> None:
         token = gen_test_token_for_user(self.config, self.test_user)
         headers = {'Authorization': 'Bearer ' + token,
                    'Filename': 'testing-chowner.txt'}
@@ -927,7 +927,7 @@ class TestFileApi(unittest.TestCase):
         effective_owner = os.stat(self.uploads_folder + '/' + self.test_group + '/testing-chowner.txt').st_uid
         self.assertEqual(intended_owner, effective_owner)
 
-    def test_ZD_cannot_upload_empty_file_to_sns(self):
+    def test_ZD_cannot_upload_empty_file_to_sns(self) -> None:
         files = {'file': ('an-empty-file', open(self.an_empty_file))}
         headers = {'Authorization': 'Bearer ' + TEST_TOKENS['VALID']}
         resp = requests.put(self.sns_upload,
@@ -937,7 +937,7 @@ class TestFileApi(unittest.TestCase):
 
     # client-side specification of groups
 
-    def test_ZE_stream_works_with_client_specified_group(self):
+    def test_ZE_stream_works_with_client_specified_group(self) -> None:
         headers = {'Authorization': 'Bearer ' + TEST_TOKENS['VALID'],
                    'Expect': '100-Continue'}
         url = self.stream + '/streamed-example-with-group-spec.csv?group=p11-member-group'
@@ -946,7 +946,7 @@ class TestFileApi(unittest.TestCase):
                             headers=headers)
         self.assertEqual(resp.status_code, 201)
 
-    def test_ZF_stream_does_not_work_with_client_specified_group_wrong_tenant(self):
+    def test_ZF_stream_does_not_work_with_client_specified_group_wrong_tenant(self) -> None:
         headers = {'Authorization': 'Bearer ' + TEST_TOKENS['VALID'],
                    'Expect': '100-Continue'}
         url = self.stream + '/streamed-example-with-group-spec.csv?group=p12-member-group'
@@ -955,7 +955,7 @@ class TestFileApi(unittest.TestCase):
                              headers=headers)
         self.assertEqual(resp.status_code, 401)
 
-    def test_ZG_stream_does_not_work_with_client_specified_group_nonsense_input(self):
+    def test_ZG_stream_does_not_work_with_client_specified_group_nonsense_input(self) -> None:
         headers = {'Authorization': 'Bearer ' + TEST_TOKENS['VALID'],
                    'Expect': '100-Continue'}
         url = self.stream + '/streamed-example-with-group-spec.csv?group=%2Fusr%2Fbin%2Fecho%20%24PATH'
@@ -964,7 +964,7 @@ class TestFileApi(unittest.TestCase):
                              headers=headers)
         self.assertEqual(resp.status_code, 401)
 
-    def test_ZH_stream_does_not_work_with_client_specified_group_not_a_member(self):
+    def test_ZH_stream_does_not_work_with_client_specified_group_not_a_member(self) -> None:
         headers = {'Authorization': 'Bearer ' + TEST_TOKENS['VALID'],
                    'Expect': '100-Continue'}
         url = self.stream + '/streamed-example-with-group-spec.csv?group=p11-data-group'
@@ -976,14 +976,14 @@ class TestFileApi(unittest.TestCase):
     # export
 
 
-    def test_ZJ_export_file_restrictions_enforced(self):
+    def test_ZJ_export_file_restrictions_enforced(self) -> None:
         headers={'Authorization': 'Bearer ' + TEST_TOKENS['EXPORT']}
         for name in ['/bin/bash -c', '!#/bin/bash', '!@#$%^&*()-+', '../../../p01/data/durable']:
             resp = requests.get(self.export + '/' + name, headers=headers)
             self.assertTrue(resp.status_code in [403, 404, 401])
 
 
-    def test_ZK_export_list_dir_works(self):
+    def test_ZK_export_list_dir_works(self) -> None:
         headers = {'Authorization': 'Bearer ' + TEST_TOKENS['EXPORT']}
         resp = requests.get(self.export, headers=headers)
         data = json.loads(resp.text)
@@ -992,7 +992,7 @@ class TestFileApi(unittest.TestCase):
         self.assertTrue(len(data['files'][0].keys()), 3)
 
 
-    def test_ZL_export_file_works(self):
+    def test_ZL_export_file_works(self) -> None:
         headers = {'Authorization': 'Bearer ' + TEST_TOKENS['ADMIN']}
         resp = requests.get(self.export + '/file1', headers=headers)
         self.assertEqual(resp.text, u'some data\n')
@@ -1004,7 +1004,7 @@ class TestFileApi(unittest.TestCase):
     # resumable uploads
 
 
-    def resource_name(self, filepath, is_dir, remote_resource_key, group):
+    def resource_name(self, filepath: str, is_dir: bool, remote_resource_key: str, group: str) -> str:
         if not is_dir:
             return os.path.basename(filepath)
         elif is_dir and not remote_resource_key:
@@ -1014,17 +1014,17 @@ class TestFileApi(unittest.TestCase):
 
     def start_new_resumable(
         self,
-        filepath,
-        chunksize=1,
-        large_file=False,
-        stop_at=None,
-        token=None,
-        endpoint=None,
-        uploads_folder=None,
-        is_dir=None,
-        remote_resource_key=None,
-        group=None
-    ):
+        filepath: str,
+        chunksize: int =1,
+        large_file: bool = False,
+        stop_at: int = None,
+        token: str = None,
+        endpoint: str = None,
+        uploads_folder: str = None,
+        is_dir: bool = None,
+        remote_resource_key: str = None,
+        group: str = None,
+    ) -> None:
 
         if not token:
             token = TEST_TOKENS['VALID']
@@ -1051,10 +1051,10 @@ class TestFileApi(unittest.TestCase):
             self.assertEqual(md5sum(filepath), md5sum(remote_resource))
 
 
-    def test_ZM_resume_new_upload_works_is_idempotent(self):
+    def test_ZM_resume_new_upload_works_is_idempotent(self) -> None:
         self.start_new_resumable(self.resume_file1, chunksize=5)
 
-    def test_ZM2_resume_upload_with_directory(self):
+    def test_ZM2_resume_upload_with_directory(self) -> None:
         group = f'{self.test_project}-member-group'
         remote_resource_key = 'testing123'
         self.start_new_resumable(
@@ -1089,7 +1089,7 @@ class TestFileApi(unittest.TestCase):
         self.assertEqual(resp['id'], sub_id)
 
 
-    def test_ZN_resume_works_with_upload_id_match(self):
+    def test_ZN_resume_works_with_upload_id_match(self) -> None:
         cs = 5
         proj = ''
         filepath = self.resume_file2
@@ -1107,7 +1107,7 @@ class TestFileApi(unittest.TestCase):
         self.assertTrue('key' in resp.keys())
 
 
-    def test_ZO_resume_works_with_filename_match(self):
+    def test_ZO_resume_works_with_filename_match(self) -> None:
         print('test_ZO_resume_works_with_filename_match')
         cs = 5
         proj = ''
@@ -1125,7 +1125,7 @@ class TestFileApi(unittest.TestCase):
         self.assertEqual(resp['filename'], filename)
 
 
-    def test_ZP_resume_do_not_upload_if_md5_mismatch(self):
+    def test_ZP_resume_do_not_upload_if_md5_mismatch(self) -> None:
         cs = 5
         proj = ''
         filepath = self.resume_file2
@@ -1150,7 +1150,7 @@ class TestFileApi(unittest.TestCase):
         res._db_remove_completed_for_owner(upload_id)
 
 
-    def test_ZR_cancel_resumable(self):
+    def test_ZR_cancel_resumable(self) -> None:
         cs = 5
         proj = ''
         filepath = self.resume_file2
@@ -1170,7 +1170,7 @@ class TestFileApi(unittest.TestCase):
             pass
 
 
-    def test_ZS_recovering_inconsistent_data_allows_resume_from_previous_chunk(self):
+    def test_ZS_recovering_inconsistent_data_allows_resume_from_previous_chunk(self) -> None:
         proj = ''
         token = TEST_TOKENS['VALID']
         filepath = self.resume_file2
@@ -1191,7 +1191,7 @@ class TestFileApi(unittest.TestCase):
         self.assertEqual(resp['filename'], filename)
 
 
-    def test_ZT_list_all_resumables(self):
+    def test_ZT_list_all_resumables(self) -> None:
         filepath = self.resume_file2
         filename = os.path.basename(filepath)
         cs = 5
@@ -1217,7 +1217,7 @@ class TestFileApi(unittest.TestCase):
             pass
 
 
-    def test_ZU_sending_uneven_chunks_resume_works(self):
+    def test_ZU_sending_uneven_chunks_resume_works(self) -> None:
         filepath = self.resume_file2
         filename = os.path.basename(filepath)
         upload_id1 = self.start_new_resumable(filepath, chunksize=3, stop_at=1)
@@ -1240,7 +1240,7 @@ class TestFileApi(unittest.TestCase):
             pass
 
 
-    def test_ZV_resume_chunk_order_enforced(self):
+    def test_ZV_resume_chunk_order_enforced(self) -> None:
         filepath = self.resume_file2
         filename = os.path.basename(filepath)
         upload_id = self.start_new_resumable(filepath, chunksize=3, stop_at=2)
@@ -1264,7 +1264,7 @@ class TestFileApi(unittest.TestCase):
             pass
 
 
-    def test_ZW_resumables_access_control(self):
+    def test_ZW_resumables_access_control(self) -> None:
         filepath = self.resume_file2
         filename = os.path.basename(filepath)
         old_user_token = TEST_TOKENS['VALID']
@@ -1299,7 +1299,7 @@ class TestFileApi(unittest.TestCase):
     # following spec described here: https://developer.mozilla.org/en-US/docs/Web/HTTP/Range_requests
 
 
-    def test_ZX_head_for_export_resume_works(self):
+    def test_ZX_head_for_export_resume_works(self) -> None:
         url = self.export + '/file1'
         headers = {'Authorization': 'Bearer ' + TEST_TOKENS['EXPORT']}
         resp1 = requests.head(url, headers=headers)
@@ -1313,7 +1313,7 @@ class TestFileApi(unittest.TestCase):
         self.assertEqual(etag1, etag2)
 
 
-    def test_ZY_get_specific_range_for_export(self):
+    def test_ZY_get_specific_range_for_export(self) -> None:
         url = self.export + '/file1'
         # 10-byte file, with index range: 0,1,2,3,4,5,6,7,8,9
         headers = {'Authorization': 'Bearer ' + TEST_TOKENS['EXPORT'],
@@ -1334,7 +1334,7 @@ class TestFileApi(unittest.TestCase):
         self.assertEqual(resp.text, 'a\n')
 
 
-    def test_ZZ_get_range_until_end_for_export(self):
+    def test_ZZ_get_range_until_end_for_export(self) -> None:
         url = self.export + '/file1'
         headers = {'Authorization': 'Bearer ' + TEST_TOKENS['EXPORT'],
                    'Range': 'bytes=5-9'} # 0-indexed, so byte 6 to the end
@@ -1343,7 +1343,7 @@ class TestFileApi(unittest.TestCase):
         self.assertEqual(resp.text, 'data\n')
 
 
-    def test_ZZa_get_specific_range_conditional_on_etag(self):
+    def test_ZZa_get_specific_range_conditional_on_etag(self) -> None:
         url = self.export + '/file1'
         headers = {'Authorization': 'Bearer ' + TEST_TOKENS['EXPORT']}
         resp1 = requests.head(url, headers=headers)
@@ -1357,7 +1357,7 @@ class TestFileApi(unittest.TestCase):
         self.assertEqual(resp3.status_code, 400)
 
 
-    def test_ZZb_get_range_out_of_bounds_returns_correct_error(self):
+    def test_ZZb_get_range_out_of_bounds_returns_correct_error(self) -> None:
         url = self.export + '/file1'
         headers = {'Authorization': 'Bearer ' + TEST_TOKENS['EXPORT'],
                    'Range': 'bytes=5-100'}
@@ -1365,7 +1365,7 @@ class TestFileApi(unittest.TestCase):
         self.assertEqual(resp.status_code, 416)
 
 
-    def test_ZZc_requesting_multiple_ranges_not_supported_error(self):
+    def test_ZZc_requesting_multiple_ranges_not_supported_error(self) -> None:
         url = self.export + '/file1'
         headers = {'Authorization': 'Bearer ' + TEST_TOKENS['EXPORT'],
                    'Range': 'bytes=1-4, 5-10'}
@@ -1373,7 +1373,7 @@ class TestFileApi(unittest.TestCase):
         self.assertEqual(resp.status_code, 405)
 
 
-    def test_ZZe_filename_rules_with_uploads(self):
+    def test_ZZe_filename_rules_with_uploads(self) -> None:
         headers = {'Authorization': 'Bearer ' + TEST_TOKENS['VALID']}
         resp = requests.put(self.stream + '/' + url_escape('så_søt(1).txt'),
                             data=lazy_file_reader(self.so_sweet),
@@ -1390,7 +1390,7 @@ class TestFileApi(unittest.TestCase):
 
     # publication system backend
 
-    def test_ZZg_publication(self):
+    def test_ZZg_publication(self) -> None:
         # files
         headers = {'Authorization': 'Bearer ' + TEST_TOKENS['VALID']}
         resp = requests.put(
@@ -1422,7 +1422,7 @@ class TestFileApi(unittest.TestCase):
 
     # directories
 
-    def test_ZZZ_put_file_to_dir(self):
+    def test_ZZZ_put_file_to_dir(self) -> None:
         # 1. backend where group logic is enabled
         headers = {'Authorization': 'Bearer ' + TEST_TOKENS['VALID']}
         # nested, not compliant with group requirements
@@ -1473,13 +1473,13 @@ class TestFileApi(unittest.TestCase):
         self.assertEqual(resp.status_code, 201)
 
 
-    def test_ZZZ_patch_resumable_file_to_dir(self):
+    def test_ZZZ_patch_resumable_file_to_dir(self) -> None:
         self.start_new_resumable(
             self.resume_file1, chunksize=5, endpoint=f'{self.publication_import}/dir77',
             uploads_folder=f'{self.publication_import_folder}/dir77')
 
 
-    def test_ZZZ_reserved_resources(self):
+    def test_ZZZ_reserved_resources(self) -> None:
         headers = {'Authorization': 'Bearer ' + TEST_TOKENS['VALID']}
         # 1. hidden files
         file = url_escape('.resumables-p11-user.db')
@@ -1528,7 +1528,7 @@ class TestFileApi(unittest.TestCase):
         self.assertEqual(resp.status_code, 401)
 
 
-    def test_ZZZ_listing_dirs(self):
+    def test_ZZZ_listing_dirs(self) -> None:
         headers = {'Authorization': 'Bearer ' + TEST_TOKENS['EXPORT']}
         resp = requests.get(self.export, headers=headers)
         self.assertEqual(resp.status_code, 200)
@@ -1572,7 +1572,7 @@ class TestFileApi(unittest.TestCase):
         resp = requests.get(f'{self.export}/data-folder', headers=headers)
         self.assertEqual(resp.status_code, 200)
 
-    def test_ZZZ_listing_import_dir(self):
+    def test_ZZZ_listing_import_dir(self) -> None:
         headers = {'Authorization': 'Bearer ' + TEST_TOKENS['VALID']}
         # top level
         # no group included
@@ -1602,7 +1602,7 @@ class TestFileApi(unittest.TestCase):
         self.assertEqual(resp.status_code, 401)
 
 
-    def test_ZZZ_get_file_from_dir(self):
+    def test_ZZZ_get_file_from_dir(self) -> None:
         headers = {'Authorization': 'Bearer ' + TEST_TOKENS['EXPORT']}
         dirs = f'{self.publication_import_folder}/topdir/bottomdir'
         try:
@@ -1626,7 +1626,7 @@ class TestFileApi(unittest.TestCase):
             pass
 
 
-    def test_ZZZ_delete(self):
+    def test_ZZZ_delete(self) -> None:
         headers = {'Authorization': 'Bearer ' + TEST_TOKENS['EXPORT']}
         dirs = f'{self.publication_import_folder}/topdir/bottomdir'
         resp = requests.put(f'{self.publication_import}/topdir/bottomdir/file1',
@@ -1650,7 +1650,7 @@ class TestFileApi(unittest.TestCase):
             pass
 
 
-    def test_token_signature_validation(self):
+    def test_token_signature_validation(self) -> None:
         test_header = 'Bearer ' + TEST_TOKENS['TEST_SIG']
         res = process_access_token(
             test_header,
@@ -1665,19 +1665,19 @@ class TestFileApi(unittest.TestCase):
 
     def test_db_backend(
         self,
-        data,
-        engine,
-        session_func,
-        SqlGeneratorCls,
-        DbBackendCls,
-        verbose
-    ):
+        data: list,
+        engine: Union[sqlite3.Connection, psycopg2.pool.SimpleConnectionPool],
+        session_func: Callable,
+        SqlGeneratorCls: Union[SqliteQueryGenerator, PostgresQueryGenerator],
+        DbBackendCls: Union[SqliteBackend, PostgresBackend],
+        verbose: bool,
+    ) -> None:
         def test_select_query(
-            uri_query,
-            table='test_table',
-            engine=engine,
-            verbose=verbose
-        ):
+            uri_query: str,
+            table:  str = 'test_table',
+            engine: Union[sqlite3.Connection, psycopg2.pool.SimpleConnectionPool] = engine,
+            verbose: bool = verbose,
+        ) -> list:
             out = []
             if verbose:
                 print(colored(uri_query, 'magenta'))
@@ -1698,12 +1698,12 @@ class TestFileApi(unittest.TestCase):
                 print(out)
             return out
         def test_update_query(
-            uri_query,
-            table='test_table',
-            engine=engine,
-            verbose=verbose,
-            data=data
-        ):
+            uri_query: str,
+            table: str = 'test_table',
+            engine: Union[sqlite3.Connection, psycopg2.pool.SimpleConnectionPool] = engine,
+            verbose: bool = verbose,
+            data: list = data,
+        ) -> list:
             q = SqlGeneratorCls(table, uri_query, data=data)
             if verbose:
                 print(q.update_query)
@@ -1721,11 +1721,11 @@ class TestFileApi(unittest.TestCase):
                 out.append(_in)
             return out
         def test_delete_query(
-            uri_query,
-            table='test_table',
-            engine=engine,
-            verbose=verbose
-        ):
+            uri_query: str,
+            table: str = 'test_table',
+            engine: Union[sqlite3.Connection, psycopg2.pool.SimpleConnectionPool] = engine,
+            verbose: bool = verbose,
+        ) -> bool:
             q = SqlGeneratorCls(table, uri_query)
             if verbose:
                 print(q.delete_query)
@@ -1882,7 +1882,7 @@ class TestFileApi(unittest.TestCase):
         self.assertEqual(out, [])
 
 
-    def test_all_db_backends(self):
+    def test_all_db_backends(self) -> None:
         data = [
             {
                 'x': 1900,
@@ -1979,7 +1979,7 @@ class TestFileApi(unittest.TestCase):
             )
 
 
-    def test_app_backend(self):
+    def test_app_backend(self) -> None:
         headers = {'Authorization': 'Bearer ' + TEST_TOKENS['VALID']}
         file = url_escape('genetic-data.bam')
         resp = requests.put(f'{self.apps}/ega/files/user1/{file}',
@@ -2020,7 +2020,7 @@ class TestFileApi(unittest.TestCase):
         self.assertEqual(resp.status_code, 200)
 
 
-    def test_nacl_crypto(self):
+    def test_nacl_crypto(self) -> None:
 
         # https://libnacl.readthedocs.io/en/latest/index.html
         import libnacl
@@ -2234,7 +2234,7 @@ class TestFileApi(unittest.TestCase):
         self.assertTrue(resp.status_code, 400)
 
 
-    def test_maintenance_mode(self):
+    def test_maintenance_mode(self) -> None:
         maintenance_on = f'{self.maintenance_url}?maintenance=on'
         maintenance_off = f'{self.maintenance_url}?maintenance=off'
         resp = requests.post(maintenance_on)
@@ -2257,7 +2257,7 @@ class TestFileApi(unittest.TestCase):
         resp = requests.post(maintenance_off)
 
 
-    def test_mtime_functionality(self):
+    def test_mtime_functionality(self) -> None:
         # setting mtime on upload
         original_file_mtime = os.stat(self.so_sweet).st_mtime
         headers = {
@@ -2302,7 +2302,7 @@ class TestFileApi(unittest.TestCase):
             original_file_mtime
         )
 
-    def test_log_viewer(self):
+    def test_log_viewer(self) -> None:
         headers = {'Authorization': f"Bearer {TEST_TOKENS['VALID']}"}
         resp = requests.get(f'{self.logs}', headers=headers)
         self.assertEqual(resp.status_code, 200)
@@ -2316,7 +2316,7 @@ class TestFileApi(unittest.TestCase):
         self.assertTrue(isinstance(json.loads(resp.text).get('apps'), list))
 
 
-def main():
+def main() -> None:
     tests = []
     base = [
         # authz
