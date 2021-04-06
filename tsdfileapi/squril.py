@@ -5,29 +5,29 @@ import json
 import re
 
 from abc import ABC, abstractmethod
-
+from typing import Optional, Union, Callable
 
 class SelectElement(ABC):
     @property
     @abstractmethod
-    def name(self):
+    def name(self) -> str:
         pass
     @property
     @abstractmethod
-    def regex(self):
+    def regex(self) -> str:
         pass
 
 
 class BaseSelectElement(SelectElement):
     name = None
     regex = None
-    def __init__(self, element):
+    def __init__(self, element: str) -> None:
         self.element = element
-    def create_bare_key(self, element):
+    def create_bare_key(self, element: str) -> Optional[list]:
         return element.split('[')[0] if '[' in element else None
-    def create_sub_selections(self, element):
+    def create_sub_selections(self, element: str) -> list:
         return element.split('|')[1].replace(']', '').split(',') if '|' in element else []
-    def create_idx(self, element):
+    def create_idx(self, element: str) -> Optional[str]:
         if '[' in element and '|' in element:
             return re.sub(r'.+\[(.*)\|(.*)\]', r'\1', element)
         elif '[' in element and '|' not in element:
@@ -38,7 +38,7 @@ class BaseSelectElement(SelectElement):
 class Key(BaseSelectElement):
     name = 'key'
     regex = r'[^\[\]]+$'
-    def __init__(self, element):
+    def __init__(self, element: str) -> None:
         self.element = element
         self.bare_key = self.create_bare_key(element)
         self.sub_selections = self.create_sub_selections(element)
@@ -48,7 +48,7 @@ class Key(BaseSelectElement):
 class ArraySpecific(BaseSelectElement):
     name = 'array.specific'
     regex = r'.+\[[0-9]+\]$'
-    def __init__(self, element):
+    def __init__(self, element: str) -> None:
         self.element = element
         self.bare_key = self.create_bare_key(element)
         self.sub_selections = self.create_sub_selections(element)
@@ -58,7 +58,7 @@ class ArraySpecific(BaseSelectElement):
 class ArraySpecificSingle(BaseSelectElement):
     name = 'array.specific.single'
     regex = r'.+\[[0-9]+\|[^,]+\]$'
-    def __init__(self, element):
+    def __init__(self, element: str) -> None:
         self.element = element
         self.bare_key = self.create_bare_key(element)
         self.sub_selections = self.create_sub_selections(element)
@@ -68,7 +68,7 @@ class ArraySpecificSingle(BaseSelectElement):
 class ArraySpecificMultiple(BaseSelectElement):
     name = 'array.specific.multiple'
     regex = r'.+\[[0-9]+\|.+,.+\]$'
-    def __init__(self, element):
+    def __init__(self, element: str) -> None:
         self.element = element
         self.bare_key = self.create_bare_key(element)
         self.sub_selections = self.create_sub_selections(element)
@@ -78,7 +78,7 @@ class ArraySpecificMultiple(BaseSelectElement):
 class ArrayBroadcastSingle(BaseSelectElement):
     name = 'array.broadcast.single'
     regex = r'.+\[\*\|[^,]+\]$'
-    def __init__(self, element):
+    def __init__(self, element: str) -> None:
         self.element = element
         self.bare_key = self.create_bare_key(element)
         self.sub_selections = self.create_sub_selections(element)
@@ -88,7 +88,7 @@ class ArrayBroadcastSingle(BaseSelectElement):
 class ArrayBroadcastMultiple(BaseSelectElement):
     name = 'array.broadcast.multiple'
     regex = r'.+\[\*\|.+,.+\]$'
-    def __init__(self, element):
+    def __init__(self, element: str) -> None:
         self.element = element
         self.bare_key = self.create_bare_key(element)
         self.sub_selections = self.create_sub_selections(element)
@@ -97,12 +97,12 @@ class ArrayBroadcastMultiple(BaseSelectElement):
 
 class SelectTerm(object):
 
-    def __init__(self, original):
+    def __init__(self, original: str) -> None:
         self.original = original
         self.bare_term = original.split('[')[0]
         self.parsed = self.parse_elements()
 
-    def parse_elements(self):
+    def parse_elements(self) -> list:
         out = []
         parts = self.original.split('.')
         for element in parts:
@@ -130,14 +130,21 @@ class SelectTerm(object):
 
 class WhereElement(object):
 
-    def __init__(self, groups, combinator, term, op, val):
+    def __init__(
+        self,
+        groups: list,
+        combinator: str,
+        term: str,
+        op: str,
+        val: str,
+    ) -> None:
         self.groups_start, self.groups_end = self.categorise_groups(groups)
         self.combinator = combinator
         self.select_term = SelectTerm(term)
         self.op = op
         self.val = val
 
-    def categorise_groups(self, groups):
+    def categorise_groups(self, groups: list) -> tuple:
         start, end = [], []
         for bracket in groups:
             if bracket == '(':
@@ -149,11 +156,11 @@ class WhereElement(object):
 
 class WhereTerm(object):
 
-    def __init__(self, original):
+    def __init__(self, original: str) -> None:
         self.original = original
         self.parsed = self.parse_elements()
 
-    def parse_elements(self):
+    def parse_elements(self) -> list:
         element = self.original
         groups = []
         for char in self.original:
@@ -182,18 +189,18 @@ class WhereTerm(object):
 
 class OrderElement(object):
 
-    def __init__(self, term, direction):
+    def __init__(self, term: str, direction: str) -> None:
         self.select_term = SelectTerm(term)
         self.direction = direction
 
 
 class OrderTerm(object):
 
-    def __init__(self, original):
+    def __init__(self, original: str) -> None:
         self.original = original
         self.parsed = self.parse_elements()
 
-    def parse_elements(self):
+    def parse_elements(self) -> list:
         parts = self.original.split('.')
         term = '.'.join(parts[:-1])
         direction = parts[-1]
@@ -202,25 +209,25 @@ class OrderTerm(object):
 
 class RangeElement(object):
 
-    def __init__(self, start, end):
+    def __init__(self, start: str, end: str) -> None:
         self.start = start
         self.end = end
 
 
 class RangeTerm(object):
 
-    def __init__(self, original):
+    def __init__(self, original: str) -> None:
         self.original = original
         self.parsed = self.parse_elements()
 
-    def parse_elements(self):
+    def parse_elements(self) -> list:
         start, end = self.original.split('.')
         return [RangeElement(start, end)]
 
 
 class SetElement(object):
 
-    def __init__(self, term):
+    def __init__(self, term: str) -> None:
         self.select_term = SelectTerm(term)
         type_msg = f'{term} must be an instance of Key'
         assert isinstance(self.select_term.parsed[0], Key), type_msg
@@ -230,22 +237,23 @@ class SetElement(object):
 
 class SetTerm(object):
 
-    def __init__(self, original):
+    def __init__(self, original: str) -> None:
         self.original = original
         self.parsed = self.parse_elements()
 
-    def parse_elements(self):
+    def parse_elements(self) -> list:
         return [SetElement(self.original)]
 
 
 class Clause(object):
 
-    def __init__(self, original, term_class=None):
-        self.term_class = term_class
+    term_class = None
+
+    def __init__(self, original: str) -> None:
         self.original = original
         self.parsed = self.parse_terms()
 
-    def split_clause(self):
+    def split_clause(self) -> list:
         out = []
         brace_open = False
         brace_closed = False
@@ -267,7 +275,7 @@ class Clause(object):
             out.append(part)
         return out
 
-    def parse_terms(self):
+    def parse_terms(self) -> list:
         out = []
         terms = self.split_clause()
         for term in terms:
@@ -276,43 +284,19 @@ class Clause(object):
 
 
 class SelectClause(Clause):
-
-    def __init__(self, original, term_class=SelectTerm):
-        self.term_class = term_class
-        self.original = original
-        self.parsed = self.parse_terms()
-
+    term_class = SelectTerm
 
 class WhereClause(Clause):
-
-    def __init__(self, original, term_class=WhereTerm):
-        self.term_class = term_class
-        self.original = original
-        self.parsed = self.parse_terms()
-
+    term_class=WhereTerm
 
 class OrderClause(Clause):
-
-    def __init__(self, original, term_class=OrderTerm):
-        self.term_class = term_class
-        self.original = original
-        self.parsed = self.parse_terms()
-
+    term_class = OrderTerm
 
 class RangeClause(Clause):
-
-    def __init__(self, original, term_class=RangeTerm):
-        self.term_class = term_class
-        self.original = original
-        self.parsed = self.parse_terms()
-
+    term_class = RangeTerm
 
 class SetClause(Clause):
-
-    def __init__(self, original, term_class=SetTerm):
-        self.term_class = term_class
-        self.original = original
-        self.parsed = self.parse_terms()
+    term_class = SetTerm
 
 
 class UriQuery(object):
@@ -327,7 +311,12 @@ class UriQuery(object):
 
     """
 
-    def __init__(self, table_name, uri_query, data=None):
+    def __init__(
+        self,
+        table_name: str,
+        uri_query: str,
+        data: Union[list, dict] = None,
+    ) -> None:
         self.table_name = table_name
         self.original = uri_query
         self.data = data
@@ -337,7 +326,7 @@ class UriQuery(object):
         self.range = self.parse_clause(prefix='range=', Cls=RangeClause)
         self.set = self.parse_clause(prefix='set=', Cls=SetClause)
 
-    def parse_clause(self, prefix=None, Cls=None):
+    def parse_clause(self, *, prefix: str, Cls: Clause) -> Clause:
         if not prefix:
             raise Exception('prefix not specified')
         if not Cls:
@@ -358,7 +347,12 @@ class SqlGenerator(object):
     db_init_sql = None
     json_array_sql = None
 
-    def __init__(self, table_name, uri_query, data=None):
+    def __init__(
+        self,
+        table_name: str,
+        uri_query: str,
+        data: Union[list, dict] = None,
+    ) -> None:
         self.table_name = table_name
         self.uri_query = uri_query
         self.data = data
@@ -388,101 +382,62 @@ class SqlGenerator(object):
     # for each term, an appropriate piece of SQL needs to be returned.
     # What is appropriate, depends on the backend.
 
-    def _gen_sql_key_selection(self, term, parsed):
+    def _gen_sql_key_selection(self, term: SelectTerm, parsed: Key) -> str:
         """
         Generate SQL for selecting a Key element.
 
         Called by _term_to_sql_select when generating the select
         part of the SQL.
 
-        Parameters
-        ----------
-        term: squril.SelectTerm
-        parsed: squril.Key
-
-        Returns
-        -------
-        str
-
         """
         raise NotImplementedError
 
-    def _gen_sql_array_selection(self, term, parsed):
+    def _gen_sql_array_selection(self, term: SelectTerm, parsed: ArraySpecific) -> str:
         """
         Generate SQL for selecting an ArraySpecific element.
 
         Called by _term_to_sql_select when generating the select
         part of the SQL.
 
-        Parameters
-        ----------
-        term: squril.SelectTerm
-        parsed: squril.ArraySpecific
-
-        Returns
-        -------
-        str
-
         """
         raise NotImplementedError
 
-    def _gen_sql_array_sub_selection(self, term, parsed, specific=None):
+    def _gen_sql_array_sub_selection(
+        self,
+        term: SelectTerm,
+        parsed: Union[
+            ArraySpecificSingle,
+            ArraySpecificMultiple,
+            ArrayBroadcastSingle,
+            ArrayBroadcastMultiple,
+        ],
+    ) -> str:
         """
         Generate SQL for selecting inside arrays.
 
         Called by _term_to_sql_select when generating the select
         part of the SQL.
 
-        Parameters
-        ----------
-        term: squril.SelectTerm
-        parsed:
-            squril.ArraySpecificSingle,
-            squril.ArraySpecificMultiple,
-            squril.ArrayBroadcastSingle,
-            squril.ArraySpecificMultiple
-
-        Returns
-        -------
-        str
-
         """
-
         raise NotImplementedError
 
-    def _gen_sql_col(self, term):
+    def _gen_sql_col(self, term: Union[SelectTerm, WhereTerm, OrderTerm]) -> str:
         """
         Generate a column reference from a term,
         used in where and order clauses.
 
-        Parameters
-        ----------
-        term: squril.SelectTerm
-
-        Returns
-        -------
-        str
-
         """
         raise NotImplementedError
 
-    def _gen_sql_update(self, term):
+    def _gen_sql_update(self, term: Key) -> str:
         """
         Generate an update expression, from a term
         using the data passed to the constructor.
 
-        Paremters
-        ---------
-        term: squril.Key
-
-        Returns
-        -------
-        bool
-
         """
         raise NotImplementedError
 
-    def _clause_map_terms(self, clause, map_func):
+    def _clause_map_terms(self, clause: Clause, map_func: Callable) -> list:
         # apply a function to all Terms in a clause
         out = []
         for term in clause.parsed:
@@ -492,23 +447,23 @@ class SqlGenerator(object):
 
     # methods for mapping functions over terms in different types of clauses
 
-    def select_map(self, map_func):
+    def select_map(self, map_func: Callable) -> Optional[list]:
         return self._clause_map_terms(self.parsed_uri_query.select, map_func) \
             if self.parsed_uri_query.select else None
 
-    def where_map(self, map_func):
+    def where_map(self, map_func: Callable) -> Optional[list]:
         return self._clause_map_terms(self.parsed_uri_query.where, map_func) \
             if self.parsed_uri_query.where else None
 
-    def order_map(self, map_func):
+    def order_map(self, map_func: Callable) -> Optional[list]:
         return self._clause_map_terms(self.parsed_uri_query.order, map_func) \
             if self.parsed_uri_query.order else None
 
-    def range_map(self, map_func):
+    def range_map(self, map_func: Callable) -> Optional[list]:
         return self._clause_map_terms(self.parsed_uri_query.range, map_func) \
             if self.parsed_uri_query.range else None
 
-    def set_map(self, map_func):
+    def set_map(self, map_func: Callable) -> Optional[list]:
         return self._clause_map_terms(self.parsed_uri_query.set, map_func) \
             if self.parsed_uri_query.set else None
 
@@ -518,7 +473,7 @@ class SqlGenerator(object):
     # SQL is generated by calling other functions
     # which are implemented for specific SQL backend implementations
 
-    def _term_to_sql_select(self, term):
+    def _term_to_sql_select(self, term: SelectTerm) -> str:
         rev = term.parsed.copy()
         rev.reverse()
         out = []
@@ -541,7 +496,7 @@ class SqlGenerator(object):
             first_done = True
         return selection
 
-    def _term_to_sql_where(self, term):
+    def _term_to_sql_where(self, term: WhereTerm) -> str:
         groups_start = ''.join(term.parsed[0].groups_start)
         groups_end = ''.join(term.parsed[0].groups_end)
         combinator = term.parsed[0].combinator if term.parsed[0].combinator else ''
@@ -577,15 +532,15 @@ class SqlGenerator(object):
         out = f'{groups_start} {combinator} {col} {op} {val} {groups_end}'
         return out
 
-    def _term_to_sql_order(self, term):
+    def _term_to_sql_order(self, term: OrderTerm) -> str:
         selection = self._gen_sql_col(term)
         direction = term.parsed[0].direction
         return f'order by {selection} {direction}'
 
-    def _term_to_sql_range(self, term):
+    def _term_to_sql_range(self, term: RangeTerm) -> str:
         return f'limit {term.parsed[0].end} offset {term.parsed[0].start}'
 
-    def _term_to_sql_update(self, term):
+    def _term_to_sql_update(self, term: SelectTerm) -> str:
         if not self.data:
             return None
         out = self._gen_sql_update(term)
@@ -593,7 +548,7 @@ class SqlGenerator(object):
 
     # mapper methods - used by public methods
 
-    def _gen_sql_select_clause(self):
+    def _gen_sql_select_clause(self) -> str:
         out = self.select_map(self._term_to_sql_select)
         if not out:
             sql_select = f'select * from {self.table_name}'
@@ -602,7 +557,7 @@ class SqlGenerator(object):
             sql_select = f"select {self.json_array_sql}({joined}) from {self.table_name}"
         return sql_select
 
-    def _gen_sql_where_clause(self):
+    def _gen_sql_where_clause(self) -> str:
         out = self.where_map(self._term_to_sql_where)
         if not out:
             sql_where = ''
@@ -611,14 +566,14 @@ class SqlGenerator(object):
             sql_where = f'where {joined}'
         return sql_where
 
-    def _gen_sql_order_clause(self):
+    def _gen_sql_order_clause(self) -> str:
         out = self.order_map(self._term_to_sql_order)
         if not out:
             return ''
         else:
             return out[0]
 
-    def _gen_sql_range_clause(self):
+    def _gen_sql_range_clause(self) -> str:
         out = self.range_map(self._term_to_sql_range)
         if not out:
             return ''
@@ -627,14 +582,14 @@ class SqlGenerator(object):
 
     # public methods - called by constructor
 
-    def sql_select(self):
+    def sql_select(self) -> str:
         _select = self._gen_sql_select_clause()
         _where = self._gen_sql_where_clause()
         _order = self._gen_sql_order_clause()
         _range = self._gen_sql_range_clause()
         return f'{_select} {_where} {_order} {_range}'
 
-    def sql_update(self):
+    def sql_update(self) -> str:
         out = self.set_map(self._term_to_sql_update)
         if not out:
             return ''
@@ -643,7 +598,7 @@ class SqlGenerator(object):
             _where = self._gen_sql_where_clause()
             return f'update {self.table_name} {_set} {_where}'
 
-    def sql_delete(self):
+    def sql_delete(self) -> str:
         _where = self._gen_sql_where_clause()
         return f'delete from {self.table_name} {_where}'
 
@@ -657,13 +612,22 @@ class SqliteQueryGenerator(SqlGenerator):
 
     # Helper functions - used by mappers
 
-    def _gen_sql_key_selection(self, term, parsed):
+    def _gen_sql_key_selection(self, term: SelectTerm, parsed: Key) -> str:
         return f"json_extract(data, '$.{term.original}')"
 
-    def _gen_sql_array_selection(self, term, parsed):
+    def _gen_sql_array_selection(self, term: SelectTerm, parsed: ArraySpecific) -> str:
         return f"json_extract(data, '$.{term.original}')"
 
-    def _gen_sql_array_sub_selection(self, term, parsed):
+    def _gen_sql_array_sub_selection(
+        self,
+        term: SelectTerm,
+        parsed: Union[
+            ArraySpecificSingle,
+            ArraySpecificMultiple,
+            ArrayBroadcastSingle,
+            ArrayBroadcastMultiple,
+        ],
+    ) -> str:
         if (
             isinstance(parsed, ArraySpecificSingle)
             or isinstance(parsed, ArraySpecificMultiple)
@@ -695,7 +659,7 @@ class SqliteQueryGenerator(SqlGenerator):
             """
         return selection
 
-    def _gen_sql_col(self, term):
+    def _gen_sql_col(self, term: Union[SelectTerm, WhereTerm, OrderTerm]) -> str:
         if isinstance(term, WhereTerm) or isinstance(term, OrderTerm):
             select_term = term.parsed[0].select_term
         elif isinstance(term, SelectTerm):
@@ -718,7 +682,7 @@ class SqliteQueryGenerator(SqlGenerator):
         col = f"json_extract(data, '$.{target}')"
         return col
 
-    def _gen_sql_update(self, term):
+    def _gen_sql_update(self, term: Key) -> str:
         key = term.parsed[0].select_term.bare_term
         assert self.data.get(key) is not None, f'Target key of update: {key} not found in payload'
         assert len(self.data.keys()) == 1, f'Cannot update more than one key per statement'
@@ -773,15 +737,15 @@ class PostgresQueryGenerator(SqlGenerator):
         """
     ]
 
-    def _gen_select_target(self, term_attr):
+    def _gen_select_target(self, term_attr: str) -> str:
         return term_attr.replace('.', ',') if '.' in term_attr else term_attr
 
-    def _gen_sql_key_selection(self, term, parsed):
+    def _gen_sql_key_selection(self, term: SelectTerm, parsed: Key) -> str:
         target = self._gen_select_target(term.original)
         selection = f"data#>'{{{target}}}'"
         return selection
 
-    def _gen_sql_array_selection(self, term, parsed):
+    def _gen_sql_array_selection(self, term: SelectTerm, parsed: ArraySpecific) -> str:
         target = self._gen_select_target(term.bare_term)
         selection = f"""
             case when data#>'{{{target}}}'->{parsed.idx} is not null then
@@ -790,7 +754,16 @@ class PostgresQueryGenerator(SqlGenerator):
             """
         return selection
 
-    def _gen_sql_array_sub_selection(self, term, parsed):
+    def _gen_sql_array_sub_selection(
+        self,
+        term: SelectTerm,
+        parsed: Union[
+            ArraySpecificSingle,
+            ArraySpecificMultiple,
+            ArrayBroadcastSingle,
+            ArrayBroadcastMultiple,
+        ],
+    ) -> str:
         target = self._gen_select_target(term.bare_term)
         sub_selections = ','.join(parsed.sub_selections)
         data_selection_expr = f"filter_array_elements(data#>'{{{target}}}','{{{sub_selections}}}')"
@@ -808,7 +781,7 @@ class PostgresQueryGenerator(SqlGenerator):
             """
         return selection
 
-    def _gen_sql_col(self, term):
+    def _gen_sql_col(self, term: Union[SelectTerm, WhereTerm, OrderTerm]) -> str:
         if isinstance(term, WhereTerm) or isinstance(term, OrderTerm):
             select_term = term.parsed[0].select_term
         elif isinstance(term, SelectTerm):
@@ -846,7 +819,7 @@ class PostgresQueryGenerator(SqlGenerator):
                 pass
         return col
 
-    def _gen_sql_update(self, term):
+    def _gen_sql_update(self, term: Key) -> str:
         key = term.parsed[0].select_term.bare_term
         assert self.data.get(key) is not None, f'Target key of update: {key} not found in payload'
         assert len(self.data.keys()) == 1, f'Cannot update more than one key per statement'
