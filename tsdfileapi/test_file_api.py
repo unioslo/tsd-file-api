@@ -199,7 +199,7 @@ class TestFileApi(unittest.TestCase):
         cls.sns_upload = cls.base_url + '/sns/' + cls.config['test_keyid'] + '/' + cls.config['test_formid']
         cls.upload_sns_wrong = cls.base_url + '/sns/' + 'WRONG' + '/' + cls.config['test_formid']
         cls.stream = cls.base_url + '/files/stream'
-        cls.upload_stream = cls.base_url + '/files/upload_stream'
+
         cls.export = cls.base_url + '/files/export'
         cls.resumables = cls.base_url + '/files/resumables'
         cls.publication_import = cls.base_url + '/publication/import'
@@ -283,7 +283,7 @@ class TestFileApi(unittest.TestCase):
 
     def check_endpoints(self, headers: dict) -> None:
         files = {'file': ('example.csv', open(self.example_csv))}
-        for url in [self.upload, self.stream, self.upload_stream, self.upload]:
+        for url in [self.upload, self.stream, self.upload]:
             resp = requests.put(url, headers=headers, files=files)
             self.assertEqual(resp.status_code, 401)
             resp = requests.post(url, headers=headers, files=files)

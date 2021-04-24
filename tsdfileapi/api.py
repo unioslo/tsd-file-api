@@ -1041,7 +1041,6 @@ class StreamHandler(AuthRequestHandler):
             assert options.valid_tenant.match(self.tenant)
             self.import_dir = options.config['backends']['disk'][backend]['import_path']
             self.tenant_dir = self.import_dir.replace(options.tenant_string_pattern, self.tenant)
-            self.backend = backend
             self.request_hook = options.config['backends']['disk'][backend]['request_hook']
             self.group_config = options.config['backends']['disk'][backend]['group_logic']
             self.check_tenant = options.config['backends']['disk'][backend].get('check_tenant')
@@ -1477,10 +1476,117 @@ class StreamHandler(AuthRequestHandler):
 @stream_request_body
 class ProxyHandler(AuthRequestHandler):
 
+    def decrypt_aes_key(self, b64encoded_pgpencrypted_key: str) -> str:
+        gpg = _import_keys(options.config)
+        key = base64.b64decode(b64encoded_pgpencrypted_key)
+        decr_aes_key = str(gpg.decrypt(key)).strip()
+        return decr_aes_key
+
+
+    def start_openssl_proc(self, output_file: str = None, base64: bool = True) -> subprocess.Popen:
+        cmd = ['openssl', 'enc', '-aes-256-cbc', '-d'] + self.aes_decryption_args_from_headers()
+        if output_file is not None:
+            cmd = cmd + ['-out', output_file]
+        if base64:
+            cmd = cmd + ['-a']
+        return subprocess.Popen(
+            cmd,
+            stdin=subprocess.PIPE,
+            stdout=subprocess.PIPE if output_file is None else None
+        )
+
+
+    def aes_decryption_args_from_headers(self) -> list:
+        try:
+            decr_aes_key = self.decrypt_aes_key(self.request.headers['Aes-Key'])
+        except Exception as e:
+            logging.error('decrypt_aes_key failed with:')
+            logging.error(e)
+            logging.error(traceback.format_exc())
+        if "Aes-Iv" in self.request.headers:
+            return ['-iv', self.request.headers["Aes-Iv"], '-K', decr_aes_key]
+        else:
+            return ['-pass', 'pass:%s' % decr_aes_key]
+
+
+    def handle_aes(self, content_type: str) -> None:
+        self.custom_content_type = content_type
+        self.proc = self.start_openssl_proc(output_file=self.path)
+
+
+    def handle_aes_octet_stream(self, content_type: str) -> None:
+        self.custom_content_type = 'application/aes'
+        self.proc = self.start_openssl_proc(output_file=self.path, base64=False)
+
+
+    def handle_tar(self, content_type: str, tenant_dir: str) -> None:
+        if 'gz' in content_type:
+            tarflags = '-xzf'
+        else:
+            tarflags = '-xf'
+        self.custom_content_type = content_type
+        self.proc = subprocess.Popen(
+            ['tar', '-C', tenant_dir, tarflags, '-'], stdin=subprocess.PIPE
+        )
+
+
+    def handle_tar_aes(self, content_type: str, tenant_dir: str) -> None:
+        if 'gz' in content_type:
+            tarflags = '-xzf'
+        else:
+            tarflags = '-xf'
+        self.custom_content_type = content_type
+        self.openssl_proc = self.start_openssl_proc()
+        self.tar_proc = subprocess.Popen(
+            ['tar', '-C', tenant_dir, tarflags, '-'], stdin=self.openssl_proc.stdout
+        )
+
+
+    def handle_gz(self, content_type: str, filemode: str) -> None:
+        self.custom_content_type = content_type
+        self.target_file = open(self.path, filemode)
+        self.gunzip_proc = subprocess.Popen(
+            ['gunzip', '-c', '-'],
+            stdin=subprocess.PIPE,
+            stdout=self.target_file,
+        )
+
+
+    def handle_gz_aes(self, content_type: str, filemode: str) -> None:
+        self.custom_content_type = content_type
+        self.target_file = open(self.path, filemode)
+        self.openssl_proc = self.start_openssl_proc()
+        self.gunzip_proc = subprocess.Popen(
+            ['gunzip', '-c', '-'],
+            stdin=self.openssl_proc.stdout,
+            stdout=self.target_file,
+        )
+
+    def handle_nacl_stream(self, headers: tornado.httputil.HTTPHeaders) -> None:
+        self.custom_content_type = headers['Content-Type']
+        self.nacl_stream_buffer = b''
+        try:
+            self.nacl_nonce = options.sealed_box.decrypt(
+                base64.b64decode(headers['Nacl-Nonce'])
+            )
+            self.nacl_key = options.sealed_box.decrypt(
+                base64.b64decode(headers['Nacl-Key'])
+            )
+        except Exception as e:
+            logging.error(e)
+            logging.error('Could not decrypt Nacl headers')
+            raise Exception
+        try:
+            self.nacl_chunksize = int(headers['Nacl-Chunksize'])
+        except KeyError:
+            logging.error('Missing Nacl-Chunksize header - cannot decrypt data')
+            raise Exception
+
     def initialize(self, backend: str, namespace: str, endpoint: str) -> None:
         self.backend = backend
         self.namespace = namespace
         self.endpoint = endpoint
+        self.tenant = tenant_from_url(self.request.uri)
         self.allow_export = options.config['backends']['disk'][backend]['allow_export']
         self.allow_list = options.config['backends']['disk'][backend]['allow_list']
         self.allow_info = options.config['backends']['disk'][backend]['allow_info']
@@ -1489,6 +1595,7 @@ class ProxyHandler(AuthRequestHandler):
         self.has_posix_ownership = options.config['backends']['disk'][backend]['has_posix_ownership']
         self.check_tenant = options.config['backends']['disk'][backend].get('check_tenant')
         self.mq_config = options.config['backends']['disk'][backend].get('mq')
+        self.request_hook = options.config['backends']['disk'][backend]['request_hook']
         try:
             missing_group_config = {
                 'enabled': False,
@@ -1511,6 +1618,7 @@ class ProxyHandler(AuthRequestHandler):
             self.export_policy = options.config['backends']['disk'][backend]['export_policy']
             self.import_dir = options.config['backends']['disk'][backend]['import_path']
             self.import_dir = self.import_dir.replace(options.tenant_string_pattern, tenant)
+            self.tenant_dir = self.import_dir.replace(options.tenant_string_pattern, self.tenant)
         except Exception as e:
             self.group_config = disabled_group_config
 
@@ -1520,6 +1628,14 @@ class ProxyHandler(AuthRequestHandler):
         """Initiate internal async HTTP request to handle body.
         """
         self.error = None
+        self.completed_resumable_file = False
+        self.target_file = None
+        self.custom_content_type = None
+        self.path = None
+        self.path_part = None
+        self.chunk_order_correct = True
+        self.chunk_num = None
+        self.on_finish_called = False
         try:
             # 0. If in maintenance mode, stop
             if options.maintenance_mode_enabled:
@@ -1530,14 +1646,16 @@ class ProxyHandler(AuthRequestHandler):
             try:
                 self.chunks = tornado.queues.Queue(1)
                 if self.request.method in ['HEAD', 'GET', 'DELETE']:
-                    body = None
+                    #body = None
+                    pass
                 elif self.request.method == 'POST':
                     self.set_status(405)
                     self.error = 'POST not supported'
                     logging.error(self.error)
                     raise Exception
                 else:
-                    body = self.body_producer
+                    #body = self.body_producer
+                    pass
                 self.listing_dir = False
             except Exception as e:
                 logging.error('Could not set up internal async variables')
@@ -1625,6 +1743,7 @@ class ProxyHandler(AuthRequestHandler):
                 header_keys = self.request.headers.keys()
                 if 'Content-Type' not in header_keys:
                     content_type = 'application/octet-stream'
+                    self.request.headers['Content-Type'] = 'application/octet-stream'
                 elif 'Content-Type' in header_keys:
                     content_type = self.request.headers['Content-Type']
                     if content_type == 'application/octet-stream+nacl':
@@ -1686,13 +1805,178 @@ class ProxyHandler(AuthRequestHandler):
                 if self.request.method in ('PUT', 'PATCH'):
                     # otherwise we are serving something
                     # so no need to pass data on
-                    self.fetch_future = AsyncHTTPClient().fetch(
-                        internal_url,
-                        method=self.request.method,
-                        body_producer=body,
-                        request_timeout=12000.0, # 3 hours max
-                        headers=headers,
-                    )
+                    #self.fetch_future = AsyncHTTPClient().fetch(
+                     #   internal_url,
+                      #  method=self.request.method,
+                       # body_producer=body,
+                        #request_timeout=12000.0, # 3 hours max
+                    #    headers=headers,
+                    #)
+                    try:
+
+                        filemodes = {'PUT': 'wb+', 'PATCH': 'wb+'}
+                        try:
+                            self.authnz = self.process_token_and_extract_claims(
+                                check_tenant=self.check_tenant if self.check_tenant is not None else options.check_tenant
+                            )
+                        except Exception as e:
+                            logging.error(e)
+                            raise Exception
+                        try:
+                            # 1. Check tenant reference
+                            try:
+                                tenant = tenant_from_url(self.request.uri)
+                                self.tenant = tenant
+                                assert options.valid_tenant.match(tenant)
+                            except AssertionError as e:
+                                logging.error('URI does not contain a valid tenant')
+                                raise e
+                            # 2. get group param
+                            try:
+                                self.group_name = url_unescape(self.get_query_argument('group'))
+                            except Exception:
+                                self.group_name = tenant + '-member-group'
+                            filemode = filemodes[self.request.method]
+                            # 3. start processing the data
+                            try:
+                                # 3.1 extract info from uri
+                                content_type = self.request.headers['Content-Type']
+                                uri_filename = self.request.uri.split('?')[0].split('/')[-1]
+                                filename = self.filename
+                                #filename = check_filename(url_unescape(uri_filename),
+                                #                          disallowed_start_chars=options.start_chars)
+                                # 3.2 optionally create dirs
+                                # 3.2.1 tenant dir
+                                if options.create_tenant_dir:
+                                    if not os.path.lexists(self.tenant_dir):
+                                        os.makedirs(self.tenant_dir)
+                                # 3.2.2 destination dir
+                                self.resource_dir = None
+                                try:
+                                    #resource_references = self.request.uri.split('?')[0].split('/')[5:]
+                                    #url_dirs = url_unescape('/'.join(resource_references[:-1]))
+                                    logging.info('[[[[[[[[[[')
+                                    logging.info(resource)
+                                    url_dirs = os.path.dirname(resource)
+                                    self.resource_dir = os.path.normpath(f'{self.tenant_dir}/{url_dirs}')
+                                    if not os.path.lexists(self.resource_dir):
+                                        logging.info(f'creating resource dir: {self.resource_dir}')
+                                        os.makedirs(self.resource_dir)
+                                        target = self.tenant_dir
+                                        for _dir in url_dirs.split('/'):
+                                            target += f'/{_dir}'
+                                            try:
+                                                if self.group_config['enabled']:
+                                                    subprocess.call(['chmod', '2770', target])
+                                                    owner = options.api_user  # so it can move the file into the dir
+                                                    subprocess.call(['sudo', 'chown', f'{owner}:{self.group_name}', target])
+                                            except (Exception, OSError):
+                                                logging.error('could not set permissions on upload directories')
+                                                raise Exception
+                                except Exception as e:
+                                    logging.error(e)
+                                    raise Exception
+                                # 3.3 handle resumable, if relavant
+                                if self.request.method == 'PATCH':
+                                    # select resumable key:
+                                    # then we remove the group name from url_dirs
+                                    # because this is handled transparently
+                                    # (for better or for worse)
+                                    if self.group_config['enabled']:
+                                        self.res_key = url_dirs.replace(self.group_name, '')[1:] # strip starting /
+                                        self.res_key = None if not self.res_key else self.res_key
+                                    else:
+                                        self.res_key = url_dirs
+                                    self.res = SerialResumable(self.tenant_dir, self.requestor)
+
+                                    url_chunk_num = url_unescape(self.get_query_argument('chunk'))
+
+                                    url_upload_id = url_unescape(self.get_query_argument('id', ''))
+                                    self.chunk_num, \
+                                    self.upload_id, \
+                                    self.completed_resumable_file, \
+                                    self.chunk_order_correct, \
+                                    filename = self.res.prepare(
+                                            self.tenant_dir,
+                                            filename,
+                                            url_chunk_num,
+                                            url_upload_id,
+                                            self.group_name,
+                                            self.requestor,
+                                            self.res_key
+                                        )
+                                    if not self.chunk_order_correct:
+                                        logging.error('incorrect chunk order')
+                                        raise ResumableIncorrectChunkOrderError
+                                # 3.4 ensure we do not write to active file
+                                self.path = os.path.normpath(self.tenant_dir + '/' + filename)
+                                self.path_part = self.path + '.' + str(uuid4()) + '.part'
+                                if os.path.lexists(self.path_part):
+                                    logging.error('trying to write to partial file - killing request')
+                                    raise Exception
+                                # 3.5 ensure idempotency
+                                if os.path.lexists(self.path):
+                                    if os.path.isdir(self.path):
+                                        logging.info('directory: %s already exists due to prior upload, removing', self.path)
+                                        shutil.rmtree(self.path)
+                                    else:
+                                        logging.info('%s already exists, renaming to %s', self.path, self.path_part)
+                                        os.rename(self.path, self.path_part)
+                                        assert os.path.lexists(self.path_part)
+                                        assert not os.path.lexists(self.path)
+                                # 3.6 rename
+                                self.path, self.path_part = self.path_part, self.path
+                                # 3.7 invoke custom content type handlers, if relevant
+                                if content_type == 'application/aes':
+                                    self.handle_aes(content_type)
+                                elif content_type == 'application/aes-octet-stream':
+                                    self.handle_aes_octet_stream(content_type)
+                                elif content_type in ['application/tar', 'application/tar.gz']:
+                                    self.handle_tar(content_type, self.tenant_dir)
+                                elif content_type in ['application/tar.aes', 'application/tar.gz.aes']:
+                                    self.handle_tar_aes(content_type, self.tenant_dir)
+                                elif content_type == 'application/gz':
+                                    self.handle_gz(content_type, filemode)
+                                elif content_type == 'application/gz.aes':
+                                    self.handle_gz_aes(content_type, filemode)
+                                elif content_type == 'application/octet-stream+nacl':
+                                    self.handle_nacl_stream(self.request.headers)
+                                    self.target_file = open(self.path, filemode)
+                                    os.chmod(self.path, _RW______)
+                                else: # 3.8 no custom content type
+                                    if self.request.method != 'PATCH':
+                                        self.custom_content_type = None
+                                        logging.info('>>>>>>>')
+                                        logging.info(self.path)
+                                        logging.info(self.path_part)
+                                        self.target_file = open(self.path, filemode)
+                                        os.chmod(self.path, _RW______)
+                                    elif self.request.method == 'PATCH':
+                                        self.custom_content_type = None
+                                        if not self.completed_resumable_file:
+                                            self.target_file = self.res.open_file(self.path, filemode)
+                            except KeyError:
+                                raise Exception('No content-type - do not know what to do with data')
+                        # 3.9 handle any errors
+                        except ResumableIncorrectChunkOrderError as e:
+                            raise ResumableIncorrectChunkOrderError from e
+                        except Exception as e:
+                            try:
+                                if self.target_file:
+                                    self.target_file.close()
+                                os.rename(self.path, self.path_part)
+                            except AttributeError as e:
+                                logging.error(e)
+                                logging.error('No file to close after all - so nothing to worry about')
+                                raise e
+                    except Exception as e:
+                        logging.error('stream handler failed with:')
+                        logging.error(traceback.format_exc())
+                        info = 'stream processing failed'
+                        if self.chunk_order_correct is False:
+                            self.set_status(400)
+                            info = 'chunk_order_incorrect'
+                        self.finish({'message': info})
             except Exception as e:
                 logging.error('Problem in async client')
                 logging.error(e)
@@ -1703,7 +1987,7 @@ class ProxyHandler(AuthRequestHandler):
                 logging.error(self.error)
                 logging.error(e)
             self.finish()
-
+    """
     @gen.coroutine
     def body_producer(self, write: Callable) -> Any:
         while True:
@@ -1718,7 +2002,7 @@ class ProxyHandler(AuthRequestHandler):
 
     @gen.coroutine
     def put(self, tenant: str, filename: str = None) -> None:
-        """Called after entire body has been read."""
+        'Called after entire body has been read.'
         yield self.chunks.put(None)
         # wait for request to finish.
         response = yield self.fetch_future
@@ -1727,7 +2011,7 @@ class ProxyHandler(AuthRequestHandler):
 
     @gen.coroutine
     def patch(self, tenant: str, filename: str = None) -> None:
-        """Called after entire body has been read."""
+        'Called after entire body has been read.'
         yield self.chunks.put(None)
         # wait for request to finish.
         response = yield self.fetch_future
@@ -1742,7 +2026,121 @@ class ProxyHandler(AuthRequestHandler):
             pass
         self.set_status(code)
         self.write(body)
+        """
+    @gen.coroutine
+    def data_received(self, chunk: bytes) -> Optional[Awaitable[None]]:
+        try:
+            if not self.custom_content_type:
+                if self.request.method == 'PATCH':
+                    self.res.add_chunk(self.target_file, chunk)
+                else:
+                    logging.info(chunk)
+                    self.target_file.write(chunk)
+            elif self.custom_content_type == 'application/octet-stream+nacl':
+                for byte in chunk:
+                    self.nacl_stream_buffer += bytes([byte])
+                    if len(self.nacl_stream_buffer) % self.nacl_chunksize == 0:
+                        decrypted = libnacl.crypto_stream_xor(
+                            self.nacl_stream_buffer,
+                            self.nacl_nonce,
+                            self.nacl_key
+                        )
+                        self.target_file.write(decrypted)
+                        self.nacl_stream_buffer = b''
+            elif self.custom_content_type in ['application/tar', 'application/tar.gz',
+                                              'application/aes']:
+                self.proc.stdin.write(chunk)
+                if not chunk:
+                    self.proc.stdin.flush()
+            elif self.custom_content_type in ['application/tar.aes', 'application/tar.gz.aes']:
+                self.openssl_proc.stdin.write(chunk)
+                if not chunk:
+                    self.openssl_proc.stdin.flush()
+                    self.tar_proc.stdin.flush()
+            elif self.custom_content_type == 'application/gz':
+                self.gunzip_proc.stdin.write(chunk)
+                if not chunk:
+                    self.gunzip_proc.stdin.flush()
+            elif self.custom_content_type == 'application/gz.aes':
+                self.openssl_proc.stdin.write(chunk)
+                if not chunk:
+                    self.openssl_proc.stdin.flush()
+                    self.gunzip_proc.stdin.flush()
+        except Exception as e:
+            logging.error(e)
+            logging.error("something went wrong with stream processing have to close file")
+            if self.target_file:
+                self.target_file.close()
+            os.rename(self.path, self.path_part)
+            self.send_error("something went wrong")
 
+    def put(self, tenant: str, uri_filename: str = None) -> None:
+        if not self.custom_content_type:
+            self.target_file.close()
+            os.rename(self.path, self.path_part)
+        elif self.custom_content_type == 'application/octet-stream+nacl':
+            if self.nacl_stream_buffer:
+                decrypted = libnacl.crypto_stream_xor(
+                            self.nacl_stream_buffer,
+                            self.nacl_nonce,
+                            self.nacl_key
+                        )
+                self.nacl_stream_buffer = b''
+                self.target_file.write(decrypted)
+            self.target_file.close()
+            os.rename(self.path, self.path_part)
+        elif self.custom_content_type in ['application/tar', 'application/tar.gz',
+                                          'application/aes']:
+            out, err = self.proc.communicate()
+            if self.custom_content_type == 'application/aes':
+                os.rename(self.path, self.path_part)
+        elif self.custom_content_type in ['application/tar.aes', 'application/tar.gz.aes']:
+            out, err = self.openssl_proc.communicate()
+            out, err = self.tar_proc.communicate()
+        elif self.custom_content_type == 'application/gz':
+            out, err = self.gunzip_proc.communicate()
+            self.target_file.close()
+            os.rename(self.path, self.path_part)
+        elif self.custom_content_type == 'application/gz.aes':
+            out, err = self.openssl_proc.communicate()
+            out, err = self.gunzip_proc.communicate()
+            self.target_file.close()
+            os.rename(self.path, self.path_part)
+        self.set_status(201)
+        self.write({'message': 'data streamed'})
+
+
+    def patch(self, tenant: str, uri_filename: str = None) -> None:
+        if not self.completed_resumable_file:
+            self.res.close_file(self.target_file)
+            # if the path to which we want to rename the file exists
+            # then we have been writing the same chunk concurrently
+            # from two different processes, so we should not do it
+            if not os.path.lexists(self.path_part):
+                os.rename(self.path, self.path_part)
+                filename = os.path.basename(self.path_part).split('.chunk')[0]
+                self.res.merge_chunk(
+                    self.tenant_dir,
+                    os.path.basename(self.path_part),
+                    self.upload_id,
+                    self.requestor
+                )
+            else:
+                self.write({'message': 'chunk_order_incorrect'})
+        else:
+            self.completed_resumable_filename = self.res.finalise(
+                self.tenant_dir,
+                os.path.basename(self.path_part),
+                self.upload_id,
+                self.requestor
+            )
+            filename = os.path.basename(self.completed_resumable_filename)
+        self.set_status(201)
+        self.write({
+            'filename': filename,
+            'id': self.upload_id,
+            'max_chunk': self.chunk_num,
+            'key': self.res_key})
 
     def enforce_export_policy(
         self,
@@ -2271,12 +2669,46 @@ class ProxyHandler(AuthRequestHandler):
             self.finish({'message': self.message})
 
     def on_finish(self) -> None:
+        resource_created = (
+            (self.request.method == 'PUT'
+            or (self.request.method == 'PATCH' and self.chunk_num == 'end'))
+            and self._status_code < 300
+        )
         if (
             not options.maintenance_mode_enabled
             and self._status_code < 300
-            and self.request.method in ('GET', 'HEAD', 'DELETE')
+            and (
+                self.request.method in ('GET', 'HEAD', 'DELETE')
+                or resource_created
+            )
         ):
             try:
+                if resource_created:
+                    try:
+                        # switch path variables back
+                        if not self.completed_resumable_file:
+                            path, path_part = self.path_part, self.path
+                        else:
+                            path = self.completed_resumable_filename
+                        logging.info(f'>>>>>>')
+                        logging.info(f'moving {path} to {self.resource_dir}')
+                        resource_path = move_data_to_folder(path, self.resource_dir)
+                        client_mtime = self.request.headers.get('Modified-Time')
+                        if client_mtime:
+                            set_mtime(resource_path, float(client_mtime))
+                    except Exception as e:
+                        logging.info('could not move data to destination folder')
+                        logging.info(e)
+                    try:
+                        if self.request_hook['enabled']:
+                            call_request_hook(
+                                self.request_hook['path'],
+                                [resource_path, self.requestor, options.api_user, self.group_name],
+                                as_sudo=self.request_hook['sudo']
+                            )
+                    except Exception as e:
+                        logging.info('problem calling request hook')
+                        logging.info(e)
                 message_data = {
                     'path': None,
                     'requestor': self.requestor,
@@ -2298,7 +2730,63 @@ class ProxyHandler(AuthRequestHandler):
                     )
             except Exception as e:
                 logging.error(e)
+            self.on_finish_called = True
 
+    def on_connection_close(self) -> None:
+        """
+        Called when clients close the connection.
+
+        1. Close open file, move it to destination
+
+        """
+        try:
+            if not self.target_file.closed:
+                self.target_file.close()
+                path = self.path
+                resource_created = (
+                    self.request.method == 'PUT' or (
+                        self.request.method == 'PATCH' and
+                        self.chunk_num == 'end'
+                    )
+                )
+                if resource_created:
+                    resource_path = move_data_to_folder(path, self.resource_dir)
+                    client_mtime = self.request.headers.get('Modified-Time')
+                    if client_mtime:
+                        set_mtime(resource_path, float(client_mtime))
+                    if self.request_hook['enabled']:
+                        call_request_hook(
+                            self.request_hook['path'],
+                            [resource_path, self.requestor, options.api_user, self.group_name],
+                            as_sudo=self.request_hook['sudo']
+                        )
+                # otherwise leave the partial upload in place, as is
+                # most likely a client that closed the connection
+                # while uploading a chunk, that was never finished
+                if not self.on_finish_called:
+                    try:
+                        message_data = {
+                                'path': resource_path,
+                                'requestor': self.requestor,
+                                'group': self.group_name,
+                            }
+                        self.handle_mq_publication(
+                            mq_config=self.mq_config,
+                            data=message_data,
+                        )
+                        self.update_request_log(
+                            tenant=self.tenant,
+                            backend=self.backend,
+                            requestor=self.requestor,
+                            method=self.request.method,
+                            uri=self.request.headers.get('Original-Uri'),
+                            app=self.get_app_name(self.request.uri),
+                            claims=self.claims,
+                        )
+                    except Exception as e:
+                        logging.error(e)
+        except (AttributeError, Exception) as e:
+            logging.error(e)
 
 class GenericTableHandler(AuthRequestHandler):
 
