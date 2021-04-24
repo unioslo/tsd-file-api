@@ -251,7 +251,7 @@ class SerialResumable(AbstractResumable):
 
         """
         chunk_num = int(url_chunk_num) if url_chunk_num != 'end' else url_chunk_num
-        upload_id = str(uuid.uuid4()) if url_upload_id == 'None' else url_upload_id
+        upload_id = str(uuid.uuid4()) if not url_upload_id else url_upload_id
         chunk_filename = in_filename + '.chunk.' + url_chunk_num
         filename = upload_id + '/' + chunk_filename
         if chunk_num == 'end':
