@@ -1834,7 +1834,6 @@ class FileRequestHandler(AuthRequestHandler):
                 if self.CHUNK_SIZE > bytes_to_read:
                     self.CHUNK_SIZE = bytes_to_read
                 data = fd.read(self.CHUNK_SIZE)
-                sent = sent + self.CHUNK_SIZE
                 while data and sent <= bytes_to_read:
                     self.write(data)
                     yield self.flush()
