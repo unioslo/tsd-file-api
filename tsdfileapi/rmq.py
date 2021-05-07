@@ -21,6 +21,7 @@ class PikaClient(object):
 
     def connect(self):
         if self.connecting:
+            logging.info('connecting - so not re-connecting')
             return
         self.connecting = True
         host = self.config.get('host')
@@ -36,7 +37,12 @@ class PikaClient(object):
         self.connection = TornadoConnection(params)
         self.connection.add_on_open_callback(self.on_connect)
         self.connection.add_on_close_callback(self.on_closed)
+        self.connection.add_on_open_error_callback(self.on_open_error_callback)
+        self.connecting = False
         return
+
+    def on_open_error_callback(self, connection: TornadoConnection, exception: Exception) -> None:
+        logging.info('could not connect')
 
     def on_connect(self, connection: TornadoConnection) -> None:
         self.connection = connection
@@ -59,8 +65,9 @@ class PikaClient(object):
     def on_basic_cancel(self, frame: pika.frame.Frame) -> None:
         self.connection.close()
 
-    def on_closed(self, connection: TornadoConnection) -> None:
-        tornado.ioloop.IOLoop.instance().stop()
+    def on_closed(self, connection: TornadoConnection, exception: Exception) -> None:
+        logging.info('rabbitmq connection closed')
+        logging.info(exception)
 
     def publish_message(
         self,
@@ -72,6 +79,7 @@ class PikaClient(object):
         version: str,
         data: dict,
         persistent: bool = True,
+        timestamp: int = int(time.time()),
     ) -> None:
         """
         Publilsh a message to an exchange.
@@ -103,7 +111,7 @@ class PikaClient(object):
             properties=pika.BasicProperties(
                 content_type='application/json',
                 delivery_mode=delivery_mode,
-                timestamp=int(time.time()),
+                timestamp=timestamp,
                 message_id=str(uuid.uuid4()),
             )
         )

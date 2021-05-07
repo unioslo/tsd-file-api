@@ -16,6 +16,7 @@ import json
 import logging
 import os
 import pwd
+import queue
 import re
 import subprocess
 import stat
@@ -39,7 +40,6 @@ import yaml
 from termcolor import colored
 from tornado.escape import json_decode, url_unescape, url_escape
 from tornado import gen
-from tornado.httpclient import AsyncHTTPClient
 from tornado.ioloop import IOLoop
 from tornado.options import parse_command_line, define, options
 from tornado.web import (Application, RequestHandler, stream_request_body,
@@ -115,9 +115,11 @@ def set_config() -> None:
         )
     )
     define('rabbitmq', _config.get('rabbitmq', {}))
+    define('rabbitmq_cache', queue.Queue())
     define('maintenance_mode_enabled', False)
     define('request_log', _config.get('request_log'))
     options.logging = _config.get('log_level', 'info')
+
 
 set_config()
 
@@ -388,9 +390,24 @@ class AuthRequestHandler(RequestHandler):
 
         Defaults can be over-ridden by providing mq_config.
 
+        Error handling
+        --------------
+        If the broker is down, then the connection, and channel will be closed.
+        While it is down, messages that fail to be published will be placed in
+        an in-memory queue. When the broker is available again, the API will try
+        to reconnect, and get a new channel. Once available, the API will publish
+        all messages in the queue. Such messagess are published with the timestamp
+        at which they would have been published originally.
+
+        If either the connection or channel is closed for different reasons than
+        the broker being down, the same process will be followed.
+
+        Naturally, if the process restarts while the broker is unavailable, enqueued
+        messages will be lost.
+
         """
-        self.pika_client = self.application.settings.get('pika_client')
-        if not self.pika_client:
+        if not self.application.settings.get('pika_client'):
+            logging.info('no pika_client found')
             return
         if not mq_config:
             return
@@ -414,20 +431,62 @@ class AuthRequestHandler(RequestHandler):
                 self.request.headers.get('Original-Uri') if self.request.headers.get('Original-Uri')
                 else self.request.uri
             )
+            # try hard to be able to publish, if e.g. the broker restarted
+            connection_open = self.application.settings.get('pika_client').connection.is_open
+            re_open_connection = False
+            if connection_open:
+                channel_open = self.application.settings.get('pika_client').channel.is_open
+                if not channel_open:
+                    logging.info('RabbitMQ channel is closed')
+                    re_open_connection = True
+            if not connection_open:
+                logging.info('RabbitMQ connection is closed')
+                re_open_connection = True
+            if re_open_connection:
+                logging.info('trying to re-open RabbitMQ connection')
+                self.application.settings.get('pika_client').connect()
+            self.pika_client = self.application.settings.get('pika_client')
             self.pika_client.publish_message(
                 exchange=ex,
                 routing_key=rkey,
                 method=self.request.method,
                 uri=uri,
                 version=ver,
-                data=data
+                data=data,
             )
-        except Exception as e:
+            if not options.rabbitmq_cache.empty(): # if the broker was down
+                try:
+                    logging.info(f'publishing {options.rabbitmq_cache.qsize()} messages from cache')
+                    message = options.rabbitmq_cache.get_nowait()
+                    while message:
+                        self.pika_client.publish_message(
+                            exchange=message.get('ex'),
+                            routing_key=message.get('rkey'),
+                            method=message.get('method'),
+                            uri=message.get('uri'),
+                            version=message.get('version'),
+                            data=message.get('data'),
+                            timestamp=message.get('timestamp'),
+                        )
+                        message = options.rabbitmq_cache.get_nowait()
+                except queue.Empty:
+                    pass # nothing left
+        except (Exception, UnboundLocalError) as e:
             summary = f'exchange: {ex}, routing_key: {rkey}, version: {ver}'
             msg = f'problem publishing message, {summary}'
             logging.error(msg)
             logging.error(e)
-        return
+            options.rabbitmq_cache.put(
+                {
+                    'ex': ex,
+                    'rkey': rkey,
+                    'method': self.request.method,
+                    'uri': uri,
+                    'version': ver,
+                    'data': data,
+                    'timestamp': int(time.time()),
+                }
+            )
 
     # audit log tools
 
@@ -1985,7 +2044,7 @@ class FileRequestHandler(AuthRequestHandler):
                             path = self.completed_resumable_filename
                         resource_path = move_data_to_folder(path, self.resource_dir)
                         client_mtime = self.request.headers.get('Modified-Time')
-                        if client_mtime:
+                        if client_mtime and client_mtime != 'None':
                             set_mtime(resource_path, float(client_mtime))
                     except Exception as e:
                         logging.info('could not move data to destination folder')
@@ -2045,7 +2104,7 @@ class FileRequestHandler(AuthRequestHandler):
                 if resource_created:
                     resource_path = move_data_to_folder(path, self.resource_dir)
                     client_mtime = self.request.headers.get('Modified-Time')
-                    if client_mtime:
+                    if client_mtime and client_mtime != 'None':
                         set_mtime(resource_path, float(client_mtime))
                     if self.request_hook['enabled']:
                         call_request_hook(
