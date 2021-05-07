@@ -42,7 +42,7 @@ class PikaClient(object):
         return
 
     def on_open_error_callback(self, connection: TornadoConnection, exception: Exception) -> None:
-        logging.info('could not connect')
+        logging.error('could not connect')
 
     def on_connect(self, connection: TornadoConnection) -> None:
         self.connection = connection
