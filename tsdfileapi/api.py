@@ -2655,12 +2655,14 @@ class Backends(object):
                         print(colored(f'- {route[0]}', 'yellow'))
                         self.routes.append(route)
 
-        print(colored('Initialising database backends', 'magenta'))
-        for name, backend in self.config['backends']['dbs'].items():
-            db_backend = self.database_backends[backend['db']['engine']]
-            if db_backend.generator_class.db_init_sql:
+        db_backends = self.config['backends']['dbs'].items()
+        if db_backends:
+            print(colored('Initialising database backends', 'magenta'))
+            for name, backend in db_backends:
+                db_backend = self.database_backends[backend['db']['engine']]
                 print(colored(f"DB backend: {backend['db']['engine']}, {name}", 'cyan'))
-                self.initdb(name)
+                if db_backend.generator_class.db_init_sql:
+                    self.initdb(name)
 
         if self.config.get('rabbitmq', {}).get('enabled'):
             print(colored('Finding rabbitmq exchanges', 'magenta'))
