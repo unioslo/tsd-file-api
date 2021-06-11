@@ -5,8 +5,8 @@ _config = {
     'port': 3003,
     'debug': True,
     'api_user': getpass.getuser(),
-    'token_check_tenant': True,
-    'token_check_exp': True,
+    'token_check_tenant': False,
+    'token_check_exp': False,
     'disallowed_start_chars': '',
     'requestor_claim_name': 'user',
     'tenant_claim_name': 'proj',
@@ -31,35 +31,7 @@ _config = {
     'public_key_id': '43FA347ED76EC595',
     'backends': {
         'disk': {
-            'cluster': {
-                'has_posix_ownership': False,
-                'export_max_num_list': None,
-                'import_path': '/tmp/pXX/cluster/',
-                'export_path': '/tmp/pXX/export',
-                'allow_export': True,
-                'allow_list': True,
-                'allow_info': True,
-                'allow_delete': True,
-                'request_hook': {
-                    'enabled': False,
-                    'path': '/usr/local/bin/chowner',
-                    'sudo': False
-                },
-                'export_policy': {
-                    'default': {
-                        'enabled': False
-                    },
-                },
-                'group_logic': {
-                    'default_url_group': 'pXX-member-group',
-                    'default_memberships': ['pXX-member-group'],
-                    'enabled': True,
-                    'ensure_tenant_in_group_name': False,
-                    'valid_group_regex': 'p[0-9]+-[a-z-]+',
-                    'enforce_membership': False
-                },
-            },
-            'store': {
+            'publication': {
                 'has_posix_ownership': False,
                 'export_max_num_list': None,
                 'import_path': '/tmp/pXX',
