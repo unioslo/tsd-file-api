@@ -1595,16 +1595,17 @@ class FileRequestHandler(AuthRequestHandler):
             header_value = self.use_original_uri.get('header_value')
             conditions = self.use_original_uri.get('claim_conditions')
             if conditions.get('any'):
-                return self.request.headers.get(header_value)
+                uri = self.request.headers.get(header_value)
             else:
                 key = self.claims.get(conditions.get('claim_key'))
                 val = self.claims.get(conditions.get('claim_value'))
                 if self.claims.get(key) == val:
-                    return self.request.headers.get(header_value)
+                    uri = self.request.headers.get(header_value)
                 else:
-                    return self.request.uri.split("?")[0]
+                    uri = self.request.uri
         else:
-            return self.request.uri.split("?")[0]
+            uri = self.request.uri
+        return uri.split('?')[0]
 
 
     def list_files(self, path: str, tenant: str, root: str) -> None:
