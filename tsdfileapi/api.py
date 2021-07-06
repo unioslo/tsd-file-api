@@ -1057,6 +1057,7 @@ class FileRequestHandler(AuthRequestHandler):
         self.check_tenant = options.config['backends']['disk'][backend].get('check_tenant')
         self.mq_config = options.config['backends']['disk'][backend].get('mq')
         self.request_hook = options.config['backends']['disk'][backend]['request_hook']
+        self.use_original_uri = options.config['backends']['disk'][backend].get('use_original_uri')
         try:
             missing_group_config = {
                 'enabled': False,
@@ -1569,6 +1570,43 @@ class FileRequestHandler(AuthRequestHandler):
         return size, mime_type, mtime
 
 
+    def _base_uri(self) -> str:
+        """
+        When running the API behind a proxy, it may be necessary
+        to use the proxy-level URI to generate correct href values
+        in the metadata produced by self.list_files
+
+        This method determines which URI to use based on backend
+        specific configuration as such:
+
+        {backend}:
+          use_original_uri:
+            header_value: str
+            claim_conditions:
+              any: bool
+              claim_key: str
+              claim_value: str
+
+        Where claim_key and claim_value refer to claims in the
+        requestors' JWT.
+
+        """
+        if self.use_original_uri:
+            header_value = self.use_original_uri.get('header_value')
+            conditions = self.use_original_uri.get('claim_conditions')
+            if conditions.get('any'):
+                return self.request.headers.get(header_value)
+            else:
+                key = self.claims.get(conditions.get('claim_key'))
+                val = self.claims.get(conditions.get('claim_value'))
+                if self.claims.get(key) == val:
+                    return self.request.headers.get(header_value)
+                else:
+                    return self.request.uri.split("?")[0]
+        else:
+            return self.request.uri.split("?")[0]
+
+
     def list_files(self, path: str, tenant: str, root: str) -> None:
         """
         List a directory.
@@ -1636,7 +1674,7 @@ class FileRequestHandler(AuthRequestHandler):
                 next_page = int(current_page) + 1
             else:
                 next_page = None
-            baseuri = self.request.uri.split('?')[0]
+            baseuri = self._base_uri()
             nextref = f'{baseuri}?page={next_page}' if next_page else None
             if self.export_max and len(files) > self.export_max:
                 self.set_status(400)
