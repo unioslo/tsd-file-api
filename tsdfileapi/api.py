@@ -1605,6 +1605,8 @@ class FileRequestHandler(AuthRequestHandler):
                     uri = self.request.uri
         else:
             uri = self.request.uri
+        if not uri:
+            uri = self.request.uri
         return uri.split('?')[0]
 
 
