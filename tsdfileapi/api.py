@@ -2130,55 +2130,49 @@ class FileRequestHandler(AuthRequestHandler):
         1. Close open file, move it to destination
 
         """
-        try:
-            if self.on_finish_called:
-                return
-            if not self.target_file.closed:
-                self.target_file.close()
-                path = self.path
-                resource_created = (
-                    self.request.method == 'PUT' or (
-                        self.request.method == 'PATCH' and
-                        self.chunk_num == 'end'
-                    )
+        if self.on_finish_called:
+            return
+        if not self.target_file.closed:
+            self.target_file.close()
+            path = self.path
+            resource_created = (
+                self.request.method == 'PUT' or (
+                    self.request.method == 'PATCH' and
+                    self.chunk_num == 'end'
                 )
-                if resource_created:
-                    resource_path = move_data_to_folder(path, self.resource_dir)
-                    client_mtime = self.request.headers.get('Modified-Time')
-                    if client_mtime and client_mtime != 'None':
-                        set_mtime(resource_path, float(client_mtime))
-                    if self.request_hook['enabled']:
-                        call_request_hook(
-                            self.request_hook['path'],
-                            [resource_path, self.requestor, options.api_user, self.group_name],
-                            as_sudo=self.request_hook['sudo']
-                        )
-                # otherwise leave the partial upload in place, as is
-                # most likely a client that closed the connection
-                # while uploading a chunk, that was never finished
-                try:
-                    message_data = {
-                            'path': resource_path if resource_created else None,
-                            'requestor': self.requestor,
-                            'group': self.group_name if resource_created else None,
-                        }
-                    self.handle_mq_publication(
-                        mq_config=self.mq_config,
-                        data=message_data,
+            )
+            if resource_created:
+                resource_path = move_data_to_folder(path, self.resource_dir)
+                client_mtime = self.request.headers.get('Modified-Time')
+                if client_mtime and client_mtime != 'None':
+                    set_mtime(resource_path, float(client_mtime))
+                if self.request_hook['enabled']:
+                    call_request_hook(
+                        self.request_hook['path'],
+                        [resource_path, self.requestor, options.api_user, self.group_name],
+                        as_sudo=self.request_hook['sudo']
                     )
-                    self.update_request_log(
-                        tenant=self.tenant,
-                        backend=self.backend,
-                        requestor=self.requestor,
-                        method=self.request.method,
-                        uri=self.request.headers.get('Original-Uri'),
-                        app=self.get_app_name(self.request.uri),
-                        claims=self.claims,
-                    )
-                except Exception as e:
-                    logging.error(e)
-        except (AttributeError, Exception) as e:
-            logging.error(e)
+            # otherwise leave the partial upload in place, as is
+            # most likely a client that closed the connection
+            # while uploading a chunk, that was never finished
+            message_data = {
+                    'path': resource_path if resource_created else None,
+                    'requestor': self.requestor,
+                    'group': self.group_name if resource_created else None,
+                }
+            self.handle_mq_publication(
+                mq_config=self.mq_config,
+                data=message_data,
+            )
+            self.update_request_log(
+                tenant=self.tenant,
+                backend=self.backend,
+                requestor=self.requestor,
+                method=self.request.method,
+                uri=self.request.headers.get('Original-Uri'),
+                app=self.get_app_name(self.request.uri),
+                claims=self.claims,
+            )
 
 class GenericTableHandler(AuthRequestHandler):
 
