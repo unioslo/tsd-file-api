@@ -636,6 +636,30 @@ class SerialResumable(AbstractResumable):
         the merge until the final request. Until a feature request arrives,
         it remain unimplemented.
 
+        Note
+        ----
+        If removing a chunk with the `os.remove(chunk)` call fails, we've got
+        ourselves a case of an invalid/stale chunk file. We can't remove the file,
+        obviously -- `os.remove` did fail, after all. We have now a mandatory
+        choice to make, between returning success and returning an error to the
+        client. Returning success would be dangerous because the error we're dealing
+        with that prompted us to try remove the chunk implies the chunk may be
+        invalid due to not having been written entirely or something else that went
+        wrong that caused the particular except block to apply. So we assume an
+        error must be returned to the client. We shouldn't return a _client_ error
+        code, because the client isn't at fault here -- something went wrong on our
+        side of things. Assuming thus that a _server_ error is returned, since a
+        client may rightfully assume some _intermittent_ server error condition,
+        they may be inclined to retry the request. The environment certainly helps
+        make this an attractive error handling strategy for us -- what with sporadic
+        NFS I/O issues and other things that may crop up from one request to the
+        next. However, since the removal of the [stale] chunk file would have failed
+        during the first request, the retried request will fail the second time, but
+        now with the API deeming it a _client_ error -- because the API assumes that
+        if a chunk file is present then the chunk already is stored and repeating
+        with the same chunk number is a clear case of chunk number order violation,
+        something the API would rightfully attribute as cause to the client.
+
         """
         assert '.part' not in last_chunk_filename
         filename = os.path.basename(last_chunk_filename.split('.chunk')[0])
@@ -655,13 +679,10 @@ class SerialResumable(AbstractResumable):
             chunk_size = os.stat(chunk).st_size
             assert self._db_update_with_chunk_info(upload_id, chunk_num, chunk_size)
         except Exception as e:
-            logging.error(e)
-            try:
-                os.remove(chunk)
-                with open(out, 'ab') as fout:
-                    fout.truncate(size_before_merge)
-            except (Exception, OSError) as e:
-                raise Exception('could not merge %s', chunk)
+            os.remove(chunk)
+            with open(out, 'ab') as fout:
+                fout.truncate(size_before_merge)
+            raise e
         finally:
             try:
                 os.unlink(out_lock)
