@@ -1481,7 +1481,9 @@ class FileRequestHandler(AuthRequestHandler):
                     self.requestor
                 )
             else:
+                self.set_status(400)
                 self.write({'message': 'chunk_order_incorrect'})
+                return
         else:
             self.completed_resumable_filename = self.res.finalise(
                 self.tenant_dir,
