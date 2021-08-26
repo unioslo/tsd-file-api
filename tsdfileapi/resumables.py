@@ -665,8 +665,8 @@ class SerialResumable(AbstractResumable):
         finally:
             try:
                 os.unlink(out_lock)
-            except OSError:
-                pass
+            except Exception as e:
+                logging.exception(e)
         if chunk_num >= 5:
             target_chunk_num = chunk_num - 4
             old_chunk = chunk.replace('.chunk.' + str(chunk_num), '.chunk.' + str(target_chunk_num))
