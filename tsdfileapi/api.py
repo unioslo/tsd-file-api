@@ -58,6 +58,7 @@ from utils import (call_request_hook, sns_dir,
 
 _RW______ = stat.S_IREAD | stat.S_IWRITE
 _RW_RW___ = _RW______ | stat.S_IRGRP | stat.S_IWGRP
+_50MB = 52428800
 
 
 def read_config(filename: str) -> dict:
@@ -107,7 +108,7 @@ def set_config() -> None:
     define('default_file_owner', _config['default_file_owner'])
     define('create_tenant_dir', _config['create_tenant_dir'])
     define('jwt_secret', _config['jwt_secret'] if 'jwt_secret' in _config.keys() else None)
-    define('max_nacl_chunksize', 500000)  # don't want more than 0.5MB
+    define('max_nacl_chunksize', _config.get('max_nacl_chunksize', _50MB))
     define('sealed_box', libnacl.sealed.SealedBox(
             libnacl.public.SecretKey(
                 base64.b64decode(_config['nacl_public']['private'])

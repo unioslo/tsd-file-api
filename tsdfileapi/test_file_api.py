@@ -2183,7 +2183,7 @@ class TestFileApi(unittest.TestCase):
                 'Content-Type': content_type,
                 'Nacl-Nonce': nacl_nonce,
                 'Nacl-Key': nacl_key,
-                'Nacl-Chunksize': str(500001),
+                'Nacl-Chunksize': str(52428801),
                 'Authorization': f"Bearer {TEST_TOKENS['VALID']}"
             },
             data=open(new_stream, 'rb').read()
