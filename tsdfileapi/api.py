@@ -119,6 +119,10 @@ def set_config() -> None:
     define('rabbitmq_cache', queue.Queue())
     define('maintenance_mode_enabled', False)
     define('request_log', _config.get('request_log'))
+    if 'backlog' in _config:
+        tornado.netutil.DEFAULT_BACKLOG = _config['backlog']
+    if 'accept_calls_per_event_loop' in _config:
+        tornado.netutil.ACCEPT_CALLS_PER_EVENT_LOOP = _config['accept_calls_per_event_loop']
     options.logging = _config.get('log_level', 'info')
 
 
