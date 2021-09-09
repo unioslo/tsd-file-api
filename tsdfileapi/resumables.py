@@ -684,10 +684,11 @@ class SerialResumable(AbstractResumable):
                 fout.truncate(size_before_merge)
             raise e
         finally:
-            try:
-                os.unlink(out_lock)
-            except Exception as e:
-                logging.exception(e)
+            if chunk_num > 1:
+                try:
+                    os.unlink(out_lock)
+                except Exception as e:
+                    logging.exception(e)
         if chunk_num >= 5:
             target_chunk_num = chunk_num - 4
             old_chunk = chunk.replace('.chunk.' + str(chunk_num), '.chunk.' + str(target_chunk_num))
