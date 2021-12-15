@@ -78,8 +78,12 @@ import shutil
 import sqlite3
 
 from datetime import datetime
-from typing import Union, Callable
+from typing import Union, Callable, Optional
 
+import libnacl
+import libnacl.sealed
+import libnacl.public
+import libnacl.utils
 import psycopg2
 import psycopg2.pool
 import pretty_bad_protocol._parsers
@@ -1015,7 +1019,7 @@ class TestFileApi(unittest.TestCase):
     def start_new_resumable(
         self,
         filepath: str,
-        chunksize: int =1,
+        chunksize: int = 1,
         large_file: bool = False,
         stop_at: int = None,
         token: str = None,
@@ -1024,6 +1028,7 @@ class TestFileApi(unittest.TestCase):
         is_dir: bool = None,
         remote_resource_key: str = None,
         group: str = None,
+        public_key: Optional[libnacl.public.PublicKey] = None,
     ) -> None:
 
         if not token:
@@ -1035,9 +1040,17 @@ class TestFileApi(unittest.TestCase):
         )
         env = ''
         resp = fileapi.initiate_resumable(
-            env, self.test_project, filepath, token,
-            chunksize=chunksize, new=True, group=group,
-            verify=False, dev_url=url, stop_at=stop_at
+            env,
+            self.test_project,
+            filepath,
+            token,
+            chunksize=chunksize,
+            new=True,
+            group=group,
+            verify=False,
+            dev_url=url,
+            stop_at=stop_at,
+            public_key=public_key,
         )
         if stop_at:
             return resp['id']
@@ -2023,10 +2036,6 @@ class TestFileApi(unittest.TestCase):
     def test_nacl_crypto(self) -> None:
 
         # https://libnacl.readthedocs.io/en/latest/index.html
-        import libnacl
-        import libnacl.sealed
-        import libnacl.public
-        import libnacl.utils
 
         # server key pair
         server_public_key = base64.b64decode(self.config['test_nacl_public']['public'])
@@ -2175,6 +2184,9 @@ class TestFileApi(unittest.TestCase):
             data=open(new_stream, 'rb').read()
         )
         self.assertEqual(md5sum(test_file), md5sum(f'{self.uploads_folder_survey}/{target}'))
+
+        # send as a resumable
+        self.start_new_resumable(self.resume_file1, chunksize=5, public_key=public_key)
 
         # test refuse too large chunk size
         resp = requests.put(

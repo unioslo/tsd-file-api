@@ -1405,7 +1405,10 @@ class FileRequestHandler(AuthRequestHandler):
                             self.nacl_nonce,
                             self.nacl_key
                         )
-                        self.target_file.write(decrypted)
+                        if self.request.method == 'PATCH':
+                            self.res.add_chunk(self.target_file, decrypted)
+                        else:
+                            self.target_file.write(decrypted)
                         self.nacl_stream_buffer = b''
             elif self.custom_content_type in ['application/tar', 'application/tar.gz',
                                               'application/aes']:
@@ -1471,6 +1474,17 @@ class FileRequestHandler(AuthRequestHandler):
 
 
     def patch(self, tenant: str, uri_filename: str = None) -> None:
+        if (
+            self.custom_content_type == 'application/octet-stream+nacl'
+            and self.nacl_stream_buffer
+        ):
+            decrypted = libnacl.crypto_stream_xor(
+                        self.nacl_stream_buffer,
+                        self.nacl_nonce,
+                        self.nacl_key
+                    )
+            self.nacl_stream_buffer = b''
+            self.res.add_chunk(self.target_file, decrypted)
         if not self.completed_resumable_file:
             self.res.close_file(self.target_file)
             # if the path to which we want to rename the file exists
@@ -2626,6 +2640,7 @@ class Backends(object):
             ('/v1/(.*)/files/stream/(.*)', FileRequestHandler, dict(backend='files_import', namespace='files', endpoint='stream')),
             ('/v1/(.*)/files/resumables', ResumablesHandler, dict(backend='files_import')),
             ('/v1/(.*)/files/resumables/(.*)', ResumablesHandler, dict(backend='files_import')),
+            ('/v1/(.*)/files/crypto/key', NaclKeyHander),
         ],
         'files_export': [
             ('/v1/(.*)/files/export', FileRequestHandler, dict(backend='files_export', namespace='files', endpoint='export')),
