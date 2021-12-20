@@ -104,7 +104,7 @@ RUN mkdir -p dist
 
 RUN source /opt/rh/rh-ruby23/enable &&\
     fpm --verbose -s virtualenv -p /file-api/dist\
-    -t rpm --name tsd-file-api-venv --version 2.8\
+    -t rpm --name tsd-file-api-venv --version 2.9\
     --prefix /opt/tsd-file-api-venv/virtualenv requirements.txt
 
 COPY . ./
