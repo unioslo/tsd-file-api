@@ -1397,19 +1397,20 @@ class FileRequestHandler(AuthRequestHandler):
                 else:
                     self.target_file.write(chunk)
             elif self.custom_content_type == 'application/octet-stream+nacl':
-                for byte in chunk:
-                    self.nacl_stream_buffer += bytes([byte])
-                    if len(self.nacl_stream_buffer) % self.nacl_chunksize == 0:
-                        decrypted = libnacl.crypto_stream_xor(
-                            self.nacl_stream_buffer,
-                            self.nacl_nonce,
-                            self.nacl_key
-                        )
-                        if self.request.method == 'PATCH':
-                            self.res.add_chunk(self.target_file, decrypted)
-                        else:
-                            self.target_file.write(decrypted)
-                        self.nacl_stream_buffer = b''
+                self.nacl_stream_buffer += chunk
+                while len(self.nacl_stream_buffer) >= self.nacl_chunksize:
+                    target_content = self.nacl_stream_buffer[:self.nacl_chunksize]
+                    remainder = self.nacl_stream_buffer[self.nacl_chunksize:]
+                    self.nacl_stream_buffer = remainder
+                    decrypted = libnacl.crypto_stream_xor(
+                        target_content,
+                        self.nacl_nonce,
+                        self.nacl_key
+                    )
+                    if self.request.method == 'PATCH':
+                        self.res.add_chunk(self.target_file, decrypted)
+                    else:
+                        self.target_file.write(decrypted)
             elif self.custom_content_type in ['application/tar', 'application/tar.gz',
                                               'application/aes']:
                 self.proc.stdin.write(chunk)
@@ -2153,6 +2154,8 @@ class FileRequestHandler(AuthRequestHandler):
         """
         if self.on_finish_called:
             return
+        # throws an exception when cancelling GET
+
         if not self.target_file.closed:
             self.target_file.close()
             path = self.path
