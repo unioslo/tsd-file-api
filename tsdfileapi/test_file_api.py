@@ -1051,7 +1051,7 @@ class TestFileApi(unittest.TestCase):
             dev_url=url,
             stop_at=stop_at,
             public_key=public_key,
-        )
+        ).get('response')
         if stop_at:
             return resp['id']
         self.assertEqual(resp['max_chunk'], u'end')
@@ -1095,10 +1095,14 @@ class TestFileApi(unittest.TestCase):
         target = os.path.basename(self.resume_file1)
         url = f'{self.resumables}/{target}?key={quote(top_level_dir, safe="")}'
         env = '' # not used when passing url
-        resp = fileapi.get_resumable(env, self.test_project, TEST_TOKENS['VALID'], dev_url=url)
+        resp = fileapi.get_resumable(
+            env, self.test_project, TEST_TOKENS['VALID'], dev_url=url,
+        ).get('overview')
         self.assertEqual(resp['id'], top_id)
         url = f'{self.resumables}/{target}?key={quote(sub_dir, safe="")}'
-        resp = fileapi.get_resumable(env, self.test_project, TEST_TOKENS['VALID'], dev_url=url)
+        resp = fileapi.get_resumable(
+            env, self.test_project, TEST_TOKENS['VALID'], dev_url=url,
+        ).get('overview')
         self.assertEqual(resp['id'], sub_id)
 
 
@@ -1111,9 +1115,18 @@ class TestFileApi(unittest.TestCase):
         token = TEST_TOKENS['VALID']
         url = '%s/%s' % (self.resumables, filename)
         print('---> going to resume from chunk 2:')
-        resp = fileapi.initiate_resumable(proj, self.test_project, filepath,
-                                          token, chunksize=cs, new=False, group=None,
-                                          verify=True, upload_id=upload_id, dev_url=url)
+        resp = fileapi.initiate_resumable(
+            proj,
+            self.test_project,
+            filepath,
+            token,
+            chunksize=cs,
+            new=False,
+            group=None,
+            verify=True,
+            upload_id=upload_id,
+            dev_url=url,
+        ).get('response')
         self.assertEqual(resp['max_chunk'], u'end')
         self.assertTrue(resp['id'] is not None)
         self.assertEqual(resp['filename'], filename)
@@ -1130,9 +1143,18 @@ class TestFileApi(unittest.TestCase):
         token = TEST_TOKENS['VALID']
         url = '%s/%s' % (self.resumables, filename)
         print('---> going to resume from chunk 2:')
-        resp = fileapi.initiate_resumable(proj, self.test_project, filepath,
-                                          token, chunksize=cs, new=False, group=None,
-                                          verify=True, upload_id=upload_id, dev_url=url)
+        resp = fileapi.initiate_resumable(
+            proj,
+            self.test_project,
+            filepath,
+            token,
+            chunksize=cs,
+            new=False,
+            group=None,
+            verify=True,
+            upload_id=upload_id,
+            dev_url=url,
+        ).get('response')
         self.assertEqual(resp['max_chunk'], u'end')
         self.assertTrue(resp['id'] is not None)
         self.assertEqual(resp['filename'], filename)
@@ -1155,9 +1177,18 @@ class TestFileApi(unittest.TestCase):
         url = '%s/%s' % (self.resumables, filename)
         print('---> resume should fail:')
         # now this _should_ start a new upload due to md5 mismatch
-        resp = fileapi.initiate_resumable(proj, self.test_project, filepath,
-                                          token, chunksize=cs, new=False, group=None,
-                                          verify=True, upload_id=upload_id, dev_url=url)
+        resp = fileapi.initiate_resumable(
+            proj,
+            self.test_project,
+            filepath,
+            token,
+            chunksize=cs,
+            new=False,
+            group=None,
+            verify=True,
+            upload_id=upload_id,
+            dev_url=url,
+        )
         self.assertEqual(resp, None)
         res = SerialResumable(self.uploads_folder, 'p11-import_user')
         res._db_remove_completed_for_owner(upload_id)
@@ -1196,9 +1227,18 @@ class TestFileApi(unittest.TestCase):
             f.truncate(int(cs + (cs/2)))
         # this should trigger data recovery, and restart the resumable at chunk1
         print('---> going to resume from chunk 3, after data recovery:')
-        resp = fileapi.initiate_resumable(proj, self.test_project, filepath,
-                                          token, chunksize=cs, new=False, group=None,
-                                          verify=True, upload_id=upload_id, dev_url=url)
+        resp = fileapi.initiate_resumable(
+            proj,
+            self.test_project,
+            filepath,
+            token,
+            chunksize=cs,
+            new=False,
+            group=None,
+            verify=True,
+            upload_id=upload_id,
+            dev_url=url,
+        ).get('response')
         self.assertEqual(resp['max_chunk'], u'end')
         self.assertTrue(resp['id'] is not None)
         self.assertEqual(resp['filename'], filename)
@@ -1237,9 +1277,18 @@ class TestFileApi(unittest.TestCase):
         url = '%s/%s' % (self.resumables, filename)
         token = TEST_TOKENS['VALID']
         print('---> going to resume from chunk 2, with a new chunk size:')
-        resp = fileapi.initiate_resumable('', self.test_project, filepath,
-                                          token, chunksize=4, new=False, group=None,
-                                          verify=True, dev_url=url, upload_id=upload_id1)
+        resp = fileapi.initiate_resumable(
+            '',
+            self.test_project,
+            filepath,
+            token,
+            chunksize=4,
+            new=False,
+            group=None,
+            verify=True,
+            dev_url=url,
+            upload_id=upload_id1,
+        ).get('response')
         self.assertEqual(md5sum(filepath),
                 md5sum(self.uploads_folder + '/' + self.test_group + '/' + filename))
         uploaded_folder1 = self.uploads_folder + '/' + upload_id1
@@ -2244,6 +2293,30 @@ class TestFileApi(unittest.TestCase):
             data=encrypted
         )
         self.assertTrue(resp.status_code, 400)
+
+        # encrypted downloads
+        headers={
+            'Nacl-Nonce': nacl_nonce,
+            'Nacl-Key': nacl_key,
+            'Nacl-Chunksize': str(10),
+            'Authorization': f"Bearer {TEST_TOKENS['VALID']}"
+        }
+        # without client-side decryption
+        resp = requests.get(self.export + '/file1', headers=headers)
+        self.assertTrue(resp.text != u'some data\n')
+        self.assertEqual(resp.status_code, 200)
+        # with client-side decryption
+        fileapi.export_get(
+            '', # no env
+            self.test_project,
+            'file1',
+            TEST_TOKENS['VALID'],
+            2, # chunksize
+            dev_url=f'{self.export}/file1',
+            public_key=public_key,
+            target_dir='/tmp',
+        )
+        self.assertEqual(open('/tmp/file1').read(), u'some data\n')
 
 
     def test_maintenance_mode(self) -> None:
