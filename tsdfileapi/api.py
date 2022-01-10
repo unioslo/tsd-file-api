@@ -1028,7 +1028,7 @@ class FileRequestHandler(AuthRequestHandler):
             stdout=self.target_file,
         )
 
-    def handle_nacl_stream(self, headers: tornado.httputil.HTTPHeaders) -> None:
+    def decrypt_nacl_headers(self, headers: tornado.httputil.HTTPHeaders) -> None:
         self.custom_content_type = headers['Content-Type']
         self.nacl_stream_buffer = b''
         try:
@@ -1349,7 +1349,7 @@ class FileRequestHandler(AuthRequestHandler):
                         elif content_type == 'application/gz.aes':
                             self.handle_gz_aes(content_type, filemode)
                         elif content_type == 'application/octet-stream+nacl':
-                            self.handle_nacl_stream(self.request.headers)
+                            self.decrypt_nacl_headers(self.request.headers)
                             self.target_file = open(self.path, filemode)
                             os.chmod(self.path, _RW______)
                         else: # 3.8 no custom content type
@@ -1480,10 +1480,10 @@ class FileRequestHandler(AuthRequestHandler):
             and self.nacl_stream_buffer
         ):
             decrypted = libnacl.crypto_stream_xor(
-                        self.nacl_stream_buffer,
-                        self.nacl_nonce,
-                        self.nacl_key
-                    )
+                self.nacl_stream_buffer,
+                self.nacl_nonce,
+                self.nacl_key
+            )
             self.nacl_stream_buffer = b''
             self.res.add_chunk(self.target_file, decrypted)
         if not self.completed_resumable_file:
@@ -1907,6 +1907,11 @@ class FileRequestHandler(AuthRequestHandler):
                 logging.error(e)
                 self.set_status(400)
                 raise Exception
+            encrypt_data = False
+            if 'Nacl-Nonce' in self.request.headers.keys():
+                self.decrypt_nacl_headers(self.request.headers)
+                self.CHUNK_SIZE = self.nacl_chunksize
+                encrypt_data = True
             self.set_header('Content-Type', mime_type)
             self.set_header('Modified-Time', str(mtime))
             if 'Range' not in self.request.headers:
@@ -1915,6 +1920,12 @@ class FileRequestHandler(AuthRequestHandler):
                 fd = open(self.filepath, "rb")
                 data = fd.read(self.CHUNK_SIZE)
                 while data:
+                    if encrypt_data:
+                        data = libnacl.crypto_stream_xor(
+                            data,
+                            self.nacl_nonce,
+                            self.nacl_key
+                        )
                     self.write(data)
                     yield self.flush()
                     data = fd.read(self.CHUNK_SIZE)
@@ -1956,6 +1967,12 @@ class FileRequestHandler(AuthRequestHandler):
                 if self.CHUNK_SIZE > bytes_to_read:
                     self.CHUNK_SIZE = bytes_to_read
                 data = fd.read(self.CHUNK_SIZE)
+                if encrypt_data:
+                    data = libnacl.crypto_stream_xor(
+                        data,
+                        self.nacl_nonce,
+                        self.nacl_key
+                    )
                 while data and sent <= bytes_to_read:
                     self.write(data)
                     yield self.flush()
@@ -2154,7 +2171,9 @@ class FileRequestHandler(AuthRequestHandler):
         """
         if self.on_finish_called:
             return
-        # throws an exception when cancelling GET
+
+        if not self.target_file:
+            return
 
         if not self.target_file.closed:
             self.target_file.close()
