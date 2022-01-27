@@ -251,7 +251,7 @@ class SqliteBackend(DatabaseBackend):
             audit_data.append({
                 'timestamp': datetime.datetime.now().isoformat(),
                 'diff': data,
-                'previous': json.loads(val),
+                'previous': val,
                 'identity': self.requestor
             })
         self.table_insert(f'{table_name}_audit', audit_data)
