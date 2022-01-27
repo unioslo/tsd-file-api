@@ -1,6 +1,6 @@
 jwcrypto==0.6.0
 pyyaml==5.4
-https://github.com/unioslo/tornado/archive/refs/tags/v6.0.3-backlog.tar.gz
+tornado==6.0.3
 click==7.0
 requests==2.22.0
 pretty-bad-protocol==3.1.1
