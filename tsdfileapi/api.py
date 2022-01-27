@@ -2426,7 +2426,7 @@ class GenericTableHandler(AuthRequestHandler):
                         first = False
                     self.write(']')
                     self.flush()
-        except psycopg2.errors.UndefinedTable as e:
+        except (psycopg2.errors.UndefinedTable, sqlite3.OperationalError) as e:
             logging.error(e)
             self.set_status(404)
             self.write({'message': f'table {table_name} does not exist'})
@@ -2460,7 +2460,7 @@ class GenericTableHandler(AuthRequestHandler):
             except Exception as e:
                 logging.error(e)
                 raise Exception
-        except psycopg2.errors.UndefinedTable as e:
+        except (psycopg2.errors.UndefinedTable, sqlite3.OperationalError) as e:
             logging.error(e)
             self.set_status(404)
             self.write({'message': f'table {table_name} does not exist'})
@@ -2492,7 +2492,7 @@ class GenericTableHandler(AuthRequestHandler):
             self.db.table_update(table_name, query, data)
             self.set_status(200)
             self.write({'data': 'data updated'})
-        except psycopg2.errors.UndefinedTable as e:
+        except (psycopg2.errors.UndefinedTable, sqlite3.OperationalError) as e:
             logging.error(e)
             self.set_status(404)
             self.write({'message': f'table {table_name} does not exist'})
@@ -2515,7 +2515,7 @@ class GenericTableHandler(AuthRequestHandler):
             data = self.db.table_delete(table_name, query)
             self.set_status(200)
             self.write({'data': data})
-        except psycopg2.errors.UndefinedTable as e:
+        except (psycopg2.errors.UndefinedTable, sqlite3.OperationalError) as e:
             logging.error(e)
             self.set_status(404)
             self.write({'message': f'table {table_name} does not exist'})
