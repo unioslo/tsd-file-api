@@ -2058,15 +2058,33 @@ class TestFileApi(unittest.TestCase):
             self.resume_file1, chunksize=5, endpoint=f'{self.apps}/ega/files/user1',
             uploads_folder=f'{self.apps_import_folder}/ega/files/user1'
         )
-        data = [
+        source_data = [
             {'key1': 7, 'key2': 'bla', 'id': random.randint(0, 1000000)},
             {'key1': 99, 'key3': False, 'id': random.randint(0, 1000000)}
         ]
         headers['Content-Type'] = 'application/json'
         headers['Resource-Identifier-Key'] = 'id'
+        # clear the tables
+        try:
+            resp = requests.delete(
+                f'{self.apps}/ega/tables/user_data?where=key1=gte.0',
+                headers=headers
+            )
+        except Exception as e:
+            pass
+        try:
+            resp = requests.delete(
+                f'{self.apps}/ega/tables/user_data/metadata?where=key1=gte.0',
+                headers=headers
+            )
+        except Exception as e:
+            pass
+
+
+        # add some data
         resp = requests.put(
             f'{self.apps}/ega/tables/user_data',
-            data=json.dumps(data),
+            data=json.dumps(source_data),
             headers=headers
         )
         self.assertEqual(resp.status_code, 201)
@@ -2075,12 +2093,46 @@ class TestFileApi(unittest.TestCase):
             headers=headers
         )
         self.assertEqual(resp.status_code, 200)
+        data = json.loads(resp.text)
+        self.assertEqual(len(data), 2)
+
+        # edit
+        new_version = {'key1': 6}
+        resp = requests.patch(
+            f'{self.apps}/ega/tables/user_data?set=key1&where=key1=eq.7',
+            headers=headers,
+            data=json.dumps(new_version)
+        )
+        self.assertEqual(resp.status_code, 200)
+
+        # audit
+        resp = requests.get(
+            f'{self.apps}/ega/tables/user_data/audit',
+            headers=headers
+        )
+        self.assertEqual(resp.status_code, 200)
+        data = json.loads(resp.text)
+        self.assertEqual(data[0].get("diff"), new_version)
+
+        # metadata
+        resp = requests.put(
+            f'{self.apps}/ega/tables/user_data/metadata',
+            data=json.dumps(source_data),
+            headers=headers
+        )
+        self.assertEqual(resp.status_code, 201)
+
+        # clean up
         resp = requests.delete(
             f'{self.apps}/ega/tables/user_data?where=key1=eq.7',
             headers=headers
         )
         self.assertEqual(resp.status_code, 200)
-
+        resp = requests.delete(
+            f'{self.apps}/ega/tables/user_data/metadata?where=key1=gte.7',
+            headers=headers
+        )
+        self.assertEqual(resp.status_code, 200)
 
     def test_nacl_crypto(self) -> None:
 
