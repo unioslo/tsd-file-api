@@ -32,6 +32,7 @@ from typing import Union, Optional, Awaitable, Callable, Any
 
 import libnacl.sealed
 import libnacl.public
+import psycopg2.errors
 import magic
 import tornado.httputil
 import tornado.log
@@ -1214,7 +1215,7 @@ class FileRequestHandler(AuthRequestHandler):
                 logging.error(e)
                 logging.error(self.error)
                 raise e
-            # 8. Build URL
+            # 8. URL processing
             # 8.1 collect params
             upload_id, chunk_num = None, None
             try:
@@ -1241,7 +1242,7 @@ class FileRequestHandler(AuthRequestHandler):
                 # then we are operating in the TSD import directory
                 if not self.filename and len(uri_parts) == 5: # no folder given
                     resource = work_dir # root dir
-            # 9. Do async request to handle incoming data
+            # 9. handle incoming data
             self.resource = resource
             if self.request.method in ('PUT', 'PATCH'):
                 try:
@@ -1254,18 +1255,17 @@ class FileRequestHandler(AuthRequestHandler):
                             self.group_name = tenant + '-member-group'
                         filemode = filemodes[self.request.method]
                         filename = self.filename
-                        # 3. start processing the data
+                        # 10. start processing the data
                         try:
                             content_type = self.request.headers['Content-Type']
                         except KeyError:
                             raise Exception('No content-type - do not know what to do with data')
-                        # 3.1 extract info from uri
-                        # 3.2 optionally create dirs
-                        # 3.2.1 tenant dir
+                        # 9.2 optionally create dirs
+                        # 9.2.1 tenant dir
                         if options.create_tenant_dir:
                             if not os.path.lexists(self.tenant_dir):
                                 os.makedirs(self.tenant_dir)
-                        # 3.2.2 destination dir
+                        # 9.2.2 destination dir
                         self.resource_dir = None
                         try:
                             url_dirs = os.path.dirname(resource)
@@ -1287,7 +1287,7 @@ class FileRequestHandler(AuthRequestHandler):
                         except Exception as e:
                             logging.error(e)
                             raise Exception
-                        # 3.3 handle resumable, if relavant
+                        # 9.3 handle resumable, if relavant
                         if self.request.method == 'PATCH':
                             # select resumable key:
                             # then we remove the group name from url_dirs
@@ -1317,13 +1317,13 @@ class FileRequestHandler(AuthRequestHandler):
                             if not self.chunk_order_correct:
                                 logging.error('incorrect chunk order')
                                 raise ResumableIncorrectChunkOrderError
-                        # 3.4 ensure we do not write to active file
+                        # 9.4 ensure we do not write to active file
                         self.path = os.path.normpath(self.tenant_dir + '/' + filename)
                         self.path_part = self.path + '.' + str(uuid4()) + '.part'
                         if os.path.lexists(self.path_part):
                             logging.error('trying to write to partial file - killing request')
                             raise Exception
-                        # 3.5 ensure idempotency
+                        # 9.5 ensure idempotency
                         if os.path.lexists(self.path):
                             if os.path.isdir(self.path):
                                 logging.info('directory: %s already exists due to prior upload, removing', self.path)
@@ -1333,9 +1333,9 @@ class FileRequestHandler(AuthRequestHandler):
                                 os.rename(self.path, self.path_part)
                                 assert os.path.lexists(self.path_part)
                                 assert not os.path.lexists(self.path)
-                        # 3.6 rename
+                        # 9.6 rename
                         self.path, self.path_part = self.path_part, self.path
-                        # 3.7 invoke custom content type handlers, if relevant
+                        # 9.7 invoke custom content type handlers, if relevant
                         if content_type == 'application/aes':
                             self.handle_aes(content_type)
                         elif content_type == 'application/aes-octet-stream':
@@ -1352,7 +1352,7 @@ class FileRequestHandler(AuthRequestHandler):
                             self.decrypt_nacl_headers(self.request.headers)
                             self.target_file = open(self.path, filemode)
                             os.chmod(self.path, _RW______)
-                        else: # 3.8 no custom content type
+                        else: # 9.8 no custom content type
                             if self.request.method != 'PATCH':
                                 self.custom_content_type = None
                                 self.target_file = open(self.path, filemode)
@@ -1361,7 +1361,7 @@ class FileRequestHandler(AuthRequestHandler):
                                 self.custom_content_type = None
                                 if not self.completed_resumable_file:
                                     self.target_file = self.res.open_file(self.path, filemode)
-                    # 3.9 handle any errors
+                    # 9.9 handle any errors
                     except ResumableIncorrectChunkOrderError as e:
                         raise ResumableIncorrectChunkOrderError from e
                     except Exception as e:
@@ -2426,6 +2426,10 @@ class GenericTableHandler(AuthRequestHandler):
                         first = False
                     self.write(']')
                     self.flush()
+        except psycopg2.errors.UndefinedTable as e:
+            logging.error(e)
+            self.set_status(404)
+            self.write({'message': f'table {table_name} does not exist'})
         except Exception as e:
             logging.error(e)
             self.set_status(400)
@@ -2456,6 +2460,10 @@ class GenericTableHandler(AuthRequestHandler):
             except Exception as e:
                 logging.error(e)
                 raise Exception
+        except psycopg2.errors.UndefinedTable as e:
+            logging.error(e)
+            self.set_status(404)
+            self.write({'message': f'table {table_name} does not exist'})
         except Exception as e:
             logging.error(e)
             if not self._status_code == 403:
@@ -2484,6 +2492,10 @@ class GenericTableHandler(AuthRequestHandler):
             self.db.table_update(table_name, query, data)
             self.set_status(200)
             self.write({'data': 'data updated'})
+        except psycopg2.errors.UndefinedTable as e:
+            logging.error(e)
+            self.set_status(404)
+            self.write({'message': f'table {table_name} does not exist'})
         except Exception as e:
             logging.error(e)
             if not self._status_code == 403:
@@ -2503,6 +2515,10 @@ class GenericTableHandler(AuthRequestHandler):
             data = self.db.table_delete(table_name, query)
             self.set_status(200)
             self.write({'data': data})
+        except psycopg2.errors.UndefinedTable as e:
+            logging.error(e)
+            self.set_status(404)
+            self.write({'message': f'table {table_name} does not exist'})
         except Exception as e:
             logging.error(e)
             logging.error(traceback.format_exc())
@@ -2699,8 +2715,8 @@ class Backends(object):
             ('/v1/(.*)/apps/(.+/files.*)', FileRequestHandler, dict(backend='apps_files', namespace='apps', endpoint=None)),
         ],
         'apps_tables': [
-            ('/v1/(.*)/apps/(.+)/tables/audit', GenericTableHandler, dict(backend='apps_tables')),
-            ('/v1/(.*)/apps/(.+)/tables/metadata', GenericTableHandler, dict(backend='apps_tables')),
+            ('/v1/(.*)/apps/.+/tables/(.+)/audit', GenericTableHandler, dict(backend='apps_tables')),
+            ('/v1/(.*)/apps/.+/tables/(.+)/metadata', GenericTableHandler, dict(backend='apps_tables')),
             ('/v1/(.*)/apps/.+/tables/(.+)$', GenericTableHandler, dict(backend='apps_tables')),
             ('/v1/(.*)/apps/crypto/key', NaclKeyHander),
         ]
