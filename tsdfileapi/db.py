@@ -271,7 +271,7 @@ class SqliteBackend(DatabaseBackend):
         sql = self.generator_class(f'"{table_name}"', uri_query)
         with sqlite_session(self.engine) as session:
             for row in session.execute(sql.select_query):
-                yield row[0]
+                yield json.loads(row[0])
 
 
 class PostgresBackend(object):
