@@ -2081,7 +2081,7 @@ class TestFileApi(unittest.TestCase):
             pass
         try:
             resp = requests.delete(
-                f'{self.apps}/ega/tables/persons/pid1?where=key1=gte.0',
+                f'{self.apps}/ega/tables/persons/pid1',
                 headers=headers
             )
         except Exception as e:
@@ -2139,12 +2139,12 @@ class TestFileApi(unittest.TestCase):
 
         # clean up
         resp = requests.delete(
-            f'{self.apps}/ega/tables/user_data?where=key1=eq.7',
+            f'{self.apps}/ega/tables/user_data',
             headers=headers
         )
         self.assertEqual(resp.status_code, 200)
         resp = requests.delete(
-            f'{self.apps}/ega/tables/user_data/metadata?where=key1=gte.7',
+            f'{self.apps}/ega/tables/user_data/metadata',
             headers=headers
         )
         self.assertEqual(resp.status_code, 200)
