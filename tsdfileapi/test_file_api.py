@@ -2079,6 +2079,13 @@ class TestFileApi(unittest.TestCase):
             )
         except Exception as e:
             pass
+        try:
+            resp = requests.delete(
+                f'{self.apps}/ega/tables/persons/pid1?where=key1=gte.0',
+                headers=headers
+            )
+        except Exception as e:
+            pass
 
 
         # add some data
@@ -2095,6 +2102,14 @@ class TestFileApi(unittest.TestCase):
         self.assertEqual(resp.status_code, 200)
         data = json.loads(resp.text)
         self.assertEqual(len(data), 2)
+
+        # "sub"-tables
+        resp = requests.put(
+            f'{self.apps}/ega/tables/persons/pid1',
+            data=json.dumps(source_data),
+            headers=headers
+        )
+        self.assertEqual(resp.status_code, 201)
 
         # edit
         new_version = {'key1': 6}

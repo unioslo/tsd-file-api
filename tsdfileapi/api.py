@@ -2224,8 +2224,8 @@ class GenericTableHandler(AuthRequestHandler):
 
     """
 
-    def create_table_name(self, table_name: str, suffix: str) -> str:
-        return f'{table_name}_{suffix}'
+    def create_table_name(self, table_name: str) -> str:
+        return table_name.replace('/', '_')
 
     def get_uri_query(self, uri: str) -> str:
         if '?' in uri:
@@ -2408,10 +2408,7 @@ class GenericTableHandler(AuthRequestHandler):
                     self.set_status(200)
                     self.write({'data': self.table_structure})
                 else:
-                    suffixes = ['metadata', 'audit']
-                    for suffix in suffixes:
-                        if self.request.uri.split('?')[0].endswith(suffix):
-                            table_name = self.create_table_name(table_name, suffix)
+                    table_name = self.create_table_name(table_name)
                     self.set_status(200)
                     self.set_header('Content-Type', 'application/json')
                     self.write('[')
@@ -2447,8 +2444,8 @@ class GenericTableHandler(AuthRequestHandler):
                 new_data = self.request.body
             data = json_decode(new_data)
             self.set_resource_identifier_info(data)
-            if self.request.uri.split('?')[0].endswith('metadata'):
-                table_name = self.create_table_name(table_name, 'metadata')
+
+            table_name = self.create_table_name(table_name)
             if self.request.uri.split('?')[0].endswith('audit'):
                 self.set_status(403)
                 self.error = 'Not allowed to write to audit tables'
@@ -2473,8 +2470,8 @@ class GenericTableHandler(AuthRequestHandler):
 
     def patch(self, tenant: str, table_name: str) -> None:
         try:
-            if self.request.uri.split('?')[0].endswith('metadata'):
-                table_name = self.create_table_name(table_name, 'metadata')
+
+            table_name = self.create_table_name(table_name)
             if self.request.uri.split('?')[0].endswith('audit'):
                 self.set_status(403)
                 self.error = 'Not allowed to write to audit tables'
@@ -2505,8 +2502,8 @@ class GenericTableHandler(AuthRequestHandler):
 
     def delete(self, tenant: str, table_name: str) -> None:
         try:
-            if self.request.uri.split('?')[0].endswith('metadata'):
-                table_name = self.create_table_name(table_name, 'metadata')
+
+            table_name = self.create_table_name(table_name)
             if self.request.uri.split('?')[0].endswith('audit'):
                 self.set_status(403)
                 self.error = 'Not allowed to delete from audit tables'
@@ -2715,8 +2712,6 @@ class Backends(object):
             ('/v1/(.*)/apps/(.+/files.*)', FileRequestHandler, dict(backend='apps_files', namespace='apps', endpoint=None)),
         ],
         'apps_tables': [
-            ('/v1/(.*)/apps/.+/tables/(.+)/audit', GenericTableHandler, dict(backend='apps_tables')),
-            ('/v1/(.*)/apps/.+/tables/(.+)/metadata', GenericTableHandler, dict(backend='apps_tables')),
             ('/v1/(.*)/apps/.+/tables/(.+)$', GenericTableHandler, dict(backend='apps_tables')),
             ('/v1/(.*)/apps/crypto/key', NaclKeyHander),
         ]
