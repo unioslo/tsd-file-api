@@ -2095,6 +2095,13 @@ class TestFileApi(unittest.TestCase):
             headers=headers
         )
         self.assertEqual(resp.status_code, 201)
+        # idempotent
+        resp = requests.put(
+            f'{self.apps}/ega/tables/user_data',
+            data=json.dumps(source_data),
+            headers=headers
+        )
+        self.assertEqual(resp.status_code, 201)
         resp = requests.get(
             f'{self.apps}/ega/tables/user_data',
             headers=headers

@@ -228,11 +228,11 @@ class SqliteBackend(DatabaseBackend):
                     session.execute(f'create table if not exists "{table_name}" {self.table_definition}')
                     session.executemany(insert_stmt, target)
                 return True
+        except sqlite3.IntegrityError as e:
+            logging.info('Ignoring duplicate row')
+            return True # idempotent PUT
         except sqlite3.ProgrammingError as e:
             logging.error('Syntax error?')
-            raise e
-        except sqlite3.IntegrityError as e:
-            logging.error('Duplicate row')
             raise e
         except sqlite3.OperationalError as e:
             logging.error('Database issue')
@@ -354,11 +354,11 @@ class PostgresBackend(object):
                     session.execute(trigger_create)
                     session.executemany(insert_stmt, target)
                 return True
+        except psycopg2.IntegrityError as e:
+            logging.info('Ignoring duplicate row')
+            return True # idempotent PUT
         except psycopg2.ProgrammingError as e:
             logging.error('Syntax error?')
-            raise e
-        except psycopg2.IntegrityError as e:
-            logging.error('Duplicate row')
             raise e
         except psycopg2.OperationalError as e:
             logging.error('Database issue')
