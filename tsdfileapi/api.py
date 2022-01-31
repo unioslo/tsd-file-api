@@ -2446,7 +2446,7 @@ class GenericTableHandler(AuthRequestHandler):
             self.set_resource_identifier_info(data)
 
             table_name = self.create_table_name(table_name)
-            if self.request.uri.split('?')[0].endswith('audit'):
+            if self.request.uri.endswith('/audit'):
                 self.set_status(403)
                 self.error = 'Not allowed to write to audit tables'
                 raise Exception(self.error)
@@ -2472,7 +2472,7 @@ class GenericTableHandler(AuthRequestHandler):
         try:
 
             table_name = self.create_table_name(table_name)
-            if self.request.uri.split('?')[0].endswith('audit'):
+            if self.request.uri.endswith('/audit'):
                 self.set_status(403)
                 self.error = 'Not allowed to write to audit tables'
                 raise Exception(self.error)
@@ -2504,7 +2504,7 @@ class GenericTableHandler(AuthRequestHandler):
         try:
 
             table_name = self.create_table_name(table_name)
-            if self.request.uri.split('?')[0].endswith('audit'):
+            if self.request.uri.endswith('/audit'):
                 self.set_status(403)
                 self.error = 'Not allowed to delete from audit tables'
                 raise Exception(self.error)
