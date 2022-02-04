@@ -906,7 +906,7 @@ class ResumablesHandler(AuthRequestHandler):
                         self.tenant_dir, secured_filename, upload_id, self.requestor, key=key
                     )
                 except ResumableNotFoundError as e:
-                    status = 400
+                    status = 404
                     raise e
             self.set_status(200)
             self.write(info)
