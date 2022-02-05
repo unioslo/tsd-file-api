@@ -1505,12 +1505,16 @@ class FileRequestHandler(AuthRequestHandler):
                 self.write({'message': 'chunk_order_incorrect'})
                 return
         else:
-            self.completed_resumable_filename = self.res.finalise(
-                self.tenant_dir,
-                os.path.basename(self.path_part),
-                self.upload_id,
-                self.requestor
-            )
+            try:
+                self.completed_resumable_filename = self.res.finalise(
+                    self.tenant_dir,
+                    os.path.basename(self.path_part),
+                    self.upload_id,
+                    self.requestor
+                )
+            except ResumableNotFoundError:
+                self.set_status(404)
+                return
             filename = os.path.basename(self.completed_resumable_filename)
         self.set_status(201)
         self.write({
