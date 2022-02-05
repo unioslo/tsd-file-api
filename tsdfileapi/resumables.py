@@ -590,7 +590,11 @@ class SerialResumable(AbstractResumable):
         chunks_dir = work_dir + '/' + upload_id
         if '.chunk.end' in last_chunk_filename:
             logging.info('deleting: %s', chunks_dir)
-            os.rename(out, final)
+            try:
+                os.rename(out, final)
+            except FileNotFoundError as e:
+                logging.error(e)
+                raise ResumableNotFoundError
             try:
                 shutil.rmtree(chunks_dir) # do not need to fail upload if this does not work
             except OSError as e:
