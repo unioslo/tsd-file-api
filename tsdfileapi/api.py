@@ -2690,7 +2690,7 @@ class Backends(object):
             ('/v1/(.*)/survey/resumables', ResumablesHandler, dict(backend='survey')),
             ('/v1/(.*)/survey/resumables/(.*)', ResumablesHandler, dict(backend='survey')),
             ('/v1/(.*)/survey/([a-zA-Z_0-9]+/metadata)', GenericTableHandler, dict(backend='survey')),
-            ('/v1/(.*)/survey/([a-zA-Z_0-9]+)/submissions', GenericTableHandler, dict(backend='survey')),
+            ('/v1/(.*)/survey/([a-zA-Z_0-9]+/submissions)', GenericTableHandler, dict(backend='survey')),
             ('/v1/(.*)/survey/([a-zA-Z_0-9]+/audit)', GenericTableHandler, dict(backend='survey')),
             ('/v1/(.*)/survey/([a-zA-Z_0-9]+)$', GenericTableHandler, dict(backend='survey')),
             ('/v1/(.*)/survey', GenericTableHandler, dict(backend='survey')),
