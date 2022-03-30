@@ -2277,7 +2277,7 @@ class GenericTableHandler(AuthRequestHandler):
                     schema = f'{self.tenant}_{app_name}'
                 else:
                     schema = self.tenant
-                self.db = PostgresBackend(options.pgpool, schema=schema, requestor=self.requestor)
+                self.db = PostgresBackend(options.pgpools.get(self.backend), schema=schema, requestor=self.requestor)
         except Exception as e:
             if self._status_code != 503:
                 self.set_status(401)
@@ -2448,7 +2448,6 @@ class GenericTableHandler(AuthRequestHandler):
                 new_data = self.request.body
             data = json_decode(new_data)
             self.set_resource_identifier_info(data)
-
             table_name = self.create_table_name(table_name)
             if self.request.uri.endswith('/audit'):
                 self.set_status(403)
@@ -2690,9 +2689,9 @@ class Backends(object):
             ('/v1/(.*)/survey/([a-zA-Z_0-9]+/attachments.*)', FileRequestHandler, dict(backend='survey', namespace='survey', endpoint=None)),
             ('/v1/(.*)/survey/resumables', ResumablesHandler, dict(backend='survey')),
             ('/v1/(.*)/survey/resumables/(.*)', ResumablesHandler, dict(backend='survey')),
-            ('/v1/(.*)/survey/([a-zA-Z_0-9]+)/metadata', GenericTableHandler, dict(backend='survey')),
+            ('/v1/(.*)/survey/([a-zA-Z_0-9]+/metadata)', GenericTableHandler, dict(backend='survey')),
             ('/v1/(.*)/survey/([a-zA-Z_0-9]+)/submissions', GenericTableHandler, dict(backend='survey')),
-            ('/v1/(.*)/survey/([a-zA-Z_0-9]+)/audit', GenericTableHandler, dict(backend='survey')),
+            ('/v1/(.*)/survey/([a-zA-Z_0-9]+/audit)', GenericTableHandler, dict(backend='survey')),
             ('/v1/(.*)/survey/([a-zA-Z_0-9]+)$', GenericTableHandler, dict(backend='survey')),
             ('/v1/(.*)/survey', GenericTableHandler, dict(backend='survey')),
         ],
@@ -2751,12 +2750,13 @@ class Backends(object):
 
         db_backends = self.config['backends']['dbs'].items()
         if db_backends:
+            define('pgpools', {})
             print(colored('Initialising database backends', 'magenta'))
             for name, backend in db_backends:
                 db_backend = self.database_backends[backend['db']['engine']]
                 print(colored(f"DB backend: {backend['db']['engine']}, {name}", 'cyan'))
                 if db_backend.generator_class.db_init_sql:
-                    self.initdb(name)
+                    self.initdb(name, options)
 
         if self.config.get('rabbitmq', {}).get('enabled'):
             print(colored('Finding rabbitmq exchanges', 'magenta'))
@@ -2771,14 +2771,11 @@ class Backends(object):
             except Exception as e:
                 logging.warning(f'could not connect to request log db: {e}')
 
-    def initdb(self, name: str) -> None:
+    def initdb(self, name: str, opts: tornado.options.OptionParser) -> None:
         engine_type = options.config['backends']['dbs'][name]['db']['engine']
         if engine_type == 'postgres':
             pool = postgres_init(options.config['backends']['dbs'][name]['db']['dbconfig'])
-            try:
-                define('pgpool', pool)
-            except tornado.options.Error:
-                pass # already defined ^
+            options.pgpools[name] = pool
             db = PostgresBackend(pool)
             db.initialise()
         else:
