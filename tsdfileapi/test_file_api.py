@@ -572,7 +572,6 @@ class TestFileApi(unittest.TestCase):
             headers = {'Authorization': 'Bearer ' + TEST_TOKENS[token]}
             full_url = self.base_url + app_route + url
             resp = methods[method](full_url, headers=headers)
-            print(resp.text)
             self.assertTrue(resp.status_code in [200, 201])
 
 
@@ -609,7 +608,16 @@ class TestFileApi(unittest.TestCase):
             data=json.dumps(data),
             headers=headers
         )
-        self.assertEqual(resp.status_code, 201)
+        # get it back
+        resp = requests.get(
+            f'{self.survey}/123456/submissions',
+            headers=headers
+        )
+        data = json.loads(resp.text)
+        self.assertEqual(len(data), 2)
+        self.assertEqual(data[0].get("key1"), 7)
+        self.assertEqual(data[1].get("key1"), 99)
+        self.assertEqual(resp.status_code, 200)
         # audit functionality
         resp = requests.patch(
             f'{self.survey}/123456/submissions?set=key1&where=key2=eq.bla',
@@ -617,10 +625,22 @@ class TestFileApi(unittest.TestCase):
             data=json.dumps({'key1': 5})
         )
         self.assertEqual(resp.status_code, 200)
+        # that the update propagated
+        resp = requests.get(
+            f'{self.survey}/123456/submissions?order=key1.asc',
+            headers=headers
+        )
+        data = json.loads(resp.text)
+        self.assertEqual(data[0].get("key1"), 5)
+        # that we recorded the change in the audit
         resp = requests.get(
             f'{self.survey}/123456/audit',
             headers=headers
         )
+        data = json.loads(resp.text)
+        self.assertEqual(data[-1].get("diff"), {"key1": 5})
+        self.assertEqual(data[-1].get("previous").get("key1"), 7)
+        self.assertEqual(resp.status_code, 200)
         resp = requests.delete(
             f'{self.survey}/123456/audit',
             headers=headers
@@ -629,7 +649,7 @@ class TestFileApi(unittest.TestCase):
         # metadata functionality
         resp = requests.put(
             self.base_url + '/survey/123456/metadata',
-            data=json.dumps(data),
+            data=json.dumps({"my": "metadata"}),
             headers=headers
         )
         self.assertEqual(resp.status_code, 201)
@@ -637,6 +657,8 @@ class TestFileApi(unittest.TestCase):
             self.base_url + '/survey/123456/metadata',
             headers=headers
         )
+        data = json.loads(resp.text)
+        self.assertEqual(data[0], {"my": "metadata"})
         self.assertEqual(resp.status_code, 200)
         resp = requests.delete(
             self.base_url + '/survey/123456/metadata',
