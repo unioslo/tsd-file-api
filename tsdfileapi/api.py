@@ -1373,7 +1373,10 @@ class FileRequestHandler(AuthRequestHandler):
                             logging.error(e)
                             logging.error('No file to close after all - so nothing to worry about')
                             raise e
+                        raise e
                 except Exception as e:
+                    if self.get_status() < 400:
+                        self.set_status(500)
                     logging.error('stream handler failed with:')
                     logging.error(traceback.format_exc())
                     info = 'stream processing failed'
