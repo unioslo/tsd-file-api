@@ -252,7 +252,7 @@ class AuthRequestHandler(RequestHandler):
             group_name = url_unescape(self.get_query_argument('group'))
         except HTTPError as e:
             # first check if it is in the url
-            found = re.sub(r'/v1/.+/(p[0-9]+-[a-zA-Z0-9]+-group).*', r'\1', self.request.uri)
+            found = re.sub(r'/v1/.+/(p[0-9]+-[a-zA-Z0-9-]+-group).*', r'\1', self.request.uri)
             if found == self.request.uri:
                 # then it is not there, so we need to use the default
                 default_url_group = group_config['default_url_group']
