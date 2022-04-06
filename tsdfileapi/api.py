@@ -222,13 +222,12 @@ class AuthRequestHandler(RequestHandler):
                     tenant_claim_name,
                     verify_with_secret
                 )
-                self.claims = authnz['claims']
-                self.requestor = self.claims[options.requestor_claim_name]
-                if not authnz['status']:
+                if not authnz.get('status'):
                     self.set_status(401)
                     raise Exception('JWT verification failed')
-                elif authnz['status']:
-                    return authnz
+                self.claims = authnz.get('claims')
+                self.requestor = self.claims[options.requestor_claim_name]
+                return authnz
             except Exception as e:
                 self.message = authnz['reason']
                 logging.error(e)
@@ -2283,7 +2282,6 @@ class GenericTableHandler(AuthRequestHandler):
         except Exception as e:
             if self._status_code != 503:
                 self.set_status(401)
-                logging.error(e)
                 logging.error(self.error)
             self.finish()
 
@@ -2659,6 +2657,11 @@ class AuditLogViewerHandler(AuthRequestHandler):
             self.flush()
 
 
+class ConfigHandler(RequestHandler):
+
+    def get(self):
+        self.write(options.config)
+
 class Backends(object):
 
     default_routes = {
@@ -2672,6 +2675,9 @@ class Backends(object):
             ('/v1/(.+)/logs', AuditLogViewerHandler),
             ('/v1/(.+)/logs/(.+)', AuditLogViewerHandler),
         ],
+        'config': [
+            ('/v1/all/config', ConfigHandler),
+        ]
     }
 
     optional_routes = {
