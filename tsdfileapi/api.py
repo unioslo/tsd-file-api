@@ -2028,9 +2028,6 @@ class FileRequestHandler(AuthRequestHandler):
                 self.message = 'File does not exist'
                 raise Exception
             size, mime_type, mtime = self.get_file_metadata(self.filepath)
-            status = self.enforce_export_policy(self.export_policy, self.filepath, tenant, size, mime_type)
-            self.message = 'export policy violation'
-            assert status, self.message
             logging.info('user: %s, checked file: %s , with MIME type: %s', self.requestor, self.filepath, mime_type)
             self.set_header('Content-Length', size)
             self.set_header('Accept-Ranges', 'bytes')
@@ -2040,6 +2037,7 @@ class FileRequestHandler(AuthRequestHandler):
         except Exception as e:
             logging.error(e)
             logging.error(self.message)
+            self.set_status(500)
             self.write({'message': self.message})
         finally:
             self.finish()
