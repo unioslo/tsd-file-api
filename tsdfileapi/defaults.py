@@ -33,12 +33,29 @@ _config = {
         'public': 'mZQEzkyi7bCvmDVfHGsU/7HX1+gT/R3PkSnyDU4OaiY=',
         'private': 'fTEB1MZz8MskkZHSIM9ypxJc4e45Z8fmLGGXkUrp1hQ='
     },
+    'test_nacl_public': {
+        'public': 'mZQEzkyi7bCvmDVfHGsU/7HX1+gT/R3PkSnyDU4OaiY=',
+        'private': 'fTEB1MZz8MskkZHSIM9ypxJc4e45Z8fmLGGXkUrp1hQ=',
+    },
+    'test_nacl_secret': {
+      'key': 'rmsGmiADWiQHcq2n6+QUtTg0oWSxAlmEm4KRcpDWveE=',
+    },
     'log_level': 'info',
     'gpg_binary': shutil.which("gpg"),
     'gpg_homedir': f'{HOME}/.gnupg',
     'gpg_keyring': f'{HOME}/.gnupg/pubring.gpg',
     'gpg_secring': f'{HOME}/.gnupg/secring.gpg',
     'public_key_id': '264CE5ED60A7548B',
+    'request_log': {
+        'db': {
+            'engine': 'sqlite',
+            'path': '/tmp/p11',
+        },
+        'backends': {
+            'claims': ['name', 'host', 'pid'],
+            'files_export': {'methods': ['GET', 'DELETE']},
+        },
+    },
     'backends': {
         'disk': {
             'publication': {

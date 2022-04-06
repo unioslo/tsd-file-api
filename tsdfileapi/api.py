@@ -2474,7 +2474,6 @@ class GenericTableHandler(AuthRequestHandler):
 
     def patch(self, tenant: str, table_name: str) -> None:
         try:
-
             table_name = self.create_table_name(table_name)
             if self.request.uri.endswith('/audit'):
                 self.set_status(403)
@@ -2621,41 +2620,51 @@ class AuditLogViewerHandler(AuthRequestHandler):
         if not options.request_log:
             self.set_status(503)
             self.write({'message': 'logging has not been configured'})
-        if not backend:
-            backends = list(options.request_log.get('backends').keys())
-            available = []
-            for backend in backends:
-                if backend.startswith('apps_'):
-                    backend = 'apps'
-                if 'apps' in available:
-                    continue
-                available.append(backend)
-            self.set_status(200)
-            self.write({'logs': available})
-        elif backend == 'apps':
-            engine_type = options.request_log.get('db').get('engine')
-            log_apps = self.get_log_apps(tenant, backend, engine_type)
-            self.set_status(200)
-            self.write({'apps': log_apps})
-        else:
-            app = self.get_app_name(self.request.uri)
-            engine_type = options.request_log.get('db').get('engine')
-            db = self.get_log_db(tenant, backend, engine_type, app=app)
-            self.set_status(200)
-            self.set_header('Content-Type', 'application/json')
-            self.write('[')
-            self.flush()
-            first = True
-            query = self.get_uri_query(self.request.uri)
-            table_name = self._log_table_name(backend, app)
-            for row in db.table_select(table_name, query):
-                if not first:
-                    self.write(',')
-                self.write(row)
+        try:
+            if not backend:
+                backends = list(options.request_log.get('backends').keys())
+                available = []
+                for backend in backends:
+                    if backend.startswith('apps_'):
+                        backend = 'apps'
+                    if 'apps' in available:
+                        continue
+                    available.append(backend)
+                self.set_status(200)
+                self.write({'logs': available})
+            elif backend == 'apps':
+                engine_type = options.request_log.get('db').get('engine')
+                log_apps = self.get_log_apps(tenant, backend, engine_type)
+                self.set_status(200)
+                self.write({'apps': log_apps})
+            else:
+                app = self.get_app_name(self.request.uri)
+                engine_type = options.request_log.get('db').get('engine')
+                db = self.get_log_db(tenant, backend, engine_type, app=app)
+                self.set_status(200)
+                self.set_header('Content-Type', 'application/json')
+                self.write('[')
                 self.flush()
-                first = False
-            self.write(']')
-            self.flush()
+                first = True
+                query = self.get_uri_query(self.request.uri)
+                table_name = self._log_table_name(backend, app)
+                for row in db.table_select(table_name, query):
+                    if not first:
+                        self.write(',')
+                    self.write(row)
+                    self.flush()
+                    first = False
+                self.write(']')
+                self.flush()
+        except (psycopg2.errors.UndefinedTable, sqlite3.OperationalError) as e:
+            logging.error(e)
+            self.set_status(404)
+            self.write({'message': f'no logs available'})
+        except Exception as e:
+            logging.error(e)
+            if not self._status_code == 403:
+                self.set_status(400)
+            self.write({'message': traceback.format_exc()})
 
 
 class ConfigHandler(RequestHandler):
