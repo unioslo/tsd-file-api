@@ -206,7 +206,7 @@ class SqliteBackend(DatabaseBackend):
             for row in res:
                 name = row[0]
                 if not name.endswith('_metadata') and not name.endswith('_audit'):
-                    out.append(row[0])
+                    out.append(row[0].replace('_submissions', ''))
             return out
 
     def table_insert(self, table_name: str, data: Union[dict, list]) -> bool:
@@ -254,7 +254,7 @@ class SqliteBackend(DatabaseBackend):
                 'previous': val,
                 'identity': self.requestor
             })
-        self.table_insert(f'{table_name}_audit', audit_data)
+        self.table_insert(f'{table_name.replace("submissions", "audit")}', audit_data)
         return True
 
     def table_delete(self, table_name: str, uri_query: str) -> bool:
@@ -326,7 +326,7 @@ class PostgresBackend(object):
             for row in res:
                 name = row[0]
                 if not name.endswith('_metadata') and not name.endswith('_audit'):
-                    out.append(row[0])
+                    out.append(row[0].replace('_submissions', ''))
             return out
 
     def table_insert(self, table_name: str, data: Union[dict, list]) -> bool:
@@ -380,7 +380,7 @@ class PostgresBackend(object):
                 'previous': val,
                 'identity': self.requestor
             })
-        self.table_insert(f'{table_name}_audit', audit_data)
+        self.table_insert(f'{table_name.replace("submissions", "audit")}', audit_data)
         return True
 
     def table_delete(self, table_name: str, uri_query: str) -> bool:
