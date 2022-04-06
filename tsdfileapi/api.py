@@ -2280,6 +2280,7 @@ class GenericTableHandler(AuthRequestHandler):
                     schema = self.tenant
                 self.db = PostgresBackend(options.pgpools.get(self.backend), schema=schema, requestor=self.requestor)
         except Exception as e:
+            logging.error(e)
             if self._status_code != 503:
                 self.set_status(401)
                 logging.error(self.error)
