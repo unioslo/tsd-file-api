@@ -118,8 +118,8 @@ _config = {
                 "request_hook": {"path": False, "sudo": False, "enabled": False},
             },
             "sns": {
-                "import_path": '/pXX/survey/KEYID/FORMID',
-                "subfolder_path": '/pXX/.tsd/KEYID/FORMID',
+                "import_path": '/tmp/pXX/data/durable/nettskjema-submissions/KEYID/FORMID',
+                "subfolder_path": '/tmp/pXX/data/durable/nettskjema-submissions/.tsd/KEYID/FORMID',
                 "request_hook": {"path": False, "sudo": False, "enabled": False},
             },
             'files_import': {

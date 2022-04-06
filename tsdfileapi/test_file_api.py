@@ -930,17 +930,46 @@ class TestFileApi(unittest.TestCase):
 
     def test_ZB_sns_folder_logic_is_correct(self) -> None:
         # lowercase in key id
-        self.assertRaises(Exception, sns_dir, self.test_sns_dir,
-                         'p11', '/v1/p11/sns/255cE5ED50A7558B/98765', self.tenant_string_pattern)
+        self.assertRaises(
+            Exception,
+            sns_dir,
+            self.test_sns_dir,
+            'p11',
+            '/v1/p11/sns/255cE5ED50A7558B/98765',
+            self.tenant_string_pattern,
+        )
         # too long but still valid key id
-        self.assertRaises(Exception, sns_dir, self.test_sns_dir,
-                         'p11', '/v1/p11/sns/255CE5ED50A7558BXIJIJ87878/98765', self.tenant_string_pattern)
+        self.assertRaises(
+            Exception,
+            sns_dir,
+            self.test_sns_dir,
+            'p11',
+            '/v1/p11/sns/255CE5ED50A7558BXIJIJ87878/98765',
+            self.tenant_string_pattern,
+        )
         # non-numeric formid
-        self.assertRaises(Exception, sns_dir, self.test_sns_dir,
-                         'p11', '255CE5ED50A7558B', '99999-%$%&*', self.tenant_string_pattern)
-        # note: /tsd/p11/data/durable _must_ exist for this test to pass
-        self.assertEqual(sns_dir(self.test_sns_dir, 'p11', self.test_sns_url, self.tenant_string_pattern),
-                         '/tsd/p11/data/durable/nettskjema-submissions/{0}/{1}'.format(self.test_keyid, self.test_formid))
+        self.assertRaises(
+            Exception,
+            sns_dir,
+            self.test_sns_dir,
+            'p11',
+            '255CE5ED50A7558B',
+            '99999-%$%&*',
+            self.tenant_string_pattern,
+        )
+        self.assertEqual(
+            sns_dir(
+                self.test_sns_dir,
+                'p11',
+                self.test_sns_url,
+                self.tenant_string_pattern,
+            ),
+            '/{0}/p11/data/durable/nettskjema-submissions/{1}/{2}'.format(
+                self.test_sns_dir.split("/")[1],
+                self.test_keyid,
+                self.test_formid,
+            ),
+        )
         try:
             os.rmdir('/tsd/p11/data/durable/nettskjema-submissions/255CE5ED50A7558B/98765')
             os.rmdir('/tsd/p11/data/durable/nettskjema-submissions/255CE5ED50A7558B')
