@@ -38,7 +38,7 @@ _config = {
     'gpg_homedir': f'{HOME}/.gnupg',
     'gpg_keyring': f'{HOME}/.gnupg/pubring.gpg',
     'gpg_secring': f'{HOME}/.gnupg/secring.gpg',
-    'public_key_id': '43FA347ED76EC595',
+    'public_key_id': '264CE5ED60A7548B',
     'backends': {
         'disk': {
             'publication': {
