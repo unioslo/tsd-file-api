@@ -123,7 +123,7 @@ _config = {
                 "request_hook": {"path": False, "sudo": False, "enabled": False},
             },
             'files_import': {
-                'has_posix_ownership': False,
+                'has_posix_ownership': True,
                 'export_max_num_list': None,
                 'import_path': '/tmp/pXX',
                 'export_path': '/tmp/pXX/export',
@@ -140,9 +140,9 @@ _config = {
                     'default_url_group': 'pXX-member-group',
                     'default_memberships': ['pXX-member-group'],
                     'enabled': True,
-                    'ensure_tenant_in_group_name': False,
-                    'valid_group_regex': 'p[0-9]+-[a-z-]+',
-                    'enforce_membership': False
+                    'ensure_tenant_in_group_name': True,
+                    'valid_group_regex': 'p[0-9]+-[a-zA-Z0-9-]+',
+                    'enforce_membership': True
                 },
                 'request_hook': {
                     'enabled': False,
