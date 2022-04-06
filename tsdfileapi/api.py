@@ -2037,7 +2037,8 @@ class FileRequestHandler(AuthRequestHandler):
         except Exception as e:
             logging.error(e)
             logging.error(self.message)
-            self.set_status(500)
+            if self.get_status() < 400:
+                self.set_status(500)
             self.write({'message': self.message})
         finally:
             self.finish()
