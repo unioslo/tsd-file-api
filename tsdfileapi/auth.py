@@ -42,7 +42,12 @@ def process_access_token(
     dict {message, status, user}
 
     """
-    failure_message = {'message': 'Access forbidden', 'status': False, 'reason': None}
+    failure_message = {
+        'message': 'Access forbidden',
+        'status': False,
+        'reason': None,
+        'claims': None,
+    }
     try:
         raw_token = auth_header.split(' ')[1]
         if not verify_with_secret:
