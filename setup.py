@@ -31,6 +31,5 @@ setup(
     },
     scripts=[
         'scripts/generic-chowner',
-        'scripts/file-api',
     ]
 )
