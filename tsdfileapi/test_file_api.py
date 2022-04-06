@@ -2708,7 +2708,9 @@ def main() -> None:
     logs = [
         'test_log_viewer',
     ]
-    if len(sys.argv) == 2:
+    if len(sys.argv) == 1:
+        sys.argv.append('all')
+    elif len(sys.argv) == 2:
         print('usage:')
         print('python3 tsdfileapi/test_file_api.py config.yaml ARGS')
         print('ARGS: all, base, names, pipelines, export, basic-stream, gpg, dirs, listing')
