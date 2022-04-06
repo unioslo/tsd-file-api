@@ -2289,7 +2289,7 @@ class GenericTableHandler(AuthRequestHandler):
 
     def decrypt_nacl_data(self, data: bytes, headers: tornado.httputil.HTTPHeaders) -> str:
         out = b''
-        nacl_stream_buffer = b''
+        nacl_stream_buffer = data
         try:
             nacl_nonce = options.sealed_box.decrypt(
                 base64.b64decode(headers['Nacl-Nonce'])
@@ -2311,16 +2311,16 @@ class GenericTableHandler(AuthRequestHandler):
         if nacl_chunksize > options.max_nacl_chunksize:
             self.error = f'Nacl-Chunksize larger than max allowed: {options.max_nacl_chunksize}'
             raise Exception(self.error)
-        for byte in data:
-            nacl_stream_buffer += bytes([byte])
-            if len(nacl_stream_buffer) % nacl_chunksize == 0:
-                decrypted = libnacl.crypto_stream_xor(
-                    nacl_stream_buffer,
-                    nacl_nonce,
-                    nacl_key
-                )
-                out += decrypted
-                nacl_stream_buffer = b''
+        while len(nacl_stream_buffer) >= nacl_chunksize:
+            target_content = nacl_stream_buffer[:nacl_chunksize]
+            remainder = nacl_stream_buffer[nacl_chunksize:]
+            decrypted = libnacl.crypto_stream_xor(
+                target_content,
+                nacl_nonce,
+                nacl_key
+            )
+            out += decrypted
+            nacl_stream_buffer = remainder
         if nacl_stream_buffer:
             decrypted = libnacl.crypto_stream_xor(
                 nacl_stream_buffer,
