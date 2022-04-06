@@ -131,7 +131,7 @@ _config = {
                 },
             },
             "form_data": {
-                "import_path": "/tmp/pXX/",
+                "import_path": "/tmp/pXX/import",
                 "request_hook": {"path": False, "sudo": False, "enabled": False},
             },
             "sns": {

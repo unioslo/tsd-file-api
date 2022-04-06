@@ -5,13 +5,17 @@ A REST API for upload and download of files and JSON data.
 
 ## Dev environment
 
-A _minimal_ dev environment can be set up as follows:
+A dev environment can be set up as follows (without docker):
 ```bash
-# get the latest release: https://github.com/unioslo/tsd-file-api/releases/latest
-# extract from archive or unzip it
+# clone the repo
 cd tsd-file-api
 pip3 install -r requirements.txt
 python3 tsdfileapi/api.py
+```
+
+Now you can run tests as follows:
+```bash
+python3 tsdfileapi/test_file_api.py
 ```
 
 ## Docker Dev environment
