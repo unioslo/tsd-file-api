@@ -17,7 +17,7 @@ _config = {
     'api_user': getpass.getuser(),
     'token_check_tenant': True,
     'token_check_exp': True,
-    'disallowed_start_chars': '',
+    'disallowed_start_chars': '~',
     'requestor_claim_name': 'user',
     'tenant_claim_name': 'proj',
     'valid_tenant_regex': '^[0-9a-z]+$',
