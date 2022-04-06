@@ -91,7 +91,7 @@ _config = {
                 'has_posix_ownership': False,
                 'export_max_num_list': None,
                 "import_path": "/tmp/pXX/survey",
-                'export_path': '/tmp/pXX/export',
+                'export_path': '/tmp/pXX/survey',
                 'allow_export': True,
                 'allow_list': True,
                 'allow_info': True,
@@ -102,7 +102,7 @@ _config = {
                 'group_logic': {
                     'default_url_group': 'pXX-member-group',
                     'default_memberships': ['pXX-member-group'],
-                    'enabled': True,
+                    'enabled': False,
                     'ensure_tenant_in_group_name': False,
                     'valid_group_regex': 'p[0-9]+-[a-z-]+',
                     'enforce_membership': False
@@ -187,11 +187,16 @@ _config = {
             "survey": {
                 "db": {
                     "engine": "sqlite",
-                    "path": "/tmp/pXX/import",
+                    "path": "/tmp/pXX/survey",
                     "table_structure": None,
                     "mq": None,
                 },
-                "table_structure": None
+                "table_structure": [
+                    "submissions",
+                    "attachments",
+                    "metadata",
+                    "audit",
+                ],
             },
             "publication": {
                 "db": {
