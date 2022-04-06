@@ -953,28 +953,21 @@ class TestFileApi(unittest.TestCase):
         self.assertEqual(resp1.status_code, 201)
 
     def test_ZA_choosing_file_upload_directories_based_on_tenant_works(self) -> None:
-        newfilename = 'uploaded-example-p12.csv'
-        try:
-            os.remove(os.path.normpath(self.uploads_folder_p12 + '/' + newfilename))
-        except OSError:
-            pass
-        headers = {'Authorization': 'Bearer ' + P12_TOKEN}
-        files = {'file': (newfilename, open(self.example_csv))}
-        # remove hard-coded port from this, and similar tests
-        resp1 = requests.post('http://localhost:' + str(self.config['port']) + '/v1/p12/files/upload', files=files, headers=headers)
-        self.assertEqual(resp1.status_code, 201)
-        uploaded_file = os.path.normpath(self.uploads_folder_p12 + '/' + newfilename)
-        self.assertEqual(md5sum(self.example_csv), md5sum(uploaded_file))
         newfilename2 = 'streamed-put-example-p12.csv'
         try:
             os.remove(os.path.normpath(self.uploads_folder_p12 + '/p12-member-group/' + newfilename2))
         except OSError:
             pass
-        headers2 = {'Filename': 'streamed-put-example-p12.csv',
-                   'Authorization': 'Bearer ' + P12_TOKEN,
-                   'Expect': '100-Continue'}
-        resp2 = requests.put('http://localhost:' + str(self.config['port']) + '/v1/p12/files/stream',
-                            data=lazy_file_reader(self.example_csv), headers=headers2)
+        headers2 = {
+            'Filename': 'streamed-put-example-p12.csv',
+            'Authorization': 'Bearer ' + P12_TOKEN,
+            'Expect': '100-Continue',
+        }
+        resp2 = requests.put(
+            'http://localhost:' + str(self.config['port']) + '/v1/p12/files/stream',
+            data=lazy_file_reader(self.example_csv),
+            headers=headers2,
+        )
         self.assertEqual(resp2.status_code, 201)
         uploaded_file2 = os.path.normpath(self.uploads_folder_p12 + '/p12-member-group/' + newfilename2)
         self.assertEqual(md5sum(self.example_csv), md5sum(uploaded_file2))
@@ -1763,6 +1756,11 @@ class TestFileApi(unittest.TestCase):
         self.assertTrue(data['files'][0]['modified_date'] is None)
         # allowed
         target = os.path.basename(self.so_sweet)
+        resp = requests.put(
+            f'{self.stream}/p11-member-group/{target}',
+            data=lazy_file_reader(self.so_sweet),
+            headers=headers,
+        )
         resp = requests.head(f'{self.stream}/p11-member-group/{target}', headers=headers)
         self.assertEqual(resp.status_code, 200)
         self.assertTrue('Etag' in resp.headers.keys())
