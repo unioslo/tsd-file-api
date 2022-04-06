@@ -48,7 +48,7 @@ from tornado.web import (Application, RequestHandler, stream_request_body,
 
 from auth import process_access_token
 from db import sqlite_init, SqliteBackend, postgres_init, PostgresBackend
-from pgp import _import_keys
+from pgp import init_gpg
 from resumables import SerialResumable, ResumableNotFoundError, ResumableIncorrectChunkOrderError
 from rmq import PikaClient
 from utils import (call_request_hook, sns_dir,
@@ -943,7 +943,7 @@ class ResumablesHandler(AuthRequestHandler):
 class FileRequestHandler(AuthRequestHandler):
 
     def decrypt_aes_key(self, b64encoded_pgpencrypted_key: str) -> str:
-        gpg = _import_keys(options.config)
+        gpg = init_gpg(options.config)
         key = base64.b64decode(b64encoded_pgpencrypted_key)
         decr_aes_key = str(gpg.decrypt(key)).strip()
         return decr_aes_key
