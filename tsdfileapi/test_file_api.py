@@ -117,6 +117,10 @@ def project_import_dir(
     tenant_pattern: str,
 ) -> str:
     folder = config['backends']['disk'][backend]['import_path'].replace(tenant_pattern, tenant)
+    if config.get("create_tenant_dir"):
+        if not os.path.lexists(folder):
+            print(f"creating {folder}")
+            os.makedirs(folder)
     return os.path.normpath(folder)
 
 
@@ -2512,7 +2516,6 @@ def main() -> None:
         'test_Z_token_for_other_project_rejected',
         # upload dirs
         'test_ZA_choosing_file_upload_directories_based_on_tenant_works',
-        'test_ZC_setting_ownership_based_on_user_works',
         'test_ZD_cannot_upload_empty_file_to_sns',
         # groups
         'test_ZE_stream_works_with_client_specified_group',

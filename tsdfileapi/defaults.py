@@ -1,12 +1,22 @@
 
 import getpass
+import os
+import shutil
+
+HOME = os.path.expanduser("~")
 
 _config = {
     'port': 3003,
     'debug': True,
+    'test_project': 'p11',
+    'test_user': 'p11-testing',
+    'test_keyid': '264CE5ED60A7548B',
+    'test_formid': '123456',
+    'test_group': 'p11-member-group',
+    'data_folder': f'{os.getcwd()}/tsdfileapi/data',
     'api_user': getpass.getuser(),
-    'token_check_tenant': False,
-    'token_check_exp': False,
+    'token_check_tenant': True,
+    'token_check_exp': True,
     'disallowed_start_chars': '',
     'requestor_claim_name': 'user',
     'tenant_claim_name': 'proj',
@@ -24,10 +34,10 @@ _config = {
         'private': 'fTEB1MZz8MskkZHSIM9ypxJc4e45Z8fmLGGXkUrp1hQ='
     },
     'log_level': 'info',
-    'gpg_binary': '/usr/bin/gpg',
-    'gpg_homedir': '~/.gnupg/',
-    'gpg_keyring': 'pubring.gpg',
-    'gpg_secring': 'secring.gpg',
+    'gpg_binary': shutil.which("gpg"),
+    'gpg_homedir': f'{HOME}/.gnupg',
+    'gpg_keyring': f'{HOME}/.gnupg/pubring.gpg',
+    'gpg_secring': f'{HOME}/.gnupg/secring.gpg',
     'public_key_id': '43FA347ED76EC595',
     'backends': {
         'disk': {
@@ -177,7 +187,16 @@ _config = {
             "survey": {
                 "db": {
                     "engine": "sqlite",
-                    "path": "/pXX/import",
+                    "path": "/tmp/pXX/import",
+                    "table_structure": None,
+                    "mq": None,
+                },
+                "table_structure": None
+            },
+            "publication": {
+                "db": {
+                    "engine": "sqlite",
+                    "path": "/tmp/pXX",
                     "table_structure": None,
                     "mq": None,
                 },
