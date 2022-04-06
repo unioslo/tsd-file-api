@@ -143,11 +143,12 @@ class TestFileApi(unittest.TestCase):
     def setUpClass(cls):
 
         try:
-            with open(sys.argv[1]) as f:
-                cls.config = yaml.load(f, Loader=yaml.Loader)
+            default_port = 3003
+            resp = requests.get(f"http://localhost:{default_port}/v1/all/config")
+            cls.config = json.loads(resp.text)
         except Exception as e:
             print(e)
-            print("Missing config file?")
+            print("Could not load config")
             sys.exit(1)
 
         # includes p19 - a random project number for integration testing
