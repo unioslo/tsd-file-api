@@ -14,6 +14,7 @@ _config = {
     'test_formid': '123456',
     'test_group': 'p11-member-group',
     'data_folder': f'{os.getcwd()}/tsdfileapi/data',
+    'test_folder': f'{os.getcwd()}/tsdfileapi/tests',
     'api_user': getpass.getuser(),
     'token_check_tenant': True,
     'token_check_exp': True,

@@ -105,7 +105,7 @@ from db import session_scope, sqlite_init, postgres_init, SqliteBackend, \
                sqlite_session, PostgresBackend, postgres_session
 from resumables import SerialResumable
 from utils import sns_dir, md5sum, IllegalFilenameException
-from pgp import _import_keys
+from pgp import init_gpg
 from squril import SqliteQueryGenerator, PostgresQueryGenerator
 
 
@@ -137,8 +137,7 @@ def lazy_file_reader(filename: str) -> bytes:
 class TestFileApi(unittest.TestCase):
 
     @classmethod
-    def pgp_encrypt_and_base64_encode(cls, string):
-        gpg = _import_keys(cls.config)
+    def pgp_encrypt_and_base64_encode(cls, gpg, string):
         encrypted = gpg.encrypt(string, cls.config['public_key_id'], armor=False)
         encoded = base64.b64encode(encrypted.data)
         return encoded
@@ -229,8 +228,11 @@ class TestFileApi(unittest.TestCase):
         # example data
         cls.example_tar = os.path.normpath(cls.data_folder + '/example.tar')
         cls.example_tar_gz = os.path.normpath(cls.data_folder + '/example.tar.gz')
-        cls.enc_symmetric_secret = cls.pgp_encrypt_and_base64_encode('tOg1qbyhRMdZLg==')
-        cls.enc_hex_aes_key = cls.pgp_encrypt_and_base64_encode('ed6d4be32230db647bc63627f98daba0ac1c5d04ab6d1b44b74501ff445ddd97')
+        cls.gpg = init_gpg(cls.config)
+        cls.gpg.import_keys(open(f"{cls.config.get('test_folder')}/public.pem", "rb").read())
+        cls.gpg.import_keys(open(f"{cls.config.get('test_folder')}/private.pem", "rb").read())
+        cls.enc_symmetric_secret = cls.pgp_encrypt_and_base64_encode(cls.gpg, 'tOg1qbyhRMdZLg==')
+        cls.enc_hex_aes_key = cls.pgp_encrypt_and_base64_encode(cls.gpg, 'ed6d4be32230db647bc63627f98daba0ac1c5d04ab6d1b44b74501ff445ddd97')
         cls.hex_aes_iv = 'a53c9b54b5f84e543b592050c52531ef'
         cls.example_aes = os.path.normpath(cls.data_folder + '/example.csv.aes')
         # tar -cf - totar3 | openssl enc -aes-256-cbc -a -pass file:<( echo $PW ) > example.tar.aes
