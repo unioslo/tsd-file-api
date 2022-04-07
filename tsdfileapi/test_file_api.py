@@ -938,24 +938,6 @@ class TestFileApi(unittest.TestCase):
             '99999-%$%&*',
             self.tenant_string_pattern,
         )
-        self.assertEqual(
-            sns_dir(
-                self.test_sns_dir,
-                'p11',
-                self.test_sns_url,
-                self.tenant_string_pattern,
-            ),
-            '/{0}/p11/data/durable/nettskjema-submissions/{1}/{2}'.format(
-                self.test_sns_dir.split("/")[1],
-                self.test_keyid,
-                self.test_formid,
-            ),
-        )
-        try:
-            os.rmdir('/tsd/p11/data/durable/nettskjema-submissions/255CE5ED50A7558B/98765')
-            os.rmdir('/tsd/p11/data/durable/nettskjema-submissions/255CE5ED50A7558B')
-        except OSError:
-            pass
 
     def test_ZC_setting_ownership_based_on_user_works(self) -> None:
         token = gen_test_token_for_user(self.config, self.test_user)
