@@ -2,8 +2,11 @@
 import getpass
 import os
 import shutil
+import tempfile
 
 HOME = os.path.expanduser("~")
+td = tempfile.TemporaryDirectory()
+TMP = td.name
 
 _config = {
     'port': 3003,
@@ -50,7 +53,7 @@ _config = {
     'request_log': {
         'db': {
             'engine': 'sqlite',
-            'path': '/tmp/p11',
+            'path': f'{TMP}/p11',
         },
         'backends': {
             'claims': ['name', 'host', 'pid'],
@@ -62,8 +65,8 @@ _config = {
             'publication': {
                 'has_posix_ownership': False,
                 'export_max_num_list': None,
-                'import_path': '/tmp/pXX',
-                'export_path': '/tmp/pXX',
+                'import_path': f'{TMP}/pXX',
+                'export_path': f'{TMP}/pXX',
                 'allow_export': True,
                 'allow_list': True,
                 'allow_info': True,
@@ -85,8 +88,8 @@ _config = {
             'apps_files': {
                 'has_posix_ownership': False,
                 'export_max_num_list': None,
-                'import_path': '/tmp/pXX',
-                'export_path': '/tmp/pXX',
+                'import_path': f'{TMP}/pXX',
+                'export_path': f'{TMP}/pXX',
                 'allow_export': True,
                 'allow_list': True,
                 'allow_info': True,
@@ -108,8 +111,8 @@ _config = {
             "survey": {
                 'has_posix_ownership': False,
                 'export_max_num_list': None,
-                "import_path": "/tmp/pXX/survey",
-                'export_path': '/tmp/pXX/survey',
+                "import_path": f"{TMP}/pXX/survey",
+                'export_path': f'{TMP}/pXX/survey',
                 'allow_export': True,
                 'allow_list': True,
                 'allow_info': True,
@@ -132,19 +135,19 @@ _config = {
                 },
             },
             "form_data": {
-                "import_path": "/tmp/pXX/import",
+                "import_path": f"{TMP}/pXX/import",
                 "request_hook": {"path": False, "sudo": False, "enabled": False},
             },
             "sns": {
-                "import_path": '/tmp/pXX/data/durable/nettskjema-submissions/KEYID/FORMID',
-                "subfolder_path": '/tmp/pXX/data/durable/nettskjema-submissions/.tsd/KEYID/FORMID',
+                "import_path": f'{TMP}/pXX/data/durable/nettskjema-submissions/KEYID/FORMID',
+                "subfolder_path": f'{TMP}/pXX/data/durable/nettskjema-submissions/.tsd/KEYID/FORMID',
                 "request_hook": {"path": False, "sudo": False, "enabled": False},
             },
             'files_import': {
                 'has_posix_ownership': True,
                 'export_max_num_list': None,
-                'import_path': '/tmp/pXX/import',
-                'export_path': '/tmp/pXX/import',
+                'import_path': f'{TMP}/pXX/import',
+                'export_path': f'{TMP}/pXX/import',
                 'allow_export': True,
                 'allow_list': True,
                 'allow_info': True,
@@ -171,7 +174,7 @@ _config = {
             'files_export': {
                 'has_posix_ownership': False,
                 'export_max_num_list': None,
-                'import_path': '/tmp/pXX',
+                'import_path': f'{TMP}/pXX',
                 'export_path': f'{os.getcwd()}/tsdfileapi/data/tsd/pXX/export',
                 'allow_export': True,
                 'allow_list': True,
@@ -196,7 +199,7 @@ _config = {
             "apps_tables": {
                 "db": {
                     "engine": "sqlite",
-                    "path": "/tmp/pXX",
+                    "path": f"{TMP}/pXX",
                     "table_structure": None,
                     "mq": None,
                 },
@@ -205,7 +208,7 @@ _config = {
             "survey": {
                 "db": {
                     "engine": "sqlite",
-                    "path": "/tmp/pXX/survey",
+                    "path": f"{TMP}/pXX/survey",
                     "table_structure": None,
                     "mq": None,
                 },
@@ -219,7 +222,7 @@ _config = {
             "publication": {
                 "db": {
                     "engine": "sqlite",
-                    "path": "/tmp/pXX",
+                    "path": f"{TMP}/pXX",
                     "table_structure": None,
                     "mq": None,
                 },

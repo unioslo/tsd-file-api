@@ -254,7 +254,7 @@ class SqliteBackend(DatabaseBackend):
                 'previous': val,
                 'identity': self.requestor
             })
-        self.table_insert(f'{table_name.replace("submissions", "audit")}', audit_data)
+        self.table_insert(f'{table_name}_audit', audit_data)
         return True
 
     def table_delete(self, table_name: str, uri_query: str) -> bool:
@@ -380,7 +380,7 @@ class PostgresBackend(object):
                 'previous': val,
                 'identity': self.requestor
             })
-        self.table_insert(f'{table_name.replace("submissions", "audit")}', audit_data)
+        self.table_insert(f'{table_name}_audit', audit_data)
         return True
 
     def table_delete(self, table_name: str, uri_query: str) -> bool:
