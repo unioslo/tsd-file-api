@@ -51,6 +51,7 @@ from db import sqlite_init, SqliteBackend, postgres_init, PostgresBackend
 from pgp import init_gpg
 from resumables import SerialResumable, ResumableNotFoundError, ResumableIncorrectChunkOrderError
 from rmq import PikaClient
+from tokens import tkn, gen_test_jwt_secrets
 from utils import (call_request_hook, sns_dir,
                    check_filename, _IS_VALID_UUID,
                    md5sum, tenant_from_url,
@@ -2669,8 +2670,21 @@ class AuditLogViewerHandler(AuthRequestHandler):
 
 class ConfigHandler(RequestHandler):
 
-    def get(self):
+    def get(self) -> None:
         self.write(options.config)
+
+class TestTokenHandler(RequestHandler):
+
+    def post(self, pnum) -> None:
+        secrets = gen_test_jwt_secrets(options.config)
+        token = tkn(
+            secrets.get(pnum),
+            exp=10,
+            role="import_user",
+            tenant=pnum,
+            user=f"{pnum}-test",
+        )
+        self.write({"token": token})
 
 class Backends(object):
 
@@ -2687,7 +2701,10 @@ class Backends(object):
         ],
         'config': [
             ('/v1/all/config', ConfigHandler),
-        ]
+        ],
+        'token': [
+            ('/v1/(.+)/token', TestTokenHandler),
+        ],
     }
 
     optional_routes = {
