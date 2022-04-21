@@ -699,7 +699,7 @@ class SerialResumable(AbstractResumable):
             old_chunk = chunk.replace('.chunk.' + str(chunk_num), '.chunk.' + str(target_chunk_num))
             try:
                 os.remove(old_chunk)
-            except (Exception, OSError) as e:
+            except Exception as e:
                 logging.error(e)
         return final
 
