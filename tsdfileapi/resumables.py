@@ -697,7 +697,10 @@ class SerialResumable(AbstractResumable):
         if chunk_num >= 5:
             target_chunk_num = chunk_num - 4
             old_chunk = chunk.replace('.chunk.' + str(chunk_num), '.chunk.' + str(target_chunk_num))
-            os.remove(old_chunk)
+            try:
+                os.remove(old_chunk)
+            except (Exception, OSError) as e:
+                logging.error(e)
         return final
 
     def _db_insert_new_for_owner(
