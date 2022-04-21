@@ -682,7 +682,7 @@ class SerialResumable(AbstractResumable):
                     shutil.copyfileobj(fin, fout)
             chunk_size = os.stat(chunk).st_size
             assert self._db_update_with_chunk_info(upload_id, chunk_num, chunk_size)
-        except (sqlite3.OperationalError, OperationalError, Exception) as e:
+        except Exception as e:
             logging.error(e)
             os.remove(chunk)
             with open(out, 'ab') as fout:

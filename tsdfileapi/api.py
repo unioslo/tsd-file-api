@@ -1497,12 +1497,24 @@ class FileRequestHandler(AuthRequestHandler):
             if not os.path.lexists(self.path_part):
                 os.rename(self.path, self.path_part)
                 filename = os.path.basename(self.path_part).split('.chunk')[0]
-                self.res.merge_chunk(
-                    self.tenant_dir,
-                    os.path.basename(self.path_part),
-                    self.upload_id,
-                    self.requestor
-                )
+                try:
+                    self.res.merge_chunk(
+                        self.tenant_dir,
+                        os.path.basename(self.path_part),
+                        self.upload_id,
+                        self.requestor
+                    )
+                except Exception as e:
+                    logging.error(e)
+                    self.set_status(500)
+                    self.write(
+                        {
+                            'filename': filename,
+                            'id': self.upload_id,
+                            'max_chunk': self.chunk_num - 1, # we failed
+                            'key': self.res_key,
+                        }
+                    )
             else:
                 self.set_status(400)
                 self.write({'message': 'chunk_order_incorrect'})
@@ -1520,11 +1532,14 @@ class FileRequestHandler(AuthRequestHandler):
                 return
             filename = os.path.basename(self.completed_resumable_filename)
         self.set_status(201)
-        self.write({
-            'filename': filename,
-            'id': self.upload_id,
-            'max_chunk': self.chunk_num,
-            'key': self.res_key})
+        self.write(
+            {
+                'filename': filename,
+                'id': self.upload_id,
+                'max_chunk': self.chunk_num,
+                'key': self.res_key,
+            }
+        )
 
     def enforce_export_policy(
         self,
