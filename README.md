@@ -18,7 +18,7 @@ Now you can run tests as follows:
 python3 tsdfileapi/test_file_api.py
 ```
 
-Installing the API will install the reference command-line client, [tacl](). You can use it with the dev instance as such:
+Installing the API will install the reference command-line client, [tacl](https://github.com/unioslo/tsd-api-client). You can use it with the dev instance as such:
 
 ```bash
 tacl p11 --env dev # etc, see: tacl --help for more
