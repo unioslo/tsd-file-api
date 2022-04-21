@@ -1505,7 +1505,6 @@ class FileRequestHandler(AuthRequestHandler):
                         self.requestor
                     )
                 except Exception as e:
-                    logging.error(e)
                     self.set_status(500)
                     self.write(
                         {
