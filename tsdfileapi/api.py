@@ -1504,6 +1504,15 @@ class FileRequestHandler(AuthRequestHandler):
                         self.upload_id,
                         self.requestor
                     )
+                    self.set_status(201)
+                    self.write(
+                        {
+                            'filename': filename,
+                            'id': self.upload_id,
+                            'max_chunk': self.chunk_num,
+                            'key': self.res_key,
+                        }
+                    )
                 except Exception as e:
                     self.set_status(500)
                     self.write(
@@ -1530,15 +1539,15 @@ class FileRequestHandler(AuthRequestHandler):
                 self.set_status(404)
                 return
             filename = os.path.basename(self.completed_resumable_filename)
-        self.set_status(201)
-        self.write(
-            {
-                'filename': filename,
-                'id': self.upload_id,
-                'max_chunk': self.chunk_num,
-                'key': self.res_key,
-            }
-        )
+            self.set_status(201)
+            self.write(
+                {
+                    'filename': filename,
+                    'id': self.upload_id,
+                    'max_chunk': self.chunk_num,
+                    'key': self.res_key,
+                }
+            )
 
     def enforce_export_policy(
         self,
