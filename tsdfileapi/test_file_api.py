@@ -11,6 +11,7 @@ import pwd
 import uuid
 import shutil
 import sqlite3
+import tempfile
 
 from datetime import datetime
 from typing import Union, Callable, Optional
@@ -36,10 +37,23 @@ pretty_bad_protocol._parsers.Verify.TRUST_LEVELS["ENCRYPTION_COMPLIANCE_MODE"] =
 # pylint: disable=relative-import
 from auth import process_access_token
 from tokens import gen_test_tokens, get_test_token_for_p12, gen_test_token_for_user
-from db import session_scope, sqlite_init, postgres_init, SqliteBackend, \
-               sqlite_session, PostgresBackend, postgres_session
+from db import (
+    session_scope,
+    sqlite_init,
+    postgres_init,
+    SqliteBackend,
+    sqlite_session,
+    PostgresBackend,
+    postgres_session,
+)
 from resumables import SerialResumable
-from utils import sns_dir, md5sum, IllegalFilenameException
+from utils import (
+    sns_dir,
+    md5sum,
+    IllegalFilenameException,
+    find_tenant_storage_path,
+    StorageTemporarilyUnavailableError,
+)
 from pgp import init_gpg
 from squril import SqliteQueryGenerator, PostgresQueryGenerator
 
@@ -2499,6 +2513,64 @@ class TestFileApi(unittest.TestCase):
         self.assertTrue(isinstance(json.loads(resp.text).get('apps'), list))
 
 
+    def test_find_tenant_storage_path(self) -> None:
+        td = tempfile.TemporaryDirectory()
+        root = td.name
+        os.makedirs(f"{root}/projects01/p11/data/durable")
+        os.makedirs(f"{root}/projects02/p12/.from-hnas/data/durable")
+        class Options(object):
+            migration_statuses = {"p11": "ess", "p12": "hnas", "p13": "migrating"}
+            tenant_storage_cache = {}
+            prefer_ess = ["files_import", "files_export"]
+        opts = Options()
+        # choose ess
+        self.assertTrue(
+            find_tenant_storage_path(
+                "p11", "files_import", opts, root=root,
+            ).endswith("/projects01/p11/data/durable")
+        )
+        # modify the source to check that we use actually use the cached result
+        opts.migration_statuses["p11"] = "hnas"
+        self.assertTrue(
+            find_tenant_storage_path(
+                "p11", "files_import", opts, root=root,
+            ).endswith("/projects01/p11/data/durable")
+        )
+        # choose hnas, regardless of migration status
+        self.assertTrue(
+            find_tenant_storage_path(
+                "p11", "sns", opts, root=root,
+            ).endswith("/p11/data/durable")
+        )
+        self.assertTrue(
+            find_tenant_storage_path(
+                "p12", "sns", opts, root=root,
+            ).endswith("/p12/data/durable")
+        )
+        self.assertTrue(
+            find_tenant_storage_path(
+                "p13", "publication", opts, root=root,
+            ).endswith("/p13/data/durable")
+        )
+        # should raise
+        self.assertRaises(
+            StorageTemporarilyUnavailableError,
+            find_tenant_storage_path,
+            "p12",
+            "files_import",
+            opts,
+            root=root,
+        )
+        self.assertRaises(
+            StorageTemporarilyUnavailableError,
+            find_tenant_storage_path,
+            "p13",
+            "files_export",
+            opts,
+            root=root,
+        )
+
+
 def main() -> None:
     tests = []
     base = [
@@ -2627,6 +2699,9 @@ def main() -> None:
     logs = [
         'test_log_viewer',
     ]
+    storage = [
+        'test_find_tenant_storage_path',
+    ]
     if len(sys.argv) == 1:
         sys.argv.append('all')
     elif len(sys.argv) == 2:
@@ -2674,6 +2749,8 @@ def main() -> None:
         tests.extend(mtime)
     if 'logs' in sys.argv:
         tests.extend(logs)
+    if 'storage' in sys.argv:
+        tests.extend(storage)
     if 'all' in sys.argv:
         tests.extend(base)
         tests.extend(names)
@@ -2693,6 +2770,7 @@ def main() -> None:
         tests.extend(form_data)
         tests.extend(mtime)
         tests.extend(logs)
+        tests.extend(storage)
     tests.sort()
     suite = unittest.TestSuite()
     for test in tests:
