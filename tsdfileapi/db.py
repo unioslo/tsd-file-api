@@ -1,8 +1,4 @@
 
-"""sqlite db backend designed for JSON data."""
-
-# pylint: disable=missing-docstring
-
 import datetime
 import logging
 import re
@@ -23,9 +19,38 @@ from sqlalchemy.orm import sessionmaker
 from sqlalchemy import create_engine
 from sqlalchemy.exc import OperationalError, IntegrityError, StatementError
 
-# pylint: disable=relative-import
 from squril import SqliteQueryGenerator, PostgresQueryGenerator
 from utils import check_filename, IllegalFilenameException
+
+
+def pg_listen_channel(
+    pool: psycopg2.pool.SimpleConnectionPool,
+    channel_name: str,
+) -> psycopg2.extensions.connection:
+    conn = pool.getconn()
+    conn.set_isolation_level(psycopg2.extensions.ISOLATION_LEVEL_AUTOCOMMIT)
+    curs = conn.cursor()
+    curs.execute(f"listen {channel_name};")
+    logging.info(f'listening on postgres channel: {channel_name}')
+    return conn
+
+
+def get_projects_migration_status(conn: psycopg2.extensions.connection,) -> dict:
+    if not conn:
+        return {}
+    out = {}
+    with postgres_session(conn) as session:
+        session.execute(
+            """select
+                    project_number,
+                    case when project_metadata->>'storage_backend' is null then 'hnas' end
+                from projects
+            """
+        )
+        data = session.fetchall()
+    for row in data:
+        out[row[0]] = row[1]
+    return out
 
 
 def sqlite_init(
