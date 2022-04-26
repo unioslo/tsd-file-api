@@ -43,7 +43,8 @@ def get_projects_migration_status(conn: psycopg2.extensions.connection,) -> dict
         session.execute(
             """select
                     project_number,
-                    case when project_metadata->>'storage_backend' is null then 'hnas' end
+                    case when project_metadata->>'storage_backend' is null then 'hnas'
+                    else project_metadata->>'storage_backend' end
                 from projects
             """
         )
