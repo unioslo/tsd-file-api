@@ -47,15 +47,30 @@ from tornado.web import (Application, RequestHandler, stream_request_body,
                          HTTPError, MissingArgumentError)
 
 from auth import process_access_token
-from db import sqlite_init, SqliteBackend, postgres_init, PostgresBackend
+from db import (
+    sqlite_init,
+    SqliteBackend,
+    postgres_init,
+    PostgresBackend,
+    get_projects_migration_status,
+    pg_listen_channel,
+)
 from pgp import init_gpg
 from resumables import SerialResumable, ResumableNotFoundError, ResumableIncorrectChunkOrderError
 from rmq import PikaClient
 from tokens import tkn, gen_test_jwt_secrets
-from utils import (call_request_hook, sns_dir,
-                   check_filename, _IS_VALID_UUID,
-                   md5sum, tenant_from_url,
-                   move_data_to_folder, set_mtime)
+from utils import (
+    call_request_hook,
+    sns_dir,
+    check_filename,
+    _IS_VALID_UUID,
+    md5sum,
+    tenant_from_url,
+    move_data_to_folder,
+    set_mtime,
+    find_tenant_storage_path,
+    StorageTemporarilyUnavailableError,
+)
 
 
 _RW______ = stat.S_IREAD | stat.S_IWRITE
@@ -126,9 +141,35 @@ def set_config() -> None:
     if 'accept_calls_per_event_loop' in _config:
         tornado.netutil.ACCEPT_CALLS_PER_EVENT_LOOP = _config['accept_calls_per_event_loop']
     options.logging = _config.get('log_level', 'info')
+    try:
+        projects_pool = postgres_init(
+            {
+                'user': _config.get('iamdb_user'),
+                'pw': _config.get('iamdb_pw'),
+                'host': _config.get('iamdb_host'),
+                'dbname': _config.get('iamdb_dbname'),
+            }
+        )
+    except Exception as e:
+        projects_pool = None
+    define('projects_pool', projects_pool)
+    define('migration_statuses', get_projects_migration_status(projects_pool))
+    define('tenant_storage_cache', {})
+    define('prefer_ess', _config.get('prefer_ess', []))
 
 
 set_config()
+
+
+def handle_iam_projects_events(
+    conn: psycopg2.extensions.connection,
+    events: int,
+) -> bool:
+    conn.poll()
+    while conn.notifies:
+        notify = conn.notifies.pop(0)
+    logging.info(f'reloading project info')
+    options.migration_statuses = get_projects_migration_status(options.projects_pool)
 
 
 class AuthRequestHandler(RequestHandler):
@@ -2885,6 +2926,9 @@ def main() -> None:
     ioloop = IOLoop.instance()
     if pika_client:
         ioloop.add_timeout(time.time() + .1, pika_client.connect)
+    if options.projects_pool:
+        channel_projects = pg_listen_channel(options.projects_pool, 'channel_projects')
+        ioloop.add_handler(channel_projects, handle_iam_projects_events, IOLoop.READ)
     ioloop.start()
 
 
