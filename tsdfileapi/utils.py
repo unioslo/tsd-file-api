@@ -18,17 +18,6 @@ _IS_REALISTIC_PGP_KEY_FINGERPRINT = re.compile(r'^[0-9A-Z]{16}$')
 _IS_VALID_UUID = re.compile(r'([a-f\d0-9-]{32,36})')
 
 
-def get_projects_migration_status() -> dict:
-    """
-    {
-        p11: storage_backend,
-        ...
-    }
-
-    """
-    logging.info("fetching projects migration statuses")
-
-
 def _find_ess_dir(pnum: str, root: str = "/ess",) -> Optional[str]:
     sub_dir = None
     for projects_dir in os.listdir(root):
@@ -51,6 +40,7 @@ def find_tenant_storage_path(
     endpoint_backend: str,
     opts: tornado.options.OptionParser,
     root: str = "/ess",
+    default_storage_backend: str = "hnas",
 ) -> str:
     """
     Either one of these:
@@ -67,7 +57,8 @@ def find_tenant_storage_path(
                 hnas: str,
                 ess: Optional[str],
             },
-        }
+        },
+        ...
     }
 
     Returns the path which the endpoint_backend should use.
@@ -76,25 +67,30 @@ def find_tenant_storage_path(
     cache = opts.tenant_storage_cache.copy()
     if not cache.get(tenant):
         cache[tenant] = {
-            "storage_backend": opts.migration_statuses.get(tenant),
+            "storage_backend": opts.migration_statuses.get(tenant, default_storage_backend),
             "storage_paths": {
                 "hnas": f"/tsd/{tenant}/data/durable",
                 "ess": None,
             }
         }
     if (
-        opts.migration_statuses.get(tenant) == "ess"
+        opts.migration_statuses.get(tenant, default_storage_backend) == "ess"
         and not cache.get(tenant).get("storage_paths").get("ess")
     ):
         cache[tenant]["storage_backend"] = "ess"
         cache[tenant]["storage_paths"]["ess"] = _find_ess_dir(tenant, root=root)
     opts.tenant_storage_cache = cache
     preferred = "ess" if endpoint_backend in opts.prefer_ess else "hnas"
-    path = cache.get(tenant).get("storage_paths").get(preferred)
-    if not path:
-        raise StorageTemporarilyUnavailableError
+    current_storage_backend = cache.get(tenant).get("storage_backend")
+    if current_storage_backend == "migrating":
+        if preferred == "ess":
+            raise StorageTemporarilyUnavailableError
+        else:
+            return cache.get(tenant).get("storage_paths").get(preferred)
+    elif current_storage_backend == "ess":
+        return cache.get(tenant).get("storage_paths").get(preferred)
     else:
-        return path
+        return cache.get(tenant).get("storage_paths").get("hnas")
 
 
 def call_request_hook(path: str, params: list, as_sudo: bool = True) -> None:
