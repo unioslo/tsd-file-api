@@ -73,6 +73,8 @@ def find_tenant_storage_path(
                 "ess": None,
             }
         }
+    else:
+        cache[tenant]["storage_backend"] = opts.migration_statuses.get(tenant, default_storage_backend)
     if (
         opts.migration_statuses.get(tenant, default_storage_backend) == "ess"
         and not cache.get(tenant).get("storage_paths").get("ess")
@@ -100,6 +102,8 @@ def choose_storage(
     opts: tornado.options.OptionParser,
     directory: str,
 ) -> str:
+    if not directory.startswith("/tsd"):
+        return directory
     split_on = "data/durable"
     storage_path = find_tenant_storage_path(
         tenant, endpoint_backend, opts,
