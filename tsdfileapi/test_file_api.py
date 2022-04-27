@@ -2637,7 +2637,8 @@ class TestFileApi(unittest.TestCase):
         # resumables
         resp = requests.get(self.resumables, headers=headers)
         self.assertEqual(resp.status_code, 503)
-        self.assertEqual(resp.reason, "project_storage_migrating")
+        self.assertEqual(resp.reason, "Project Storage Migrating")
+        self.assertEqual(resp.headers.get("X-Project-Storage"), "Migrating")
         # import
         resp = requests.put(
             f"{self.stream}/lol-file",
@@ -2645,7 +2646,8 @@ class TestFileApi(unittest.TestCase):
             headers=headers,
         )
         self.assertEqual(resp.status_code, 503)
-        self.assertEqual(resp.reason, "project_storage_migrating")
+        self.assertEqual(resp.reason, "Project Storage Migrating")
+        self.assertEqual(resp.headers.get("X-Project-Storage"), "Migrating")
         # now use ess
         with postgres_session(pool) as session:
             session.execute(
