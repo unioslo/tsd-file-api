@@ -825,8 +825,9 @@ class FormDataHandler(GenericFormDataHandler):
             self.set_status(201)
             self.write({'message': 'data uploaded'})
         except StorageTemporarilyUnavailableError:
-            self.set_status(503, reason="project_storage_migrating")
-            self.write({"message": "project_storage_migrating"})
+            self.set_header("X-Project-Storage", "Migrating")
+            self.set_status(503, reason="Project Storage Migrating")
+            self.write({"message": "Project Storage Migrating"})
         except Exception:
             self.set_status(400)
             self.write({'message': 'could not upload data'})
@@ -852,8 +853,9 @@ class SnsFormDataHandler(GenericFormDataHandler):
             self.set_status(201)
             self.write({'message': 'data uploaded'})
         except StorageTemporarilyUnavailableError:
-            self.set_status(503, reason="project_storage_migrating")
-            self.write({"message": "project_storage_migrating"})
+            self.set_header("X-Project-Storage", "Migrating")
+            self.set_status(503, reason="Project Storage Migrating")
+            self.write({"message": "Project Storage Migrating"})
         except Exception:
             self.set_status(400)
             self.write({'message': 'could not upload data'})
@@ -946,7 +948,8 @@ class ResumablesHandler(AuthRequestHandler):
             )
             self.err = 'Unauthorized'
         except StorageTemporarilyUnavailableError:
-            self.set_status(503, reason="project_storage_migrating")
+            self.set_header("X-Project-Storage", "Migrating")
+            self.set_status(503, reason="Project Storage Migrating")
             self.finish()
         except Exception as e:
             self.finish()
@@ -1480,7 +1483,8 @@ class FileRequestHandler(AuthRequestHandler):
                         info = 'chunk_order_incorrect'
                     self.finish({'message': info})
         except StorageTemporarilyUnavailableError:
-            self.set_status(503, reason="project_storage_migrating")
+            self.set_header("X-Project-Storage", "Migrating")
+            self.set_status(503, reason="Project Storage Migrating")
             self.finish()
         except (Exception, AssertionError) as e:
             if self._status_code != 503:
@@ -2407,7 +2411,8 @@ class GenericTableHandler(AuthRequestHandler):
                     schema = self.tenant
                 self.db = PostgresBackend(options.pgpools.get(self.backend), schema=schema, requestor=self.requestor)
         except StorageTemporarilyUnavailableError:
-            self.set_status(503, reason="project_storage_migrating")
+            self.set_header("X-Project-Storage", "Migrating")
+            self.set_status(503, reason="Project Storage Migrating")
         except Exception as e:
             logging.error(e)
             if self._status_code != 503:
@@ -2786,8 +2791,9 @@ class AuditLogViewerHandler(AuthRequestHandler):
                 self.write(']')
                 self.flush()
         except StorageTemporarilyUnavailableError:
-            self.set_status(503, reason="project_storage_migrating")
-            self.write({'message': 'project_storage_migrating'})
+            self.set_header("X-Project-Storage", "Migrating")
+            self.set_status(503, reason="Project Storage Migrating")
+            self.write({'message': 'Project Storage Migrating'})
         except (psycopg2.errors.UndefinedTable, sqlite3.OperationalError) as e:
             logging.error(e)
             self.set_status(404)
