@@ -68,8 +68,8 @@ from utils import (
     tenant_from_url,
     move_data_to_folder,
     set_mtime,
-    find_tenant_storage_path,
     StorageTemporarilyUnavailableError,
+    choose_storage,
 )
 
 
@@ -544,9 +544,14 @@ class AuthRequestHandler(RequestHandler):
     def _log_table_name(self, backend: str, app: str) -> str:
         return f'{backend}' if not app else f'apps_{app}'
 
-    def _log_db_path(self, tenant: str) -> str:
+    def _log_db_path(self, backend: str, tenant: str) -> str:
         path_pattern = options.request_log.get('db').get('path')
-        return path_pattern.replace(options.tenant_string_pattern, tenant)
+        return choose_storage(
+            tenant=tenant,
+            endpoint_backend=backend,
+            opts=options,
+            directory=path_pattern.replace(options.tenant_string_pattern, tenant),
+        )
 
     def _sqlite_log_engine(
         self,
@@ -554,7 +559,7 @@ class AuthRequestHandler(RequestHandler):
         backend: str,
         app: str,
     ) -> sqlite3.Connection:
-        db_path = self._log_db_path(tenant)
+        db_path = self._log_db_path(backend, tenant)
         db_name = self._log_db_name(backend, app)
         engine = sqlite_init(db_path, name=db_name, builtin=True)
         return engine
@@ -585,7 +590,7 @@ class AuthRequestHandler(RequestHandler):
             tables = db.tables_list()
             return [table for table in tables if table.startswith('apps_')]
         elif engine_type == 'sqlite':
-            path = self._log_db_path(tenant)
+            path = self._log_db_path(backend, tenant)
             dbs = os.listdir(path)
             return [db for db in dbs if db.endswith('.db')]
 
@@ -735,10 +740,35 @@ class GenericFormDataHandler(AuthRequestHandler):
     def write_file(self, filemode: str, filename: str, filebody: bytes, tenant: str) -> bool:
         try:
             if self.backend == 'sns':
-                tsd_hidden_folder = sns_dir(self.tsd_hidden_folder_pattern, tenant, self.request.uri, options.tenant_string_pattern)
-                tenant_dir = sns_dir(self.tenant_dir_pattern, tenant, self.request.uri, options.tenant_string_pattern)
+                tsd_hidden_folder = choose_storage(
+                    tenant=self.tenant,
+                    endpoint_backend=self.backend,
+                    opts=options,
+                    directory=sns_dir(
+                        self.tsd_hidden_folder_pattern,
+                        tenant,
+                        self.request.uri,
+                        options.tenant_string_pattern,
+                    ),
+                )
+                tenant_dir = choose_storage(
+                    tenant=self.tenant,
+                    endpoint_backend=self.backend,
+                    opts=options,
+                    directory=sns_dir(
+                        self.tenant_dir_pattern,
+                        tenant,
+                        self.request.uri,
+                        options.tenant_string_pattern,
+                    ),
+                )
             else:
-                tenant_dir = self.tenant_dir_pattern.replace(options.tenant_string_pattern, tenant)
+                tenant_dir = choose_storage(
+                    tenant=self.tenant,
+                    endpoint_backend=self.backend,
+                    opts=options,
+                    directory=self.tenant_dir_pattern.replace(options.tenant_string_pattern, tenant),
+                )
             self.path = os.path.normpath(tenant_dir + '/' + filename)
             # add the partial file indicator, check existence
             self.path_part = self.path + '.' + str(uuid4()) + '.part'
@@ -767,6 +797,8 @@ class GenericFormDataHandler(AuthRequestHandler):
                     logging.error('Could not copy file %s to .tsd folder', self.path_part)
                     return False
             return True
+        except StorageTemporarilyUnavailableError as e:
+            raise e
         except (Exception, AssertionError) as e:
             logging.error(e)
             logging.error('Could not write to file')
@@ -792,6 +824,9 @@ class FormDataHandler(GenericFormDataHandler):
             assert self.write_files(filemode, tenant)
             self.set_status(201)
             self.write({'message': 'data uploaded'})
+        except StorageTemporarilyUnavailableError:
+            self.set_status(503, reason="project_storage_migrating")
+            self.write({"message": "project_storage_migrating"})
         except Exception:
             self.set_status(400)
             self.write({'message': 'could not upload data'})
@@ -816,6 +851,9 @@ class SnsFormDataHandler(GenericFormDataHandler):
             assert self.write_files(filemode, tenant)
             self.set_status(201)
             self.write({'message': 'data uploaded'})
+        except StorageTemporarilyUnavailableError:
+            self.set_status(503, reason="project_storage_migrating")
+            self.write({"message": "project_storage_migrating"})
         except Exception:
             self.set_status(400)
             self.write({'message': 'could not upload data'})
@@ -883,8 +921,7 @@ class ResumablesHandler(AuthRequestHandler):
             self.endpoint = self.request.uri.split('/')[3]
             self.tenant = tenant_from_url(self.request.uri)
             assert options.valid_tenant.match(self.tenant)
-            self.import_dir = options.config['backends']['disk'][backend]['import_path']
-            self.tenant_dir = self.import_dir.replace(options.tenant_string_pattern, self.tenant)
+            self.import_dir_pattern = options.config['backends']['disk'][backend]['import_path']
             self.check_tenant = options.config['backends']['disk'][backend].get('check_tenant')
         except (AssertionError, Exception) as e:
             logging.error('Could not initialize resumables handler')
@@ -894,7 +931,12 @@ class ResumablesHandler(AuthRequestHandler):
 
     def prepare(self) -> Optional[Awaitable[None]]:
         try:
-            self.err = 'Unauthorized'
+            self.tenant_dir = choose_storage(
+                tenant=self.tenant,
+                endpoint_backend=self.backend,
+                opts=options,
+                directory=self.import_dir_pattern.replace(options.tenant_string_pattern, self.tenant),
+            )
             if options.maintenance_mode_enabled:
                 self.set_status(503)
                 self.err = 'Service temporarily unavailable'
@@ -902,6 +944,10 @@ class ResumablesHandler(AuthRequestHandler):
             self.authnz = self.process_token_and_extract_claims(
                 check_tenant=self.check_tenant if self.check_tenant is not None else options.check_tenant
             )
+            self.err = 'Unauthorized'
+        except StorageTemporarilyUnavailableError:
+            self.set_status(503, reason="project_storage_migrating")
+            self.finish()
         except Exception as e:
             self.finish()
 
@@ -1091,6 +1137,14 @@ class FileRequestHandler(AuthRequestHandler):
             raise Exception
 
     def initialize(self, backend: str, namespace: str, endpoint: str) -> None:
+        default_group_logic = {
+            'enabled': False,
+            'default_url_group': '',
+            'default_memberships': [],
+            'ensure_tenant_in_group_name': False,
+            'valid_group_regex': None,
+            'enforce_membership': False
+        }
         self.backend = backend
         self.namespace = namespace
         self.endpoint = endpoint
@@ -1105,31 +1159,12 @@ class FileRequestHandler(AuthRequestHandler):
         self.mq_config = options.config['backends']['disk'][backend].get('mq')
         self.request_hook = options.config['backends']['disk'][backend]['request_hook']
         self.use_original_uri = options.config['backends']['disk'][backend].get('use_original_uri')
-        try:
-            missing_group_config = {
-                'enabled': False,
-                'default_url_group': '',
-                'default_memberships': [],
-                'ensure_tenant_in_group_name': False,
-                'valid_group_regex': None,
-                'enforce_membership': False
-            }
-            try:
-                self.group_config = options.config['backends']['disk'][backend]['group_logic']
-            except KeyError:
-                self.group_config = missing_group_config
-            self.CHUNK_SIZE = options.export_chunk_size
-            tenant = tenant_from_url(self.request.uri)
-            assert options.valid_tenant.match(tenant)
-            self.backend_paths = options.config['backends']['disk'][backend]
-            self.export_path_pattern = self.backend_paths['export_path']
-            self.export_dir = self.export_path_pattern.replace(options.tenant_string_pattern, tenant)
-            self.export_policy = options.config['backends']['disk'][backend]['export_policy']
-            self.import_dir = options.config['backends']['disk'][backend]['import_path']
-            self.import_dir = self.import_dir.replace(options.tenant_string_pattern, tenant)
-            self.tenant_dir = self.import_dir.replace(options.tenant_string_pattern, self.tenant)
-        except Exception as e:
-            self.group_config = disabled_group_config
+        self.group_config = options.config['backends']['disk'][backend].get('group_logic', default_group_logic)
+        self.CHUNK_SIZE = options.export_chunk_size
+        self.backend_paths = options.config['backends']['disk'][backend]
+        self.export_path_pattern = self.backend_paths['export_path']
+        self.export_policy = options.config['backends']['disk'][backend]['export_policy']
+        self.import_dir_pattern = options.config['backends']['disk'][backend]['import_path']
 
 
     @gen.coroutine
@@ -1144,12 +1179,31 @@ class FileRequestHandler(AuthRequestHandler):
         self.chunk_num = None
         self.on_finish_called = False
         try:
-            # 0. If in maintenance mode, stop
+            # 0. Service availability
+            self.export_dir = choose_storage(
+                tenant=self.tenant,
+                endpoint_backend=self.backend,
+                opts=options,
+                directory=self.export_path_pattern.replace(options.tenant_string_pattern, self.tenant),
+            )
+            self.import_dir = choose_storage(
+                tenant=self.tenant,
+                endpoint_backend=self.backend,
+                opts=options,
+                directory=self.import_dir_pattern.replace(options.tenant_string_pattern, self.tenant),
+            )
+            self.tenant_dir = choose_storage(
+                tenant=self.tenant,
+                endpoint_backend=self.backend,
+                opts=options,
+                directory=self.import_dir_pattern.replace(options.tenant_string_pattern, self.tenant),
+            )
             if options.maintenance_mode_enabled:
                 self.set_status(503)
                 self.error = 'Service temporarily unavailable'
                 raise Exception(self.error)
-            # 1. Set up internal variables, check method supported
+
+            # 1. check method supported
             try:
                 if self.request.method == 'POST':
                     self.set_status(405)
@@ -1425,6 +1479,9 @@ class FileRequestHandler(AuthRequestHandler):
                         self.set_status(400)
                         info = 'chunk_order_incorrect'
                     self.finish({'message': info})
+        except StorageTemporarilyUnavailableError:
+            self.set_status(503, reason="project_storage_migrating")
+            self.finish()
         except (Exception, AssertionError) as e:
             if self._status_code != 503:
                 self.set_status(401)
@@ -2328,8 +2385,13 @@ class GenericTableHandler(AuthRequestHandler):
                 check_tenant=self.check_tenant if self.check_tenant is not None else options.check_tenant
             )
             if self.dbtype == 'sqlite':
-                self.import_dir = self.backend_config['db']['path']
-                self.tenant_dir = self.import_dir.replace(options.tenant_string_pattern, self.tenant)
+                self.import_dir_pattern = self.backend_config['db']['path']
+                self.tenant_dir = choose_storage(
+                    tenant=self.tenant,
+                    endpoint_backend=self.backend,
+                    opts=options,
+                    directory=self.import_dir_pattern.replace(options.tenant_string_pattern, self.tenant),
+                )
                 if self.backend == 'apps_tables':
                     app_name = self.request.uri.split('/')[4]
                     self.db_name = f'.{self.backend}_{app_name}.db'
@@ -2344,6 +2406,8 @@ class GenericTableHandler(AuthRequestHandler):
                 else:
                     schema = self.tenant
                 self.db = PostgresBackend(options.pgpools.get(self.backend), schema=schema, requestor=self.requestor)
+        except StorageTemporarilyUnavailableError:
+            self.set_status(503, reason="project_storage_migrating")
         except Exception as e:
             logging.error(e)
             if self._status_code != 503:
@@ -2721,6 +2785,9 @@ class AuditLogViewerHandler(AuthRequestHandler):
                     first = False
                 self.write(']')
                 self.flush()
+        except StorageTemporarilyUnavailableError:
+            self.set_status(503, reason="project_storage_migrating")
+            self.write({'message': 'project_storage_migrating'})
         except (psycopg2.errors.UndefinedTable, sqlite3.OperationalError) as e:
             logging.error(e)
             self.set_status(404)
