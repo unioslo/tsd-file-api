@@ -53,6 +53,7 @@ from utils import (
     IllegalFilenameException,
     find_tenant_storage_path,
     StorageTemporarilyUnavailableError,
+    choose_storage,
 )
 from pgp import init_gpg
 from squril import SqliteQueryGenerator, PostgresQueryGenerator
@@ -2519,18 +2520,15 @@ class TestFileApi(unittest.TestCase):
         os.makedirs(f"{root}/projects01/p11/data/durable")
         os.makedirs(f"{root}/projects02/p12/.from-hnas/data/durable")
         class Options(object):
-            migration_statuses = {"p11": "ess", "p12": "hnas", "p13": "migrating"}
+            migration_statuses = {
+                "p11": "ess",
+                "p12": "hnas",
+                "p13": "migrating",
+            }
             tenant_storage_cache = {}
             prefer_ess = ["files_import", "files_export"]
         opts = Options()
         # choose ess
-        self.assertTrue(
-            find_tenant_storage_path(
-                "p11", "files_import", opts, root=root,
-            ).endswith("/projects01/p11/data/durable")
-        )
-        # modify the source to check that we use actually use the cached result
-        opts.migration_statuses["p11"] = "hnas"
         self.assertTrue(
             find_tenant_storage_path(
                 "p11", "files_import", opts, root=root,
@@ -2552,11 +2550,23 @@ class TestFileApi(unittest.TestCase):
                 "p13", "publication", opts, root=root,
             ).endswith("/p13/data/durable")
         )
+        # choose hnas - no ess available yet
+        self.assertTrue(
+            find_tenant_storage_path(
+                "p12", "files_import", opts, root=root,
+            ).endswith("/p12/data/durable")
+        )
+        # choose hnas - no info about project
+        self.assertTrue(
+            find_tenant_storage_path(
+                "p111", "files_import", opts, root=root,
+            ).endswith("/p111/data/durable")
+        )
         # should raise
         self.assertRaises(
             StorageTemporarilyUnavailableError,
             find_tenant_storage_path,
-            "p12",
+            "p13",
             "files_import",
             opts,
             root=root,
@@ -2569,6 +2579,89 @@ class TestFileApi(unittest.TestCase):
             opts,
             root=root,
         )
+        # constructing directories from config
+        out_dir = choose_storage(
+            tenant=self.test_project,
+            endpoint_backend="files_import",
+            opts=opts,
+            directory="/tsd/p11/data/durable/publication",
+        )
+        self.assertTrue(out_dir.startswith(root))
+        self.assertTrue(out_dir.endswith("p11/data/durable/publication"))
+
+
+    def test_ess_migration(self) -> None:
+        pool = postgres_init(
+            {
+                'user': self.config.get('iamdb_user'),
+                'pw': self.config.get('iamdb_pw'),
+                'host': self.config.get('iamdb_host'),
+                'dbname': self.config.get('iamdb_dbname'),
+            }
+        )
+        with postgres_session(pool) as session:
+            session.execute("delete from projects")
+        with postgres_session(pool) as session:
+            session.execute(
+                f"insert into projects (project_number, project_name, project_start_date, project_end_date) \
+                  values ('{self.test_project}', 'raka', '2020-01-02', '2050-01-01')"
+            )
+        # hnas should be default, even if not specified
+        headers = {"Authorization": f"Bearer {TEST_TOKENS['VALID']}",}
+        resp = requests.put(
+            f"{self.stream}/p11-member-group/on-hnas/a-file",
+            data=lazy_file_reader(self.example_csv),
+            headers=headers,
+        )
+        uploaded_file = f"{self.uploads_folder}/p11-member-group/on-hnas/a-file"
+        self.assertEqual(md5sum(self.example_csv), md5sum(uploaded_file))
+        # now specify hnas, and see that it still works
+        with postgres_session(pool) as session:
+            session.execute(
+                "update projects set project_metadata = '{\"storage_backend\": \"hnas\"}' \
+                 where project_name = 'raka'"
+            )
+        resp = requests.put(
+            f"{self.stream}/p11-member-group/on-hnas/another-file",
+            data=lazy_file_reader(self.example_csv),
+            headers=headers,
+        )
+        uploaded_file = f"{self.uploads_folder}/p11-member-group/on-hnas/another-file"
+        self.assertEqual(md5sum(self.example_csv), md5sum(uploaded_file))
+        # during migration, import/export should fail
+        with postgres_session(pool) as session:
+            session.execute(
+                "update projects set project_metadata = '{\"storage_backend\": \"migrating\"}' \
+                 where project_name = 'raka'"
+            )
+        # resumables
+        resp = requests.get(self.resumables, headers=headers)
+        self.assertEqual(resp.status_code, 503)
+        self.assertEqual(resp.reason, "project_storage_migrating")
+        # import
+        resp = requests.put(
+            f"{self.stream}/lol-file",
+            data=lazy_file_reader(self.example_csv),
+            headers=headers,
+        )
+        self.assertEqual(resp.status_code, 503)
+        self.assertEqual(resp.reason, "project_storage_migrating")
+        # now use ess
+        with postgres_session(pool) as session:
+            session.execute(
+                "update projects set project_metadata = '{\"storage_backend\": \"ess\"}' \
+                 where project_name = 'raka'"
+            )
+        # resumables
+        resp = requests.get(self.resumables, headers=headers)
+        self.assertEqual(resp.status_code, 200)
+        # import
+        resp = requests.put(
+            f"{self.stream}/lol-file",
+            data=lazy_file_reader(self.example_csv),
+            headers=headers,
+        )
+        self.assertEqual(resp.status_code, 201)
 
 
 def main() -> None:
@@ -2701,6 +2794,7 @@ def main() -> None:
     ]
     storage = [
         'test_find_tenant_storage_path',
+        'test_ess_migration',
     ]
     if len(sys.argv) == 1:
         sys.argv.append('all')
@@ -2770,7 +2864,6 @@ def main() -> None:
         tests.extend(form_data)
         tests.extend(mtime)
         tests.extend(logs)
-        tests.extend(storage)
     tests.sort()
     suite = unittest.TestSuite()
     for test in tests:
