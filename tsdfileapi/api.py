@@ -38,6 +38,7 @@ import tornado.httputil
 import tornado.log
 import yaml
 
+from pysquril.backends import PostgresBackend, SqliteBackend
 from termcolor import colored
 from tornado.escape import json_decode, url_unescape, url_escape
 from tornado import gen
@@ -49,9 +50,7 @@ from tornado.web import (Application, RequestHandler, stream_request_body,
 from auth import process_access_token
 from db import (
     sqlite_init,
-    SqliteBackend,
     postgres_init,
-    PostgresBackend,
     get_projects_migration_status,
     pg_listen_channel,
 )
@@ -141,7 +140,7 @@ def set_config() -> None:
     if 'accept_calls_per_event_loop' in _config:
         tornado.netutil.ACCEPT_CALLS_PER_EVENT_LOOP = _config['accept_calls_per_event_loop']
     options.logging = _config.get('log_level', 'info')
-    try:
+    try: # limit size to 1
         projects_pool = postgres_init(
             {
                 'user': _config.get('iamdb_user'),

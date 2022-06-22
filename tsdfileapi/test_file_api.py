@@ -41,10 +41,6 @@ from db import (
     session_scope,
     sqlite_init,
     postgres_init,
-    SqliteBackend,
-    sqlite_session,
-    PostgresBackend,
-    postgres_session,
 )
 from resumables import SerialResumable
 from utils import (
@@ -56,7 +52,8 @@ from utils import (
     choose_storage,
 )
 from pgp import init_gpg
-from squril import SqliteQueryGenerator, PostgresQueryGenerator
+from pysquril.backends import sqlite_session, postgres_session
+from pysquril.generator import SqliteQueryGenerator, PostgresQueryGenerator
 
 
 def project_import_dir(
@@ -1764,322 +1761,6 @@ class TestFileApi(unittest.TestCase):
         self.assertTrue(res['status'])
 
 
-    def test_db_backend(
-        self,
-        data: list,
-        engine: Union[sqlite3.Connection, psycopg2.pool.SimpleConnectionPool],
-        session_func: Callable,
-        SqlGeneratorCls: Union[SqliteQueryGenerator, PostgresQueryGenerator],
-        DbBackendCls: Union[SqliteBackend, PostgresBackend],
-        verbose: bool,
-    ) -> None:
-        def test_select_query(
-            uri_query: str,
-            table:  str = 'test_table',
-            engine: Union[sqlite3.Connection, psycopg2.pool.SimpleConnectionPool] = engine,
-            verbose: bool = verbose,
-        ) -> list:
-            out = []
-            if verbose:
-                print(colored(uri_query, 'magenta'))
-            q = SqlGeneratorCls(table, uri_query)
-            if verbose:
-                print(colored(q.select_query, 'yellow'))
-            with session_func(engine) as session:
-                session.execute(q.select_query)
-                resp = session.fetchall()
-            for row in resp:
-                target = row[0]
-                if isinstance(target, dict) or isinstance(target, list):
-                    _in = target
-                else:
-                    _in = json.loads(target)
-                out.append(_in)
-            if verbose:
-                print(out)
-            return out
-        def test_update_query(
-            uri_query: str,
-            table: str = 'test_table',
-            engine: Union[sqlite3.Connection, psycopg2.pool.SimpleConnectionPool] = engine,
-            verbose: bool = verbose,
-            data: list = data,
-        ) -> list:
-            q = SqlGeneratorCls(table, uri_query, data=data)
-            if verbose:
-                print(q.update_query)
-            with session_func(engine) as session:
-                session.execute(q.update_query)
-            with session_func(engine) as session:
-                session.execute(f'select * from {table}')
-                resp = session.fetchall()
-            for row in resp:
-                target = row[0]
-                if isinstance(target, dict):
-                    _in = target
-                else:
-                    _in = json.loads(target)
-                out.append(_in)
-            return out
-        def test_delete_query(
-            uri_query: str,
-            table: str = 'test_table',
-            engine: Union[sqlite3.Connection, psycopg2.pool.SimpleConnectionPool] = engine,
-            verbose: bool = verbose,
-        ) -> bool:
-            q = SqlGeneratorCls(table, uri_query)
-            if verbose:
-                print(q.delete_query)
-            with session_func(engine) as session:
-                session.execute(q.delete_query)
-            return True
-        db = DbBackendCls(engine)
-        try:
-            db.table_delete('test_table', '')
-        except Exception as e:
-            pass
-        db.table_insert('test_table', data)
-
-        # SELECT
-        if verbose:
-            print('\n===> SELECT\n')
-        # simple key selection
-        out = test_select_query('select=x')
-        for entry in out:
-            self.assertTrue(isinstance(entry, list))
-        self.assertEqual(out[0][0], 1900)
-        # more than one simple key
-        out = test_select_query('select=x,z')
-        self.assertTrue(len(out[0]) == 2)
-        # nested key
-        out = test_select_query('select=a.k1')
-        self.assertEqual(len(out[0]), 1)
-        self.assertEqual(out[2], [{'r1': [1, 2], 'r2': 2}])
-        # simple array slice
-        out = test_select_query('select=x,b[1]')
-        self.assertEqual(out[0][1], 2)
-        self.assertEqual(out[1][1], None)
-        # nested simple array slice
-        out = test_select_query('select=x,a.k2[1]')
-        self.assertEqual(out[2], [88, 9])
-        # selecting a key inside an array slice
-        out = test_select_query('select=x,c[1|h]')
-        self.assertEqual(out[0][1], None)
-        self.assertEqual(out[1][1], 32)
-        # selecting keys inside an array slice
-        out = test_select_query('select=x,c[1|h,p]')
-        self.assertEqual(out[0][1], None)
-        self.assertEqual(out[1][1], [32, 0])
-        # broadcast key selection inside array - single key
-        out = test_select_query('select=x,c[*|h]')
-        self.assertTrue(len(out[1][1]) == 3)
-        self.assertEqual(out[1][1], [3, 32, 0])
-        # broadcast key selection inside array - mutliple keys
-        out = test_select_query('select=x,c[*|h,p]')
-        self.assertTrue(len(out[1][1]) == 3)
-        self.assertEqual(out[1][1][0], [3, 99])
-        # nested array selection
-        out = test_select_query('select=a.k1.r1[0]')
-        self.assertEqual(out[2], [1])
-        # nested keys
-        # with single selection inside array, specific element
-        out = test_select_query('select=a.k3[0|h]')
-        self.assertEqual(out[3], [0])
-        # with single selection inside array, broadcast
-        out = test_select_query('select=a.k3[*|h]')
-        self.assertEqual(out[3], [[0, 63]])
-        # now multiple sub-selections
-        out = test_select_query('select=a.k3[0|h,s]')
-        self.assertEqual(out[3], [[0, 521]])
-        out = test_select_query('select=a.k3[*|h,s]')
-        self.assertEqual(out[3], [[[0, 521], [63, 333]]])
-        # multiple sub-keys
-        out = test_select_query('select=a.k1,a.k3')
-        self.assertEqual(out[3], [{'r1': [33, 200], 'r2': 90}, [{'h': 0, 'r': 77, 's': 521}, {'h': 63, 's': 333}]])
-
-        # WHERE
-        if verbose:
-            print('\n===> WHERE\n')
-        # simple key op
-        out = test_select_query('where=x=gt.1000')
-        self.assertEqual(out[0]['x'], 1900)
-        # multipart simple key ops
-        out = test_select_query('where=x=gt.1000,or:y=eq.11')
-        self.assertEqual(len(out), 2)
-        out = test_select_query('where=x=lt.1000,and:y=eq.11')
-        self.assertEqual(out, [])
-        # groups (with a select)
-        out = test_select_query('select=x&where=((x=lt.1000,and:y=eq.11),or:x=gt.1000)')
-        self.assertEqual(out, [[1900]])
-        # is, not, like, and null
-        out = test_select_query('where=x=not.is.null')
-        self.assertTrue(len(out) == 4)
-        out = test_select_query('select=d&where=d=not.like.*g3')
-        self.assertTrue(len(out) == 2)
-        # in
-        out = test_select_query('select=d&where=d=in.[string1,string2]')
-        self.assertTrue(len(out) == 2)
-        self.assertEqual(out, [['string1'], ['string2']])
-        # nested key ops
-        out = test_select_query('where=a.k1.r2=eq.90')
-        self.assertTrue(len(out) == 1)
-        # nested key ops with slicing
-        out = test_select_query('select=x&where=a.k1.r1[0]=eq.1')
-        self.assertEqual(out[0][0], 88)
-        out = test_select_query('select=x&where=a.k3[0|h]=eq.0')
-        self.assertEqual(out[0][0], 107)
-        # timestamps
-        out = test_select_query('select=x,timestamp&where=timestamp=gt.2020-10-14')
-        self.assertTrue(len(out) == 3)
-        out = test_select_query('select=x,timestamp&where=timestamp=lt.2020-10-14')
-        self.assertTrue(len(out) == 2)
-
-        # ORDER
-        if verbose:
-            print('\n===> ORDER\n')
-        # Note: postgres and sqlite treat NULLs different in ordering
-        # postgres puts them first, sqlite puts them last, so be it
-        # simple key
-        out = test_select_query('select=x&where=x=not.is.null&order=x.desc')
-        x_array = [[1900], [107], [88], [10]]
-        self.assertEqual(out, x_array)
-        x_array.reverse()
-        out = test_select_query('select=x&where=x=not.is.null&order=x.asc')
-        self.assertEqual(out, x_array)
-        # array selections
-        out = test_select_query('select=x,a&where=a.k1.r1[0]=not.is.null&order=a.k1.r1[0].desc')
-        self.assertTrue(out[0][0] == 107)
-        out = test_select_query('select=x,a&where=a.k3[0|h]=not.is.null&order=a.k3[0|h].desc')
-        self.assertTrue(out[0][0] == 107)
-        # timestamps
-        out = test_select_query('select=x,timestamp&order=timestamp.desc')
-        self.assertTrue(out[0][1] == '2020-10-14T20:20:34.388511')
-        out = test_select_query('select=x,timestamp&order=timestamp.asc')
-        self.assertTrue(out[0][1] == '2020-10-13T10:15:26.388573')
-
-        # RANGE
-        if verbose:
-            print('\n===> RANGE\n')
-        out = test_select_query('select=x&where=x=not.is.null&order=x.desc&range=0.2')
-        self.assertEqual(out, [[1900], [107]])
-        out = test_select_query('select=x&where=x=not.is.null&order=x.desc&range=1.2')
-        self.assertEqual(out, [[107], [88]])
-
-        # UPDATE
-        if verbose:
-            print('\n===> UPDATE\n')
-        # TODO: select data, check results
-        out = test_update_query('set=x&where=x=lt.1000', data={'x': 999})
-        out = test_select_query('select=x&where=x=eq.999')
-        self.assertEqual(out[0][0], 999)
-        self.assertTrue(len(out) == 3)
-
-        # DELETE
-        if verbose:
-            print('\n===> DELETE\n')
-        out = test_delete_query('where=x=lt.1000')
-        self.assertTrue(out is True)
-        out = test_select_query('select=x&where=x=lt.1000')
-        self.assertEqual(out, [])
-
-
-    def test_all_db_backends(self) -> None:
-        data = [
-            {
-                'x': 1900,
-                'y': 1,
-                'z': 5,
-                'b':[1, 2, 5, 1],
-                'c': None,
-                'd': 'string1',
-                'timestamp': '2020-10-13T10:15:26.388573',
-            },
-            {
-                'y': 11,
-                'z': 1,
-                'c': [
-                    {
-                        'h': 3,
-                        'p': 99,
-                        'w': False
-                    },
-                    {
-                        'h': 32,
-                        'p': False,
-                        'w': True,
-                        'i': {
-                            't': [1,2,3]
-                        }
-                    },
-                    {
-                        'h': 0
-                    }
-                ],
-                'd': 'string2',
-                'timestamp': '2020-10-13T12:11:21.3885750',
-            },
-            {
-                'a': {
-                    'k1': {
-                        'r1': [1, 2],
-                        'r2': 2
-                    },
-                    'k2': ['val', 9]
-                },
-                'z': 0,
-                'x': 88,
-                'd': 'string3',
-                'timestamp': '2020-10-14T13:15:46.187575',
-            },
-            {
-                'a': {
-                    'k1': {
-                        'r1': [33, 200],
-                        'r2': 90
-                    },
-                    'k2': ['val222', 90],
-                    'k3': [{'h': 0, 'r': 77, 's': 521}, {'h': 63, 's': 333}]
-                },
-                'z': 10,
-                'x': 107,
-                'timestamp': '2020-10-14T16:15:26.388575',
-            },
-            {
-                'x': 10,
-                'timestamp': '2020-10-14T20:20:34.388511',
-            }
-        ]
-        engine = sqlite_init('/tmp', name='api-test.db', builtin=True)
-        try:
-            pgconf = self.config['backends']['dbs']['survey']['db']['dbconfig']
-            if pgconf:
-                pool = postgres_init(pgconf)
-        except KeyError as e:
-            print('no postgres pool found - not testing postgres backend')
-            pool = None
-        if self.verbose:
-            print('Testing sqlite\n')
-        self.test_db_backend(
-            data,
-            engine,
-            sqlite_session,
-            SqliteQueryGenerator,
-            SqliteBackend,
-            self.verbose
-        )
-        if pool:
-            if self.verbose:
-                print('Testing postgres\n')
-            self.test_db_backend(
-                data,
-                pool,
-                postgres_session,
-                PostgresQueryGenerator,
-                PostgresBackend,
-                self.verbose
-            )
-
-
     def test_app_backend(self) -> None:
         headers = {'Authorization': 'Bearer ' + TEST_TOKENS['VALID']}
         file = url_escape('genetic-data.bam')
@@ -2776,9 +2457,6 @@ def main() -> None:
     load = [
         'test_XXX_load'
     ]
-    db = [
-        'test_all_db_backends',
-    ]
     apps = [
         'test_app_backend',
     ]
@@ -2861,7 +2539,6 @@ def main() -> None:
         tests.extend(sig)
         tests.extend(ns)
         tests.extend(apps)
-        tests.extend(db)
         tests.extend(crypt)
         tests.extend(form_data)
         tests.extend(mtime)
