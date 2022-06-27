@@ -556,9 +556,14 @@ class TestFileApi(unittest.TestCase):
             {'key1': 99, 'key3': False, 'id': random.randint(0, 1000000)}
         ]
         headers = {'Authorization': 'Bearer ' + TEST_TOKENS['VALID']}
-        # add data to a table
+        # add data to tables
         resp = requests.put(
             f'{self.base_url}/survey/123456/submissions',
+            data=json.dumps(data),
+            headers=headers
+        )
+        resp = requests.put(
+            f'{self.base_url}/survey/56789/submissions',
             data=json.dumps(data),
             headers=headers
         )
@@ -634,6 +639,12 @@ class TestFileApi(unittest.TestCase):
         resp = requests.get(f'{self.base_url}/survey/123456/submissions?select=count(*)', headers=headers)
         data = json.loads(resp.text)
         self.assertEqual(data[0][0], 2)
+        resp = requests.get(f'{self.base_url}/survey/*/submissions?select=count(*)', headers=headers)
+        data = json.loads(resp.text)
+        self.assertEqual(len(data), 2)
+        for entry in data:
+            for formid, num_submmissions in entry.items():
+                self.assertEqual(num_submmissions, [2])
         nettskjema_url_tokens_method = [
             ('/123456/submissions', 'ADMIN', 'GET'),
             ('/123456/submissions?select=key1&where=key2=eq.bla&order=key1.desc', 'ADMIN', 'GET'),
@@ -644,6 +655,11 @@ class TestFileApi(unittest.TestCase):
         ]
         for app, acl in [('/survey', nettskjema_url_tokens_method)]:
             self.use_generic_table(app, acl)
+        resp = requests.delete(
+            f'{self.base_url}/survey/56789/submissions',
+            headers=headers
+        )
+        self.assertEqual(resp.status_code, 200)
         # attachments
         file = url_escape('some-survey-attachment.txt')
         resp = requests.put(
