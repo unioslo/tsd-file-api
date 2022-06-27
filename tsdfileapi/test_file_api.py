@@ -631,7 +631,9 @@ class TestFileApi(unittest.TestCase):
         self.assertTrue('submissions' in data['data'])
         self.assertTrue('attachments' in data['data'])
         # perform some queries
-
+        resp = requests.get(f'{self.base_url}/survey/123456/submissions?select=count(*)', headers=headers)
+        data = json.loads(resp.text)
+        self.assertEqual(data[0][0], 2)
         nettskjema_url_tokens_method = [
             ('/123456/submissions', 'ADMIN', 'GET'),
             ('/123456/submissions?select=key1&where=key2=eq.bla&order=key1.desc', 'ADMIN', 'GET'),
