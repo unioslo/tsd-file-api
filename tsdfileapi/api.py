@@ -2527,7 +2527,10 @@ class GenericTableHandler(AuthRequestHandler):
     def get(self, tenant: str, table_name: str = None) -> None:
         try:
             if not table_name:
-                tables = self.db.tables_list()
+                tables = self.db.tables_list(
+                    exclude_endswith = ["_audit", "_metadata"],
+                    remove_pattern = "_submissions",
+                )
                 self.set_status(200)
                 self.write({'tables': tables})
             else:
