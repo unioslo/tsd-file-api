@@ -558,7 +558,7 @@ class TestFileApi(unittest.TestCase):
         headers = {'Authorization': 'Bearer ' + TEST_TOKENS['VALID']}
         # add data to a table
         resp = requests.put(
-            self.base_url + '/survey/123456/submissions',
+            f'{self.base_url}/survey/123456/submissions',
             data=json.dumps(data),
             headers=headers
         )
@@ -602,35 +602,36 @@ class TestFileApi(unittest.TestCase):
         self.assertEqual(resp.status_code, 403)
         # metadata functionality
         resp = requests.put(
-            self.base_url + '/survey/123456/metadata',
+            f'{self.base_url}/survey/123456/metadata',
             data=json.dumps({"my": "metadata"}),
             headers=headers
         )
         self.assertEqual(resp.status_code, 201)
         resp = requests.get(
-            self.base_url + '/survey/123456/metadata',
+            f'{self.base_url}/survey/123456/metadata',
             headers=headers
         )
         data = json.loads(resp.text)
         self.assertEqual(data[0], {"my": "metadata"})
         self.assertEqual(resp.status_code, 200)
         resp = requests.delete(
-            self.base_url + '/survey/123456/metadata',
+            f'{self.base_url}/survey/123456/metadata',
             headers=headers
         )
         self.assertEqual(resp.status_code, 200)
         # check endpoint overview
-        resp = requests.get(self.base_url + '/survey', headers=headers)
+        resp = requests.get(f'{self.base_url}/survey', headers=headers)
         data = json.loads(resp.text)
         self.assertTrue('123456' in data['tables'])
         self.assertEqual(resp.status_code, 200)
         # get data
-        resp = requests.get(self.base_url + '/survey/123456', headers=headers)
+        resp = requests.get(f'{self.base_url}/survey/123456', headers=headers)
         data = json.loads(resp.text)
         self.assertTrue('metadata' in data['data'])
         self.assertTrue('submissions' in data['data'])
         self.assertTrue('attachments' in data['data'])
         # perform some queries
+
         nettskjema_url_tokens_method = [
             ('/123456/submissions', 'ADMIN', 'GET'),
             ('/123456/submissions?select=key1&where=key2=eq.bla&order=key1.desc', 'ADMIN', 'GET'),
