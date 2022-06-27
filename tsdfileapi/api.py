@@ -2556,7 +2556,10 @@ class GenericTableHandler(AuthRequestHandler):
                     self.flush()
                     first = True
                     query = self.get_uri_query(self.request.uri)
-                    for row in self.db.table_select(table_name, query):
+                    # don't include metadata and audit tables
+                    # when broadcasting an aggregate query with *
+                    # unless the URI specifies they should be
+                    for row in self.db.table_select(table_name, query, exclude_endswith = ["_audit", "_metadata"]):
                         if not first:
                             self.write(',')
                         self.write(json.dumps(row))
@@ -2863,9 +2866,9 @@ class Backends(object):
             ('/v1/(.*)/survey/([a-zA-Z_0-9]+/attachments.*)', FileRequestHandler, dict(backend='survey', namespace='survey', endpoint=None)),
             ('/v1/(.*)/survey/resumables', ResumablesHandler, dict(backend='survey')),
             ('/v1/(.*)/survey/resumables/(.*)', ResumablesHandler, dict(backend='survey')),
-            ('/v1/(.*)/survey/([a-zA-Z_0-9]+/metadata)', GenericTableHandler, dict(backend='survey')),
-            ('/v1/(.*)/survey/([a-zA-Z_0-9]+)/submissions', GenericTableHandler, dict(backend='survey')),
-            ('/v1/(.*)/survey/([a-zA-Z_0-9]+/audit)', GenericTableHandler, dict(backend='survey')),
+            ('/v1/(.*)/survey/([a-zA-Z_0-9*]+/metadata)', GenericTableHandler, dict(backend='survey')),
+            ('/v1/(.*)/survey/([a-zA-Z_0-9*]+)/submissions', GenericTableHandler, dict(backend='survey')),
+            ('/v1/(.*)/survey/([a-zA-Z_0-9*]+/audit)', GenericTableHandler, dict(backend='survey')),
             ('/v1/(.*)/survey/([a-zA-Z_0-9]+)$', GenericTableHandler, dict(backend='survey')),
             ('/v1/(.*)/survey', GenericTableHandler, dict(backend='survey')),
         ],
