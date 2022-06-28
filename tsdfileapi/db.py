@@ -14,6 +14,7 @@ import psycopg2.extensions
 import psycopg2.pool
 import sqlalchemy
 
+from pysquril.backends import postgres_session
 from sqlalchemy.pool import QueuePool
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy import create_engine
