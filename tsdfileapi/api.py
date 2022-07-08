@@ -2550,10 +2550,8 @@ class GenericTableHandler(AuthRequestHandler):
                     self.write({'data': self.table_structure})
                 else:
                     table_name = self.create_table_name(table_name)
-                    self.set_status(200)
                     self.set_header('Content-Type', 'application/json')
-                    self.write('[')
-                    self.flush()
+                    self.set_status(200)
                     first = True
                     query = self.get_uri_query(self.request.uri)
                     # don't include metadata and audit tables
@@ -2562,10 +2560,13 @@ class GenericTableHandler(AuthRequestHandler):
                     for row in self.db.table_select(table_name, query, exclude_endswith = ["_audit", "_metadata"]):
                         if not first:
                             self.write(',')
+                        else:
+                            self.write('[')
                         self.write(json.dumps(row))
                         self.flush()
                         first = False
                     self.write(']')
+                    self.set_status(200)
                     self.flush()
         except (psycopg2.errors.UndefinedTable, sqlite3.OperationalError) as e:
             logging.error(e)
@@ -2574,7 +2575,7 @@ class GenericTableHandler(AuthRequestHandler):
         except Exception as e:
             logging.error(e)
             self.set_status(400)
-            self.write({'message': self.error})
+            self.write({'message': f"Internal Error: {type(e).__name__}"})
 
 
     def put(self, tenant: str, table_name: str) -> None:
