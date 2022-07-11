@@ -2587,13 +2587,10 @@ class GenericTableHandler(AuthRequestHandler):
                     for row in results:
                         if not first:
                             self.write(',')
-                        else:
-                            self.write('[')
                         self.write(json.dumps(row))
                         self.flush()
                         first = False
                     self.write(']')
-                    self.set_status(200)
                     self.flush()
         except (psycopg2.errors.UndefinedTable, sqlite3.OperationalError) as e:
             logging.error(e)
@@ -2603,7 +2600,7 @@ class GenericTableHandler(AuthRequestHandler):
             logging.error(e)
             self.error = f"Bad Request: {type(e).__name__}"
             self.set_status(400)
-            self.write({'message': f"Internal Error: {type(e).__name__}"})
+            self.write({'message': self.error})
 
 
     def put(self, tenant: str, table_name: str) -> None:
