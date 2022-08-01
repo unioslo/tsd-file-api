@@ -2551,26 +2551,35 @@ class GenericTableHandler(AuthRequestHandler):
                 else:
                     table_name = self.create_table_name(table_name)
                     self.set_header('Content-Type', 'application/json')
-                    self.set_status(200)
-                    first = True
                     query = self.get_uri_query(self.request.uri)
                     # don't include metadata and audit tables
                     # when broadcasting an aggregate query with *
-                    # unless the URI specifies they should be
+                    # unless the URI specifies they should be 
                     results = self.db.table_select(table_name, query, exclude_endswith = ["_audit", "_metadata"])
+                    # At this point the query was created and determine valid
+                    result = next(results, None)
+                    # At this point the table is determined to exist so the quey will be executed.
+                    self.set_status(200)
+                    if not result:
+                       self.write('[]')
+                       return
                     self.write('[')
+                    self.write(json.dumps(result))
                     for row in results:
-                        if not first:
-                            self.write(',')
+                        self.write(',')
                         self.write(json.dumps(row))
                         self.flush()
-                        first = False
                     self.write(']')
                     self.flush()
         except (psycopg2.errors.UndefinedTable, sqlite3.OperationalError) as e:
-            logging.error(e)
-            self.set_status(404)
-            self.write({'message': f'table {table_name} does not exist'})
+            if table_name.endswith('_audit'):
+                # Handle the audit table differently bacase it is not created until the first change appears. 
+                self.set_status(200)
+                self.write('[]')
+            else:
+                logging.error(e)
+                self.set_status(404)
+                self.write({'message': f'table {table_name} does not exist'})
         except Exception as e:
             logging.error(e)
             self.error = f"Bad Request: {type(e).__name__}"
