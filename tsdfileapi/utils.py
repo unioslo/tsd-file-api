@@ -153,9 +153,11 @@ def sns_dir(
     uri: str,
     tenant_string_pattern: str,
     test: bool = False,
+    opts: tornado.options.OptionParser = None,
 ) -> str:
     """
-    Construct a path for sns uploads.
+    Construct a path for sns uploads. Create it if missing.
+    If ESS is available, create the path there too.
 
     """
     try:
@@ -169,9 +171,20 @@ def sns_dir(
         if test:
             return _path
         if not os.path.lexists(_path):
-            logging.info('Creating %s', _path)
             os.makedirs(_path)
             subprocess.call(['chmod', '2770', _path])
+            logging.info('Created %s', _path)
+        if opts:
+            try:
+                ess_path = opts.tenant_storage_cache.get(tenant, {}).get("storage_paths", {}).get("ess")
+                target = _path.replace(f"/tsd/{tenant}/data/durable", ess_path)
+                if ess_path and not os.path.lexists(target):
+                    os.makedirs(target)
+                    subprocess.call(['chmod', '2770', target])
+                    logging.info(f"Created {target}")
+            except Exception as e:
+                logging.error(e)
+                logging.error(f"Could not create {target}")
         return _path
     except (Exception, AssertionError, IndexError) as e:
         logging.error(e)
