@@ -739,6 +739,7 @@ class GenericFormDataHandler(AuthRequestHandler):
     def write_file(self, filemode: str, filename: str, filebody: bytes, tenant: str) -> bool:
         try:
             if self.backend == 'sns':
+                # folders created here
                 tsd_hidden_folder = choose_storage(
                     tenant=self.tenant,
                     endpoint_backend=self.backend,
@@ -748,6 +749,7 @@ class GenericFormDataHandler(AuthRequestHandler):
                         tenant,
                         self.request.uri,
                         options.tenant_string_pattern,
+                        options,
                     ),
                 )
                 tenant_dir = choose_storage(
@@ -759,6 +761,7 @@ class GenericFormDataHandler(AuthRequestHandler):
                         tenant,
                         self.request.uri,
                         options.tenant_string_pattern,
+                        options,
                     ),
                 )
             else:
@@ -791,6 +794,12 @@ class GenericFormDataHandler(AuthRequestHandler):
                     shutil.copy(self.path_part, subfolder_path)
                     os.chmod(subfolder_path, _RW_RW___)
                     self.new_paths.append(subfolder_path)
+                    # if hnas is used, copy again to ess
+                    ess_path = opts.tenant_storage_cache.get(tenant, {}).get("storage_paths", {}).get("ess")
+                    if ess_path and subfolder_path.startswith("/tsd"):
+                        target = subfolder_path.replace(f"/tsd/{self.tenant}", ess_path)
+                        shutil.copy(self.path_part, target)
+                        os.chmod(subfolder_path, _RW_RW___)
                 except Exception as e:
                     logging.error(e)
                     logging.error('Could not copy file %s to .tsd folder', self.path_part)
