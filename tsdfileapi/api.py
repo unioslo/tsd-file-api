@@ -155,6 +155,7 @@ def set_config() -> None:
     define('migration_statuses', get_projects_migration_status(projects_pool))
     define('tenant_storage_cache', {})
     define('prefer_ess', _config.get('prefer_ess', []))
+    define('sns_migrations', _config.get('sns_migrations', []))
 
 
 set_config()
@@ -788,10 +789,12 @@ class GenericFormDataHandler(AuthRequestHandler):
                 os.rename(self.path, self.path_part)
                 os.chmod(self.path_part, _RW_RW___)
             # copy the project's version too
+            ess_path = opts.tenant_storage_cache.get(tenant, {}).get("storage_paths", {}).get("ess")
             if ess_path and self.path_part.startswith("/tsd"):
-                target = self.path_part.replace(f"/tsd/{self.tenant}", ess_path)
-                shutil.copy(self.path_part, target)
-                os.chmod(target, _RW_RW___)
+                if tenant in options.sns_migrations or "all" in options.sns_migrations:
+                    target = self.path_part.replace(f"/tsd/{self.tenant}", ess_path)
+                    shutil.copy(self.path_part, target)
+                    os.chmod(target, _RW_RW___)
             self.new_paths.append(self.path_part)
             if self.backend == 'sns':
                 subfolder_path = os.path.normpath(tsd_hidden_folder + '/' + filename)
@@ -799,12 +802,12 @@ class GenericFormDataHandler(AuthRequestHandler):
                     shutil.copy(self.path_part, subfolder_path)
                     os.chmod(subfolder_path, _RW_RW___)
                     self.new_paths.append(subfolder_path)
-                    # if hnas is used, copy again to ess
-                    ess_path = opts.tenant_storage_cache.get(tenant, {}).get("storage_paths", {}).get("ess")
+                    # copy the "internal" version ESS
                     if ess_path and subfolder_path.startswith("/tsd"):
-                        target = subfolder_path.replace(f"/tsd/{self.tenant}", ess_path)
-                        shutil.copy(self.path_part, target)
-                        os.chmod(target, _RW_RW___)
+                        if tenant in options.sns_migrations or "all" in options.sns_migrations:
+                            target = subfolder_path.replace(f"/tsd/{self.tenant}", ess_path)
+                            shutil.copy(self.path_part, target)
+                            os.chmod(target, _RW_RW___)
                 except Exception as e:
                     logging.error(e)
                     logging.error('Could not copy file %s to .tsd folder', self.path_part)
