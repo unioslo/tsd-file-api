@@ -787,6 +787,11 @@ class GenericFormDataHandler(AuthRequestHandler):
                 f.write(filebody)
                 os.rename(self.path, self.path_part)
                 os.chmod(self.path_part, _RW_RW___)
+            # copy the project's version too
+            if ess_path and self.path_part.startswith("/tsd"):
+                target = self.path_part.replace(f"/tsd/{self.tenant}", ess_path)
+                shutil.copy(self.path_part, target)
+                os.chmod(target, _RW_RW___)
             self.new_paths.append(self.path_part)
             if self.backend == 'sns':
                 subfolder_path = os.path.normpath(tsd_hidden_folder + '/' + filename)
@@ -799,7 +804,7 @@ class GenericFormDataHandler(AuthRequestHandler):
                     if ess_path and subfolder_path.startswith("/tsd"):
                         target = subfolder_path.replace(f"/tsd/{self.tenant}", ess_path)
                         shutil.copy(self.path_part, target)
-                        os.chmod(subfolder_path, _RW_RW___)
+                        os.chmod(target, _RW_RW___)
                 except Exception as e:
                     logging.error(e)
                     logging.error('Could not copy file %s to .tsd folder', self.path_part)
