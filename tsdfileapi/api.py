@@ -789,7 +789,7 @@ class GenericFormDataHandler(AuthRequestHandler):
                 os.rename(self.path, self.path_part)
                 os.chmod(self.path_part, _RW_RW___)
             # copy the project's version too
-            ess_path = opts.tenant_storage_cache.get(tenant, {}).get("storage_paths", {}).get("ess")
+            ess_path = options.tenant_storage_cache.get(tenant, {}).get("storage_paths", {}).get("ess")
             if ess_path and self.path_part.startswith("/tsd"):
                 if tenant in options.sns_migrations or "all" in options.sns_migrations:
                     target = self.path_part.replace(f"/tsd/{self.tenant}", ess_path)
