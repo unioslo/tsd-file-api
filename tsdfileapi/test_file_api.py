@@ -498,7 +498,7 @@ class TestFileApi(unittest.TestCase):
         headers = {'Authorization': 'Bearer ' + TEST_TOKENS['VALID']}
         resp = requests.head(self.upload, headers=headers, files=files)
         self.assertEqual(resp.status_code, 201)
-
+ 
 
     def test_W_create_and_insert_into_generic_table(self) -> None:
         # TODO: harden these tests - check return values
@@ -549,6 +549,15 @@ class TestFileApi(unittest.TestCase):
             headers=headers)
         self.assertEqual(resp.status_code, 200)
 
+    def test_XXX_query_invalid(self) -> None:
+        headers = {'Authorization': 'Bearer ' + TEST_TOKENS['VALID']}
+        resp = requests.get(f'{self.base_url}/survey/user_number/submissions?select=count(*)', headers=headers)
+        # Proper test for not exists table
+        self.assertTrue(resp.status_code==404)
+        # Do not trow non exist at audit
+        resp = requests.get(f'{self.base_url}/survey/number_audit/submissions?select=count(*)', headers=headers)
+        self.assertTrue(resp.status_code==200)
+        self.assertEqual(resp.text, '[]')
 
     def test_XXX_nettskjema_backend(self) -> None:
         data = [
@@ -635,6 +644,15 @@ class TestFileApi(unittest.TestCase):
         self.assertTrue('metadata' in data['data'])
         self.assertTrue('submissions' in data['data'])
         self.assertTrue('attachments' in data['data'])
+
+        ### Make wrong query and get a 400
+        resp = requests.patch(
+            f'{self.survey}/123456/submissions?set=key1&set=key2&where=key2=eq.bla',
+            headers=headers,
+            data=json.dumps({'key1': 5, 'key2': 5})
+        )
+        self.assertEqual(resp.status_code, 400)
+
         # perform some queries
         resp = requests.get(f'{self.base_url}/survey/123456/submissions?select=count(*)', headers=headers)
         data = json.loads(resp.text)
@@ -660,6 +678,15 @@ class TestFileApi(unittest.TestCase):
             headers=headers
         )
         self.assertEqual(resp.status_code, 200)
+
+        resp = requests.get(
+            f'{self.base_url}/survey/56789/submissions',
+            headers=headers
+        )
+        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(resp.text, '[]')
+
+
         # attachments
         file = url_escape('some-survey-attachment.txt')
         resp = requests.put(
@@ -2471,6 +2498,7 @@ def main() -> None:
         'test_token_signature_validation',
     ]
     ns = [
+        'test_XXX_query_invalid',
         'test_XXX_nettskjema_backend',
     ]
     load = [
