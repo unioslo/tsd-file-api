@@ -171,9 +171,14 @@ def sns_dir(
         if test:
             return _path
         if not os.path.lexists(_path):
-            os.makedirs(_path)
-            subprocess.call(['chmod', '2770', _path])
-            logging.info('Created %s', _path)
+            try:
+                os.makedirs(_path)
+                subprocess.call(['chmod', '2770', _path])
+                logging.info('Created %s', _path)
+            except Exception as e:
+                logging.error(e)
+                logging.error(f"Could not create {_path}")
+                raise e
         if opts and _path.startswith("/tsd"):
             try:
                 ess_path = opts.tenant_storage_cache.get(tenant, {}).get("storage_paths", {}).get("ess")
@@ -185,6 +190,7 @@ def sns_dir(
             except Exception as e:
                 logging.error(e)
                 logging.error(f"Could not create {target}")
+                # no reason to abort just yet
         return _path
     except (Exception, AssertionError, IndexError) as e:
         logging.error(e)
