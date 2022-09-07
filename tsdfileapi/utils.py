@@ -182,8 +182,8 @@ def sns_dir(
         if opts and _path.startswith("/tsd"):
             try:
                 ess_path = opts.tenant_storage_cache.get(tenant, {}).get("storage_paths", {}).get("ess")
-                target = _path.replace(f"/tsd/{tenant}/data/durable", ess_path)
                 if ess_path and not os.path.lexists(target):
+                    target = _path.replace(f"/tsd/{tenant}/data/durable", ess_path)
                     os.makedirs(target)
                     subprocess.call(['chmod', '2770', target])
                     logging.info(f"Created {target}")
