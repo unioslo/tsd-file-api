@@ -553,10 +553,10 @@ class TestFileApi(unittest.TestCase):
         headers = {'Authorization': 'Bearer ' + TEST_TOKENS['VALID']}
         resp = requests.get(f'{self.base_url}/survey/user_number/submissions?select=count(*)', headers=headers)
         # Proper test for not exists table
-        self.assertTrue(resp.status_code==404)
-        # Do not trow non exist at audit
+        self.assertEqual(resp.status_code, 404)
+        # Do not throw non exist at audit
         resp = requests.get(f'{self.base_url}/survey/number_audit/submissions?select=count(*)', headers=headers)
-        self.assertTrue(resp.status_code==200)
+        self.assertEqual(resp.status_code, 200)
         self.assertEqual(resp.text, '[]')
 
     def test_XXX_nettskjema_backend(self) -> None:

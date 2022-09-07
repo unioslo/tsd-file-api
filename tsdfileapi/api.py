@@ -2581,9 +2581,9 @@ class GenericTableHandler(AuthRequestHandler):
                     # when broadcasting an aggregate query with *
                     # unless the URI specifies they should be 
                     results = self.db.table_select(table_name, query, exclude_endswith = ["_audit", "_metadata"])
-                    # At this point the query was created and determine valid
+                    # At this point the query was created and determined valid
                     result = next(results, None)
-                    # At this point the table is determined to exist so the quey will be executed.
+                    # At this point the table is determined to exist so the queruy will be executed.
                     self.set_status(200)
                     if not result:
                        self.write('[]')
@@ -2598,7 +2598,7 @@ class GenericTableHandler(AuthRequestHandler):
                     self.flush()
         except (psycopg2.errors.UndefinedTable, sqlite3.OperationalError) as e:
             if table_name.endswith('_audit'):
-                # Handle the audit table differently bacase it is not created until the first change appears. 
+                # Handle the audit table differently bacause it is not created until the first change appears.
                 self.set_status(200)
                 self.write('[]')
             else:
