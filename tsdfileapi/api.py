@@ -69,6 +69,7 @@ from utils import (
     set_mtime,
     StorageTemporarilyUnavailableError,
     choose_storage,
+    find_tenant_storage_path,
 )
 
 
@@ -741,6 +742,8 @@ class GenericFormDataHandler(AuthRequestHandler):
         try:
             if self.backend == 'sns':
                 # folders created here
+                # ensure the tenant_storage_cache (stored on options) is up to date
+                _  = find_tenant_storage_path(self.tenant, self.backend, options)
                 tsd_hidden_folder = choose_storage(
                     tenant=self.tenant,
                     endpoint_backend=self.backend,

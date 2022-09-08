@@ -179,11 +179,14 @@ def sns_dir(
                 logging.error(e)
                 logging.error(f"Could not create {_path}")
                 raise e
-        if opts and _path.startswith("/tsd"):
+        if (
+            opts and _path.startswith("/tsd")
+            and tenant in opts.sns_migrations or "all" in opts.sns_migrations
+        ):
             try:
                 ess_path = opts.tenant_storage_cache.get(tenant, {}).get("storage_paths", {}).get("ess")
-                if ess_path and not os.path.lexists(target):
-                    target = _path.replace(f"/tsd/{tenant}/data/durable", ess_path)
+                target = _path.replace(f"/tsd/{tenant}/data/durable", ess_path) if ess_path else None
+                if ess_path and target and not os.path.lexists(target):
                     os.makedirs(target)
                     subprocess.call(['chmod', '2770', target])
                     logging.info(f"Created {target}")
