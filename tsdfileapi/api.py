@@ -797,7 +797,7 @@ class GenericFormDataHandler(AuthRequestHandler):
                 if tenant in options.sns_migrations or "all" in options.sns_migrations:
                     try:
                         logging.info(f"copying {self.path_part} to ess")
-                        target = self.path_part.replace(f"/tsd/{self.tenant}", ess_path)
+                        target = self.path_part.replace(f"/tsd/{self.tenant}/data/durable", ess_path)
                         shutil.copy(self.path_part, target)
                         os.chmod(target, _RW_RW___)
                     except Exception as e:
@@ -814,7 +814,7 @@ class GenericFormDataHandler(AuthRequestHandler):
                         if tenant in options.sns_migrations or "all" in options.sns_migrations:
                             try:
                                 logging.info(f"copying {self.path_part} to ess")
-                                target = subfolder_path.replace(f"/tsd/{self.tenant}", ess_path)
+                                target = subfolder_path.replace(f"/tsd/{self.tenant}/data/durable", ess_path)
                                 shutil.copy(self.path_part, target)
                                 os.chmod(target, _RW_RW___)
                             except Exception as e:
