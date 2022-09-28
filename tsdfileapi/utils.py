@@ -67,9 +67,9 @@ def find_tenant_storage_path(
     cache = opts.tenant_storage_cache.copy()
     tenant_info = opts.migration_statuses.get(tenant, {})
     storage_backend = tenant_info.get("storage_backend", default_storage_backend),
-    sns_ess_delivery = tenant_info.get("sns_ess_delivery", {}).get("enabled")
-    sns_loader_processing = tenant_info.get("sns_loader_processing", {}).get("done")
-    sns_migration_done = tenant_info.get("sns_ess_migration", {}).get("done")
+    sns_ess_delivery = tenant_info.get("sns_ess_delivery", False)
+    sns_loader_processing = tenant_info.get("sns_loader_processing", False)
+    sns_migration_done = tenant_info.get("sns_ess_migration", False)
     if not cache.get(tenant):
         cache[tenant] = {
             "storage_backend": storage_backend,
