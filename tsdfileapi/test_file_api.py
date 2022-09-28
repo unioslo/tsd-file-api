@@ -683,8 +683,7 @@ class TestFileApi(unittest.TestCase):
             f'{self.base_url}/survey/56789/submissions',
             headers=headers
         )
-        self.assertEqual(resp.status_code, 200)
-        self.assertEqual(resp.text, '[]')
+        self.assertEqual(resp.status_code, 404)
 
 
         # attachments
