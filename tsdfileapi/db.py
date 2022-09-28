@@ -34,6 +34,13 @@ def pg_listen_channel(
 
 
 def get_projects_migration_status(conn: psycopg2.extensions.connection,) -> dict:
+    """
+    sns backend behaviour:
+        - sns_ess_delivery: {enabled: bool}   -> deliver to HNAS+ESS
+        - sns_loader_processing: {done: bool} -> deliver to HNAS+ESS
+        - sns_ess_migration: {done: bool}     -> deliver to ESS
+
+    """
     if not conn:
         return {}
     out = {}
@@ -41,14 +48,33 @@ def get_projects_migration_status(conn: psycopg2.extensions.connection,) -> dict
         session.execute(
             """select
                     project_number,
-                    case when project_metadata->>'storage_backend' is null then 'hnas'
-                    else project_metadata->>'storage_backend' end
+                    case
+                        when project_metadata->>'storage_backend' is null then 'hnas'
+                        else project_metadata->>'storage_backend'
+                    end as storage_backend,
+                    case
+                        when project_metadata->>'sns_ess_delivery' is null then false
+                        else cast(project_metadata->'sns_ess_delivery'->>'enabled' as boolean)
+                    end as sns_ess_delivery,
+                    case
+                        when project_metadata->>'sns_loader_processing' is null then false
+                        else cast(project_metadata->'sns_loader_processing'->>'done' as boolean)
+                    end as sns_loader_processing,
+                    case
+                        when project_metadata->>'sns_ess_migration' is null then false
+                        else cast(project_metadata->'sns_ess_migration'->>'done' as boolean)
+                    end as sns_ess_migration
                 from projects
             """
         )
         data = session.fetchall()
     for row in data:
-        out[row[0]] = row[1]
+        out[row[0]] = {
+            "storage_backend": row[1],
+            "sns_ess_delivery":row[2],
+            "sns_loader_processing": row[3],
+            "sns_ess_migration": row[4],
+        }
     return out
 
 
