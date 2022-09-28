@@ -66,10 +66,11 @@ def find_tenant_storage_path(
     """
     cache = opts.tenant_storage_cache.copy()
     tenant_info = opts.migration_statuses.get(tenant, {})
-    storage_backend = tenant_info.get("storage_backend", default_storage_backend),
+    storage_backend = tenant_info.get("storage_backend", default_storage_backend)
     sns_ess_delivery = tenant_info.get("sns_ess_delivery", False)
     sns_loader_processing = tenant_info.get("sns_loader_processing", False)
     sns_migration_done = tenant_info.get("sns_ess_migration", False)
+    # always update cache
     if not cache.get(tenant):
         cache[tenant] = {
             "storage_backend": storage_backend,
@@ -78,8 +79,7 @@ def find_tenant_storage_path(
                 "ess": None,
             },
         }
-    # always update cache
-    cache[tenant]["storage_backend"] = storage_backend
+
     cache[tenant]["sns"] = {
         "hnas": True if sns_ess_delivery and not (sns_loader_processing or sns_migration_done) else False,
         "ess": True if (sns_loader_processing or sns_migration_done) else False,
@@ -89,10 +89,9 @@ def find_tenant_storage_path(
         storage_backend == "ess"
         and not cache.get(tenant).get("storage_paths").get("ess")
     ):
-        cache[tenant]["storage_backend"] = "ess"
         cache[tenant]["storage_paths"]["ess"] = _find_ess_dir(tenant, root=root)
     # store updated cache
-    opts.tenant_storage_cache = cache
+    opts.tenant_storage_cache = cache.copy()
     # use updated info from now on
     project = cache.get(tenant)
     preferred = "ess" if endpoint_backend in opts.prefer_ess else "hnas"
