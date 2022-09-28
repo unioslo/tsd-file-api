@@ -65,34 +65,55 @@ def find_tenant_storage_path(
 
     """
     cache = opts.tenant_storage_cache.copy()
+    tenant_info = opts.migration_statuses.get(tenant, {})
+    storage_backend = tenant_info.get("storage_backend", default_storage_backend),
+    sns_ess_delivery = tenant_info.get("sns_ess_delivery", {}).get("enabled")
+    sns_loader_processing = tenant_info.get("sns_loader_processing", {}).get("done")
+    sns_migration_done = tenant_info.get("sns_ess_migration", {}).get("done")
     if not cache.get(tenant):
         cache[tenant] = {
-            "storage_backend": opts.migration_statuses.get(tenant, default_storage_backend),
+            "storage_backend": storage_backend,
             "storage_paths": {
                 "hnas": f"/tsd/{tenant}/data/durable",
                 "ess": None,
-            }
+            },
         }
-    else:
-        cache[tenant]["storage_backend"] = opts.migration_statuses.get(tenant, default_storage_backend)
+    # always update cache
+    cache[tenant]["storage_backend"] = storage_backend
+    cache[tenant]["sns"] = {
+        "hnas": True if sns_ess_delivery and not (sns_loader_processing or sns_migration_done) else False,
+        "ess": True if (sns_loader_processing or sns_migration_done) else False,
+    }
+    # optionally look for ESS path
     if (
-        opts.migration_statuses.get(tenant, default_storage_backend) == "ess"
+        storage_backend == "ess"
         and not cache.get(tenant).get("storage_paths").get("ess")
     ):
         cache[tenant]["storage_backend"] = "ess"
         cache[tenant]["storage_paths"]["ess"] = _find_ess_dir(tenant, root=root)
+    # store updated cache
     opts.tenant_storage_cache = cache
+    # use updated info from now on
+    project = cache.get(tenant)
     preferred = "ess" if endpoint_backend in opts.prefer_ess else "hnas"
-    current_storage_backend = cache.get(tenant).get("storage_backend")
+    current_storage_backend = project.get("storage_backend")
+    # determine which path to return
     if current_storage_backend == "migrating":
         if preferred == "ess":
             raise StorageTemporarilyUnavailableError
         else:
-            return cache.get(tenant).get("storage_paths").get(preferred)
+            return project.get("storage_paths").get(preferred)
     elif current_storage_backend == "ess":
-        return cache.get(tenant).get("storage_paths").get(preferred)
+        if endpoint_backend == "sns":
+            if project.get("sns").get("hnas"):
+                preferred = "hnas"
+            elif project.get("sns").get("ess"):
+                preferred = "ess"
+            else:
+                preferred = "hnas"
+        return project.get("storage_paths").get(preferred)
     else:
-        return cache.get(tenant).get("storage_paths").get("hnas")
+        return project.get("storage_paths").get("hnas")
 
 
 def choose_storage(
