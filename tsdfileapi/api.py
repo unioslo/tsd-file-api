@@ -2187,7 +2187,6 @@ class FileRequestHandler(AuthRequestHandler):
             self.set_header('Modified-Time', str(mtime))
             self.set_status(200)
         except Exception as e:
-            logging.error(e)
             logging.error(self.message)
             if self.get_status() < 400:
                 self.set_status(500)
