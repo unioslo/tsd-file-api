@@ -1921,6 +1921,19 @@ class TestFileApi(unittest.TestCase):
         )
         self.assertEqual(resp.status_code, 200)
 
+        # test delete semantics - on audit too
+        resp = requests.get(
+            f'{self.apps}/ega/tables/user_data',
+            headers=headers
+        )
+        self.assertEqual(resp.status_code, 404)
+        resp = requests.get(
+            f'{self.apps}/ega/tables/user_data/audit',
+            headers=headers
+        )
+        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(json.loads(resp.text), [])
+
     def test_nacl_crypto(self) -> None:
 
         # https://libnacl.readthedocs.io/en/latest/index.html
