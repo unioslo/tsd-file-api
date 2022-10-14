@@ -196,24 +196,29 @@ def sns_dir(
         if not PGP_KEY_FINGERPRINT.match(keyid):
             raise ClientSnsPathError(f'invalid PGP fingerprint: {keyid}')
         folder = base_pattern.replace(tenant_string_pattern, tenant).replace('KEYID', keyid).replace('FORMID', formid)
-        hnas_path = os.path.normpath(folder)
+        hnas_sns_dir = os.path.normpath(folder)
         if test:
-            return hnas_path
-        if (
-            opts and opts.tenant_storage_cache.get(tenant, {}).get("sns", {}).get("hnas", True)
-            and not os.path.lexists(hnas_path)
-        ):
+            return hnas_sns_dir
+        if opts and opts.tenant_storage_cache.get(tenant, {}).get("sns", {}).get("hnas", True):
+            use_hnas = True
+        else:
+            use_hnas = False
+        if use_hnas and not os.path.lexists(hnas_sns_dir):
             try:
-                os.makedirs(hnas_path)
-                os.chmod(hnas_path, _rwxrws___())
-                logging.info(f'Created: {hnas_path}')
+                os.makedirs(hnas_sns_dir)
+                os.chmod(hnas_sns_dir, _rwxrws___())
+                logging.info(f'Created: {hnas_sns_dir}')
             except OSError as e:
                 raise ServerStorageNotMountedError(f"NFS mount missing for {tenant}") from e
             except Exception as e:
                 logging.error(e)
-                logging.error(f"Could not create {hnas_path}")
+                logging.error(f"Could not create {hnas_sns_dir}")
                 raise ServerSnsError from e
-        if opts and tenant in opts.sns_migrations or "all" in opts.sns_migrations:
+        if (
+            opts
+            and (tenant in opts.sns_migrations or "all" in opts.sns_migrations)
+            and opts.tenant_storage_cache.get(tenant, {}).get("sns", {}).get("ess")
+        ):
             try:
                 ess_path = opts.tenant_storage_cache.get(tenant, {}).get("storage_paths", {}).get("ess")
                 target = base_pattern.replace(
@@ -239,7 +244,7 @@ def sns_dir(
                 logging.error(e)
                 logging.error(f"Could not create {target}")
                 raise ServerSnsError from e
-        return hnas_path
+        return hnas_sns_dir if use_hnas else target
     except Exception as e:
         logging.error(e)
         raise ServerSnsError from e

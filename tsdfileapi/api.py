@@ -741,32 +741,21 @@ class GenericFormDataHandler(AuthRequestHandler):
     def write_file(self, filemode: str, filename: str, filebody: bytes, tenant: str) -> bool:
         try:
             if self.backend == 'sns':
-                # folders created here
-                # ensure the tenant_storage_cache (stored on options) is up to date
+                # ensure updated cache
                 _  = find_tenant_storage_path(self.tenant, self.backend, options)
-                tsd_hidden_folder = choose_storage(
-                    tenant=self.tenant,
-                    endpoint_backend=self.backend,
+                tsd_hidden_folder = sns_dir(
+                    self.tsd_hidden_folder_pattern,
+                    tenant,
+                    self.request.uri,
+                    options.tenant_string_pattern,
                     opts=options,
-                    directory=sns_dir(
-                        self.tsd_hidden_folder_pattern,
-                        tenant,
-                        self.request.uri,
-                        options.tenant_string_pattern,
-                        opts=options,
-                    ),
                 )
-                tenant_dir = choose_storage(
-                    tenant=self.tenant,
-                    endpoint_backend=self.backend,
+                tenant_dir = sns_dir(
+                    self.tenant_dir_pattern,
+                    tenant,
+                    self.request.uri,
+                    options.tenant_string_pattern,
                     opts=options,
-                    directory=sns_dir(
-                        self.tenant_dir_pattern,
-                        tenant,
-                        self.request.uri,
-                        options.tenant_string_pattern,
-                        opts=options,
-                    ),
                 )
             else:
                 tenant_dir = choose_storage(
@@ -775,6 +764,7 @@ class GenericFormDataHandler(AuthRequestHandler):
                     opts=options,
                     directory=self.tenant_dir_pattern.replace(options.tenant_string_pattern, tenant),
                 )
+
             self.path = os.path.normpath(tenant_dir + '/' + filename)
             # add the partial file indicator, check existence
             self.path_part = self.path + '.' + str(uuid4()) + '.part'
@@ -791,34 +781,39 @@ class GenericFormDataHandler(AuthRequestHandler):
                 f.write(filebody)
                 os.rename(self.path, self.path_part)
                 os.chmod(self.path_part, _RW_RW___)
-            # copy the project's version too
-            ess_path = options.tenant_storage_cache.get(tenant, {}).get("storage_paths", {}).get("ess")
-            if ess_path and self.path_part.startswith("/tsd"):
-                if tenant in options.sns_migrations or "all" in options.sns_migrations:
-                    try:
-                        logging.info(f"copying {self.path_part} to ess")
-                        target = self.path_part.replace(f"/tsd/{self.tenant}/data/durable", ess_path)
-                        shutil.copy(self.path_part, target)
-                        os.chmod(target, _RW_RW___)
-                    except Exception as e:
-                        logging.error(e) # no need to abort yet
+
+            use_ess = (
+                options.tenant_storage_cache.get(tenant, {}).get("sns", {}).get("ess")
+                and (tenant in options.sns_migrations or "all" in options.sns_migrations)
+            )
+
+            if self.path_part.startswith("/tsd") and use_ess:
+
+                try:
+                    logging.info(f"copying {self.path_part} to ess")
+                    ess_path = options.tenant_storage_cache.get(tenant, {}).get("storage_paths", {}).get("ess")
+                    target = self.path_part.replace(f"/tsd/{self.tenant}/data/durable", ess_path)
+                    shutil.copy(self.path_part, target)
+                    os.chmod(target, _RW_RW___)
+                except Exception as e:
+                    logging.error(e) # no need to abort yet
             self.new_paths.append(self.path_part)
+
             if self.backend == 'sns':
                 subfolder_path = os.path.normpath(tsd_hidden_folder + '/' + filename)
                 try:
                     shutil.copy(self.path_part, subfolder_path)
                     os.chmod(subfolder_path, _RW_RW___)
                     self.new_paths.append(subfolder_path)
-                    # copy the "internal" version ESS
-                    if ess_path and subfolder_path.startswith("/tsd"):
-                        if tenant in options.sns_migrations or "all" in options.sns_migrations:
-                            try:
-                                logging.info(f"copying {self.path_part} to ess")
-                                target = subfolder_path.replace(f"/tsd/{self.tenant}/data/durable", ess_path)
-                                shutil.copy(self.path_part, target)
-                                os.chmod(target, _RW_RW___)
-                            except Exception as e:
-                                logging.error(e) # no need to abort yet
+
+                    if subfolder_path.startswith("/tsd") and use_ess:
+                        try:
+                            logging.info(f"copying {self.path_part} to ess")
+                            target = subfolder_path.replace(f"/tsd/{self.tenant}/data/durable", ess_path)
+                            shutil.copy(self.path_part, target)
+                            os.chmod(target, _RW_RW___)
+                        except Exception as e:
+                            logging.error(e) # no need to abort yet
                 except Exception as e:
                     logging.error(e)
                     logging.error('Could not copy file %s to .tsd folder', self.path_part)
