@@ -75,6 +75,7 @@ from utils import (
     set_mtime,
     choose_storage,
     find_tenant_storage_path,
+    _rwxrws___,
 )
 
 
@@ -1412,7 +1413,7 @@ class FileRequestHandler(AuthRequestHandler):
                                     target += f'/{_dir}'
                                     try:
                                         if self.group_config['enabled']:
-                                            subprocess.call(['chmod', '2770', target])
+                                            os.chmod(target, _rwxrws___())
                                             owner = options.api_user  # so it can move the file into the dir
                                             subprocess.call(['sudo', 'chown', f'{owner}:{self.group_name}', target])
                                     except (Exception, OSError):
