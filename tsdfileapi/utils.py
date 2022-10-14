@@ -66,6 +66,10 @@ def find_tenant_storage_path(
                 hnas: str,
                 ess: Optional[str],
             },
+            sns: {
+                hnas: bool,
+                ess: bool,
+            }
         },
         ...
     }
@@ -90,8 +94,8 @@ def find_tenant_storage_path(
         }
 
     cache[tenant]["sns"] = {
-        "hnas": True if sns_ess_delivery and not (sns_loader_processing or sns_migration_done) else False,
-        "ess": True if (sns_loader_processing or sns_migration_done) else False,
+        "hnas": True if not (sns_loader_processing or sns_migration_done) else False,
+        "ess": True if (sns_ess_delivery or sns_loader_processing or sns_migration_done) else False,
     }
     # optionally look for ESS path
     if (
@@ -191,12 +195,14 @@ def sns_dir(
             raise ClientSnsPathError(f'invalid form ID: {formid}')
         if not PGP_KEY_FINGERPRINT.match(keyid):
             raise ClientSnsPathError(f'invalid PGP fingerprint: {keyid}')
-        # TODO: remove this when migration done
         folder = base_pattern.replace(tenant_string_pattern, tenant).replace('KEYID', keyid).replace('FORMID', formid)
         hnas_path = os.path.normpath(folder)
         if test:
             return hnas_path
-        if not os.path.lexists(hnas_path):
+        if (
+            opts and opts.tenant_storage_cache.get(tenant, {}).get("sns", {}).get("hnas", True)
+            and not os.path.lexists(hnas_path)
+        ):
             try:
                 os.makedirs(hnas_path)
                 os.chmod(hnas_path, _rwxrws___())
