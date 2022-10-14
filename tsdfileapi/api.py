@@ -826,7 +826,7 @@ class GenericFormDataHandler(AuthRequestHandler):
             return True
         except ServerStorageTemporarilyUnavailableError as e:
             raise e
-        except (Exception, AssertionError) as e:
+        except Exception as e:
             logging.error(e)
             logging.error('Could not write to file')
             return False
