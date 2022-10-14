@@ -183,8 +183,9 @@ def sns_dir(
     opts: tornado.options.OptionParser = None,
 ) -> str:
     """
-    Construct a path for sns uploads. Create it if missing.
-    If ESS is available, create the path there too.
+    Construct and create a path for sns uploads.
+    If ESS is ready, create the path there too.
+    If HNAS is no longer in use, ignore it, and return the ESS path.
 
     """
     try:
