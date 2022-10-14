@@ -44,8 +44,13 @@ from tornado.escape import json_decode, url_unescape, url_escape
 from tornado import gen
 from tornado.ioloop import IOLoop
 from tornado.options import parse_command_line, define, options
-from tornado.web import (Application, RequestHandler, stream_request_body,
-                         HTTPError, MissingArgumentError)
+from tornado.web import (
+    Application,
+    RequestHandler,
+    stream_request_body,
+    HTTPError,
+    MissingArgumentError,
+)
 
 from auth import process_access_token
 from db import (

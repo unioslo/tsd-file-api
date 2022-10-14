@@ -32,28 +32,26 @@ from termcolor import colored
 from tsdapiclient import fileapi
 from tornado.escape import url_escape
 
-pretty_bad_protocol._parsers.Verify.TRUST_LEVELS["ENCRYPTION_COMPLIANCE_MODE"] = 23
-
-# pylint: disable=relative-import
 from auth import process_access_token
-from tokens import gen_test_tokens, get_test_token_for_p12, gen_test_token_for_user
 from db import (
     session_scope,
     sqlite_init,
     postgres_init,
 )
 from exc import ServerStorageTemporarilyUnavailableError
+from pgp import init_gpg
+from pysquril.backends import sqlite_session, postgres_session
+from pysquril.generator import SqliteQueryGenerator, PostgresQueryGenerator
 from resumables import SerialResumable
+from tokens import gen_test_tokens, get_test_token_for_p12, gen_test_token_for_user
 from utils import (
     sns_dir,
     md5sum,
     find_tenant_storage_path,
     choose_storage,
 )
-from pgp import init_gpg
-from pysquril.backends import sqlite_session, postgres_session
-from pysquril.generator import SqliteQueryGenerator, PostgresQueryGenerator
 
+pretty_bad_protocol._parsers.Verify.TRUST_LEVELS["ENCRYPTION_COMPLIANCE_MODE"] = 23
 
 def project_import_dir(
     config: dict,
