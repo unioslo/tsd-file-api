@@ -741,22 +741,34 @@ class GenericFormDataHandler(AuthRequestHandler):
     def write_file(self, filemode: str, filename: str, filebody: bytes, tenant: str) -> bool:
         try:
             if self.backend == 'sns':
-                # ensure updated cache
-                _  = find_tenant_storage_path(self.tenant, self.backend, options)
+
+                # find storage backend preferences
+                _  = find_tenant_storage_path(self.tenant, self.backend, options) # update cache
+                tenant_sns_info = options.tenant_storage_cache.get(tenant, {}).get("sns", {})
+                use_hnas = tenant_sns_info.get("hnas", True)
+                use_ess = (
+                    tenant_sns_info.get("ess")
+                    and (tenant in options.sns_migrations or "all" in options.sns_migrations)
+                )
+
                 # create form directories where needed
                 tsd_hidden_folder = sns_dir(
                     self.tsd_hidden_folder_pattern,
                     tenant,
                     self.request.uri,
                     options.tenant_string_pattern,
-                    opts=options,
+                    options=options,
+                    use_hnas=use_hnas,
+                    use_ess=use_ess,
                 )
                 tenant_dir = sns_dir(
                     self.tenant_dir_pattern,
                     tenant,
                     self.request.uri,
                     options.tenant_string_pattern,
-                    opts=options,
+                    options=options,
+                    use_hnas=use_hnas,
+                    use_ess=use_ess,
                 )
             else:
                 tenant_dir = choose_storage(
@@ -765,11 +777,6 @@ class GenericFormDataHandler(AuthRequestHandler):
                     opts=options,
                     directory=self.tenant_dir_pattern.replace(options.tenant_string_pattern, tenant),
                 )
-
-            use_ess = (
-                options.tenant_storage_cache.get(tenant, {}).get("sns", {}).get("ess")
-                and (tenant in options.sns_migrations or "all" in options.sns_migrations)
-            )
 
             # write the project-visible file
             self.path = os.path.normpath(tenant_dir + '/' + filename)

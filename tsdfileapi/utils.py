@@ -180,7 +180,9 @@ def sns_dir(
     uri: str,
     tenant_string_pattern: str,
     test: bool = False,
-    opts: tornado.options.OptionParser = None,
+    options: tornado.options.OptionParser = None,
+    use_hnas: bool = True,
+    use_ess: bool = False,
 ) -> str:
     """
     Construct and create a path for sns uploads.
@@ -200,10 +202,6 @@ def sns_dir(
         hnas_sns_dir = os.path.normpath(folder)
         if test:
             return hnas_sns_dir
-        if opts and opts.tenant_storage_cache.get(tenant, {}).get("sns", {}).get("hnas", True):
-            use_hnas = True
-        else:
-            use_hnas = False
         if use_hnas and not os.path.lexists(hnas_sns_dir):
             try:
                 os.makedirs(hnas_sns_dir)
@@ -215,14 +213,10 @@ def sns_dir(
                 logging.error(e)
                 logging.error(f"Could not create {hnas_sns_dir}")
                 raise ServerSnsError from e
-        if (
-            opts
-            and (tenant in opts.sns_migrations or "all" in opts.sns_migrations)
-            and opts.tenant_storage_cache.get(tenant, {}).get("sns", {}).get("ess")
-        ):
+        if use_ess:
             try:
-                ess_path = opts.tenant_storage_cache.get(tenant, {}).get("storage_paths", {}).get("ess")
-                target = base_pattern.replace(
+                ess_path = options.tenant_storage_cache.get(tenant).get("storage_paths").get("ess")
+                ess_sns_dir = base_pattern.replace(
                     tenant_string_pattern,
                     tenant
                 ).replace(
@@ -235,17 +229,17 @@ def sns_dir(
                     f"/tsd/{tenant}/data/durable",
                     ess_path
                 )
-                if ess_path and target and not os.path.lexists(target):
-                    os.makedirs(target)
-                    os.chmod(target, _rwxrws___())
-                    logging.info(f"Created: {target}")
+                if not os.path.lexists(ess_sns_dir):
+                    os.makedirs(ess_sns_dir)
+                    os.chmod(ess_sns_dir, _rwxrws___())
+                    logging.info(f"Created: {ess_sns_dir}")
             except OSError as e:
                 raise ServerStorageNotMountedError(f"NFS mount missing for {ess_path}") from e
             except Exception as e:
                 logging.error(e)
-                logging.error(f"Could not create {target}")
+                logging.error(f"Could not create {ess_sns_dir}")
                 raise ServerSnsError from e
-        return hnas_sns_dir if use_hnas else target
+        return hnas_sns_dir if use_hnas else ess_sns_dir
     except Exception as e:
         logging.error(e)
         raise ServerSnsError from e
