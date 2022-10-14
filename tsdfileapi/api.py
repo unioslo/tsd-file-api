@@ -743,6 +743,7 @@ class GenericFormDataHandler(AuthRequestHandler):
             if self.backend == 'sns':
                 # ensure updated cache
                 _  = find_tenant_storage_path(self.tenant, self.backend, options)
+                # create form directories where needed
                 tsd_hidden_folder = sns_dir(
                     self.tsd_hidden_folder_pattern,
                     tenant,
@@ -765,8 +766,13 @@ class GenericFormDataHandler(AuthRequestHandler):
                     directory=self.tenant_dir_pattern.replace(options.tenant_string_pattern, tenant),
                 )
 
+            use_ess = (
+                options.tenant_storage_cache.get(tenant, {}).get("sns", {}).get("ess")
+                and (tenant in options.sns_migrations or "all" in options.sns_migrations)
+            )
+
+            # write the project-visible file
             self.path = os.path.normpath(tenant_dir + '/' + filename)
-            # add the partial file indicator, check existence
             self.path_part = self.path + '.' + str(uuid4()) + '.part'
             if os.path.lexists(self.path_part):
                 logging.error('trying to write to partial file - killing request')
@@ -782,30 +788,26 @@ class GenericFormDataHandler(AuthRequestHandler):
                 os.rename(self.path, self.path_part)
                 os.chmod(self.path_part, _RW_RW___)
 
-            use_ess = (
-                options.tenant_storage_cache.get(tenant, {}).get("sns", {}).get("ess")
-                and (tenant in options.sns_migrations or "all" in options.sns_migrations)
-            )
-
+            # optionally copy to ESS (temporary)
             if self.path_part.startswith("/tsd") and use_ess:
-
                 try:
                     logging.info(f"copying {self.path_part} to ess")
                     ess_path = options.tenant_storage_cache.get(tenant, {}).get("storage_paths", {}).get("ess")
                     target = self.path_part.replace(f"/tsd/{self.tenant}/data/durable", ess_path)
                     shutil.copy(self.path_part, target)
                     os.chmod(target, _RW_RW___)
+                    self.new_paths.append(self.path_part)
                 except Exception as e:
                     logging.error(e) # no need to abort yet
-            self.new_paths.append(self.path_part)
 
+            # now copy the origin file to the folder intended to data processing
             if self.backend == 'sns':
                 subfolder_path = os.path.normpath(tsd_hidden_folder + '/' + filename)
                 try:
                     shutil.copy(self.path_part, subfolder_path)
                     os.chmod(subfolder_path, _RW_RW___)
                     self.new_paths.append(subfolder_path)
-
+                    # optionally copy to ESS (temporary)
                     if subfolder_path.startswith("/tsd") and use_ess:
                         try:
                             logging.info(f"copying {self.path_part} to ess")
