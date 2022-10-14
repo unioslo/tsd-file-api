@@ -564,6 +564,12 @@ class TestFileApi(unittest.TestCase):
             {'key1': 99, 'key3': False, 'id': random.randint(0, 1000000)}
         ]
         headers = {'Authorization': 'Bearer ' + TEST_TOKENS['VALID']}
+
+        resp = requests.delete(
+            f'{self.survey}/123456/submissions',
+            headers=headers
+        )
+
         # add data to tables
         resp = requests.put(
             f'{self.base_url}/survey/123456/submissions',
@@ -581,7 +587,7 @@ class TestFileApi(unittest.TestCase):
             headers=headers
         )
         data = json.loads(resp.text)
-        self.assertEqual(len(data), 2)
+        self.assertEqual(len(data), 2, "wrong number of submissions")
         self.assertEqual(data[0].get("key1"), 7)
         self.assertEqual(data[1].get("key1"), 99)
         self.assertEqual(resp.status_code, 200)
@@ -658,7 +664,7 @@ class TestFileApi(unittest.TestCase):
         self.assertEqual(data[0][0], 2)
         resp = requests.get(f'{self.base_url}/survey/*/submissions?select=count(*)', headers=headers)
         data = json.loads(resp.text)
-        self.assertEqual(len(data), 2)
+        self.assertEqual(len(data), 2, f"unexpected number of tables: {data}")
         for entry in data:
             for formid, num_submmissions in entry.items():
                 self.assertEqual(num_submmissions, [2])
@@ -695,6 +701,12 @@ class TestFileApi(unittest.TestCase):
         self.assertEqual(resp.status_code, 201)
         resp = requests.get(
             f'{self.survey}/123456/attachments/{file}',
+            headers=headers
+        )
+        self.assertEqual(resp.status_code, 200)
+
+        resp = requests.delete(
+            f'{self.survey}/123456/submissions',
             headers=headers
         )
         self.assertEqual(resp.status_code, 200)
@@ -2587,6 +2599,7 @@ def main() -> None:
         tests.extend(storage)
     if 'all' in sys.argv:
         tests.extend(base)
+        tests.extend(sns)
         tests.extend(names)
         tests.extend(pipelines)
         tests.extend(gpg_related)
