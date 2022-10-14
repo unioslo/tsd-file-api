@@ -54,6 +54,7 @@ from db import (
     get_projects_migration_status,
     pg_listen_channel,
 )
+from exc import ServerStorageTemporarilyUnavailableError
 from pgp import init_gpg
 from resumables import SerialResumable, ResumableNotFoundError, ResumableIncorrectChunkOrderError
 from rmq import PikaClient
@@ -62,12 +63,11 @@ from utils import (
     call_request_hook,
     sns_dir,
     check_filename,
-    _IS_VALID_UUID,
+    VALID_UUID,
     md5sum,
     tenant_from_url,
     move_data_to_folder,
     set_mtime,
-    StorageTemporarilyUnavailableError,
     choose_storage,
     find_tenant_storage_path,
 )
@@ -384,7 +384,7 @@ class AuthRequestHandler(RequestHandler):
         elif re.match(r'(.+).([a-f\d0-9-]{32,36}).part$', resource):
             logging.error('partial upload files not accessible')
             return False
-        elif _IS_VALID_UUID.match(resource_dir):
+        elif VALID_UUID.match(resource_dir):
             potential_target = os.path.normpath(f'{work_dir}/{resource_dir}')
             if os.path.lexists(potential_target) and os.path.isdir(potential_target):
                 content = os.listdir(potential_target)
@@ -824,7 +824,7 @@ class GenericFormDataHandler(AuthRequestHandler):
                     logging.error('Could not copy file %s to .tsd folder', self.path_part)
                     return False
             return True
-        except StorageTemporarilyUnavailableError as e:
+        except ServerStorageTemporarilyUnavailableError as e:
             raise e
         except (Exception, AssertionError) as e:
             logging.error(e)
@@ -851,7 +851,7 @@ class FormDataHandler(GenericFormDataHandler):
             assert self.write_files(filemode, tenant)
             self.set_status(201)
             self.write({'message': 'data uploaded'})
-        except StorageTemporarilyUnavailableError:
+        except ServerStorageTemporarilyUnavailableError:
             self.set_header("X-Project-Storage", "Migrating")
             self.set_status(503, reason="Project Storage Migrating")
             self.write({"message": "Project Storage Migrating"})
@@ -879,7 +879,7 @@ class SnsFormDataHandler(GenericFormDataHandler):
             assert self.write_files(filemode, tenant)
             self.set_status(201)
             self.write({'message': 'data uploaded'})
-        except StorageTemporarilyUnavailableError:
+        except ServerStorageTemporarilyUnavailableError:
             self.set_header("X-Project-Storage", "Migrating")
             self.set_status(503, reason="Project Storage Migrating")
             self.write({"message": "Project Storage Migrating"})
@@ -974,7 +974,7 @@ class ResumablesHandler(AuthRequestHandler):
                 check_tenant=self.check_tenant if self.check_tenant is not None else options.check_tenant
             )
             self.err = 'Unauthorized'
-        except StorageTemporarilyUnavailableError:
+        except ServerStorageTemporarilyUnavailableError:
             self.set_header("X-Project-Storage", "Migrating")
             self.set_status(503, reason="Project Storage Migrating")
             self.finish()
@@ -1509,7 +1509,7 @@ class FileRequestHandler(AuthRequestHandler):
                         self.set_status(400)
                         info = 'chunk_order_incorrect'
                     self.finish({'message': info})
-        except StorageTemporarilyUnavailableError:
+        except ServerStorageTemporarilyUnavailableError:
             self.set_header("X-Project-Storage", "Migrating")
             self.set_status(503, reason="Project Storage Migrating")
             self.finish()
@@ -2436,7 +2436,7 @@ class GenericTableHandler(AuthRequestHandler):
                 else:
                     schema = self.tenant
                 self.db = PostgresBackend(options.pgpools.get(self.backend), schema=schema, requestor=self.requestor)
-        except StorageTemporarilyUnavailableError:
+        except ServerStorageTemporarilyUnavailableError:
             self.set_header("X-Project-Storage", "Migrating")
             self.set_status(503, reason="Project Storage Migrating")
         except Exception as e:
@@ -2832,7 +2832,7 @@ class AuditLogViewerHandler(AuthRequestHandler):
                     first = False
                 self.write(']')
                 self.flush()
-        except StorageTemporarilyUnavailableError:
+        except ServerStorageTemporarilyUnavailableError:
             self.set_header("X-Project-Storage", "Migrating")
             self.set_status(503, reason="Project Storage Migrating")
             self.write({'message': 'Project Storage Migrating'})
