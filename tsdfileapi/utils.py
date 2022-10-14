@@ -6,6 +6,7 @@ import logging
 import hashlib
 import subprocess
 import shlex
+import stat
 import re
 import shutil
 
@@ -13,9 +14,25 @@ from typing import Union, Optional
 
 import tornado.options
 
-_VALID_FORMID = re.compile(r'^[0-9]+$')
-_IS_REALISTIC_PGP_KEY_FINGERPRINT = re.compile(r'^[0-9A-Z]{16}$')
-_IS_VALID_UUID = re.compile(r'([a-f\d0-9-]{32,36})')
+from exc import (
+    ClientIllegalFilenameError,
+    ClientSnsPathError,
+    ServerStorageTemporarilyUnavailableError,
+    ServerStorageNotMountedError,
+    ServerSnsError,
+)
+
+VALID_FORMID = re.compile(r'^[0-9]+$')
+PGP_KEY_FINGERPRINT = re.compile(r'^[0-9A-Z]{16}$')
+VALID_UUID = re.compile(r'([a-f\d0-9-]{32,36})')
+
+def _rwxrwx___() -> int:
+    u = stat.S_IREAD | stat.S_IWRITE | stat.S_IXUSR
+    g = stat.S_IRGRP | stat.S_IWGRP | stat.S_IXGRP
+    return u | g
+
+def _rwxrws___() -> int:
+    return _rwxrwx___() | stat.S_ISGID
 
 
 def _find_ess_dir(pnum: str, root: str = "/ess",) -> Optional[str]:
@@ -25,14 +42,6 @@ def _find_ess_dir(pnum: str, root: str = "/ess",) -> Optional[str]:
             sub_dir = projects_dir
             break
     return None if not sub_dir else f"{root}/{sub_dir}/{pnum}/data/durable"
-
-
-class StorageTemporarilyUnavailableError(Exception):
-    """
-    Raised for backends which cannot be used during migration.
-
-    """
-    pass
 
 
 def find_tenant_storage_path(
@@ -99,7 +108,7 @@ def find_tenant_storage_path(
     # determine which path to return
     if current_storage_backend == "migrating":
         if preferred == "ess":
-            raise StorageTemporarilyUnavailableError
+            raise ServerStorageTemporarilyUnavailableError
         else:
             return project.get("storage_paths").get(preferred)
     elif current_storage_backend == "ess":
@@ -143,10 +152,6 @@ def call_request_hook(path: str, params: list, as_sudo: bool = True) -> None:
     subprocess.call(cmd)
 
 
-class IllegalFilenameException(Exception):
-    message = 'Filename not allowed'
-
-
 def tenant_from_url(url: str) -> list:
     if 'v1' in url:
         idx = 2
@@ -156,14 +161,12 @@ def tenant_from_url(url: str) -> list:
 
 
 def check_filename(filename: str, disallowed_start_chars: list = []) -> str:
-    try:
-        start_char = filename[0]
-        if disallowed_start_chars:
-            if start_char in disallowed_start_chars:
-                logging.error('Filename has illegal start character: {0}'.format(start_char))
-                raise Exception
-    except Exception:
-        raise IllegalFilenameException
+    start_char = filename[0]
+    if disallowed_start_chars:
+        if start_char in disallowed_start_chars:
+            raise ClientIllegalFilenameError(
+                f"Filename: {filename} has illegal start character: {start_char}"
+            )
     return filename
 
 
@@ -184,40 +187,56 @@ def sns_dir(
         uri_parts = uri.split('/')
         formid = uri_parts[-1]
         keyid = uri_parts[-2]
-        assert _VALID_FORMID.match(formid), f'invalid form ID: {formid}'
-        assert _IS_REALISTIC_PGP_KEY_FINGERPRINT.match(keyid), f'invalid PGP fingerprint: {keyid}'
+        if not VALID_FORMID.match(formid):
+            raise ClientSnsPathError(f'invalid form ID: {formid}')
+        if not PGP_KEY_FINGERPRINT.match(keyid):
+            raise ClientSnsPathError(f'invalid PGP fingerprint: {keyid}')
+        # TODO: remove this when migration done
         folder = base_pattern.replace(tenant_string_pattern, tenant).replace('KEYID', keyid).replace('FORMID', formid)
-        _path = os.path.normpath(folder)
+        hnas_path = os.path.normpath(folder)
         if test:
-            return _path
-        if not os.path.lexists(_path):
+            return hnas_path
+        if not os.path.lexists(hnas_path):
             try:
-                os.makedirs(_path)
-                subprocess.call(['chmod', '2770', _path])
-                logging.info('Created %s', _path)
+                os.makedirs(hnas_path)
+                os.chmod(hnas_path, _rwxrws___())
+                logging.info(f'Created: {hnas_path}')
+            except OSError as e:
+                raise ServerStorageNotMountedError(f"NFS mount missing for {tenant}") from e
             except Exception as e:
                 logging.error(e)
-                logging.error(f"Could not create {_path}")
-                raise e
-        if (
-            opts and _path.startswith("/tsd")
-            and tenant in opts.sns_migrations or "all" in opts.sns_migrations
-        ):
+                logging.error(f"Could not create {hnas_path}")
+                raise ServerSnsError from e
+        if opts and tenant in opts.sns_migrations or "all" in opts.sns_migrations:
             try:
                 ess_path = opts.tenant_storage_cache.get(tenant, {}).get("storage_paths", {}).get("ess")
-                target = _path.replace(f"/tsd/{tenant}/data/durable", ess_path) if ess_path else None
+                target = base_pattern.replace(
+                    tenant_string_pattern,
+                    tenant
+                ).replace(
+                    'KEYID',
+                    keyid
+                ).replace(
+                    'FORMID',
+                    formid
+                ).replace(
+                    f"/tsd/{tenant}/data/durable",
+                    ess_path
+                )
                 if ess_path and target and not os.path.lexists(target):
                     os.makedirs(target)
-                    subprocess.call(['chmod', '2770', target])
-                    logging.info(f"Created {target}")
+                    os.chmod(target, _rwxrws___())
+                    logging.info(f"Created: {target}")
+            except OSError as e:
+                raise ServerStorageNotMountedError(f"NFS mount missing for {ess_path}") from e
             except Exception as e:
                 logging.error(e)
                 logging.error(f"Could not create {target}")
-                # no reason to abort just yet
-        return _path
-    except (Exception, AssertionError, IndexError) as e:
+                raise ServerSnsError from e
+        return hnas_path
+    except Exception as e:
         logging.error(e)
-        raise e
+        raise ServerSnsError from e
 
 
 def md5sum(filename: str, blocksize: int = 65536) -> str:
