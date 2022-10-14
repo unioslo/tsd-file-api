@@ -42,13 +42,12 @@ from db import (
     sqlite_init,
     postgres_init,
 )
+from exc import ServerStorageTemporarilyUnavailableError
 from resumables import SerialResumable
 from utils import (
     sns_dir,
     md5sum,
-    IllegalFilenameException,
     find_tenant_storage_path,
-    StorageTemporarilyUnavailableError,
     choose_storage,
 )
 from pgp import init_gpg
@@ -2303,7 +2302,7 @@ class TestFileApi(unittest.TestCase):
         )
         # should raise
         self.assertRaises(
-            StorageTemporarilyUnavailableError,
+            ServerStorageTemporarilyUnavailableError,
             find_tenant_storage_path,
             "p13",
             "files_import",
@@ -2311,7 +2310,7 @@ class TestFileApi(unittest.TestCase):
             root=root,
         )
         self.assertRaises(
-            StorageTemporarilyUnavailableError,
+            ServerStorageTemporarilyUnavailableError,
             find_tenant_storage_path,
             "p13",
             "files_export",
@@ -2440,17 +2439,17 @@ def main() -> None:
         'test_ZZg_publication',
     ]
     form_data = [
-        # form-data
         'test_F_post_file_multi_part_form_data',
-        'test_F1_post_file_multi_part_form_data_sns',
         'test_FA_post_multiple_files_multi_part_form_data',
         'test_G_patch_file_multi_part_form_data',
-        'test_G1_patch_file_multi_part_form_data_sns',
         'test_GA_patch_multiple_files_multi_part_form_data',
         'test_H_put_file_multi_part_form_data',
-        'test_H1_put_file_multi_part_form_data_sns',
         'test_HA_put_multiple_files_multi_part_form_data',
-        # sns
+    ]
+    sns = [
+        'test_H1_put_file_multi_part_form_data_sns',
+        'test_F1_post_file_multi_part_form_data_sns',
+        'test_G1_patch_file_multi_part_form_data_sns',
         'test_H4XX_when_no_keydir_exists',
         'test_ZB_sns_folder_logic_is_correct',
     ]
@@ -2546,6 +2545,8 @@ def main() -> None:
         tests.extend(base)
     if 'form_data' in sys.argv:
         tests.extend(form_data)
+    if 'sns' in sys.argv:
+        tests.extend(sns)
     if 'names' in sys.argv:
         tests.extend(names)
     if 'pipelines' in sys.argv:
