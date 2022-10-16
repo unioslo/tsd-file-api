@@ -280,13 +280,7 @@ class TestFileApi(unittest.TestCase):
         headers = {'Authorization': 'Bearer ' + TEST_TOKENS['VALID']}
         f = open(self.example_csv)
         files = {'file': (newfilename, f)}
-        if method == 'POST':
-            self.remove(target_uploads_folder, newfilename)
-            resp = requests.post(url, files=files, headers=headers)
-        elif method == 'PATCH':
-            # not going to remove here, since we need to test non-idempotent uploads
-            resp = requests.patch(url, files=files, headers=headers)
-        elif method == 'PUT':
+        if method == 'PUT':
             # not going to remove, need to check that it is idempotent
             resp = requests.put(url, files=files, headers=headers)
         f.close()
@@ -297,99 +291,6 @@ class TestFileApi(unittest.TestCase):
         file = (self.sns_uploads_folder + '/' + filename)
         hidden_file = file.replace(self.config['public_key_id'], '.tsd/' + self.config['public_key_id'])
         self.assertTrue(os.path.lexists(hidden_file))
-
-
-    def t_post_mp(self, uploads_folder: str, newfilename: str, url: str) -> None:
-        target = os.path.normpath(uploads_folder + '/' + newfilename)
-        resp = self.mp_fd(newfilename, uploads_folder, url, 'POST')
-        self.assertEqual(resp.status_code, 201)
-        uploaded_file = os.path.normpath(uploads_folder + '/' + newfilename)
-        self.assertEqual(md5sum(self.example_csv), md5sum(uploaded_file))
-
-
-    def test_F_post_file_multi_part_form_data(self) -> None:
-        self.t_post_mp(self.uploads_folder, 'uploaded-example.csv', self.upload)
-
-
-    def test_F1_post_file_multi_part_form_data_sns(self) -> None:
-        filename = 'sns-uploaded-example.csv'
-        self.t_post_mp(self.sns_uploads_folder, filename, self.sns_upload)
-        self.check_copied_sns_file_exists(filename)
-
-
-    def test_FA_post_multiple_files_multi_part_form_data(self) -> None:
-        newfilename1 = 'n1'
-        newfilename2 = 'n2'
-        try:
-            os.remove(os.path.normpath(self.uploads_folder + '/' + newfilename1))
-            os.remove(os.path.normpath(self.uploads_folder + '/' + newfilename2))
-        except OSError:
-            pass
-        files = [('file', (newfilename1, open(self.example_csv, 'rb'), 'text/html')),
-                 ('file', (newfilename2, open(self.example_csv, 'rb'), 'text/html'))]
-        headers = {'Authorization': 'Bearer ' + TEST_TOKENS['VALID']}
-        resp = requests.post(self.upload, files=files, headers=headers)
-        self.assertEqual(resp.status_code, 201)
-        uploaded_file1 = os.path.normpath(self.uploads_folder + '/' + newfilename1)
-        uploaded_file2 = os.path.normpath(self.uploads_folder + '/' + newfilename2)
-        self.assertEqual(md5sum(self.example_csv), md5sum(uploaded_file1))
-        self.assertEqual(md5sum(self.example_csv), md5sum(uploaded_file2))
-        files = [('file', (newfilename1, open(self.example_csv, 'rb'), 'text/html')),
-                 ('file', (newfilename2, open(self.example_csv, 'rb'), 'text/html'))]
-        resp2 = requests.post(self.upload, files=files, headers=headers)
-        self.assertEqual(resp2.status_code, 201)
-        self.assertNotEqual(md5sum(self.example_csv), md5sum(uploaded_file1))
-        self.assertNotEqual(md5sum(self.example_csv), md5sum(uploaded_file2))
-
-
-    def t_patch_mp(self, uploads_folder: str, newfilename: str, url: str) -> None:
-        target = os.path.normpath(uploads_folder + '/' + newfilename)
-        # need to get rid of previous round's file, if present
-        self.remove(uploads_folder, newfilename)
-        # first request - create a new file
-        resp = self.mp_fd(newfilename, target, url, 'PATCH')
-        self.assertEqual(resp.status_code, 201)
-        uploaded_file = os.path.normpath(uploads_folder + '/' + newfilename)
-        self.assertEqual(md5sum(self.example_csv), md5sum(uploaded_file))
-        # second request - PATCH should not be idempotent
-        resp2 = self.mp_fd(newfilename, target, url, 'PATCH')
-        self.assertEqual(resp2.status_code, 201)
-        self.assertNotEqual(md5sum(self.example_csv), md5sum(uploaded_file))
-
-
-    def test_G_patch_file_multi_part_form_data(self) -> None:
-        self.t_patch_mp(self.uploads_folder, 'uploaded-example-2.csv', self.upload)
-
-
-    def test_G1_patch_file_multi_part_form_data_sns(self) -> None:
-        filename = 'sns-uploaded-example-2.csv'
-        self.t_patch_mp(self.sns_uploads_folder, filename, self.sns_upload)
-        self.check_copied_sns_file_exists(filename)
-
-
-    def test_GA_patch_multiple_files_multi_part_form_data(self) -> None:
-        newfilename1 = 'n3'
-        newfilename2 = 'n4'
-        try:
-            os.remove(os.path.normpath(self.uploads_folder + '/' + newfilename1))
-            os.remove(os.path.normpath(self.uploads_folder + '/' + newfilename2))
-        except OSError:
-            pass
-        files = [('file', (newfilename1, open(self.example_csv, 'rb'), 'text/html')),
-                 ('file', (newfilename2, open(self.example_csv, 'rb'), 'text/html'))]
-        headers = {'Authorization': 'Bearer ' + TEST_TOKENS['VALID']}
-        resp = requests.post(self.upload, files=files, headers=headers)
-        self.assertEqual(resp.status_code, 201)
-        uploaded_file1 = os.path.normpath(self.uploads_folder + '/' + newfilename1)
-        uploaded_file2 = os.path.normpath(self.uploads_folder + '/' + newfilename2)
-        self.assertEqual(md5sum(self.example_csv), md5sum(uploaded_file1))
-        self.assertEqual(md5sum(self.example_csv), md5sum(uploaded_file2))
-        files = [('file', (newfilename1, open(self.example_csv, 'rb'), 'text/html')),
-                 ('file', (newfilename2, open(self.example_csv, 'rb'), 'text/html'))]
-        resp2 = requests.patch(self.upload, files=files, headers=headers)
-        self.assertEqual(resp2.status_code, 201)
-        self.assertNotEqual(md5sum(self.example_csv), md5sum(uploaded_file1))
-        self.assertNotEqual(md5sum(self.example_csv), md5sum(uploaded_file2))
 
 
     def t_put_mp(self, uploads_folder: str, newfilename: str, url: str) -> None:
@@ -407,9 +308,6 @@ class TestFileApi(unittest.TestCase):
         self.assertEqual(md5sum(self.example_csv), md5sum(uploaded_file))
 
 
-    def test_H_put_file_multi_part_form_data(self) -> None:
-        self.t_put_mp(self.uploads_folder, 'uploaded-example-3.csv', self.upload)
-
 
     def test_H1_put_file_multi_part_form_data_sns(self) -> None:
         filename = 'sns-uploaded-example-3.csv'
@@ -417,33 +315,11 @@ class TestFileApi(unittest.TestCase):
         self.check_copied_sns_file_exists(filename)
 
 
-    def test_HA_put_multiple_files_multi_part_form_data(self) -> None:
-        newfilename1 = 'n5'
-        newfilename2 = 'n6'
-        files = [('file', (newfilename1, open(self.example_csv, 'rb'), 'text/html')),
-                 ('file', (newfilename2, open(self.example_csv, 'rb'), 'text/html'))]
-        headers = {'Authorization': 'Bearer ' + TEST_TOKENS['VALID']}
-        resp = requests.put(self.upload, files=files, headers=headers)
-        self.assertEqual(resp.status_code, 201)
-        uploaded_file1 = os.path.normpath(self.uploads_folder + '/' + newfilename1)
-        uploaded_file2 = os.path.normpath(self.uploads_folder + '/' + newfilename2)
-        self.assertEqual(md5sum(self.example_csv), md5sum(uploaded_file1))
-        self.assertEqual(md5sum(self.example_csv), md5sum(uploaded_file2))
-        files = [('file', (newfilename1, open(self.example_csv, 'rb'), 'text/html')),
-                 ('file', (newfilename2, open(self.example_csv, 'rb'), 'text/html'))]
-        resp2 = requests.put(self.upload, files=files, headers=headers)
-        self.assertEqual(resp2.status_code, 201)
-        self.assertEqual(md5sum(self.example_csv), md5sum(uploaded_file1))
-        self.assertEqual(md5sum(self.example_csv), md5sum(uploaded_file2))
-
-
-    def test_H4XX_when_no_keydir_exists(self) -> None:
+    def test_H5XX_when_no_keydir_exists(self) -> None:
         newfilename = 'new1'
         target = os.path.normpath(self.sns_uploads_folder + '/' + newfilename)
         resp1 = self.mp_fd(newfilename, target, self.upload_sns_wrong, 'PUT')
-        resp2 = self.mp_fd(newfilename, target, self.upload_sns_wrong, 'POST')
-        resp3 = self.mp_fd(newfilename, target, self.upload_sns_wrong, 'PATCH')
-        self.assertEqual([resp1.status_code, resp2.status_code, resp3.status_code], [400, 400, 400])
+        self.assertEqual(resp1.status_code, 500)
 
 
     # streaming endpoint
@@ -2448,19 +2324,9 @@ def main() -> None:
         # publication backend
         'test_ZZg_publication',
     ]
-    form_data = [
-        'test_F_post_file_multi_part_form_data',
-        'test_FA_post_multiple_files_multi_part_form_data',
-        'test_G_patch_file_multi_part_form_data',
-        'test_GA_patch_multiple_files_multi_part_form_data',
-        'test_H_put_file_multi_part_form_data',
-        'test_HA_put_multiple_files_multi_part_form_data',
-    ]
     sns = [
         'test_H1_put_file_multi_part_form_data_sns',
-        'test_F1_post_file_multi_part_form_data_sns',
-        'test_G1_patch_file_multi_part_form_data_sns',
-        'test_H4XX_when_no_keydir_exists',
+        'test_H5XX_when_no_keydir_exists',
         'test_ZB_sns_folder_logic_is_correct',
     ]
     names = [
@@ -2553,8 +2419,6 @@ def main() -> None:
         sys.exit(0)
     if 'base' in sys.argv:
         tests.extend(base)
-    if 'form_data' in sys.argv:
-        tests.extend(form_data)
     if 'sns' in sys.argv:
         tests.extend(sns)
     if 'names' in sys.argv:
@@ -2611,7 +2475,6 @@ def main() -> None:
         tests.extend(ns)
         tests.extend(apps)
         tests.extend(crypt)
-        tests.extend(form_data)
         tests.extend(mtime)
         tests.extend(logs)
     tests.sort()
