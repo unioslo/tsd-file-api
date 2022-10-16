@@ -12,6 +12,7 @@ designed for the University of Oslo's Services for Sensitive Data (TSD).
 import base64
 import datetime
 import hashlib
+import http
 import json
 import logging
 import os
@@ -59,7 +60,13 @@ from db import (
     get_projects_migration_status,
     pg_listen_channel,
 )
-from exc import ServerStorageTemporarilyUnavailableError
+from exc import (
+    ApiError,
+    ClientError,
+    ClientAuthorizationError,
+    ServerStorageTemporarilyUnavailableError,
+    ServerMaintenanceError,
+)
 from pgp import init_gpg
 from resumables import SerialResumable, ResumableNotFoundError, ResumableIncorrectChunkOrderError
 from rmq import PikaClient
@@ -650,264 +657,175 @@ class AuthRequestHandler(RequestHandler):
             logging.warning(f'could not update audit log: {e}')
 
 
-class GenericFormDataHandler(AuthRequestHandler):
+class SnsFormDataHandler(AuthRequestHandler):
+
+    """
+    Implements processing files uploaded via multipart/form-data,
+    for legacy Nettskjema.
+
+    """
 
     def initialize(self, backend: str) -> None:
-        try:
-            self.backend = backend
-            self.endpoint = self.request.uri.split('/')[3]
-            self.tenant = tenant_from_url(self.request.uri)
-            assert options.valid_tenant.match(self.tenant)
-            self.tenant_dir_pattern = options.config['backends']['disk'][backend]['import_path']
-            self.tsd_hidden_folder = None
-            if backend == 'sns':  # hope to deprecate this with new nettskjema integration
-                self.tsd_hidden_folder_pattern = options.config['backends']['disk'][backend]['subfolder_path']
-            self.request_hook = options.config['backends']['disk'][backend]['request_hook']
-            self.check_tenant = options.config['backends']['disk'][backend].get('check_tenant')
-            try:
-                disabled_group_config = {
-                    'enabled': False,
-                    'default_url_group': '',
-                    'default_memberships': [],
-                    'ensure_tenant_in_group_name': False,
-                    'valid_group_regex': None,
-                    'enforce_membership': False
-                }
-                self.group_config = options.config['backends']['disk'][backend]['group_logic']
-                if not self.group_config['enabled']:
-                    self.group_config = disabled_group_config
-            except Exception as e:
-                self.group_config = disabled_group_config
-        except (Exception, AssertionError) as e:
-            logging.error('could not initalize form data handler:')
-            logging.error(e)
-            logging.error(traceback.format_exc())
-
+        self.backend = backend
+        self.endpoint = self.request.uri.split('/')[3]
+        self.tenant = tenant_from_url(self.request.uri)
+        current_backend = options.config['backends']['disk'][backend]
+        self.tenant_dir_pattern = current_backend.get('import_path')
+        self.tsd_hidden_folder_pattern = current_backend.get('subfolder_path')
+        self.request_hook = current_backend.get('request_hook')
+        self.check_tenant = current_backend.get('check_tenant')
+        self.group_config = current_backend.get('group_logic', {
+                'enabled': False,
+                'default_url_group': '',
+                'default_memberships': [],
+                'ensure_tenant_in_group_name': False,
+                'valid_group_regex': None,
+                'enforce_membership': False,
+            }
+        )
 
     def prepare(self) -> Optional[Awaitable[None]]:
         try:
-            self.err = 'request failed'
+            if not options.valid_tenant.match(self.tenant):
+                raise ClientError(f"malformed tenant: {self.tenant}")
             if options.maintenance_mode_enabled:
-                self.set_status(503)
-                self.err = 'Service temporarily unavailable'
-                raise Exception
+                raise ServerMaintenanceError
             self.new_paths = []
             self.group_name = None
             self.authnz = self.process_token_and_extract_claims(
-                check_tenant=self.check_tenant if self.check_tenant is not None else options.check_tenant
-            )
+                check_tenant=self.check_tenant or options.check_tenant
+            ) # TODO: raise from ^
             if not self.authnz:
-                self.err = 'Unauthorized'
-                self.set_status(401)
-                raise Exception
+                raise ClientAuthorizationError
             if not self.request.files['file']:
-                self.err = 'No file(s) supplied with upload request'
-                logging.error(self.err)
-                self.set_status(400)
-                raise Exception
-            # check group logic here
-            try:
-                authnz_status = self.authnz
-                group_name, group_memberships = self.get_group_info(
-                    self.tenant, self.group_config, authnz_status
-                )
-                self.enforce_group_logic(
-                    group_name, group_memberships, self.tenant, self.group_config
-                )
-            except Exception as e:
-                self.err = 'group checks failed'
-                logging.error(e)
-                logging.error(self.err)
-                raise e
+                raise ClientError("No files included in the request")
+            group_name, group_memberships = self.get_group_info(
+                self.tenant, self.group_config, self.authnz,
+            )
+            self.enforce_group_logic(
+                group_name, group_memberships, self.tenant, self.group_config,
+            )
+        except ApiError as e:
+            logging.error(e.log_msg)
+            self.set_status(e.status.value)
+            self.finish()
         except Exception as e:
-            if self._status_code not in [401, 503]:
-                self.set_status(400)
+            logging.error(e) # unforseen errors, assume server issue
+            self.set_status(http.HTTPStatus.INTERNAL_SERVER_ERROR.value)
             self.finish()
 
-    def write_files(self, filemode: str, tenant: str) -> bool:
-        try:
-            for i in range(len(self.request.files['file'])):
-                filename = check_filename(self.request.files['file'][i]['filename'],
-                                          disallowed_start_chars=options.start_chars)
-                filebody = self.request.files['file'][i]['body']
-                if len(filebody) == 0:
-                    logging.error('Trying to upload an empty file: %s - not allowed, since nonsensical', filename)
-                    raise Exception('EmptyFileBodyError')
-                # add all optional parameters to file writer
-                # this is used for nettskjema specific backend
-                written = self.write_file(filemode, filename, filebody, tenant)
-                assert written
-            return True
-        except Exception as e:
-            logging.error(e)
-            logging.error('Could not process files')
-            return False
+    def write_files(self, filemode: str, tenant: str) -> None:
+        for current_file in self.request.files['file']:
+            filename = check_filename(
+                current_file['filename'],
+                disallowed_start_chars=options.start_chars,
+            )
+            filebody = current_file['body']
+            if len(filebody) == 0:
+                raise ClientError('empty file body')
+            self.write_file(filemode, filename, filebody, tenant)
 
+    def write_file(self, filemode: str, filename: str, filebody: bytes, tenant: str) -> None:
 
-    def write_file(self, filemode: str, filename: str, filebody: bytes, tenant: str) -> bool:
-        try:
-            if self.backend == 'sns':
+        # find storage backend preferences
+        _  = find_tenant_storage_path(self.tenant, self.backend, options) # update cache
+        tenant_sns_info = options.tenant_storage_cache.get(tenant, {}).get("sns", {})
+        use_hnas = tenant_sns_info.get("hnas", True)
+        use_ess = (
+            tenant_sns_info.get("ess")
+            and (tenant in options.sns_migrations or "all" in options.sns_migrations)
+        )
+        copy_to_ess = use_hnas and use_ess
 
-                # find storage backend preferences
-                _  = find_tenant_storage_path(self.tenant, self.backend, options) # update cache
-                tenant_sns_info = options.tenant_storage_cache.get(tenant, {}).get("sns", {})
-                use_hnas = tenant_sns_info.get("hnas", True)
-                use_ess = (
-                    tenant_sns_info.get("ess")
-                    and (tenant in options.sns_migrations or "all" in options.sns_migrations)
-                )
+        # create form directories where needed
+        tsd_hidden_folder = sns_dir(
+            self.tsd_hidden_folder_pattern,
+            tenant,
+            self.request.uri,
+            options.tenant_string_pattern,
+            options=options,
+            use_hnas=use_hnas,
+            use_ess=use_ess,
+        )
+        tenant_dir = sns_dir(
+            self.tenant_dir_pattern,
+            tenant,
+            self.request.uri,
+            options.tenant_string_pattern,
+            options=options,
+            use_hnas=use_hnas,
+            use_ess=use_ess,
+        )
 
-                # create form directories where needed
-                tsd_hidden_folder = sns_dir(
-                    self.tsd_hidden_folder_pattern,
-                    tenant,
-                    self.request.uri,
-                    options.tenant_string_pattern,
-                    options=options,
-                    use_hnas=use_hnas,
-                    use_ess=use_ess,
-                )
-                tenant_dir = sns_dir(
-                    self.tenant_dir_pattern,
-                    tenant,
-                    self.request.uri,
-                    options.tenant_string_pattern,
-                    options=options,
-                    use_hnas=use_hnas,
-                    use_ess=use_ess,
-                )
-            else:
-                tenant_dir = choose_storage(
-                    tenant=self.tenant,
-                    endpoint_backend=self.backend,
-                    opts=options,
-                    directory=self.tenant_dir_pattern.replace(options.tenant_string_pattern, tenant),
-                )
+        # ensure idempotent uploads
+        self.path = os.path.normpath(f"{tenant_dir}/{filename}")
+        self.path_part = f"{self.path}.{str(uuid4())}.part"
+        if os.path.lexists(self.path):
+            logging.debug(f'{self.path} exists, renaming to {self.path_part}')
+            os.rename(self.path, self.path_part)
 
-            # write the project-visible file
-            self.path = os.path.normpath(tenant_dir + '/' + filename)
-            self.path_part = self.path + '.' + str(uuid4()) + '.part'
-            if os.path.lexists(self.path_part):
-                logging.error('trying to write to partial file - killing request')
-                raise Exception
-            if os.path.lexists(self.path):
-                logging.info('%s already exists, renaming to %s', self.path, self.path_part)
-                os.rename(self.path, self.path_part)
-                assert os.path.lexists(self.path_part)
-                assert not os.path.lexists(self.path)
-            self.path, self.path_part = self.path_part, self.path
-            with open(self.path, filemode) as f:
-                f.write(filebody)
-                os.rename(self.path, self.path_part)
-                os.chmod(self.path_part, _RW_RW___)
+        # write to partial file, rename, set permissions
+        with open(self.path_part, filemode) as f:
+            f.write(filebody)
+            os.rename(self.path_part, self.path)
+            os.chmod(self.path, _RW_RW___)
 
-            # optionally copy to ESS (temporary)
-            if self.path_part.startswith("/tsd") and use_ess:
-                try:
-                    logging.info(f"copying {self.path_part} to ess")
-                    ess_path = options.tenant_storage_cache.get(tenant, {}).get("storage_paths", {}).get("ess")
-                    target = self.path_part.replace(f"/tsd/{self.tenant}/data/durable", ess_path)
-                    shutil.copy(self.path_part, target)
-                    os.chmod(target, _RW_RW___)
-                    self.new_paths.append(self.path_part)
-                except Exception as e:
-                    logging.error(e) # no need to abort yet
+        # now copy the origin file to the folder intended to data processing
+        subfolder_path = os.path.normpath(tsd_hidden_folder + '/' + filename)
+        shutil.copy(self.path, subfolder_path)
+        os.chmod(subfolder_path, _RW_RW___)
 
-            # now copy the origin file to the folder intended to data processing
-            if self.backend == 'sns':
-                subfolder_path = os.path.normpath(tsd_hidden_folder + '/' + filename)
-                try:
-                    shutil.copy(self.path_part, subfolder_path)
-                    os.chmod(subfolder_path, _RW_RW___)
-                    self.new_paths.append(subfolder_path)
-                    # optionally copy to ESS (temporary)
-                    if subfolder_path.startswith("/tsd") and use_ess:
-                        try:
-                            logging.info(f"copying {self.path_part} to ess")
-                            target = subfolder_path.replace(f"/tsd/{self.tenant}/data/durable", ess_path)
-                            shutil.copy(self.path_part, target)
-                            os.chmod(target, _RW_RW___)
-                        except Exception as e:
-                            logging.error(e) # no need to abort yet
-                except Exception as e:
-                    logging.error(e)
-                    logging.error('Could not copy file %s to .tsd folder', self.path_part)
-                    return False
-            return True
-        except ServerStorageTemporarilyUnavailableError as e:
-            raise e
-        except Exception as e:
-            logging.error(e)
-            logging.error('Could not write to file')
-            return False
+        if copy_to_ess:
+            try:
+                ess_path = options.tenant_storage_cache.get(tenant, {}).get("storage_paths", {}).get("ess")
+                hnas_durable = f"/tsd/{self.tenant}/data/durable"
+
+                # 1. project-visible file
+                target = self.path.replace(hnas_durable, ess_path)
+                logging.info(f"copying {target} to ess")
+                shutil.copy(self.path, target)
+                os.chmod(target, _RW_RW___)
+
+                # 2. data processing file
+                target = subfolder_path.replace(hnas_durable, ess_path)
+                logging.info(f"copying {target} to ess")
+                shutil.copy(self.path, target)
+                os.chmod(target, _RW_RW___)
+            except Exception as e:
+                logging.error(e) # no need to abort yet
 
     def on_finish(self) -> None:
-        if self.request.method in ('PUT', 'POST', 'PATCH'):
-            try:
-                if self.request_hook['enabled']:
-                    for path in self.new_paths:
-                        call_request_hook(self.request_hook['path'],
-                                          [path, self.requestor, options.api_user, self.group_name],
-                                          as_sudo=self.request_hook['sudo'])
-            except Exception as e:
-                logging.error(e)
-
-
-
-class FormDataHandler(GenericFormDataHandler):
+        if (
+            self.request.method in ('PUT', 'POST', 'PATCH')
+            and self.request_hook.get('enabled')
+        ):
+            for path in self.new_paths:
+                call_request_hook(
+                    self.request_hook['path'],
+                    [path, self.requestor, options.api_user, self.group_name],
+                    as_sudo=self.request_hook['sudo'],
+                )
 
     def handle_data(self, filemode: str, tenant: str) -> None:
         try:
-            assert self.write_files(filemode, tenant)
+            self.write_files(filemode, tenant)
             self.set_status(201)
             self.write({'message': 'data uploaded'})
         except ServerStorageTemporarilyUnavailableError:
             self.set_header("X-Project-Storage", "Migrating")
             self.set_status(503, reason="Project Storage Migrating")
             self.write({"message": "Project Storage Migrating"})
-        except Exception:
-            self.set_status(400)
+        except ApiError as e:
+            logging.error(e.log_msg)
+            self.set_status(e.status.value)
+            self.write({"message": e.log_msg})
+        except Exception as e:
+            logging.error(e)
+            self.set_status(http.HTTPStatus.INTERNAL_SERVER_ERROR.value)
             self.write({'message': 'could not upload data'})
-
-    def post(self, tenant: str) -> None:
-        self.handle_data('ab+', tenant)
-
-    def patch(self, tenant: str) -> None:
-        self.handle_data('ab+', tenant)
-
-    def put(self, tenant: str) -> None:
-        self.handle_data('wb+', tenant)
-
-    def head(self, tenant: str) -> None:
-        self.set_status(201)
-
-
-class SnsFormDataHandler(GenericFormDataHandler):
-
-    def handle_data(self, filemode: str, tenant: str) -> None:
-        try:
-            assert self.write_files(filemode, tenant)
-            self.set_status(201)
-            self.write({'message': 'data uploaded'})
-        except ServerStorageTemporarilyUnavailableError:
-            self.set_header("X-Project-Storage", "Migrating")
-            self.set_status(503, reason="Project Storage Migrating")
-            self.write({"message": "Project Storage Migrating"})
-        except Exception:
-            self.set_status(400)
-            self.write({'message': 'could not upload data'})
-
-    def post(self, tenant: str, keyid: str, formid: str) -> None:
-        self.handle_data('ab+', tenant)
-
-    def patch(self, tenant: str, keyid: str, formid: str) -> None:
-        self.handle_data('ab+', tenant)
 
     def put(self, tenant: str, keyid: str, formid: str) -> None:
         self.handle_data('wb+', tenant)
-
-    def head(self, tenant: str, keyid: str, formid: str) -> None:
-        self.set_status(201)
 
 
 class ResumablesHandler(AuthRequestHandler):
@@ -2920,7 +2838,6 @@ class Backends(object):
             ('/v1/(.*)/survey', GenericTableHandler, dict(backend='survey')),
         ],
         'form_data': [
-            ('/v1/(.*)/files/upload', FormDataHandler, dict(backend='form_data')),
             ('/v1/(.*)/sns/(.*)/(.*)', SnsFormDataHandler, dict(backend='sns')),
         ],
         'publication': [
