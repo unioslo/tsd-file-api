@@ -1,5 +1,6 @@
 # -*- coding: utf-8 -*-
 
+import errno
 import os
 import re
 import logging
@@ -208,7 +209,10 @@ def sns_dir(
                 os.chmod(hnas_sns_dir, _rwxrws___())
                 logging.info(f'Created: {hnas_sns_dir}')
             except OSError as e:
-                raise ServerStorageNotMountedError(f"NFS mount missing for {tenant}") from e
+                if e.errno == errno.ENOENT:
+                    raise ServerStorageNotMountedError(f"NFS mount missing for {tenant}") from e
+                else:
+                    raise e
             except Exception as e:
                 logging.error(e)
                 logging.error(f"Could not create {hnas_sns_dir}")
@@ -234,7 +238,10 @@ def sns_dir(
                     os.chmod(ess_sns_dir, _rwxrws___())
                     logging.info(f"Created: {ess_sns_dir}")
             except OSError as e:
-                raise ServerStorageNotMountedError(f"NFS mount missing for {ess_path}") from e
+                if e.errno == errno.ENOENT:
+                    raise ServerStorageNotMountedError(f"NFS mount missing for {ess_path}") from e
+                else:
+                    raise e
             except Exception as e:
                 logging.error(e)
                 logging.error(f"Could not create {ess_sns_dir}")
