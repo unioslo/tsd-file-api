@@ -12,7 +12,6 @@ designed for the University of Oslo's Services for Sensitive Data (TSD).
 import base64
 import datetime
 import hashlib
-import http
 import json
 import logging
 import os
@@ -27,9 +26,10 @@ import time
 import traceback
 
 from collections import OrderedDict
-from uuid import uuid4
+from http import HTTPStatus
 from sys import argv
 from typing import Union, Optional, Awaitable, Callable, Any
+from uuid import uuid4
 
 import libnacl.sealed
 import libnacl.public
@@ -711,7 +711,7 @@ class SnsFormDataHandler(AuthRequestHandler):
             self.finish()
         except Exception as e:
             logging.error(e) # unforseen errors, assume server issue
-            self.set_status(http.HTTPStatus.INTERNAL_SERVER_ERROR.value)
+            self.set_status(HTTPStatus.INTERNAL_SERVER_ERROR.value)
             self.finish()
 
     def write_files(self, filemode: str, tenant: str) -> None:
@@ -809,11 +809,11 @@ class SnsFormDataHandler(AuthRequestHandler):
     def handle_data(self, filemode: str, tenant: str) -> None:
         try:
             self.write_files(filemode, tenant)
-            self.set_status(201)
+            self.set_status(HTTPStatus.CREATED)
             self.write({'message': 'data uploaded'})
         except ServerStorageTemporarilyUnavailableError:
             self.set_header("X-Project-Storage", "Migrating")
-            self.set_status(503, reason="Project Storage Migrating")
+            self.set_status(HTTPStatus.SERVICE_UNAVAILABLE, reason="Project Storage Migrating")
             self.write({"message": "Project Storage Migrating"})
         except ApiError as e:
             logging.error(e.log_msg)
@@ -821,7 +821,7 @@ class SnsFormDataHandler(AuthRequestHandler):
             self.write({"message": e.log_msg})
         except Exception as e:
             logging.error(e)
-            self.set_status(http.HTTPStatus.INTERNAL_SERVER_ERROR.value)
+            self.set_status(HTTPStatus.INTERNAL_SERVER_ERROR.value)
             self.write({'message': 'could not upload data'})
 
     def put(self, tenant: str, keyid: str, formid: str) -> None:
@@ -873,18 +873,11 @@ class ResumablesHandler(AuthRequestHandler):
     """
 
     def initialize(self, backend: str) -> None:
-        try:
-            self.backend = backend
-            self.endpoint = self.request.uri.split('/')[3]
-            self.tenant = tenant_from_url(self.request.uri)
-            assert options.valid_tenant.match(self.tenant)
-            self.import_dir_pattern = options.config['backends']['disk'][backend]['import_path']
-            self.check_tenant = options.config['backends']['disk'][backend].get('check_tenant')
-        except (AssertionError, Exception) as e:
-            logging.error('Could not initialize resumables handler')
-            logging.error(e)
-            raise e
-
+        self.backend = backend
+        self.endpoint = self.request.uri.split('/')[3]
+        self.tenant = tenant_from_url(self.request.uri)
+        self.import_dir_pattern = options.config['backends']['disk'][backend]['import_path']
+        self.check_tenant = options.config['backends']['disk'][backend].get('check_tenant')
 
     def prepare(self) -> Optional[Awaitable[None]]:
         try:
@@ -895,94 +888,78 @@ class ResumablesHandler(AuthRequestHandler):
                 directory=self.import_dir_pattern.replace(options.tenant_string_pattern, self.tenant),
             )
             if options.maintenance_mode_enabled:
-                self.set_status(503)
-                self.err = 'Service temporarily unavailable'
-                raise Exception(self.err)
+                raise ServerMaintenanceError
             self.authnz = self.process_token_and_extract_claims(
-                check_tenant=self.check_tenant if self.check_tenant is not None else options.check_tenant
+                check_tenant=self.check_tenant or options.check_tenant
             )
-            self.err = 'Unauthorized'
+            if not self.authnz:
+                raise ClientAuthorizationError
         except ServerStorageTemporarilyUnavailableError:
             self.set_header("X-Project-Storage", "Migrating")
-            self.set_status(503, reason="Project Storage Migrating")
+            self.set_status(HTTPStatus.SERVICE_UNAVAILABLE, reason="Project Storage Migrating")
+            self.finish()
+        except ApiError as e:
+            logging.error(e.log_msg)
+            self.set_status(e.status.value)
             self.finish()
         except Exception as e:
             self.finish()
-
 
     def get(self, tenant: str, filename: str = None) -> None:
-        self.message = {
-            'filename': filename,
-            'id': None,
-            'chunk_size': None,
-            'max_chunk': None,
-            'md5sum': None,
-            'previous_offset': None,
-            'next_offset': None,
-            'warning': None,
-            'group': None,
-            'key': None
-        }
-        upload_id = None
-        status = None
         try:
-            try:
-                if filename:
-                    secured_filename = check_filename(
-                        url_unescape(filename), disallowed_start_chars=options.start_chars
-                    )
-            except Exception:
-                logging.error('not able to check for resumable due to bad input')
-                raise Exception
-            try:
-                upload_id = url_unescape(self.get_query_argument('id'))
-            except Exception:
-                upload_id = None
-            try:
-                key = url_unescape(self.get_query_argument('key'))
-            except Exception:
-                key = None
+            upload_id = url_unescape(self.get_query_argument('id', ''))
+            key = url_unescape(self.get_query_argument('key', ''))
             res = SerialResumable(self.tenant_dir, self.requestor)
-            if not filename:
+            if not filename or not upload_id:
                 info = res.list_all(self.tenant_dir, self.requestor, key=key)
             else:
-                try:
-                    info = res.info(
-                        self.tenant_dir, secured_filename, upload_id, self.requestor, key=key
-                    )
-                except ResumableNotFoundError as e:
-                    status = 404
-                    raise e
-            self.set_status(200)
+                info = res.info(
+                    self.tenant_dir, filename, upload_id, self.requestor, key=key,
+                )
+            self.set_status(HTTPStatus.OK)
             self.write(info)
+        except ResumableNotFoundError as e:
+            self.set_status(HTTPStatus.NOT_FOUND.value)
+            self.write({"message": "not found"})
         except Exception as e:
             logging.error(e)
-            status = 400 if not status else status
-            self.set_status(status)
-            self.write(self.message)
-
+            self.set_status(HTTPStatus.INTERNAL_SERVER_ERROR.value)
+            self.write(
+                {
+                    'filename': filename,
+                    'id': None,
+                    'chunk_size': None,
+                    'max_chunk': None,
+                    'md5sum': None,
+                    'previous_offset': None,
+                    'next_offset': None,
+                    'warning': None,
+                    'group': None,
+                    'key': None,
+                }
+            )
 
     def delete(self, tenant: str, filename: str) -> None:
-        self.message = {'message': 'cannot delete resumable'}
         try:
-            try:
-                secured_filename = check_filename(url_unescape(filename),
-                                                  disallowed_start_chars=options.start_chars)
-            except Exception:
-                logging.error('not able to check for resumable due to bad input')
-                raise Exception
-            try:
-                upload_id = url_unescape(self.get_query_argument('id'))
-            except Exception:
-                raise Exception('upload id required to delete resumable')
+            upload_id = url_unescape(self.get_query_argument('id'))
             res = SerialResumable(self.tenant_dir, self.requestor)
-            assert res.delete(self.tenant_dir, filename, upload_id, self.requestor)
-            self.set_status(200)
+            if not res.delete(self.tenant_dir, filename, upload_id, self.requestor):
+                # TODO: raise from ^
+                raise ClientAuthorizationError("resumable access denied")
+            self.set_status(HTTPStatus.OK)
             self.write({'message': 'resumable deleted'})
+        except AttributeError as e:
+            logging.error(e)
+            self.set_status(HTTPStatus.BAD_REQUEST.value)
+            self.write({'message': 'missing id query parameter'})
+        except ApiError as e:
+            logging.error(e.log_msg)
+            self.set_status(e.status.value)
+            self.write({'message': 'cannot delete resumable'})
         except Exception as e:
             logging.error(e)
-            self.set_status(400)
-            self.write(self.message)
+            self.set_status(HTTPStatus.INTERNAL_SERVER_ERROR.value)
+            self.write({'message': 'cannot delete resumable'})
 
 
 @stream_request_body
