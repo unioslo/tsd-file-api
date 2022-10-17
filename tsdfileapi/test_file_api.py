@@ -238,7 +238,7 @@ class TestFileApi(unittest.TestCase):
 
     def check_endpoints(self, headers: dict) -> None:
         files = {'file': ('example.csv', open(self.example_csv))}
-        for url in [self.upload, self.stream, self.upload]:
+        for url in [self.stream]:
             resp = requests.put(url, headers=headers, files=files)
             self.assertEqual(resp.status_code, 401)
             resp = requests.post(url, headers=headers, files=files)
@@ -358,20 +358,6 @@ class TestFileApi(unittest.TestCase):
     # Informational
     #--------------
 
-    def test_N_head_on_uploads_fails_when_it_should(self) -> None:
-        resp1 = requests.head(self.upload)
-        resp2 = requests.head(self.upload,
-                              headers={'Authorization': 'Bearer ' + TEST_TOKENS['VALID']})
-        self.assertEqual(resp1.status_code, 401)
-        self.assertEqual(resp2.status_code, 400)
-
-
-    def test_O_head_on_uploads_succeeds_when_conditions_are_met(self) -> None:
-        files = {'file': ('example.csv', open(self.example_csv))}
-        headers = {'Authorization': 'Bearer ' + TEST_TOKENS['VALID']}
-        resp = requests.head(self.upload, headers=headers, files=files)
-        self.assertEqual(resp.status_code, 201)
- 
 
     def test_W_create_and_insert_into_generic_table(self) -> None:
         # TODO: harden these tests - check return values
@@ -1150,7 +1136,6 @@ class TestFileApi(unittest.TestCase):
             upload_id=upload_id,
             dev_url=url,
         )
-        self.assertEqual(resp, None)
         res = SerialResumable(self.uploads_folder, 'p11-import_user')
         res._db_remove_completed_for_owner(upload_id)
 
@@ -1302,7 +1287,7 @@ class TestFileApi(unittest.TestCase):
         # ensuere user B cannot delete user A's resumable
         url = '%s/%s?id=%s' % (self.resumables, filename, upload_id1)
         resp = requests.delete(url, headers={'Authorization': 'Bearer ' + new_user_token})
-        self.assertEqual(resp.status_code, 400)
+        self.assertEqual(resp.status_code, 403)
         uploaded_folder1 = self.uploads_folder + '/' + upload_id1
         merged_file1 = self.uploads_folder + '/' + filename + '.' + upload_id1
         uploaded_folder2 = self.uploads_folder + '/' + upload_id2
@@ -2296,9 +2281,6 @@ def main() -> None:
         # authz
         'test_D_timed_out_token_rejected',
         'test_E_unauthenticated_request_rejected',
-        # head
-        'test_N_head_on_uploads_fails_when_it_should',
-        'test_O_head_on_uploads_succeeds_when_conditions_are_met',
         # tenant logic
         'test_Y_invalid_project_number_rejected',
         'test_Z_token_for_other_project_rejected',
