@@ -910,7 +910,7 @@ class ResumablesHandler(AuthRequestHandler):
             upload_id = url_unescape(self.get_query_argument('id', ''))
             key = url_unescape(self.get_query_argument('key', ''))
             res = SerialResumable(self.tenant_dir, self.requestor)
-            if not filename or not upload_id:
+            if not filename:
                 info = res.list_all(self.tenant_dir, self.requestor, key=key)
             else:
                 info = res.info(
