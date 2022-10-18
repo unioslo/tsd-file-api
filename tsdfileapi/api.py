@@ -916,7 +916,7 @@ class ResumablesHandler(AuthRequestHandler):
                 info = res.info(
                     self.tenant_dir, filename, upload_id, self.requestor, key=key,
                 )
-            self.set_status(HTTPStatus.OK)
+            self.set_status(HTTPStatus.OK.value)
             self.write(info)
         except ResumableNotFoundError as e:
             self.set_status(HTTPStatus.NOT_FOUND.value)
