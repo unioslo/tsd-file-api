@@ -809,11 +809,11 @@ class SnsFormDataHandler(AuthRequestHandler):
     def handle_data(self, filemode: str, tenant: str) -> None:
         try:
             self.write_files(filemode, tenant)
-            self.set_status(HTTPStatus.CREATED)
+            self.set_status(HTTPStatus.CREATED.value)
             self.write({'message': 'data uploaded'})
         except ServerStorageTemporarilyUnavailableError:
             self.set_header("X-Project-Storage", "Migrating")
-            self.set_status(HTTPStatus.SERVICE_UNAVAILABLE, reason="Project Storage Migrating")
+            self.set_status(HTTPStatus.SERVICE_UNAVAILABLE.value, reason="Project Storage Migrating")
             self.write({"message": "Project Storage Migrating"})
         except ApiError as e:
             logging.error(e.log_msg)
@@ -896,7 +896,7 @@ class ResumablesHandler(AuthRequestHandler):
                 raise ClientAuthorizationError
         except ServerStorageTemporarilyUnavailableError:
             self.set_header("X-Project-Storage", "Migrating")
-            self.set_status(HTTPStatus.SERVICE_UNAVAILABLE, reason="Project Storage Migrating")
+            self.set_status(HTTPStatus.SERVICE_UNAVAILABLE.value, reason="Project Storage Migrating")
             self.finish()
         except ApiError as e:
             logging.error(e.log_msg)
