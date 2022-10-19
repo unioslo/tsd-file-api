@@ -64,6 +64,9 @@ from exc import (
     ApiError,
     ClientError,
     ClientAuthorizationError,
+    ClientReservedResourceError,
+    ClientGroupAccessError,
+    ClientNaclChunkSizeError,
     ServerStorageTemporarilyUnavailableError,
     ServerMaintenanceError,
 )
@@ -246,53 +249,35 @@ class AuthRequestHandler(RequestHandler):
         """
         self.status = None
         try:
-            try:
-                auth_header = self.request.headers['Authorization']
-            except (KeyError, UnboundLocalError) as e:
-                self.message = 'Missing authorization header'
-                logging.error(self.message)
-                self.set_status(400)
-                raise Exception('Authorization not possible: missing header')
-            try:
-                self.jwt = auth_header.split(' ')[1]
-            except IndexError as e:
-                self.message = 'Malformed authorization header'
-                logging.error(self.message)
-                self.set_status(400)
-                raise Exception('Authorization not possible: malformed header')
-            try:
-                tenant = tenant_from_url(self.request.uri)
-                assert options.valid_tenant.match(tenant)
-                self.tenant = tenant
-            except AssertionError as e:
-                logging.error(e.message)
-                logging.error('tenant invalid')
-                self.set_status(400)
-                raise e
-            try:
-                authnz = process_access_token(
-                    auth_header,
-                    tenant,
-                    check_tenant,
-                    check_exp,
-                    tenant_claim_name,
-                    verify_with_secret
-                )
-                if not authnz.get('status'):
-                    self.set_status(401)
-                    raise Exception('JWT verification failed')
-                self.claims = authnz.get('claims')
-                self.requestor = self.claims[options.requestor_claim_name]
-                return authnz
-            except Exception as e:
-                self.message = authnz['reason']
-                logging.error(e)
-                self.set_status(401)
-                raise Exception('Authorization failed')
+            auth_header = self.request.headers.get('Authorization')
+            if not auth_header:
+                raise ClientAuthorizationError('Authorization not possible: missing header')
+            self.jwt = auth_header.split(' ')[1]
+
+            tenant = tenant_from_url(self.request.uri)
+            if not options.valid_tenant.match(tenant):
+                raise ClientError(f"invalid tenant: {tenant}")
+            self.tenant = tenant
+
+            authnz = process_access_token(
+                auth_header,
+                tenant,
+                check_tenant,
+                check_exp,
+                tenant_claim_name,
+                verify_with_secret
+            )
+            if not authnz.get('status'):
+                raise ClientAuthorizationError('JWT verification failed')
+            self.claims = authnz.get('claims')
+            self.requestor = self.claims[options.requestor_claim_name]
+            return authnz
+        except IndexError as e:
+            raise ClientAuthorizationError('Authorization not possible: malformed header')
         except Exception as e:
-            if not self.status:
-                self.set_status(401)
-            raise Exception
+            logging.error(e)
+            raise ClientAuthorizationError('Authorization failed')
+
 
     def get_group_info(self, tenant: str, group_config: dict, authnz_status: dict) -> tuple:
         """
@@ -345,25 +330,16 @@ class AuthRequestHandler(RequestHandler):
         """
         if not group_config['enabled']:
             return
-        try:
-            if group_config['valid_group_regex']:
-                is_valid_groupname = re.compile(r'{}'.format(group_config['valid_group_regex']))
-                assert is_valid_groupname.match(group_name)
-        except (AssertionError, Exception) as e:
-            logging.error('invalid group name: %s', group_name)
-            raise e
-        try:
-            if group_config['ensure_tenant_in_group_name']:
-                assert tenant in group_name
-        except (AssertionError, Exception) as e:
-            logging.error('tenant %s not in group name: %s', tenant, group_name)
-            raise e
-        try:
-            if group_config['enforce_membership']:
-                assert group_name in group_memberships
-        except (AssertionError, Exception) as e:
-            logging.error(f'user not member of {group_name}')
-            raise e
+        if group_config['valid_group_regex']:
+            is_valid_groupname = re.compile(r'{}'.format(group_config['valid_group_regex']))
+            if not is_valid_groupname.match(group_name):
+                raise ClientGroupAccessError(f"Invalid group name: {group_name}")
+        if group_config['ensure_tenant_in_group_name']:
+            if tenant not in group_name:
+                raise ClientGroupAccessError(f"tenant: {tenant} not in group name: {group_name}")
+        if group_config['enforce_membership']:
+            if group_name not in group_memberships:
+                raise ClientGroupAccessError(f"group: {group_name} not in memberships: {group_memberships}")
 
     def is_reserved_resource(self, work_dir: str, resource: str) -> bool:
         """
@@ -387,16 +363,16 @@ class AuthRequestHandler(RequestHandler):
         bool
 
         """
-        resource_dir = resource.split('/')[0]
+        resource_dir = resource.split('/')[0] if "/" in resource else resource
         if resource.startswith('.resumables-') and resource.endswith('.db'):
             logging.error(f'resumable dbs not accessible {resource}')
-            return False
+            return True
         elif re.match(r'(.+)\.([a-f\d0-9-]{32,36})$', resource):
             logging.error('merged resumable files not accessible')
-            return False
+            return True
         elif re.match(r'(.+).([a-f\d0-9-]{32,36}).part$', resource):
             logging.error('partial upload files not accessible')
-            return False
+            return True
         elif VALID_UUID.match(resource_dir):
             potential_target = os.path.normpath(f'{work_dir}/{resource_dir}')
             if os.path.lexists(potential_target) and os.path.isdir(potential_target):
@@ -404,8 +380,8 @@ class AuthRequestHandler(RequestHandler):
                 for entry in content:
                     if re.match(r'(.+).chunk.[0-9]+$', entry):
                         logging.error(f'resumable directories not accessible {entry}')
-                        return False
-        return True
+                        return True
+        return False
 
     def handle_mq_publication(self, mq_config: dict = None, data: dict = None) -> None:
         """
@@ -694,9 +670,7 @@ class SnsFormDataHandler(AuthRequestHandler):
             self.group_name = None
             self.authnz = self.process_token_and_extract_claims(
                 check_tenant=self.check_tenant or options.check_tenant
-            ) # TODO: raise from ^
-            if not self.authnz:
-                raise ClientAuthorizationError
+            )
             if not self.request.files['file']:
                 raise ClientError("No files included in the request")
             group_name, group_memberships = self.get_group_info(
@@ -892,8 +866,6 @@ class ResumablesHandler(AuthRequestHandler):
             self.authnz = self.process_token_and_extract_claims(
                 check_tenant=self.check_tenant or options.check_tenant
             )
-            if not self.authnz:
-                raise ClientAuthorizationError
         except ServerStorageTemporarilyUnavailableError:
             self.set_header("X-Project-Storage", "Migrating")
             self.set_status(HTTPStatus.SERVICE_UNAVAILABLE.value, reason="Project Storage Migrating")
@@ -946,7 +918,7 @@ class ResumablesHandler(AuthRequestHandler):
             if not res.delete(self.tenant_dir, filename, upload_id, self.requestor):
                 # TODO: raise from ^
                 raise ClientAuthorizationError("resumable access denied")
-            self.set_status(HTTPStatus.OK)
+            self.set_status(HTTPStatus.OK.value)
             self.write({'message': 'resumable deleted'})
         except AttributeError as e:
             logging.error(e)
@@ -1111,10 +1083,15 @@ class FileRequestHandler(AuthRequestHandler):
         self.path = None
         self.path_part = None
         self.chunk_order_correct = True
-        self.chunk_num = None
         self.on_finish_called = False
+        self.listing_dir = False
+        self.filename = None
+        self.chunk_num = None
+        filemode = "wb+"
         try:
-            # 0. Service availability
+            if options.maintenance_mode_enabled:
+                raise ServerMaintenanceError
+
             self.export_dir = choose_storage(
                 tenant=self.tenant,
                 endpoint_backend=self.backend,
@@ -1133,138 +1110,82 @@ class FileRequestHandler(AuthRequestHandler):
                 opts=options,
                 directory=self.import_dir_pattern.replace(options.tenant_string_pattern, self.tenant),
             )
-            if options.maintenance_mode_enabled:
-                self.set_status(503)
-                self.error = 'Service temporarily unavailable'
-                raise Exception(self.error)
 
-            # 1. check method supported
-            try:
-                if self.request.method == 'POST':
-                    self.set_status(405)
-                    self.error = 'POST not supported'
-                    logging.error(self.error)
-                    raise Exception
-                self.listing_dir = False
-            except Exception as e:
-                logging.error('Could not set up internal async variables')
-                raise e
-            # 2. Authentication and authorization
-            try:
-                self.authnz = self.process_token_and_extract_claims(
-                    check_tenant=self.check_tenant if self.check_tenant is not None else options.check_tenant
-                )
-            except Exception as e:
-                self.error = 'Access token invalid'
-                logging.error(self.error)
-                raise e
-            # 3. Validate tenant identifier in URI
-            try:
-                tenant = tenant_from_url(self.request.uri)
-                assert options.valid_tenant.match(tenant)
-                self.tenant = tenant
-            except AssertionError as e:
-                self.error = 'URI does not contain a valid tenant'
-                logging.error(self.error)
-                raise e
-            # 4. Set the filename
-            try:
-                uri = self.request.uri.split('?')[0]
-                uri_parts = self.request.uri.split('?')[0].split('/')
-                if len(uri_parts) >= 6:
-                    basename = uri_parts[-1]
-                    filename = basename.split('?')[0]
-                    self.filename = check_filename(url_unescape(filename),
-                                                   disallowed_start_chars=options.start_chars)
-                else:
-                    if self.request.method in ('PUT', 'PATCH'):
-                        logging.warning('legacy Filename header used')
-                        try:
-                            self.filename = check_filename(self.request.headers['Filename'],
-                                                           disallowed_start_chars=options.start_chars)
-                        except KeyError:
-                            self.filename = datetime.datetime.now().isoformat() + '.txt'
-                        uri_parts.append(self.filename)
-                        # inject the filename into the uri
-                        if '?' in uri:
-                            uri = uri.replace('?', f'{self.filename}?')
-                        else:
-                            uri = f'{uri}/{self.filename}'
-                    else:
-                        self.filename = None # do not need it here
-            except Exception as e:
-                self.error = f'could not process URI {uri}'
-                logging.error(e)
-                logging.error(self.error)
-                raise Exception
-            # 5. ensure resource is not reserved
-            try:
-                delimiter = self.endpoint if self.endpoint else self.namespace
-                resource = uri.split(f'/{delimiter}/')[-1]
-                if self.request.method in ('GET', 'HEAD', 'DELETE'):
-                    work_dir = self.export_dir
-                elif self.request.method in ('PUT', 'PATCH'):
-                    work_dir = self.import_dir
-                if resource == uri:
-                    pass # cannot be reserved, no need to check
-                else:
-                    assert self.is_reserved_resource(work_dir, url_unescape(resource))
-            except (AssertionError, Exception) as e:
-                self.error = f'reserved resource name {resource}'
-                logging.error(self.error)
-                self.set_status(400)
-                raise Exception
-            # 6. Validate groups
-            try:
-                group_name, group_memberships = self.get_group_info(tenant, self.group_config, self.authnz)
-                self.enforce_group_logic(group_name, group_memberships, tenant, self.group_config)
-            except Exception as e:
-                self.error = 'failed group check'
-                logging.error(e)
-                logging.error(self.error)
-                raise e
-            # 7. Set headers for internal request
-            try:
-                header_keys = self.request.headers.keys()
-                if 'Content-Type' not in header_keys:
-                    content_type = 'application/octet-stream'
-                    self.request.headers['Content-Type'] = 'application/octet-stream'
-                elif 'Content-Type' in header_keys:
-                    content_type = self.request.headers['Content-Type']
-                    if content_type == 'application/octet-stream+nacl':
-                        required_nacl_headers = ['Nacl-Key', 'Nacl-Nonce', 'Nacl-Chunksize']
-                        for required_nacl_header in required_nacl_headers:
-                            if required_nacl_header not in header_keys:
-                                logging.error(f'missing {required_nacl_header}')
-                                raise Exception
-                        if int(self.request.headers['Nacl-Chunksize']) > options.max_nacl_chunksize:
-                            self.error = f'Nacl-Chunksize larger than max allowed: {options.max_nacl_chunksize}'
-                            logging.error(self.error)
-                            raise Exception
-            except Exception as e:
-                logging.error(e)
-                logging.error(self.error)
-                raise e
-            # 8. URL processing
-            # 8.1 collect params
-            upload_id, chunk_num = None, None
-            try:
-                chunk_num = url_unescape(self.get_query_argument('chunk'))
-            except Exception:
-                pass
-            self.chunk_num = chunk_num # used in on_finish
-            try:
-                upload_id = url_unescape(self.get_query_argument('id'))
-            except Exception:
-                pass
-            # 8.2 enfore group logic, if enabled
+            self.authnz = self.process_token_and_extract_claims(
+                check_tenant=self.check_tenant or options.check_tenant
+            )
+
+            tenant = tenant_from_url(self.request.uri)
+            if not options.valid_tenant.match(tenant):
+                raise ClientAuthorizationError('URI does not contain a valid tenant')
+            self.tenant = tenant
+
+            uri = self.request.uri.split('?')[0]
+            uri_parts = uri.split('/')
+            if uri.endswith("/files/stream") and self.request.method in ['PUT', 'PATCH']:
+                # Some legacy clients might not include the filename in the URL
+                # but instead in the Filename header :(
+                logging.warning(f'legacy Filename header used: {self.request.uri}')
+                filename = self.request.headers.get('Filename', f"{datetime.datetime.now().isoformat()}.txt")
+                uri_parts.append(filename)
+                uri = f'{uri}/{filename}'
+            else:
+                filename = uri_parts[-1]
+
+            self.filename = check_filename(
+                url_unescape(filename),
+                disallowed_start_chars=options.start_chars,
+            ) if filename else None
+
+            # ensure resource is not reserved
+            delimiter = self.endpoint or self.namespace
+            resource_parts = uri.split(f'/{delimiter}/')
+            resource = resource_parts[-1] if resource_parts else None
+            if self.request.method in ('GET', 'HEAD', 'DELETE'):
+                work_dir = self.export_dir
+            elif self.request.method in ('PUT', 'PATCH'):
+                work_dir = self.import_dir
+            elif not resource and self.request.method == "DELETE":
+                raise ClientError("no resource to delete")
+            if resource == uri:
+                pass # cannot be reserved, no need to check
+            else:
+                if resource and self.is_reserved_resource(work_dir, url_unescape(resource)):
+                    raise ClientReservedResourceError(f"{resource} name not allowed")
+
+
+            # Check headers
+            header_keys = self.request.headers.keys()
+            if 'Content-Type' not in header_keys:
+                content_type = 'application/octet-stream'
+                self.request.headers['Content-Type'] = 'application/octet-stream'
+            elif 'Content-Type' in header_keys:
+                content_type = self.request.headers['Content-Type']
+
+            if content_type == 'application/octet-stream+nacl':
+                required_nacl_headers = ['Nacl-Key', 'Nacl-Nonce', 'Nacl-Chunksize']
+                for required_nacl_header in required_nacl_headers:
+                    if required_nacl_header not in header_keys:
+                        raise ClientError(f'missing {required_nacl_header}')
+                if int(self.request.headers['Nacl-Chunksize']) > options.max_nacl_chunksize:
+                    raise ClientNaclChunkSizeError(
+                        f'Nacl-Chunksize larger than max allowed: {options.max_nacl_chunksize}'
+                    )
+
+            # Validate groups, and group logic
+            group_name, group_memberships = self.get_group_info(tenant, self.group_config, self.authnz)
+            self.enforce_group_logic(group_name, group_memberships, tenant, self.group_config)
+            self.group_name = group_name
+
             if self.group_config['enabled'] and self.request.method in ['PUT', 'PATCH']:
-                # 8.2.1 if a directory is present, and not the same as the group
-                if url_unescape(uri_parts[5]) != self.filename and uri_parts[5] != group_name:
-                    logging.error(f'inconsistent group permissions {group_name} != ' + uri_parts[5])
-                    raise Exception
-                # 8.2.2 if group folder not in url, inject it from group_name
-                if url_unescape(uri_parts[5]) == self.filename:
+                # if a directory is present, and not the same as the group
+                uri_group_name = uri_parts[5]
+                if url_unescape(uri_group_name) != self.filename and uri_group_name != group_name:
+                    raise ClientGroupAccessError(
+                        f'inconsistent group permissions {group_name} != {uri_group_name}'
+                    )
+                # if group folder not in url, inject it from group_name
+                if url_unescape(uri_group_name) == self.filename:
                     # inject appropriate value - until clients have transitioned
                     file = url_escape(self.filename)
                     resource = f'{group_name}/{file}'
@@ -1272,157 +1193,115 @@ class FileRequestHandler(AuthRequestHandler):
                 # then we are operating in the TSD import directory
                 if not self.filename and len(uri_parts) == 5: # no folder given
                     resource = work_dir # root dir
-            # 9. handle incoming data
+
             self.resource = resource
             if self.request.method in ('PUT', 'PATCH'):
-                try:
-                    filemodes = {'PUT': 'wb+', 'PATCH': 'wb+'}
-                    try:
-                        # 9.1 get group param
-                        try:
-                            self.group_name = url_unescape(self.get_query_argument('group'))
-                        except Exception:
-                            self.group_name = tenant + '-member-group'
-                        filemode = filemodes[self.request.method]
-                        filename = self.filename
-                        # 10. start processing the data
-                        try:
-                            content_type = self.request.headers['Content-Type']
-                        except KeyError:
-                            raise Exception('No content-type - do not know what to do with data')
-                        # 9.2 optionally create dirs
-                        # 9.2.1 tenant dir
-                        if options.create_tenant_dir:
-                            if not os.path.lexists(self.tenant_dir):
-                                os.makedirs(self.tenant_dir)
-                        # 9.2.2 destination dir
-                        self.resource_dir = None
-                        try:
-                            url_dirs = os.path.dirname(resource)
-                            self.resource_dir = os.path.normpath(f'{self.tenant_dir}/{url_dirs}')
-                            if not os.path.lexists(self.resource_dir):
-                                logging.info(f'creating resource dir: {self.resource_dir}')
-                                os.makedirs(self.resource_dir)
-                                target = self.tenant_dir
-                                for _dir in url_dirs.split('/'):
-                                    target += f'/{_dir}'
-                                    try:
-                                        if self.group_config['enabled']:
-                                            os.chmod(target, _rwxrws___())
-                                            owner = options.api_user  # so it can move the file into the dir
-                                            subprocess.call(['sudo', 'chown', f'{owner}:{self.group_name}', target])
-                                    except (Exception, OSError):
-                                        logging.error('could not set permissions on upload directories')
-                                        raise Exception
-                        except Exception as e:
-                            logging.error(e)
-                            raise Exception
-                        # 9.3 handle resumable, if relavant
-                        if self.request.method == 'PATCH':
-                            # select resumable key:
-                            # then we remove the group name from url_dirs
-                            # because this is handled transparently
-                            # (for better or for worse)
-                            if self.group_config['enabled']:
-                                self.res_key = url_dirs.replace(self.group_name, '')[1:] # strip starting /
-                                self.res_key = None if not self.res_key else self.res_key
-                            else:
-                                self.res_key = url_dirs
-                            self.res = SerialResumable(self.tenant_dir, self.requestor)
-                            url_chunk_num = url_unescape(self.get_query_argument('chunk'))
-                            url_upload_id = url_unescape(self.get_query_argument('id', ''))
-                            self.chunk_num, \
-                            self.upload_id, \
-                            self.completed_resumable_file, \
-                            self.chunk_order_correct, \
-                            filename = self.res.prepare(
-                                    self.tenant_dir,
-                                    filename,
-                                    url_chunk_num,
-                                    url_upload_id,
-                                    self.group_name,
-                                    self.requestor,
-                                    self.res_key
-                                )
-                            if not self.chunk_order_correct:
-                                logging.error('incorrect chunk order')
-                                raise ResumableIncorrectChunkOrderError
-                        # 9.4 ensure we do not write to active file
-                        self.path = os.path.normpath(self.tenant_dir + '/' + filename)
-                        self.path_part = self.path + '.' + str(uuid4()) + '.part'
-                        if os.path.lexists(self.path_part):
-                            logging.error('trying to write to partial file - killing request')
-                            raise Exception
-                        # 9.5 ensure idempotency
-                        if os.path.lexists(self.path):
-                            if os.path.isdir(self.path):
-                                logging.info('directory: %s already exists due to prior upload, removing', self.path)
-                                shutil.rmtree(self.path)
-                            else:
-                                logging.info('%s already exists, renaming to %s', self.path, self.path_part)
-                                os.rename(self.path, self.path_part)
-                                assert os.path.lexists(self.path_part)
-                                assert not os.path.lexists(self.path)
-                        # 9.6 rename
-                        self.path, self.path_part = self.path_part, self.path
-                        # 9.7 invoke custom content type handlers, if relevant
-                        if content_type == 'application/aes':
-                            self.handle_aes(content_type)
-                        elif content_type == 'application/aes-octet-stream':
-                            self.handle_aes_octet_stream(content_type)
-                        elif content_type in ['application/tar', 'application/tar.gz']:
-                            self.handle_tar(content_type, self.tenant_dir)
-                        elif content_type in ['application/tar.aes', 'application/tar.gz.aes']:
-                            self.handle_tar_aes(content_type, self.tenant_dir)
-                        elif content_type == 'application/gz':
-                            self.handle_gz(content_type, filemode)
-                        elif content_type == 'application/gz.aes':
-                            self.handle_gz_aes(content_type, filemode)
-                        elif content_type == 'application/octet-stream+nacl':
-                            self.decrypt_nacl_headers(self.request.headers)
-                            self.target_file = open(self.path, filemode)
-                            os.chmod(self.path, _RW______)
-                        else: # 9.8 no custom content type
-                            if self.request.method != 'PATCH':
-                                self.custom_content_type = None
-                                self.target_file = open(self.path, filemode)
-                                os.chmod(self.path, _RW______)
-                            elif self.request.method == 'PATCH':
-                                self.custom_content_type = None
-                                if not self.completed_resumable_file:
-                                    self.target_file = self.res.open_file(self.path, filemode)
-                    # 9.9 handle any errors
-                    except ResumableIncorrectChunkOrderError as e:
-                        raise ResumableIncorrectChunkOrderError from e
-                    except Exception as e:
-                        try:
-                            if self.target_file:
-                                self.target_file.close()
-                            os.rename(self.path, self.path_part)
-                        except AttributeError as e:
-                            logging.error(e)
-                            logging.error('No file to close after all - so nothing to worry about')
-                            raise e
-                        raise e
-                except Exception as e:
-                    if self.get_status() < 400:
-                        self.set_status(500)
-                    logging.error('stream handler failed with:')
-                    logging.error(traceback.format_exc())
-                    info = 'stream processing failed'
-                    if self.chunk_order_correct is False:
-                        self.set_status(400)
-                        info = 'chunk_order_incorrect'
-                    self.finish({'message': info})
+
+                filename = self.filename
+                # optionally create dirs
+                if options.create_tenant_dir:
+                    if not os.path.lexists(self.tenant_dir):
+                        os.makedirs(self.tenant_dir)
+
+                url_dirs = os.path.dirname(resource)
+                self.resource_dir = os.path.normpath(f'{self.tenant_dir}/{url_dirs}')
+                if not os.path.lexists(self.resource_dir):
+                    logging.info(f'creating resource dir: {self.resource_dir}')
+                    os.makedirs(self.resource_dir)
+                    target = self.tenant_dir
+                    # optionally set permissions
+                    if self.group_config['enabled']:
+                        for _dir in url_dirs.split('/'):
+                            target += f'/{_dir}'
+                            os.chmod(target, _rwxrws___())
+                            owner = options.api_user  # so it can move the file into the dir
+                            subprocess.call(['sudo', 'chown', f'{owner}:{self.group_name}', target])
+
+                # handle resumable
+                if self.request.method == 'PATCH':
+                    # select resumable key:
+                    # then we remove the group name from url_dirs
+                    # because this is handled transparently
+                    # (for better or for worse)
+                    if self.group_config['enabled']:
+                        self.res_key = url_dirs.replace(self.group_name, '')[1:] # strip starting /
+                        self.res_key = None if not self.res_key else self.res_key
+                    else:
+                        self.res_key = url_dirs
+                    self.res = SerialResumable(self.tenant_dir, self.requestor)
+                    url_chunk_num = url_unescape(self.get_query_argument('chunk'))
+                    url_upload_id = url_unescape(self.get_query_argument('id', ''))
+                    self.chunk_num, \
+                    self.upload_id, \
+                    self.completed_resumable_file, \
+                    self.chunk_order_correct, \
+                    filename = self.res.prepare(
+                            self.tenant_dir,
+                            filename,
+                            url_chunk_num,
+                            url_upload_id,
+                            self.group_name,
+                            self.requestor,
+                            self.res_key,
+                        )
+                    if not self.chunk_order_correct:
+                        # TODO: raise from prepare ^
+                        raise ResumableIncorrectChunkOrderError
+
+                self.path = os.path.normpath(f"{self.tenant_dir}/{filename}")
+                self.path_part = f"{self.path}.{str(uuid4())}.part"
+
+                # ensure idempotency
+                if os.path.lexists(self.path):
+                    if os.path.isdir(self.path):
+                        logging.info('directory: %s already exists due to prior upload, removing', self.path)
+                        shutil.rmtree(self.path)
+                    else:
+                        logging.info('%s already exists, renaming to %s', self.path, self.path_part)
+                        os.rename(self.path, self.path_part)
+
+                # 9.6 rename
+                self.path, self.path_part = self.path_part, self.path
+                # 9.7 invoke custom content type handlers, if relevant
+                if content_type == 'application/aes':
+                    self.handle_aes(content_type)
+                elif content_type == 'application/aes-octet-stream':
+                    self.handle_aes_octet_stream(content_type)
+                elif content_type in ['application/tar', 'application/tar.gz']:
+                    self.handle_tar(content_type, self.tenant_dir)
+                elif content_type in ['application/tar.aes', 'application/tar.gz.aes']:
+                    self.handle_tar_aes(content_type, self.tenant_dir)
+                elif content_type == 'application/gz':
+                    self.handle_gz(content_type, filemode)
+                elif content_type == 'application/gz.aes':
+                    self.handle_gz_aes(content_type, filemode)
+                elif content_type == 'application/octet-stream+nacl':
+                    self.decrypt_nacl_headers(self.request.headers)
+                    self.target_file = open(self.path, filemode)
+                    os.chmod(self.path, _RW______)
+                else: # 9.8 no custom content type
+                    if self.request.method != 'PATCH':
+                        self.custom_content_type = None
+                        self.target_file = open(self.path, filemode)
+                        os.chmod(self.path, _RW______)
+                    elif self.request.method == 'PATCH':
+                        self.custom_content_type = None
+                        if not self.completed_resumable_file:
+                            self.target_file = self.res.open_file(self.path, filemode)
+        except ApiError as e:
+            logging.error(e.log_msg)
+            self.set_status(e.status.value)
+            self.finish()
+        except ResumableIncorrectChunkOrderError as e:
+            self.set_status(HTTPStatus.BAD_REQUEST.value)
+            self.finish({'message': 'chunk_order_incorrect'})
         except ServerStorageTemporarilyUnavailableError:
             self.set_header("X-Project-Storage", "Migrating")
-            self.set_status(503, reason="Project Storage Migrating")
+            self.set_status(HTTPStatus.SERVICE_UNAVAILABLE.value, reason="Project Storage Migrating")
             self.finish()
-        except (Exception, AssertionError) as e:
-            if self._status_code != 503:
-                self.set_status(401)
-                logging.error(self.error)
-                logging.error(e)
+        except Exception as e:
+            logging.error(e)
+            self.set_status(HTTPStatus.INTERNAL_SERVER_ERROR.value)
             self.finish()
 
     @gen.coroutine
@@ -2107,16 +1986,7 @@ class FileRequestHandler(AuthRequestHandler):
                 self.message = 'Method not allowed'
                 self.set_status(403)
                 raise Exception
-            try:
-                self.authnz = self.process_token_and_extract_claims(
-                    check_tenant=self.check_tenant if self.check_tenant is not None else options.check_tenant
-                )
-            except Exception:
-                if not self.message:
-                    self.message = 'Not authorized to delete data'
-                self.set_status(401)
-                raise Exception
-            assert options.valid_tenant.match(tenant)
+
             # only TSD import dir which is not the same dir
             self.path = self.export_dir
             if not filename:
