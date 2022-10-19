@@ -46,6 +46,21 @@ class ClientAuthorizationError(ClientError):
     desc = "Client not authorized for request"
     status = HTTPStatus.FORBIDDEN
 
+class ClientMethodNotAllowed(ClientError):
+    desc = "Method not allowed"
+    status = HTTPStatus.METHOD_NOT_ALLOWED
+
+class ClientReservedResourceError(ClientError):
+    desc = "Reserved resource name"
+    status = HTTPStatus.BAD_REQUEST
+
+class ClientGroupAccessError(ClientError):
+    desc = "Group rights does not grant request"
+    status = HTTPStatus.FORBIDDEN
+
+class ClientNaclChunkSizeError(ClientError):
+    desc = "Chunk size too large"
+    status = HTTPStatus.BAD_REQUEST
 
 # Server errors - HTTP 5XX range
 #-------------------------------
