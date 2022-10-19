@@ -59,6 +59,8 @@ def process_access_token(
             try:
                 token.deserialize(raw_token, key=key)
                 claims = json.loads(token.claims)
+            except jwt.JWTExpired as e:
+                return failure_message
             except jws.InvalidJWSSignature as e:
                 return failure_message
     except Exception as e:
