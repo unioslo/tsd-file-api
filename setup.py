@@ -13,9 +13,6 @@ setup(
     package_data={
         'tsdfileapi': [
             'tests/*.py',
-            'tests/*.pem',
-            'data/.csv.*',
-            'data/.tar.*',
             'data/resume*',
             'data/s*',
             'data/r*',
