@@ -45,10 +45,6 @@ _config = {
       'key': 'rmsGmiADWiQHcq2n6+QUtTg0oWSxAlmEm4KRcpDWveE=',
     },
     'log_level': 'info',
-    'gpg_binary': shutil.which("gpg"),
-    'gpg_homedir': f'{HOME}/.gnupg',
-    'gpg_keyring': f'{HOME}/.gnupg/pubring.gpg',
-    'gpg_secring': f'{HOME}/.gnupg/secring.gpg',
     'public_key_id': '264CE5ED60A7548B',
     'request_log': {
         'db': {

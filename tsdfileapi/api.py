@@ -70,7 +70,6 @@ from exc import (
     ServerStorageTemporarilyUnavailableError,
     ServerMaintenanceError,
 )
-from pgp import init_gpg
 from resumables import SerialResumable, ResumableNotFoundError, ResumableIncorrectChunkOrderError
 from rmq import PikaClient
 from tokens import tkn, gen_test_jwt_secrets
@@ -937,92 +936,6 @@ class ResumablesHandler(AuthRequestHandler):
 @stream_request_body
 class FileRequestHandler(AuthRequestHandler):
 
-    def decrypt_aes_key(self, b64encoded_pgpencrypted_key: str) -> str:
-        gpg = init_gpg(options.config)
-        key = base64.b64decode(b64encoded_pgpencrypted_key)
-        decr_aes_key = str(gpg.decrypt(key)).strip()
-        return decr_aes_key
-
-
-    def start_openssl_proc(self, output_file: str = None, base64: bool = True) -> subprocess.Popen:
-        cmd = ['openssl', 'enc', '-aes-256-cbc', '-d'] + self.aes_decryption_args_from_headers()
-        if output_file is not None:
-            cmd = cmd + ['-out', output_file]
-        if base64:
-            cmd = cmd + ['-a']
-        return subprocess.Popen(
-            cmd,
-            stdin=subprocess.PIPE,
-            stdout=subprocess.PIPE if output_file is None else None
-        )
-
-
-    def aes_decryption_args_from_headers(self) -> list:
-        try:
-            decr_aes_key = self.decrypt_aes_key(self.request.headers['Aes-Key'])
-        except Exception as e:
-            logging.error('decrypt_aes_key failed with:')
-            logging.error(e)
-            logging.error(traceback.format_exc())
-        if "Aes-Iv" in self.request.headers:
-            return ['-iv', self.request.headers["Aes-Iv"], '-K', decr_aes_key]
-        else:
-            return ['-pass', 'pass:%s' % decr_aes_key]
-
-
-    def handle_aes(self, content_type: str) -> None:
-        self.custom_content_type = content_type
-        self.proc = self.start_openssl_proc(output_file=self.path)
-
-
-    def handle_aes_octet_stream(self, content_type: str) -> None:
-        self.custom_content_type = 'application/aes'
-        self.proc = self.start_openssl_proc(output_file=self.path, base64=False)
-
-
-    def handle_tar(self, content_type: str, tenant_dir: str) -> None:
-        if 'gz' in content_type:
-            tarflags = '-xzf'
-        else:
-            tarflags = '-xf'
-        self.custom_content_type = content_type
-        self.proc = subprocess.Popen(
-            ['tar', '-C', tenant_dir, tarflags, '-'], stdin=subprocess.PIPE
-        )
-
-
-    def handle_tar_aes(self, content_type: str, tenant_dir: str) -> None:
-        if 'gz' in content_type:
-            tarflags = '-xzf'
-        else:
-            tarflags = '-xf'
-        self.custom_content_type = content_type
-        self.openssl_proc = self.start_openssl_proc()
-        self.tar_proc = subprocess.Popen(
-            ['tar', '-C', tenant_dir, tarflags, '-'], stdin=self.openssl_proc.stdout
-        )
-
-
-    def handle_gz(self, content_type: str, filemode: str) -> None:
-        self.custom_content_type = content_type
-        self.target_file = open(self.path, filemode)
-        self.gunzip_proc = subprocess.Popen(
-            ['gunzip', '-c', '-'],
-            stdin=subprocess.PIPE,
-            stdout=self.target_file,
-        )
-
-
-    def handle_gz_aes(self, content_type: str, filemode: str) -> None:
-        self.custom_content_type = content_type
-        self.target_file = open(self.path, filemode)
-        self.openssl_proc = self.start_openssl_proc()
-        self.gunzip_proc = subprocess.Popen(
-            ['gunzip', '-c', '-'],
-            stdin=self.openssl_proc.stdout,
-            stdout=self.target_file,
-        )
-
     def decrypt_nacl_headers(self, headers: tornado.httputil.HTTPHeaders) -> None:
         self.custom_content_type = headers['Content-Type']
         self.nacl_stream_buffer = b''
@@ -1260,32 +1173,17 @@ class FileRequestHandler(AuthRequestHandler):
                         logging.info('%s already exists, renaming to %s', self.path, self.path_part)
                         os.rename(self.path, self.path_part)
 
-                # 9.6 rename
                 self.path, self.path_part = self.path_part, self.path
-                # 9.7 invoke custom content type handlers, if relevant
-                if content_type == 'application/aes':
-                    self.handle_aes(content_type)
-                elif content_type == 'application/aes-octet-stream':
-                    self.handle_aes_octet_stream(content_type)
-                elif content_type in ['application/tar', 'application/tar.gz']:
-                    self.handle_tar(content_type, self.tenant_dir)
-                elif content_type in ['application/tar.aes', 'application/tar.gz.aes']:
-                    self.handle_tar_aes(content_type, self.tenant_dir)
-                elif content_type == 'application/gz':
-                    self.handle_gz(content_type, filemode)
-                elif content_type == 'application/gz.aes':
-                    self.handle_gz_aes(content_type, filemode)
-                elif content_type == 'application/octet-stream+nacl':
+
+                if content_type == 'application/octet-stream+nacl':
                     self.decrypt_nacl_headers(self.request.headers)
                     self.target_file = open(self.path, filemode)
                     os.chmod(self.path, _RW______)
-                else: # 9.8 no custom content type
+                else:
                     if self.request.method != 'PATCH':
-                        self.custom_content_type = None
                         self.target_file = open(self.path, filemode)
                         os.chmod(self.path, _RW______)
                     elif self.request.method == 'PATCH':
-                        self.custom_content_type = None
                         if not self.completed_resumable_file:
                             self.target_file = self.res.open_file(self.path, filemode)
         except ApiError as e:
@@ -1327,25 +1225,6 @@ class FileRequestHandler(AuthRequestHandler):
                         self.res.add_chunk(self.target_file, decrypted)
                     else:
                         self.target_file.write(decrypted)
-            elif self.custom_content_type in ['application/tar', 'application/tar.gz',
-                                              'application/aes']:
-                self.proc.stdin.write(chunk)
-                if not chunk:
-                    self.proc.stdin.flush()
-            elif self.custom_content_type in ['application/tar.aes', 'application/tar.gz.aes']:
-                self.openssl_proc.stdin.write(chunk)
-                if not chunk:
-                    self.openssl_proc.stdin.flush()
-                    self.tar_proc.stdin.flush()
-            elif self.custom_content_type == 'application/gz':
-                self.gunzip_proc.stdin.write(chunk)
-                if not chunk:
-                    self.gunzip_proc.stdin.flush()
-            elif self.custom_content_type == 'application/gz.aes':
-                self.openssl_proc.stdin.write(chunk)
-                if not chunk:
-                    self.openssl_proc.stdin.flush()
-                    self.gunzip_proc.stdin.flush()
         except Exception as e:
             logging.error(e)
             logging.error("something went wrong with stream processing have to close file")
@@ -1361,29 +1240,12 @@ class FileRequestHandler(AuthRequestHandler):
         elif self.custom_content_type == 'application/octet-stream+nacl':
             if self.nacl_stream_buffer:
                 decrypted = libnacl.crypto_stream_xor(
-                            self.nacl_stream_buffer,
-                            self.nacl_nonce,
-                            self.nacl_key
-                        )
+                    self.nacl_stream_buffer,
+                    self.nacl_nonce,
+                    self.nacl_key
+                )
                 self.nacl_stream_buffer = b''
                 self.target_file.write(decrypted)
-            self.target_file.close()
-            os.rename(self.path, self.path_part)
-        elif self.custom_content_type in ['application/tar', 'application/tar.gz',
-                                          'application/aes']:
-            out, err = self.proc.communicate()
-            if self.custom_content_type == 'application/aes':
-                os.rename(self.path, self.path_part)
-        elif self.custom_content_type in ['application/tar.aes', 'application/tar.gz.aes']:
-            out, err = self.openssl_proc.communicate()
-            out, err = self.tar_proc.communicate()
-        elif self.custom_content_type == 'application/gz':
-            out, err = self.gunzip_proc.communicate()
-            self.target_file.close()
-            os.rename(self.path, self.path_part)
-        elif self.custom_content_type == 'application/gz.aes':
-            out, err = self.openssl_proc.communicate()
-            out, err = self.gunzip_proc.communicate()
             self.target_file.close()
             os.rename(self.path, self.path_part)
         self.set_status(201)
