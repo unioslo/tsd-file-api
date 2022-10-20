@@ -37,7 +37,6 @@ from db import (
     postgres_init,
 )
 from exc import ServerStorageTemporarilyUnavailableError
-from pgp import init_gpg
 from pysquril.backends import sqlite_session, postgres_session
 from pysquril.generator import SqliteQueryGenerator, PostgresQueryGenerator
 from resumables import SerialResumable
