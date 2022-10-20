@@ -67,6 +67,8 @@ from exc import (
     ClientReservedResourceError,
     ClientGroupAccessError,
     ClientNaclChunkSizeError,
+    ClientMethodNotAllowed,
+    ClientResourceNotFoundError,
     ServerStorageTemporarilyUnavailableError,
     ServerMaintenanceError,
 )
@@ -1805,39 +1807,27 @@ class FileRequestHandler(AuthRequestHandler):
         self.message = 'Unknown error, please contact TSD'
         try:
             if not self.allow_info:
-                self.message = 'Method not allowed'
-                self.set_status(403)
-                raise Exception
-            assert options.valid_tenant.match(tenant)
-            self.path = self.export_dir
+                raise ClientMethodNotAllowed
             if not filename:
-                raise Exception('No info to report')
-            try:
-                secured_filename = check_filename(
-                    url_unescape(filename), disallowed_start_chars=options.start_chars
-                )
-            except Exception as e:
-                raise Exception
-            self.filepath = '%s/%s' % (self.path, secured_filename)
+                raise ClientError('No resource specified')
+            self.path = self.export_dir
+            self.filepath = f"{self.path}/{filename}"
             if not os.path.lexists(self.filepath):
-                logging.error(self.filepath)
-                logging.error('%s tried to access a file that does not exist', self.requestor)
-                self.set_status(404)
-                self.message = 'File does not exist'
-                raise Exception
+                raise ClientResourceNotFoundError(f"{self.filepath} not found")
             size, mime_type, mtime = self.get_file_metadata(self.filepath)
-            logging.info('user: %s, checked file: %s , with MIME type: %s', self.requestor, self.filepath, mime_type)
+            logging.info(f'user: {self.requestor}, checked file: {self.filepath} , MIME type: {mime_type}')
             self.set_header('Content-Length', size)
             self.set_header('Accept-Ranges', 'bytes')
             self.set_header('Content-Type', mime_type)
             self.set_header('Modified-Time', str(mtime))
-            self.set_status(200)
+            self.set_status(HTTPStatus.OK.value)
+        except ApiError as e:
+            logging.error(e.log_msg)
+            self.set_status(e.status.value)
+            self.finish()
         except Exception as e:
-            logging.error(self.message)
-            if self.get_status() < 400:
-                self.set_status(500)
-            self.write({'message': self.message})
-        finally:
+            logging.error(e)
+            self.set_status(HTTPStatus.INTERNAL_SERVER_ERROR.value)
             self.finish()
 
 
@@ -2030,7 +2020,6 @@ class GenericTableHandler(AuthRequestHandler):
     def initialize(self, backend: str) -> None:
         self.backend = backend
         self.tenant = tenant_from_url(self.request.uri)
-        assert options.valid_tenant.match(self.tenant)
         self.endpoint = self.request.uri.split('/')[3]
         self.backend_config = options.config['backends']['dbs'][backend]
         self.dbtype = self.backend_config['db']['engine']
