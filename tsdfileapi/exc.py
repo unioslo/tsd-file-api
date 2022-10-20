@@ -62,6 +62,11 @@ class ClientNaclChunkSizeError(ClientError):
     desc = "Chunk size too large"
     status = HTTPStatus.BAD_REQUEST
 
+class ClientResourceNotFoundError(ClientError):
+    desc = "Resource not found"
+    status = HTTPStatus.NOT_FOUND
+
+
 # Server errors - HTTP 5XX range
 #-------------------------------
 
