@@ -1804,7 +1804,6 @@ class FileRequestHandler(AuthRequestHandler):
         Return information about a specific file.
 
         """
-        self.message = 'Unknown error, please contact TSD'
         try:
             if not self.allow_info:
                 raise ClientMethodNotAllowed
@@ -1832,58 +1831,37 @@ class FileRequestHandler(AuthRequestHandler):
 
 
     def delete(self, tenant: str, filename: str = '') -> None:
-        self.message = 'Unknown error, please contact TSD'
         try:
             if not self.allow_delete:
-                self.message = 'Method not allowed'
-                self.set_status(403)
-                raise Exception
-
-            # only TSD import dir which is not the same dir
-            self.path = self.export_dir
+                raise ClientMethodNotAllowed
             if not filename:
-                self.message = 'No resource to delete'
-                self.set_status(403)
-                raise Exception
-            try:
-                secured_filename = check_filename(url_unescape(filename),
-                                                  disallowed_start_chars=options.start_chars)
-            except Exception as e:
-                raise Exception
-            self.filepath = '%s/%s' % (self.path, secured_filename)
+                raise ClientError("No resource specified")
+            self.path = self.export_dir
+            self.filepath = f"{self.path}/{filename}"
             if not os.path.lexists(self.filepath):
-                logging.error(f'{self.requestor} tried to delete a file that does not exist {self.filepath}')
-                self.set_status(404)
-                self.message = f'File does not exist {self.filepath}'
-                raise Exception
+                raise ClientResourceNotFoundError(f'{self.filepath} not found')
             if os.path.isdir(self.filepath):
-                if not filename:
-                    self.set_status(403)
-                    self.message = f'Cannot perform DELETE on base directory {self.filepath}'
-                    raise Exception
-                else:
-                    shutil.rmtree(self.filepath)
-                    return
-            try:
-                # Allow the file to be deleted by changing the rights temporary of the parent directory
+                shutil.rmtree(self.filepath)
+            else:
                 if self.has_posix_ownership:
+                    # Allow the file to be deleted by changing the rights temporary of the parent directory
                     subprocess.call(['sudo', 'chmod', 'o+w', os.path.dirname(self.filepath)])
-                os.remove(self.filepath)
-                # Restoring the rights of the parent directory
-                if self.has_posix_ownership:
+                    os.remove(self.filepath)
+                    # Restoring the rights of the parent directory
                     subprocess.call(['sudo', 'chmod', 'o-w', os.path.dirname(self.filepath)])
-                self.message = 'Deleted %s' % self.filepath
-            except OSError as e:
-                self.set_status(500)
-                self.message = 'Problem deleting %s' % self.filepath
-                raise Exception
-            logging.info('user: %s, deleted file: %s', self.requestor, self.filepath)
-            self.set_status(200)
+                else:
+                    os.remove(self.filepath)
+            logging.info(f'user: {self.requestor}, deleted file: {self.filepath}')
+            self.set_status(HTTPStatus.OK.value)
+            self.write({'message': f'deleted {self.filepath}'})
+        except ApiError as e:
+            logging.error(e.log_msg)
+            self.set_status(e.status.value)
+            self.finish()
         except Exception as e:
-            logging.error(self.message)
-            self.write({'message': self.message})
-        finally:
-            self.finish({'message': self.message})
+            logging.error(e)
+            self.finish()
+
 
     def on_finish(self) -> None:
         resource_created = (
