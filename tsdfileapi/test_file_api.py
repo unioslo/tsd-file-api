@@ -22,11 +22,9 @@ import libnacl.public
 import libnacl.utils
 import psycopg2
 import psycopg2.pool
-import pretty_bad_protocol._parsers
 import requests
 import yaml
 
-from pretty_bad_protocol import gnupg
 from sqlalchemy.exc import OperationalError
 from termcolor import colored
 from tsdapiclient import fileapi
@@ -50,8 +48,6 @@ from utils import (
     find_tenant_storage_path,
     choose_storage,
 )
-
-pretty_bad_protocol._parsers.Verify.TRUST_LEVELS["ENCRYPTION_COMPLIANCE_MODE"] = 23
 
 def project_import_dir(
     config: dict,
@@ -79,12 +75,6 @@ def lazy_file_reader(filename: str) -> bytes:
 
 
 class TestFileApi(unittest.TestCase):
-
-    @classmethod
-    def pgp_encrypt_and_base64_encode(cls, gpg, string):
-        encrypted = gpg.encrypt(string, cls.config['public_key_id'], armor=False)
-        encoded = base64.b64encode(encrypted.data)
-        return encoded
 
     @classmethod
     def setUpClass(cls):
@@ -169,29 +159,6 @@ class TestFileApi(unittest.TestCase):
         global P12_TOKEN
         P12_TOKEN = get_test_token_for_p12(cls.config)
 
-        # example data
-        cls.example_tar = os.path.normpath(cls.data_folder + '/example.tar')
-        cls.example_tar_gz = os.path.normpath(cls.data_folder + '/example.tar.gz')
-        cls.gpg = init_gpg(cls.config)
-        cls.gpg.import_keys(open(f"{cls.config.get('test_folder')}/public.pem", "rb").read())
-        cls.gpg.import_keys(open(f"{cls.config.get('test_folder')}/private.pem", "rb").read())
-        cls.enc_symmetric_secret = cls.pgp_encrypt_and_base64_encode(cls.gpg, 'tOg1qbyhRMdZLg==')
-        cls.enc_hex_aes_key = cls.pgp_encrypt_and_base64_encode(cls.gpg, 'ed6d4be32230db647bc63627f98daba0ac1c5d04ab6d1b44b74501ff445ddd97')
-        cls.hex_aes_iv = 'a53c9b54b5f84e543b592050c52531ef'
-        cls.example_aes = os.path.normpath(cls.data_folder + '/example.csv.aes')
-        # tar -cf - totar3 | openssl enc -aes-256-cbc -a -pass file:<( echo $PW ) > example.tar.aes
-        cls.example_tar_aes = os.path.normpath(cls.data_folder + '/example.tar.aes')
-        # tar -cf - totar3 | gzip -9 | openssl enc -aes-256-cbc -a -pass file:<( echo $PW ) > example.tar.gz.aes
-        cls.example_tar_gz_aes = os.path.normpath(cls.data_folder + '/example.tar.gz.aes')
-        cls.example_gz = os.path.normpath(cls.data_folder + '/example.csv.gz')
-        cls.example_gz_aes = os.path.normpath(cls.data_folder + '/example.csv.gz.aes')
-        # openssl enc -aes-256-cbc -a -iv ${hex_aes_iv} -K ${hex_aes_key}
-        cls.example_aes_with_key_and_iv = os.path.normpath(cls.data_folder + '/example.csv.aes-with-key-and-iv')
-        cls.example_tar_aes_with_key_and_iv = os.path.normpath(cls.data_folder + '/example.tar.aes-with-key-and-iv')
-        cls.example_tar_gz_aes_with_key_and_iv = os.path.normpath(cls.data_folder + '/example.tar.gz.aes-with-key-and-iv')
-        cls.example_gz_aes_with_key_and_iv = os.path.normpath(cls.data_folder + '/example.csv.gz.aes-with-key-and-iv')
-        # openssl enc -aes-256-cbc -iv ${hex_aes_iv} -K ${hex_aes_key}
-        cls.example_binary_aes_with_key_and_iv = os.path.normpath(cls.data_folder + '/example.csv.binary-aes-with-key-and-iv')
         # resumables
         cls.resume_file1 = os.path.normpath(cls.data_folder + '/resume-file1')
         cls.resume_file2 = os.path.normpath(cls.data_folder + '/resume-file2')
@@ -621,187 +588,6 @@ class TestFileApi(unittest.TestCase):
                              data=json.dumps(data), headers=headers)
         self.assertEqual(resp.status_code, 401)
 
-
-    # Handling custom content-types, on-the-fly
-    # -----------------------------------------
-
-    # Directories:
-    # -----------
-    # tar           -> untar
-    # tar.gz        -> decompress, untar
-    # tar.aes       -> decrypt, untar
-    # tar.gz.aes    -> decrypt, uncompress, untar
-
-    # Files:
-    # -----
-    # aes           -> decrypt
-    # gz            -> uncompress
-    # gz.aes        -> decrypt, uncompress
-
-    def test_Za_stream_tar_without_custom_content_type_works(self) -> None:
-        headers = {'Authorization': 'Bearer ' + TEST_TOKENS['VALID']}
-        resp1 = requests.put(
-            self.stream + '/example.tar',
-            data=lazy_file_reader(self.example_tar),
-            headers=headers,
-        )
-        self.assertEqual(resp1.status_code, 201)
-
-    def test_Zb_stream_tar_with_custom_content_type_untar_works(self) -> None:
-        headers = {
-            'Authorization': 'Bearer ' + TEST_TOKENS['VALID'],
-            'Content-Type': 'application/tar',
-        }
-        resp1 = requests.put(
-            self.stream + '/totar',
-            data=lazy_file_reader(self.example_tar),
-            headers=headers,
-        )
-        self.assertEqual(resp1.status_code, 201)
-
-    def test_Zc_stream_tar_gz_with_custom_content_type_untar_works(self) -> None:
-        headers = {
-            'Authorization': 'Bearer ' + TEST_TOKENS['VALID'],
-            'Content-Type': 'application/tar.gz',
-        }
-        resp1 = requests.put(
-            self.stream + '/totar2',
-            data=lazy_file_reader(self.example_tar_gz),
-            headers=headers,
-        )
-        self.assertEqual(resp1.status_code, 201)
-
-    def test_Zd_stream_aes_with_custom_content_type_decrypt_works(self) -> None:
-        headers = {
-            'Authorization': 'Bearer ' + TEST_TOKENS['VALID'],
-            'Content-Type': 'application/aes',
-            'Aes-Key': self.enc_symmetric_secret,
-        }
-        resp1 = requests.put(
-            self.stream + '/decrypted-aes.csv',
-            data=lazy_file_reader(self.example_aes),
-            headers=headers,
-        )
-        self.assertEqual(resp1.status_code, 201)
-        with open(self.uploads_folder + '/' + self.test_group + '/decrypted-aes.csv', 'r') as uploaded_file:
-            self.assertEqual('x,y\n4,5\n2,1\n', uploaded_file.read())
-
-    def test_Zd0_stream_aes_with_iv_and_custom_content_type_decrypt_works(self) -> None:
-        headers = {
-            'Authorization': 'Bearer ' + TEST_TOKENS['VALID'],
-            'Content-Type': 'application/aes',
-            'Aes-Key': self.enc_hex_aes_key,
-            'Aes-Iv': self.hex_aes_iv,
-        }
-        resp1 = requests.put(
-            self.stream + '/decrypted-aes2.csv',
-            data=lazy_file_reader(self.example_aes_with_key_and_iv),
-            headers=headers,
-        )
-        self.assertEqual(resp1.status_code, 201)
-        with open(self.uploads_folder + '/' + self.test_group + '/decrypted-aes2.csv', 'r') as uploaded_file:
-            self.assertEqual('x,y\n4,5\n2,1\n', uploaded_file.read())
-
-    def test_Zd1_stream_binary_aes_with_iv_and_custom_content_type_decrypt_works(self) -> None:
-        headers = {
-            'Authorization': 'Bearer ' + TEST_TOKENS['VALID'],
-            'Content-Type': 'application/aes-octet-stream',
-            'Aes-Key': self.enc_hex_aes_key,
-            'Aes-Iv': self.hex_aes_iv,
-        }
-        resp1 = requests.put(
-            self.stream + '/decrypted-binary-aes.csv',
-            data=lazy_file_reader(self.example_binary_aes_with_key_and_iv),
-            headers=headers,
-        )
-        self.assertEqual(resp1.status_code, 201)
-        with open(self.uploads_folder + '/' + self.test_group + '/decrypted-binary-aes.csv', 'r') as uploaded_file:
-            self.assertEqual('x,y\n4,5\n2,1\n', uploaded_file.read())
-
-    def test_Ze_stream_tar_aes_with_custom_content_type_decrypt_untar_works(self) -> None:
-        headers = {
-            'Authorization': 'Bearer ' + TEST_TOKENS['VALID'],
-            'Content-Type': 'application/tar.aes',
-            'Aes-Key': self.enc_symmetric_secret,
-        }
-        resp1 = requests.put(
-            self.stream + '/totar3',
-            data=lazy_file_reader(self.example_tar_aes),
-            headers=headers,
-        )
-        self.assertEqual(resp1.status_code, 201)
-        # check contents
-
-    def test_Ze0_stream_tar_aes_with_iv_and_custom_content_type_decrypt_untar_works(self) -> None:
-        headers = {
-            'Authorization': 'Bearer ' + TEST_TOKENS['VALID'],
-            'Content-Type': 'application/tar.aes',
-            'Aes-Key': self.enc_hex_aes_key,
-            'Aes-Iv': self.hex_aes_iv,
-        }
-        resp1 = requests.put(
-            self.stream+'/totar',
-            data=lazy_file_reader(self.example_tar_aes_with_key_and_iv),
-            headers=headers,
-        )
-        self.assertEqual(resp1.status_code, 201)
-        # check contents
-
-    def test_Zf_stream_tar_aes_with_custom_content_type_decrypt_untar_works(self) -> None:
-        headers = {
-            'Authorization': 'Bearer ' + TEST_TOKENS['VALID'],
-            'Content-Type': 'application/tar.gz.aes',
-            'Aes-Key': self.enc_symmetric_secret,
-        }
-        resp1 = requests.put(
-            self.stream + '/totar4',
-            data=lazy_file_reader(self.example_tar_gz_aes),
-            headers=headers,
-        )
-        self.assertEqual(resp1.status_code, 201)
-        # check contents
-
-    def test_Zf0_stream_tar_aes_with_iv_and_custom_content_type_decrypt_untar_works(self) -> None:
-        headers = {
-            'Authorization': 'Bearer ' + TEST_TOKENS['VALID'],
-            'Content-Type': 'application/tar.gz.aes',
-            'Aes-Key': self.enc_hex_aes_key,
-            'Aes-Iv': self.hex_aes_iv,
-        }
-        resp1 = requests.put(
-            self.stream + '/totar2',
-            data=lazy_file_reader(self.example_tar_gz_aes_with_key_and_iv),
-            headers=headers,
-        )
-        self.assertEqual(resp1.status_code, 201)
-        # check contents
-
-    def test_Zg_stream_gz_with_custom_header_decompress_works(self) -> None:
-        headers = {
-            'Authorization': 'Bearer ' + TEST_TOKENS['VALID'],
-            'Content-Type': 'application/gz',
-        }
-        resp1 = requests.put(
-            self.stream + '/ungz1',
-            data=lazy_file_reader(self.example_gz),
-            headers=headers,
-        )
-        self.assertEqual(resp1.status_code, 201)
-        with open(self.uploads_folder + '/' + self.test_group + '/ungz1', 'r') as uploaded_file:
-           self.assertEqual('x,y\n4,5\n2,1\n', uploaded_file.read())
-
-
-
-    def test_Zh0_stream_gz_with_iv_and_custom_header_decompress_works(self) -> None:
-        headers = {
-            'Authorization': 'Bearer ' + TEST_TOKENS['VALID'],
-            'Content-Type': 'application/gz.aes',
-            'Aes-Key': self.enc_hex_aes_key,
-            'Aes-Iv': self.hex_aes_iv,
-        }
-        resp1 = requests.put(self.stream + '/ungz-aes1', data=lazy_file_reader(self.example_gz_aes_with_key_and_iv),
-                             headers=headers)
-        self.assertEqual(resp1.status_code, 201)
 
     def test_ZA_choosing_file_upload_directories_based_on_tenant_works(self) -> None:
         newfilename2 = 'streamed-put-example-p12.csv'
@@ -2293,22 +2079,6 @@ def main() -> None:
         'test_ZZa_get_specific_range_conditional_on_etag',
         'test_ZZb_get_range_out_of_bounds_returns_correct_error',
     ]
-    pipelines = [
-        'test_Za_stream_tar_without_custom_content_type_works',
-        'test_Zb_stream_tar_with_custom_content_type_untar_works',
-        'test_Zc_stream_tar_gz_with_custom_content_type_untar_works',
-        'test_Zg_stream_gz_with_custom_header_decompress_works',
-    ]
-    gpg_related = [
-        'test_Zd_stream_aes_with_custom_content_type_decrypt_works',
-        'test_Zd0_stream_aes_with_iv_and_custom_content_type_decrypt_works',
-        'test_Zd1_stream_binary_aes_with_iv_and_custom_content_type_decrypt_works',
-        'test_Ze_stream_tar_aes_with_custom_content_type_decrypt_untar_works',
-        'test_Ze0_stream_tar_aes_with_iv_and_custom_content_type_decrypt_untar_works',
-        'test_Zf_stream_tar_aes_with_custom_content_type_decrypt_untar_works',
-        'test_Zf0_stream_tar_aes_with_iv_and_custom_content_type_decrypt_untar_works',
-        'test_Zh0_stream_gz_with_iv_and_custom_header_decompress_works',
-    ]
     dirs = [
         'test_ZZZ_put_file_to_dir',
         'test_ZZZ_patch_resumable_file_to_dir',
@@ -2367,10 +2137,6 @@ def main() -> None:
         tests.extend(sns)
     if 'names' in sys.argv:
         tests.extend(names)
-    if 'pipelines' in sys.argv:
-        tests.extend(pipelines)
-    if 'gpg' in sys.argv:
-        tests.extend(gpg_related)
     if 'dirs' in sys.argv:
         tests.extend(dirs)
     if 'export' in sys.argv:
@@ -2407,8 +2173,6 @@ def main() -> None:
         tests.extend(base)
         tests.extend(sns)
         tests.extend(names)
-        tests.extend(pipelines)
-        tests.extend(gpg_related)
         tests.extend(dirs)
         tests.extend(export)
         tests.extend(basic_to_stream)
