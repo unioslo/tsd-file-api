@@ -66,6 +66,9 @@ class ClientResourceNotFoundError(ClientError):
     desc = "Resource not found"
     status = HTTPStatus.NOT_FOUND
 
+class ClientContentRangeError(ClientError):
+    desc = "Range not satisfiable"
+    status = HTTPStatus.REQUESTED_RANGE_NOT_SATISFIABLE
 
 # Server errors - HTTP 5XX range
 #-------------------------------

@@ -69,6 +69,7 @@ from exc import (
     ClientNaclChunkSizeError,
     ClientMethodNotAllowed,
     ClientResourceNotFoundError,
+    ClientContentRangeError,
     ServerStorageTemporarilyUnavailableError,
     ServerMaintenanceError,
 )
@@ -1469,17 +1470,11 @@ class FileRequestHandler(AuthRequestHandler):
         except HTTPError as e:
             pass # use default value
         except ValueError:
-            self.set_status(400)
-            self.message = 'next values must be integers'
-            raise Exception
+            raise ClientError('next values must be integers')
         if current_page < 0:
-            self.set_status(400)
-            self.message = 'next values are natural numbers'
-            raise Exception
+            raise ClientError('next values are natural numbers')
         if pagination_value > 50000:
-            self.set_status(400)
-            self.message = 'per_page cannot exceed 1000'
-            raise Exception
+            raise ClientError('per_page cannot exceed 1000')
         # arbitrary order
         # if not returning what you want
         # then try next page
@@ -1509,9 +1504,7 @@ class FileRequestHandler(AuthRequestHandler):
             baseuri = self._base_uri()
             nextref = f'{baseuri}?page={next_page}' if next_page else None
             if self.export_max and len(files) > self.export_max:
-                self.set_status(400)
-                self.message = 'too many files, create a zip archive'
-                raise Exception
+                raise ClientError(f'number of files exceed configured maximum: {self.export_max}')
             names = []
             times = []
             exportable = []
@@ -1525,17 +1518,9 @@ class FileRequestHandler(AuthRequestHandler):
                 default_owner = options.default_file_owner.replace(options.tenant_string_pattern, tenant)
                 for file in files:
                     filepath = file.path
-                    try:
-                        size, mime_type, latest = self.get_file_metadata(filepath)
-                        status = self.enforce_export_policy(self.export_policy, filepath, tenant, size, mime_type)
-                        if status:
-                            reason = None
-                        else:
-                            reason = self.message
-                    except Exception as e:
-                        logging.error(e)
-                        logging.error('could not enforce export policy when listing dir')
-                        raise Exception
+                    size, mime_type, latest = self.get_file_metadata(filepath)
+                    status = self.enforce_export_policy(self.export_policy, filepath, tenant, size, mime_type)
+                    reason = None if status else "not allowed"
                     path_stat = file.stat()
                     etag = self.mtime_to_digest(latest)
                     date_time = str(datetime.datetime.fromtimestamp(latest).isoformat())
@@ -1546,11 +1531,10 @@ class FileRequestHandler(AuthRequestHandler):
                             try:
                                 default_owner_id = pwd.getpwnam(default_owner).pw_uid
                                 group_id = path_stat.st_gid
-                                os.chown(file.path, file_api_user_id, group_id)
+                                os.chown(file.path, default_owner_id, group_id)
                                 owner = default_owner
-                            except (KeyError, Exception) as e:
-                                logging.error(e)
-                                logging.error(f'could not reset owner of {filepath} to default')
+                            except Exception:
+                                logging.error(f'could not reset owner of {filepath} to {default_owner}')
                                 owner = 'nobody'
                     else:
                         owner = options.api_user
@@ -1600,7 +1584,7 @@ class FileRequestHandler(AuthRequestHandler):
             for f, t, e, r, s, m, o, g, d in zip(
                 names, times, exportable, reasons, sizes, mimes, owners, etags, mtimes
             ):
-                href = '%s/%s' % (baseuri, url_escape(f))
+                href = f'{baseuri}/{url_escape(f)}'
                 file_info.append(
                     {
                         'filename': f,
@@ -1615,7 +1599,7 @@ class FileRequestHandler(AuthRequestHandler):
                         'mtime': d
                     }
                 )
-            logging.info('%s listed %s', self.requestor, path)
+            logging.info(f'{self.requestor} listed {path}')
             self.write({'files': file_info, 'page': nextref})
 
     def mtime_to_digest(self, mtime: int) -> str:
@@ -1637,13 +1621,12 @@ class FileRequestHandler(AuthRequestHandler):
 
         """
         try:
+            etag = None
             if self.filepath:
                 mtime = os.stat(self.filepath).st_mtime
                 etag = self.mtime_to_digest(mtime)
-                return etag
-        except (Exception, AttributeError) as e:
-            return None
-        else:
+            return etag
+        except Exception:
             return None
 
 
@@ -1669,51 +1652,25 @@ class FileRequestHandler(AuthRequestHandler):
         7. serve the bytes requested (explicitly, or implicitly), chunked
 
         """
-        self.message = 'Unknown error, please contact TSD'
         try:
-            assert options.valid_tenant.match(tenant)
             self.path = self.export_dir
             resource = url_unescape(self.resource)
             if not filename or os.path.isdir(f'{self.path}/{resource}'):
                 if not self.allow_list:
-                    self.message = 'Method not allowed'
-                    self.set_status(403)
-                    raise Exception
+                    raise ClientMethodNotAllowed
                 if filename and os.path.isdir(f'{self.path}/{resource}'):
                     self.path += f'/{resource}'
                 root = True if self.resource == self.path else False
                 self.list_files(self.path, tenant, root)
                 return
-            if not os.path.lexists(f'{self.path}/{resource}'):
-                    self.set_status(404)
-                    self.message = f'Resource {self.path}/{resource} not found'
-                    raise Exception
             if not self.allow_export:
-                self.message = 'Method not allowed'
-                self.set_status(403)
-                raise Exception
-            try:
-                secured_filename = check_filename(
-                    url_unescape(filename),
-                    disallowed_start_chars=options.start_chars
-                )
-            except Exception as e:
-                self.set_status(403)
-                raise Exception
-            self.filepath = '%s/%s' % (self.path, secured_filename)
-            if not os.path.lexists(self.filepath):
-                logging.error('%s tried to access a file that does not exist', self.requestor)
-                self.set_status(404)
-                self.message = 'File does not exist'
-                raise Exception
-            try:
-                size, mime_type, mtime = self.get_file_metadata(self.filepath)
-                status = self.enforce_export_policy(self.export_policy, self.filepath, tenant, size, mime_type)
-                assert status
-            except (Exception, AssertionError) as e:
-                logging.error(e)
-                self.set_status(400)
-                raise Exception
+                raise ClientMethodNotAllowed
+            if not os.path.lexists(f'{self.path}/{resource}'):
+                raise ClientResourceNotFoundError(f'{self.path}/{resource} not found')
+            self.filepath = f"{self.path}/{filename}"
+            size, mime_type, mtime = self.get_file_metadata(self.filepath)
+            if not self.enforce_export_policy(self.export_policy, self.filepath, tenant, size, mime_type):
+                raise ClientError("export policy violation")
             encrypt_data = False
             if 'Nacl-Nonce' in self.request.headers.keys():
                 self.decrypt_nacl_headers(self.request.headers)
@@ -1742,18 +1699,16 @@ class FileRequestHandler(AuthRequestHandler):
                     provided_etag = self.request.headers['If-Range']
                     computed_etag = self.compute_etag()
                     if provided_etag != computed_etag:
-                        self.message = 'The resource has changed, get everything from the start again'
-                        self.set_status(400)
-                        raise Exception(self.message)
+                        raise ClientError(
+                            'The resource has changed, get everything from the start again'
+                        )
                 # clients specify the range in terms of 0-based index numbers
                 # with an inclusive interval: [start, end]
                 client_byte_index_range = self.request.headers['Range']
                 full_file_size = os.stat(self.filepath).st_size
                 start_and_end = client_byte_index_range.split('=')[-1].split('-')
                 if ',' in start_and_end:
-                    self.set_status(405)
-                    self.message = 'Multipart byte range requests not supported'
-                    raise Exception(self.message)
+                    raise ClientMethodNotAllowed('Multipart byte range requests not supported')
                 client_start = int(start_and_end[0])
                 cursor_start = client_start
                 try:
@@ -1762,7 +1717,7 @@ class FileRequestHandler(AuthRequestHandler):
                     client_end = full_file_size - 1
                 if client_end > full_file_size:
                     self.set_status(416)
-                    raise Exception('Range request exceeds byte range of resource')
+                    raise ClientContentRangeError('Range request exceeds byte range of resource')
                 # because clients provide 0-based byte indices
                 # we must add 1 to calculate the desired amount to read
                 bytes_to_read = client_end - client_start + 1
@@ -1786,11 +1741,13 @@ class FileRequestHandler(AuthRequestHandler):
                     data = fd.read(self.CHUNK_SIZE)
                     sent = sent + self.CHUNK_SIZE
                 fd.close()
-            logging.info('user: %s, exported file: %s , with MIME type: %s', self.requestor, self.filepath, mime_type)
+            logging.info(f'user: {self.requestor}, exported file: {self.filepath} , MIME type: {mime_type}')
+        except ApiError as e:
+            logging.error(e.log_msg)
+            self.set_status(e.status.value)
         except Exception as e:
             logging.error(e)
-            logging.error(self.message)
-            self.write({'message': self.message})
+            self.set_status(HTTPStatus.INTERNAL_SERVER_ERROR.value)
         finally:
             try:
                 fd.close()
