@@ -753,6 +753,7 @@ class SnsFormDataHandler(AuthRequestHandler):
 
         if copy_to_ess:
             try:
+                target = ""
                 ess_path = options.tenant_storage_cache.get(tenant, {}).get("storage_paths", {}).get("ess")
                 hnas_durable = f"/tsd/{self.tenant}/data/durable"
 
@@ -768,7 +769,8 @@ class SnsFormDataHandler(AuthRequestHandler):
                 shutil.copy(self.path, target)
                 os.chmod(target, _RW_RW___)
             except Exception as e:
-                logging.error(e) # no need to abort yet
+                logging.error(e)
+                raise ServerSnsError(f"could not copy {target} to ESS")
 
     def on_finish(self) -> None:
         if (
