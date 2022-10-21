@@ -2281,7 +2281,7 @@ class GenericTableHandler(AuthRequestHandler):
 class HealthCheckHandler(RequestHandler):
 
     def head(self, tenant: str) -> None:
-        self.set_status(200)
+        self.set_status(HTTPStatus.OK.value)
         self.write({'message': 'healthy'})
 
 
@@ -2319,14 +2319,15 @@ class RunTimeConfigurationHandler(RequestHandler):
     def post(self) -> None:
         try:
             action = url_escape(self.get_query_argument('maintenance'))
-            assert action in ['on', 'off'], f'action: {action} not supported'
+            if action not in ['on', 'off']:
+                raise ClientError(f'action: {action} not supported')
             if action == 'on':
                 options.maintenance_mode_enabled = True
             elif action == 'off':
                 options.maintenance_mode_enabled = False
             self.write({'maintenance_mode_enabled': options.maintenance_mode_enabled})
-        except (Exception, AssertionError) as e:
-            self.set_status(400)
+        except Exception as e:
+            self.set_status(HTTPStatus.BAD_REQUEST.value)
             logging.error(e)
 
     def get(self) -> None:
@@ -2343,7 +2344,7 @@ class AuditLogViewerHandler(AuthRequestHandler):
 
     def get(self, tenant: str, backend: str = None) -> None:
         if not options.request_log:
-            self.set_status(503)
+            self.set_status(HTTPStatus.SERVICE_UNAVAILABLE.value)
             self.write({'message': 'logging has not been configured'})
         try:
             if not backend:
@@ -2355,18 +2356,18 @@ class AuditLogViewerHandler(AuthRequestHandler):
                     if 'apps' in available:
                         continue
                     available.append(backend)
-                self.set_status(200)
+                self.set_status(HTTPStatus.OK.value)
                 self.write({'logs': available})
             elif backend == 'apps':
                 engine_type = options.request_log.get('db').get('engine')
                 log_apps = self.get_log_apps(tenant, backend, engine_type)
-                self.set_status(200)
+                self.set_status(HTTPStatus.OK.value)
                 self.write({'apps': log_apps})
             else:
                 app = self.get_app_name(self.request.uri)
                 engine_type = options.request_log.get('db').get('engine')
                 db = self.get_log_db(tenant, backend, engine_type, app=app)
-                self.set_status(200)
+                self.set_status(HTTPStatus.OK.value)
                 self.set_header('Content-Type', 'application/json')
                 self.write('[')
                 self.flush()
@@ -2383,16 +2384,19 @@ class AuditLogViewerHandler(AuthRequestHandler):
                 self.flush()
         except ServerStorageTemporarilyUnavailableError:
             self.set_header("X-Project-Storage", "Migrating")
-            self.set_status(503, reason="Project Storage Migrating")
+            self.set_status(HTTPStatus.SERVICE_UNAVAILABLE.value, reason="Project Storage Migrating")
             self.write({'message': 'Project Storage Migrating'})
         except (psycopg2.errors.UndefinedTable, sqlite3.OperationalError) as e:
             logging.error(e)
-            self.set_status(404)
+            self.set_status(HTTPStatus.NOT_FOUND.value)
             self.write({'message': f'no logs available'})
+        except ApiError as e:
+            logging.error(e.log_msg)
+            self.set_status(e.status.value)
+            self.write({"message": "could not process request"})
         except Exception as e:
             logging.error(e)
-            if not self._status_code == 403:
-                self.set_status(400)
+            self.set_status(HTTPStatus.INTERNAL_SERVER_ERROR.value)
             self.write({'message': traceback.format_exc()})
 
 
