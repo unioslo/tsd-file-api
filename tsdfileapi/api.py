@@ -1251,7 +1251,7 @@ class FileRequestHandler(AuthRequestHandler):
                 self.target_file.write(decrypted)
             self.target_file.close()
             os.rename(self.path, self.path_part)
-        self.set_status(201)
+        self.set_status(HTTPStatus.CREATED.value)
         self.write({'message': 'data streamed'})
 
 
@@ -1282,7 +1282,7 @@ class FileRequestHandler(AuthRequestHandler):
                         self.upload_id,
                         self.requestor
                     )
-                    self.set_status(201)
+                    self.set_status(HTTPStatus.CREATED.value)
                     self.write(
                         {
                             'filename': filename,
@@ -1292,7 +1292,7 @@ class FileRequestHandler(AuthRequestHandler):
                         }
                     )
                 except Exception as e:
-                    self.set_status(500)
+                    self.set_status(HTTPStatus.INTERNAL_SERVER_ERROR.value)
                     self.write(
                         {
                             'filename': filename,
@@ -1302,7 +1302,7 @@ class FileRequestHandler(AuthRequestHandler):
                         }
                     )
             else:
-                self.set_status(400)
+                self.set_status(HTTPStatus.BAD_REQUEST.value)
                 self.write({'message': 'chunk_order_incorrect'})
                 return
         else:
@@ -1314,10 +1314,10 @@ class FileRequestHandler(AuthRequestHandler):
                     self.requestor
                 )
             except ResumableNotFoundError:
-                self.set_status(404)
+                self.set_status(HTTPStatus.BAD_REQUEST.value)
                 return
             filename = os.path.basename(self.completed_resumable_filename)
-            self.set_status(201)
+            self.set_status(HTTPStatus.CREATED.value)
             self.write(
                 {
                     'filename': filename,
@@ -1356,8 +1356,7 @@ class FileRequestHandler(AuthRequestHandler):
             file = os.path.basename(filename)
             check_filename(file, disallowed_start_chars=options.start_chars)
         except Exception as e:
-            self.message = 'Illegal export filename: %s' % file
-            logging.error(self.message)
+            logging.error(f"Illegal export filename: {file}")
             return status
         if tenant in policy_config.keys():
             policy = policy_config[tenant]
@@ -1371,11 +1370,9 @@ class FileRequestHandler(AuthRequestHandler):
         else:
             status = True if mime_type in policy['allowed_mime_types'] else False
             if not status:
-                self.message = 'not allowed to export file with MIME type: %s' % mime_type
-                logging.error(self.message)
+                logging.error(f'not allowed to export file with MIME type: {mime_type}')
         if policy['max_size'] and size > policy['max_size']:
-            logging.error('%s tried to export a file exceeding the maximum size limit', self.requestor)
-            self.message = 'File size exceeds maximum allowed for %s' % tenant
+            logging.error(f'{self.requestor} tried to export a file exceeding the maximum size limit')
             status = False
         return status
 
@@ -1716,7 +1713,6 @@ class FileRequestHandler(AuthRequestHandler):
                 except Exception as e:
                     client_end = full_file_size - 1
                 if client_end > full_file_size:
-                    self.set_status(416)
                     raise ClientContentRangeError('Range request exceeds byte range of resource')
                 # because clients provide 0-based byte indices
                 # we must add 1 to calculate the desired amount to read
