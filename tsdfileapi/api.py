@@ -1961,15 +1961,11 @@ class GenericTableHandler(AuthRequestHandler):
 
     def prepare(self) -> Optional[Awaitable[None]]:
         try:
-            self.error = None
             if options.maintenance_mode_enabled:
-                self.set_status(503)
-                self.error = 'Service temporarily unavailable'
-                raise Exception(self.error)
-            self.error = 'Unauthorized'
+                raise ServerMaintenanceError
             self.rid_info = {'key': None, 'values': []}
             self.authnz = self.process_token_and_extract_claims(
-                check_tenant=self.check_tenant if self.check_tenant is not None else options.check_tenant
+                check_tenant=self.check_tenant or options.check_tenant
             )
             if self.dbtype == 'sqlite':
                 self.import_dir_pattern = self.backend_config['db']['path']
@@ -1995,39 +1991,33 @@ class GenericTableHandler(AuthRequestHandler):
                 self.db = PostgresBackend(options.pgpools.get(self.backend), schema=schema, requestor=self.requestor)
         except ServerStorageTemporarilyUnavailableError:
             self.set_header("X-Project-Storage", "Migrating")
-            self.set_status(503, reason="Project Storage Migrating")
+            self.set_status(HTTPStatus.SERVICE_UNAVAILABLE.value, reason="Project Storage Migrating")
+            self.finish()
+        except ApiError as e:
+            logging.error(e.log_msg)
+            self.set_status(e.status.value)
+            self.finish()
         except Exception as e:
             logging.error(e)
-            if self._status_code != 503:
-                self.set_status(401)
-                logging.error(self.error)
+            self.set_status(HTTPStatus.INTERNAL_SERVER_ERROR.value)
             self.finish()
 
 
     def decrypt_nacl_data(self, data: bytes, headers: tornado.httputil.HTTPHeaders) -> str:
         out = b''
         nacl_stream_buffer = data
-        try:
-            nacl_nonce = options.sealed_box.decrypt(
-                base64.b64decode(headers['Nacl-Nonce'])
-            )
-            nacl_key = options.sealed_box.decrypt(
-                base64.b64decode(headers['Nacl-Key'])
-            )
-        except Exception as e:
-            self.error = 'Could not decrypt Nacl headers'
-            logging.error(e)
-            logging.error(self.error)
-            raise Exception
+        nacl_nonce = options.sealed_box.decrypt(
+            base64.b64decode(headers['Nacl-Nonce'])
+        )
+        nacl_key = options.sealed_box.decrypt(
+            base64.b64decode(headers['Nacl-Key'])
+        )
         try:
             nacl_chunksize = int(headers['Nacl-Chunksize'])
         except KeyError:
-            self.error = 'Missing Nacl-Chunksize header - cannot decrypt data'
-            logging.error(self.error)
-            raise Exception
+            raise ClientError('Missing Nacl-Chunksize header - cannot decrypt data')
         if nacl_chunksize > options.max_nacl_chunksize:
-            self.error = f'Nacl-Chunksize larger than max allowed: {options.max_nacl_chunksize}'
-            raise Exception(self.error)
+            raise ClientError(f'Nacl-Chunksize larger than max allowed: {options.max_nacl_chunksize}')
         while len(nacl_stream_buffer) >= nacl_chunksize:
             target_content = nacl_stream_buffer[:nacl_chunksize]
             remainder = nacl_stream_buffer[nacl_chunksize:]
@@ -2115,7 +2105,7 @@ class GenericTableHandler(AuthRequestHandler):
                     exclude_endswith = ["_audit", "_metadata"],
                     remove_pattern = "_submissions",
                 )
-                self.set_status(200)
+                self.set_status(HTTPStatus.OK.value)
                 self.write({'tables': tables})
             else:
                 if self.table_structure:
@@ -2130,7 +2120,7 @@ class GenericTableHandler(AuthRequestHandler):
                 else:
                     data_request = True
                 if not data_request:
-                    self.set_status(200)
+                    self.set_status(HTTPStatus.OK.value)
                     self.write({'data': self.table_structure})
                 else:
                     table_name = self.create_table_name(table_name)
@@ -2142,8 +2132,7 @@ class GenericTableHandler(AuthRequestHandler):
                     results = self.db.table_select(table_name, query, exclude_endswith = ["_audit", "_metadata"])
                     # At this point the query was created and determined valid
                     result = next(results, None)
-                    # At this point the table is determined to exist so the queruy will be executed.
-                    self.set_status(200)
+                    self.set_status(HTTPStatus.OK.value)
                     if not result:
                        self.write('[]')
                        return
@@ -2155,20 +2144,25 @@ class GenericTableHandler(AuthRequestHandler):
                         self.flush()
                     self.write(']')
                     self.flush()
+        # TODO: raise custom exceptions from pysquril to identify query errors as 4XX
         except (psycopg2.errors.UndefinedTable, sqlite3.OperationalError) as e:
             if table_name.endswith('_audit'):
-                # Handle the audit table differently bacause it is not created until the first change appears.
-                self.set_status(200)
+                # Handle the audit table differently
+                # it is not created until the first change appears
+                self.set_status(HTTPStatus.OK.value)
                 self.write('[]')
             else:
                 logging.error(e)
-                self.set_status(404)
+                self.set_status(HTTPStatus.NOT_FOUND.value)
                 self.write({'message': f'table {table_name} does not exist'})
+        except ApiError as e:
+            logging.error(e.log_msg)
+            self.set_status(e.status.value)
+            self.write({"message": "could not process request"})
         except Exception as e:
             logging.error(e)
-            self.error = f"Bad Request: {type(e).__name__}"
-            self.set_status(400)
-            self.write({'message': self.error})
+            self.set_status(HTTPStatus.INTERNAL_SERVER_ERROR.value)
+            self.write({'message': 'server error'})
 
 
     def put(self, tenant: str, table_name: str) -> None:
@@ -2184,34 +2178,29 @@ class GenericTableHandler(AuthRequestHandler):
             self.set_resource_identifier_info(data)
             table_name = self.create_table_name(table_name)
             if self.request.uri.endswith('/audit'):
-                self.set_status(403)
-                self.error = 'Not allowed to write to audit tables'
-                raise Exception(self.error)
-            try:
-                self.db.table_insert(table_name, data)
-                self.set_status(201)
-                self.write({'message': 'data stored'})
-            except Exception as e:
-                logging.error(e)
-                raise Exception
+                raise ClientAuthorizationError('Not allowed to write to audit tables')
+            self.db.table_insert(table_name, data)
+            self.set_status(HTTPStatus.CREATED.value)
+            self.write({'message': 'data stored'})
         except (psycopg2.errors.UndefinedTable, sqlite3.OperationalError) as e:
             logging.error(e)
-            self.set_status(404)
+            self.set_status(HTTPStatus.NOT_FOUND.value)
             self.write({'message': f'table {table_name} does not exist'})
+        except ApiError as e:
+            logging.error(e.log_msg)
+            self.set_status(e.status.value)
+            self.write({"message": "could not process request"})
         except Exception as e:
             logging.error(e)
-            if not self._status_code == 403:
-                self.set_status(400)
-            self.write({'message': self.error})
+            self.set_status(HTTPStatus.INTERNAL_SERVER_ERROR.value)
+            self.write({'message': 'server error'})
 
 
     def patch(self, tenant: str, table_name: str) -> None:
         try:
             table_name = self.create_table_name(table_name)
             if self.request.uri.endswith('/audit'):
-                self.set_status(403)
-                self.error = 'Not allowed to write to audit tables'
-                raise Exception(self.error)
+                raise ClientAuthorizationError('Not allowed to write to audit tables')
             if self.request.headers.get('Content-Type') == 'application/json+nacl':
                 new_data = self.decrypt_nacl_data(
                     self.request.body,
@@ -2223,17 +2212,20 @@ class GenericTableHandler(AuthRequestHandler):
             self.set_resource_identifier_info(data)
             query = self.get_uri_query(self.request.uri)
             self.db.table_update(table_name, query, data)
-            self.set_status(200)
+            self.set_status(HTTPStatus.CREATED.value)
             self.write({'data': 'data updated'})
         except (psycopg2.errors.UndefinedTable, sqlite3.OperationalError) as e:
             logging.error(e)
-            self.set_status(404)
+            self.set_status(HTTPStatus.NOT_FOUND.value)
             self.write({'message': f'table {table_name} does not exist'})
+        except ApiError as e:
+            logging.error(e.log_msg)
+            self.set_status(e.status.value)
+            self.write({"message": "could not process request"})
         except Exception as e:
             logging.error(e)
-            if not self._status_code == 403:
-                self.set_status(400)
-            self.write({'message': self.error})
+            self.set_status(HTTPStatus.INTERNAL_SERVER_ERROR.value)
+            self.write({'message': 'server error'})
 
 
     def delete(self, tenant: str, table_name: str) -> None:
@@ -2241,23 +2233,23 @@ class GenericTableHandler(AuthRequestHandler):
 
             table_name = self.create_table_name(table_name)
             if self.request.uri.endswith('/audit'):
-                self.set_status(403)
-                self.error = 'Not allowed to delete from audit tables'
-                raise Exception(self.error)
+                raise ClientAuthorizationError('Not allowed to delete from audit tables')
             query = self.get_uri_query(self.request.uri)
             data = self.db.table_delete(table_name, query)
-            self.set_status(200)
+            self.set_status(HTTPStatus.OK.value)
             self.write({'data': data})
         except (psycopg2.errors.UndefinedTable, sqlite3.OperationalError) as e:
             logging.error(e)
-            self.set_status(404)
+            self.set_status(HTTPStatus.NOT_FOUND.value)
             self.write({'message': f'table {table_name} does not exist'})
+        except ApiError as e:
+            logging.error(e.log_msg)
+            self.set_status(e.status.value)
+            self.write({"message": "could not process request"})
         except Exception as e:
             logging.error(e)
-            logging.error(traceback.format_exc())
-            if not self._status_code == 403:
-                self.set_status(400)
-            self.write({'message': self.error})
+            self.set_status(HTTPStatus.INTERNAL_SERVER_ERROR.value)
+            self.write({'message': 'server error'})
 
 
     def on_finish(self) -> None:
