@@ -367,7 +367,7 @@ class TestFileApi(unittest.TestCase):
             self.base_url + '/tables/generic/mytest1?set=key1&where=key2=eq.bla',
             data=json.dumps({'key1': 1000}),
             headers=headers)
-        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(resp.status_code, 201)
 
     def test_XXX_query_invalid(self) -> None:
         headers = {'Authorization': 'Bearer ' + TEST_TOKENS['VALID']}
@@ -422,7 +422,7 @@ class TestFileApi(unittest.TestCase):
             headers=headers,
             data=json.dumps({'key1': 5})
         )
-        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(resp.status_code, 201)
         # that the update propagated
         resp = requests.get(
             f'{self.survey}/123456/submissions?order=key1.asc',
@@ -585,7 +585,7 @@ class TestFileApi(unittest.TestCase):
         headers = {'Authorization': 'Bearer ' + TEST_TOKENS['WRONG_PROJECT']}
         resp = requests.put(self.base_url + '/survey/63332/submissions',
                              data=json.dumps(data), headers=headers)
-        self.assertEqual(resp.status_code, 401)
+        self.assertEqual(resp.status_code, 403)
 
 
     def test_ZA_choosing_file_upload_directories_based_on_tenant_works(self) -> None:
@@ -1508,7 +1508,7 @@ class TestFileApi(unittest.TestCase):
             headers=headers,
             data=json.dumps(new_version)
         )
-        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(resp.status_code, 201)
 
         # audit
         resp = requests.get(
