@@ -161,6 +161,3 @@ def error_for_exception(exc: Exception) -> Error:
         message = f"{default.phrase}, {exc}"
         headers = {}
     return Error(status, reason, message, headers)
-
-# TODO: stat the project dir, before trying to access the data dir
-# revert auth change - allow backend config to over-rise API wide config
