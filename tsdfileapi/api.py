@@ -673,7 +673,7 @@ class SnsFormDataHandler(AuthRequestHandler):
             self.new_paths = []
             self.group_name = None
             self.authnz = self.process_token_and_extract_claims(
-                check_tenant=self.check_tenant or options.check_tenant
+                check_tenant=self.check_tenant if self.check_tenant is not None else options.check_tenant
             )
             if not self.request.files['file']:
                 raise ClientError("No files included in the request")
@@ -864,7 +864,7 @@ class ResumablesHandler(AuthRequestHandler):
             if options.maintenance_mode_enabled:
                 raise ServerMaintenanceError
             self.authnz = self.process_token_and_extract_claims(
-                check_tenant=self.check_tenant or options.check_tenant
+                check_tenant=self.check_tenant if self.check_tenant is not None else options.check_tenant
             )
         except Exception as e:
             error = error_for_exception(e)
@@ -1014,7 +1014,7 @@ class FileRequestHandler(AuthRequestHandler):
             )
 
             self.authnz = self.process_token_and_extract_claims(
-                check_tenant=self.check_tenant or options.check_tenant
+                check_tenant=self.check_tenant if self.check_tenant is not None else options.check_tenant
             )
 
             tenant = tenant_from_url(self.request.uri)
@@ -1947,7 +1947,7 @@ class GenericTableHandler(AuthRequestHandler):
                 raise ServerMaintenanceError
             self.rid_info = {'key': None, 'values': []}
             self.authnz = self.process_token_and_extract_claims(
-                check_tenant=self.check_tenant or options.check_tenant
+                check_tenant=self.check_tenant if self.check_tenant is not None else options.check_tenant
             )
             if self.dbtype == 'sqlite':
                 self.import_dir_pattern = self.backend_config['db']['path']
