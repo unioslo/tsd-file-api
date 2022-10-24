@@ -72,6 +72,8 @@ from exc import (
     ClientContentRangeError,
     ServerStorageTemporarilyUnavailableError,
     ServerMaintenanceError,
+    error_for_exception,
+    Error,
 )
 from resumables import SerialResumable, ResumableNotFoundError, ResumableIncorrectChunkOrderError
 from rmq import PikaClient
@@ -681,13 +683,12 @@ class SnsFormDataHandler(AuthRequestHandler):
             self.enforce_group_logic(
                 group_name, group_memberships, self.tenant, self.group_config,
             )
-        except ApiError as e:
-            logging.error(e.log_msg)
-            self.set_status(e.status.value)
-            self.finish()
         except Exception as e:
-            logging.error(e) # unforseen errors, assume server issue
-            self.set_status(HTTPStatus.INTERNAL_SERVER_ERROR.value)
+            error = error_for_exception(e)
+            logging.error(error.message)
+            for name, value in error.headers.items():
+                self.set_header(name, value)
+            self.set_status(error.status, reason=error.reason)
             self.finish()
 
     def write_files(self, filemode: str, tenant: str) -> None:
@@ -789,17 +790,12 @@ class SnsFormDataHandler(AuthRequestHandler):
             self.write_files(filemode, tenant)
             self.set_status(HTTPStatus.CREATED.value)
             self.write({'message': 'data uploaded'})
-        except ServerStorageTemporarilyUnavailableError:
-            self.set_header("X-Project-Storage", "Migrating")
-            self.set_status(HTTPStatus.SERVICE_UNAVAILABLE.value, reason="Project Storage Migrating")
-            self.write({"message": "Project Storage Migrating"})
-        except ApiError as e:
-            logging.error(e.log_msg)
-            self.set_status(e.status.value)
-            self.write({"message": e.log_msg})
         except Exception as e:
-            logging.error(e)
-            self.set_status(HTTPStatus.INTERNAL_SERVER_ERROR.value)
+            error = error_for_exception(e)
+            logging.error(error.message)
+            for name, value in error.headers.items():
+                self.set_header(name, value)
+            self.set_status(error.status, reason=error.reason)
             self.write({'message': 'could not upload data'})
 
     def put(self, tenant: str, keyid: str, formid: str) -> None:
@@ -870,15 +866,12 @@ class ResumablesHandler(AuthRequestHandler):
             self.authnz = self.process_token_and_extract_claims(
                 check_tenant=self.check_tenant or options.check_tenant
             )
-        except ServerStorageTemporarilyUnavailableError:
-            self.set_header("X-Project-Storage", "Migrating")
-            self.set_status(HTTPStatus.SERVICE_UNAVAILABLE.value, reason="Project Storage Migrating")
-            self.finish()
-        except ApiError as e:
-            logging.error(e.log_msg)
-            self.set_status(e.status.value)
-            self.finish()
         except Exception as e:
+            error = error_for_exception(e)
+            logging.error(error.message)
+            for name, value in error.headers.items():
+                self.set_header(name, value)
+            self.set_status(error.status, reason=error.reason)
             self.finish()
 
     def get(self, tenant: str, filename: str = None) -> None:
@@ -898,8 +891,11 @@ class ResumablesHandler(AuthRequestHandler):
             self.set_status(HTTPStatus.NOT_FOUND.value)
             self.write({"message": "not found"})
         except Exception as e:
-            logging.error(e)
-            self.set_status(HTTPStatus.INTERNAL_SERVER_ERROR.value)
+            error = error_for_exception(e)
+            logging.error(error.message)
+            for name, value in error.headers.items():
+                self.set_header(name, value)
+            self.set_status(error.status, reason=error.reason)
             self.write(
                 {
                     'filename': filename,
@@ -924,42 +920,30 @@ class ResumablesHandler(AuthRequestHandler):
                 raise ClientAuthorizationError("resumable access denied")
             self.set_status(HTTPStatus.OK.value)
             self.write({'message': 'resumable deleted'})
-        except AttributeError as e:
-            logging.error(e)
-            self.set_status(HTTPStatus.BAD_REQUEST.value)
-            self.write({'message': 'missing id query parameter'})
-        except ApiError as e:
-            logging.error(e.log_msg)
-            self.set_status(e.status.value)
-            self.write({'message': 'cannot delete resumable'})
         except Exception as e:
-            logging.error(e)
-            self.set_status(HTTPStatus.INTERNAL_SERVER_ERROR.value)
-            self.write({'message': 'cannot delete resumable'})
+            error = error_for_exception(e)
+            logging.error(error.message)
+            for name, value in error.headers.items():
+                self.set_header(name, value)
+            self.set_status(error.status, reason=error.reason)
 
 
 @stream_request_body
 class FileRequestHandler(AuthRequestHandler):
 
     def decrypt_nacl_headers(self, headers: tornado.httputil.HTTPHeaders) -> None:
+        if not headers.get('Nacl-Chunksize'):
+            raise ClientError('Missing Nacl-Chunksize header - cannot decrypt data')
         self.custom_content_type = headers['Content-Type']
         self.nacl_stream_buffer = b''
-        try:
-            self.nacl_nonce = options.sealed_box.decrypt(
-                base64.b64decode(headers['Nacl-Nonce'])
-            )
-            self.nacl_key = options.sealed_box.decrypt(
-                base64.b64decode(headers['Nacl-Key'])
-            )
-        except Exception as e:
-            logging.error(e)
-            logging.error('Could not decrypt Nacl headers')
-            raise Exception
-        try:
-            self.nacl_chunksize = int(headers['Nacl-Chunksize'])
-        except KeyError:
-            logging.error('Missing Nacl-Chunksize header - cannot decrypt data')
-            raise Exception
+        self.nacl_nonce = options.sealed_box.decrypt(
+            base64.b64decode(headers['Nacl-Nonce'])
+        )
+        self.nacl_key = options.sealed_box.decrypt(
+            base64.b64decode(headers['Nacl-Key'])
+        )
+        self.nacl_chunksize = int(headers['Nacl-Chunksize'])
+
 
     def initialize(self, backend: str, namespace: str, endpoint: str) -> None:
         default_group_logic = {
@@ -1191,20 +1175,15 @@ class FileRequestHandler(AuthRequestHandler):
                     elif self.request.method == 'PATCH':
                         if not self.completed_resumable_file:
                             self.target_file = self.res.open_file(self.path, filemode)
-        except ApiError as e:
-            logging.error(e.log_msg)
-            self.set_status(e.status.value)
-            self.finish()
         except ResumableIncorrectChunkOrderError as e:
             self.set_status(HTTPStatus.BAD_REQUEST.value)
             self.finish({'message': 'chunk_order_incorrect'})
-        except ServerStorageTemporarilyUnavailableError:
-            self.set_header("X-Project-Storage", "Migrating")
-            self.set_status(HTTPStatus.SERVICE_UNAVAILABLE.value, reason="Project Storage Migrating")
-            self.finish()
         except Exception as e:
-            logging.error(e)
-            self.set_status(HTTPStatus.INTERNAL_SERVER_ERROR.value)
+            error = error_for_exception(e)
+            logging.error(error.message)
+            for name, value in error.headers.items():
+                self.set_header(name, value)
+            self.set_status(error.status, reason=error.reason)
             self.finish()
 
     @gen.coroutine
@@ -1294,7 +1273,9 @@ class FileRequestHandler(AuthRequestHandler):
                         }
                     )
                 except Exception as e:
-                    self.set_status(HTTPStatus.INTERNAL_SERVER_ERROR.value)
+                    logging.error(e)
+                    error = error_for_exception(e)
+                    self.set_status(error.status, reason=error.reason)
                     self.write(
                         {
                             'filename': filename,
@@ -1740,12 +1721,12 @@ class FileRequestHandler(AuthRequestHandler):
                     sent = sent + self.CHUNK_SIZE
                 fd.close()
             logging.info(f'user: {self.requestor}, exported file: {self.filepath} , MIME type: {mime_type}')
-        except ApiError as e:
-            logging.error(e.log_msg)
-            self.set_status(e.status.value)
         except Exception as e:
-            logging.error(e)
-            self.set_status(HTTPStatus.INTERNAL_SERVER_ERROR.value)
+            error = error_for_exception(e)
+            logging.error(error.message)
+            for name, value in error.headers.items():
+                self.set_header(name, value)
+            self.set_status(error.status, reason=error.reason)
         finally:
             try:
                 fd.close()
@@ -1775,13 +1756,12 @@ class FileRequestHandler(AuthRequestHandler):
             self.set_header('Content-Type', mime_type)
             self.set_header('Modified-Time', str(mtime))
             self.set_status(HTTPStatus.OK.value)
-        except ApiError as e:
-            logging.error(e.log_msg)
-            self.set_status(e.status.value)
-            self.finish()
         except Exception as e:
-            logging.error(e)
-            self.set_status(HTTPStatus.INTERNAL_SERVER_ERROR.value)
+            error = error_for_exception(e)
+            logging.error(error.message)
+            for name, value in error.headers.items():
+                self.set_header(name, value)
+            self.set_status(error.status, reason=error.reason)
             self.finish()
 
 
@@ -1809,12 +1789,12 @@ class FileRequestHandler(AuthRequestHandler):
             logging.info(f'user: {self.requestor}, deleted file: {self.filepath}')
             self.set_status(HTTPStatus.OK.value)
             self.write({'message': f'deleted {self.filepath}'})
-        except ApiError as e:
-            logging.error(e.log_msg)
-            self.set_status(e.status.value)
-            self.finish()
         except Exception as e:
-            logging.error(e)
+            error = error_for_exception(e)
+            logging.error(error.message)
+            for name, value in error.headers.items():
+                self.set_header(name, value)
+            self.set_status(error.status, reason=error.reason)
             self.finish()
 
 
@@ -1991,17 +1971,12 @@ class GenericTableHandler(AuthRequestHandler):
                 else:
                     schema = self.tenant
                 self.db = PostgresBackend(options.pgpools.get(self.backend), schema=schema, requestor=self.requestor)
-        except ServerStorageTemporarilyUnavailableError:
-            self.set_header("X-Project-Storage", "Migrating")
-            self.set_status(HTTPStatus.SERVICE_UNAVAILABLE.value, reason="Project Storage Migrating")
-            self.finish()
-        except ApiError as e:
-            logging.error(e.log_msg)
-            self.set_status(e.status.value)
-            self.finish()
         except Exception as e:
-            logging.error(e)
-            self.set_status(HTTPStatus.INTERNAL_SERVER_ERROR.value)
+            error = error_for_exception(e)
+            logging.error(error.message)
+            for name, value in error.headers.items():
+                self.set_header(name, value)
+            self.set_status(error.status, reason=error.reason)
             self.finish()
 
 
@@ -2157,14 +2132,13 @@ class GenericTableHandler(AuthRequestHandler):
                 logging.error(e)
                 self.set_status(HTTPStatus.NOT_FOUND.value)
                 self.write({'message': f'table {table_name} does not exist'})
-        except ApiError as e:
-            logging.error(e.log_msg)
-            self.set_status(e.status.value)
-            self.write({"message": "could not process request"})
         except Exception as e:
-            logging.error(e)
-            self.set_status(HTTPStatus.INTERNAL_SERVER_ERROR.value)
-            self.write({'message': 'server error'})
+            error = error_for_exception(e)
+            logging.error(error.message)
+            for name, value in error.headers.items():
+                self.set_header(name, value)
+            self.set_status(error.status, reason=error.reason)
+            self.write({'message': error.reason})
 
 
     def put(self, tenant: str, table_name: str) -> None:
@@ -2188,14 +2162,13 @@ class GenericTableHandler(AuthRequestHandler):
             logging.error(e)
             self.set_status(HTTPStatus.NOT_FOUND.value)
             self.write({'message': f'table {table_name} does not exist'})
-        except ApiError as e:
-            logging.error(e.log_msg)
-            self.set_status(e.status.value)
-            self.write({"message": "could not process request"})
         except Exception as e:
-            logging.error(e)
-            self.set_status(HTTPStatus.INTERNAL_SERVER_ERROR.value)
-            self.write({'message': 'server error'})
+            error = error_for_exception(e)
+            logging.error(error.message)
+            for name, value in error.headers.items():
+                self.set_header(name, value)
+            self.set_status(error.status, reason=error.reason)
+            self.write({'message': error.reason})
 
 
     def patch(self, tenant: str, table_name: str) -> None:
@@ -2220,14 +2193,13 @@ class GenericTableHandler(AuthRequestHandler):
             logging.error(e)
             self.set_status(HTTPStatus.NOT_FOUND.value)
             self.write({'message': f'table {table_name} does not exist'})
-        except ApiError as e:
-            logging.error(e.log_msg)
-            self.set_status(e.status.value)
-            self.write({"message": "could not process request"})
         except Exception as e:
-            logging.error(e)
-            self.set_status(HTTPStatus.INTERNAL_SERVER_ERROR.value)
-            self.write({'message': 'server error'})
+            error = error_for_exception(e)
+            logging.error(error.message)
+            for name, value in error.headers.items():
+                self.set_header(name, value)
+            self.set_status(error.status, reason=error.reason)
+            self.write({'message': error.reason})
 
 
     def delete(self, tenant: str, table_name: str) -> None:
@@ -2244,14 +2216,13 @@ class GenericTableHandler(AuthRequestHandler):
             logging.error(e)
             self.set_status(HTTPStatus.NOT_FOUND.value)
             self.write({'message': f'table {table_name} does not exist'})
-        except ApiError as e:
-            logging.error(e.log_msg)
-            self.set_status(e.status.value)
-            self.write({"message": "could not process request"})
         except Exception as e:
-            logging.error(e)
-            self.set_status(HTTPStatus.INTERNAL_SERVER_ERROR.value)
-            self.write({'message': 'server error'})
+            error = error_for_exception(e)
+            logging.error(error.message)
+            for name, value in error.headers.items():
+                self.set_header(name, value)
+            self.set_status(error.status, reason=error.reason)
+            self.write({'message': error.reason})
 
 
     def on_finish(self) -> None:
@@ -2384,28 +2355,30 @@ class AuditLogViewerHandler(AuthRequestHandler):
                     first = False
                 self.write(']')
                 self.flush()
-        except ServerStorageTemporarilyUnavailableError:
-            self.set_header("X-Project-Storage", "Migrating")
-            self.set_status(HTTPStatus.SERVICE_UNAVAILABLE.value, reason="Project Storage Migrating")
-            self.write({'message': 'Project Storage Migrating'})
         except (psycopg2.errors.UndefinedTable, sqlite3.OperationalError) as e:
             logging.error(e)
             self.set_status(HTTPStatus.NOT_FOUND.value)
             self.write({'message': f'no logs available'})
-        except ApiError as e:
-            logging.error(e.log_msg)
-            self.set_status(e.status.value)
-            self.write({"message": "could not process request"})
         except Exception as e:
-            logging.error(e)
-            self.set_status(HTTPStatus.INTERNAL_SERVER_ERROR.value)
-            self.write({'message': traceback.format_exc()})
+            error = error_for_exception(e)
+            logging.error(error.message)
+            for name, value in error.headers.items():
+                self.set_header(name, value)
+            self.set_status(error.status, reason=error.reason)
+            self.write({'message': error.reason})
 
 
 class ConfigHandler(RequestHandler):
 
     def get(self) -> None:
-        self.write(options.config)
+        try:
+            self.write(options.config)
+        except Exception as e:
+            error = error_for_exception(e)
+            logging.error(error.message)
+            for name, value in error.headers.items():
+                self.set_header(name, value)
+            self.set_status(error.status, reason=error.reason)
 
 class TestTokenHandler(RequestHandler):
 
