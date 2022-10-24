@@ -3,96 +3,164 @@
 Error definitions for failure modes for which we can determine the cause,
 mapped to HTTP status codes.
 
-OSError notes:
-
-[Errno 2]   | errno.ENOENT | No such file or directory (NFS mount issue)
-[Errno 122] | errno.EDQUOT | Disk quota exceeded
-
-
 References:
 - https://developer.mozilla.org/en-US/docs/Web/HTTP/Status
 - https://httpwg.org/specs/rfc9110.html#overview.of.status.codes
 
 """
 
-from http import HTTPStatus
+import errno
+
+from collections import namedtuple
+from http import HTTPStatus, client
+
+from tornado.web import HTTPError
+
 
 class ApiError(Exception):
 
-    desc = "API error"
+    reason = "API error"
     status = None
+    headers = {}
 
-    def __init__(self, message: str = "API Error") -> None:
-        self.message = message
-        self.log_msg = f"{self.desc}, {self.status.phrase}, {self.message}"
+    def __init__(self, context: str = "API Error", headers: dict = {}) -> None:
+        self.message = f"{self.status.phrase}, {self.reason}, {context}"
+        self.headers = headers or self.headers
 
 
 # Client errors -  HTTP 4XX range
 # -------------------------------
 
 class ClientError(ApiError):
-    desc = "Client error"
+    reason = "Client error"
     status = HTTPStatus.BAD_REQUEST
 
 class ClientIllegalFilenameError(ClientError):
-    desc = "Filename not allowed"
+    reason = "Filename not allowed"
     status = HTTPStatus.BAD_REQUEST
 
 class ClientSnsPathError(ClientError):
-    desc = "Wrong URL path for sns backend"
+    reason = "Wrong URL path"
     status = HTTPStatus.BAD_REQUEST
 
 class ClientAuthorizationError(ClientError):
-    desc = "Client not authorized for request"
+    reason = "Client not authorized for request"
     status = HTTPStatus.FORBIDDEN
 
 class ClientMethodNotAllowed(ClientError):
-    desc = "Method not allowed"
+    reason = "Method not allowed"
     status = HTTPStatus.METHOD_NOT_ALLOWED
 
 class ClientReservedResourceError(ClientError):
-    desc = "Reserved resource name"
+    reason = "Reserved resource name"
     status = HTTPStatus.BAD_REQUEST
 
 class ClientGroupAccessError(ClientError):
-    desc = "Group rights does not grant request"
+    reason = "Group rights does not authorize request"
     status = HTTPStatus.FORBIDDEN
 
 class ClientNaclChunkSizeError(ClientError):
-    desc = "Chunk size too large"
+    reason = "Chunk size too large"
     status = HTTPStatus.BAD_REQUEST
 
 class ClientResourceNotFoundError(ClientError):
-    desc = "Resource not found"
+    reason = "Resource not found"
     status = HTTPStatus.NOT_FOUND
 
 class ClientContentRangeError(ClientError):
-    desc = "Range not satisfiable"
+    reason = "Range not satisfiable"
     status = HTTPStatus.REQUESTED_RANGE_NOT_SATISFIABLE
 
+
 # Server errors - HTTP 5XX range
-#-------------------------------
+# ------------------------------
 
 class ServerError(ApiError):
-    desc = "Server error"
+    reason = "Server error"
     status = HTTPStatus.INTERNAL_SERVER_ERROR
 
 class ServerStorageTemporarilyUnavailableError(ServerError):
-    desc = "Backend cannot be used during migration"
+    reason = "Project Storage Migrating"
     status = HTTPStatus.SERVICE_UNAVAILABLE
+    headers = {"X-Project-Storage": "Migrating"}
 
 class ServerStorageNotMountedError(ServerError):
-    desc = "errno.ENOENT, NFS mount missing"
+    reason = "NFS mount issue"
     status = HTTPStatus.INTERNAL_SERVER_ERROR
 
 class ServerSnsError(ServerError):
-    desc = "Issue contructing sns storage path"
+    reason = "Issue contructing storage path"
     status = HTTPStatus.INTERNAL_SERVER_ERROR
 
 class ServerDiskQuotaExceededError(ServerError):
-    desc = "errno.EDQUOT, Project has run out of disk quota"
+    reason = "Project has run out of disk quota"
     status = HTTPStatus.INSUFFICIENT_STORAGE
 
 class ServerMaintenanceError(ServerError):
-    desc = "Server down for maintenance"
+    reason = "Server down for maintenance"
     status = HTTPStatus.SERVICE_UNAVAILABLE
+
+
+# helper functions
+# ----------------
+
+Error = namedtuple(
+    "Error",
+    ["status", "reason", "message", "headers"],
+)
+
+def error_for_exception(exc: Exception) -> Error:
+    """
+    Return an Error, with information about:
+
+    - which HTTP status code to send
+    - the reason for the error
+    - an informative log message
+    - optionally, headers to send with the error
+
+    This covers four cases of exceptions:
+
+    1) defined in this module
+    2) raised by the tornado framework
+    3) with an errno
+    4) everything else
+
+    errno notes:
+
+    - [Errno 2]
+        - FileNotFoundError
+        - errno.ENOENT
+        - No such file or directory
+            - NFS mount issue
+            - directory not present
+
+    - [Errno 122]
+        - errno.EDQUOT
+        - Disk quota exceeded
+
+    """
+    if isinstance(exc, ApiError):
+        status = exc.status.value
+        reason = exc.reason
+        message = exc.message
+        headers = exc.headers
+    elif isinstance(exc, HTTPError):
+        status = exc.status_code
+        reason = exc.log_message
+        message = f"{client.responses.get(status)}, {exc.log_message}"
+        headers = {}
+    elif hasattr(exc, "errno") and exc.errno == errno.EDQUOT:
+        status = HTTPStatus.INSUFFICIENT_STORAGE.value
+        reason = "Project has run out of disk quota"
+        message = f"{status.phrase}, {reason}"
+        headers = {}
+    else:
+        default = HTTPStatus.INTERNAL_SERVER_ERROR
+        status = default.value
+        reason = default.phrase
+        message = f"{default.phrase}, {exc}"
+        headers = {}
+    return Error(status, reason, message, headers)
+
+# TODO: stat the project dir, before trying to access the data dir
+# revert auth change - allow backend config to over-rise API wide config
