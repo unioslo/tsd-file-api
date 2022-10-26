@@ -1746,7 +1746,7 @@ class FileRequestHandler(AuthRequestHandler):
             if not filename:
                 raise ClientError('No resource specified')
             self.path = self.export_dir
-            self.filepath = f"{self.path}/{filename}"
+            self.filepath = f"{self.path}/{url_unescape(filename)}"
             if not os.path.lexists(self.filepath):
                 raise ClientResourceNotFoundError(f"{self.filepath} not found")
             size, mime_type, mtime = self.get_file_metadata(self.filepath)
@@ -1772,7 +1772,7 @@ class FileRequestHandler(AuthRequestHandler):
             if not filename:
                 raise ClientError("No resource specified")
             self.path = self.export_dir
-            self.filepath = f"{self.path}/{filename}"
+            self.filepath = f"{self.path}/{url_unescape(filename)}"
             if not os.path.lexists(self.filepath):
                 raise ClientResourceNotFoundError(f'{self.filepath} not found')
             if os.path.isdir(self.filepath):
