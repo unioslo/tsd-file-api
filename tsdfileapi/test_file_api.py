@@ -164,6 +164,7 @@ class TestFileApi(unittest.TestCase):
         # filename tests
         cls.so_sweet = os.path.normpath(cls.data_folder + '/så_søt(1).txt')
         cls.red = os.path.normpath(cls.data_folder + '/rød_fil_(1).txt')
+        cls.this_is_a_file = os.path.normpath(cls.data_folder + '/this is a file')
         cls.test_upload_id = '96c68dad-8dc5-4076-9569-92394001d42a'
         # TODO: make this configurable
         # do not dist with package
@@ -696,6 +697,11 @@ class TestFileApi(unittest.TestCase):
         self.assertEqual(resp.status_code, 200)
         resp = requests.get(self.export + '/' + url_escape('blå_fil_3_(v1).txt'), headers=headers)
         self.assertEqual(resp.text, u'even more data')
+        self.assertEqual(resp.status_code, 200)
+        resp = requests.head(self.export + '/' + url_escape('this is a file'), headers=headers)
+        self.assertEqual(resp.status_code, 200)
+        resp = requests.get(self.export + '/' + url_escape('this is a file'), headers=headers)
+        self.assertEqual(resp.text, u'Lol')
         self.assertEqual(resp.status_code, 200)
 
     # resumable uploads
