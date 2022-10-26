@@ -1647,7 +1647,7 @@ class FileRequestHandler(AuthRequestHandler):
                 raise ClientMethodNotAllowed
             if not os.path.lexists(f'{self.path}/{resource}'):
                 raise ClientResourceNotFoundError(f'{self.path}/{resource} not found')
-            self.filepath = f"{self.path}/{filename}"
+            self.filepath = f"{self.path}/{url_unescape(filename)}"
             size, mime_type, mtime = self.get_file_metadata(self.filepath)
             if not self.enforce_export_policy(self.export_policy, self.filepath, tenant, size, mime_type):
                 raise ClientError("export policy violation")
