@@ -4,11 +4,11 @@ from setuptools import setup
 
 setup(
     name='tsd-file-api',
-    version='2.11.11',
+    version='2.11.12',
     description='A REST API for handling files and json',
     author='Leon du Toit',
     author_email='l.c.d.toit@usit.uio.no',
-    url='https://github.com/leondutoit/tsd-file-api',
+    url='https://github.com/unioslo/tsd-file-api',
     packages=['tsdfileapi'],
     package_data={
         'tsdfileapi': [
