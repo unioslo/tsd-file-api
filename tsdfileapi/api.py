@@ -1634,7 +1634,7 @@ class FileRequestHandler(AuthRequestHandler):
         """
         try:
             self.path = self.export_dir
-            resource = url_unescape(self.resource)
+            resource = url_unescape(self.resource) # parsed from URI
             if not filename or os.path.isdir(f'{self.path}/{resource}'):
                 if not self.allow_list:
                     raise ClientMethodNotAllowed
@@ -1645,9 +1645,9 @@ class FileRequestHandler(AuthRequestHandler):
                 return
             if not self.allow_export:
                 raise ClientMethodNotAllowed
-            if not os.path.lexists(f'{self.path}/{resource}'):
-                raise ClientResourceNotFoundError(f'{self.path}/{resource} not found')
-            self.filepath = f"{self.path}/{url_unescape(filename)}"
+            self.filepath = f"{self.path}/{resource}"
+            if not os.path.lexists(f'{self.filepath}'):
+                raise ClientResourceNotFoundError(f'{self.filepath} not found')
             size, mime_type, mtime = self.get_file_metadata(self.filepath)
             if not self.enforce_export_policy(self.export_policy, self.filepath, tenant, size, mime_type):
                 raise ClientError("export policy violation")
@@ -1720,7 +1720,7 @@ class FileRequestHandler(AuthRequestHandler):
                     data = fd.read(self.CHUNK_SIZE)
                     sent = sent + self.CHUNK_SIZE
                 fd.close()
-            logging.info(f'user: {self.requestor}, exported file: {self.filepath} , MIME type: {mime_type}')
+            logging.info(f'user: {self.requestor}, exported file: {self.filepath}, MIME type: {mime_type}')
         except Exception as e:
             error = error_for_exception(e)
             logging.error(error.message)
@@ -1746,7 +1746,7 @@ class FileRequestHandler(AuthRequestHandler):
             if not filename:
                 raise ClientError('No resource specified')
             self.path = self.export_dir
-            self.filepath = f"{self.path}/{url_unescape(filename)}"
+            self.filepath = f"{self.path}/{url_unescape(self.resource)}"
             if not os.path.lexists(self.filepath):
                 raise ClientResourceNotFoundError(f"{self.filepath} not found")
             size, mime_type, mtime = self.get_file_metadata(self.filepath)
@@ -1772,7 +1772,7 @@ class FileRequestHandler(AuthRequestHandler):
             if not filename:
                 raise ClientError("No resource specified")
             self.path = self.export_dir
-            self.filepath = f"{self.path}/{url_unescape(filename)}"
+            self.filepath = f"{self.path}/{url_unescape(self.resource)}"
             if not os.path.lexists(self.filepath):
                 raise ClientResourceNotFoundError(f'{self.filepath} not found')
             if os.path.isdir(self.filepath):
