@@ -150,9 +150,10 @@ def error_for_exception(exc: Exception) -> Error:
         message = f"{client.responses.get(status)}, {exc.log_message}"
         headers = {}
     elif hasattr(exc, "errno") and exc.errno == errno.EDQUOT:
-        status = HTTPStatus.INSUFFICIENT_STORAGE.value
+        code = HTTPStatus.INSUFFICIENT_STORAGE
+        status = cade.value
         reason = "Project has run out of disk quota"
-        message = f"{status.phrase}, {reason}"
+        message = f"{code.phrase}, {reason}"
         headers = {}
     else:
         default = HTTPStatus.INTERNAL_SERVER_ERROR
