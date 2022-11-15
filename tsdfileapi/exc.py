@@ -151,7 +151,7 @@ def error_for_exception(exc: Exception) -> Error:
         headers = {}
     elif hasattr(exc, "errno") and exc.errno == errno.EDQUOT:
         code = HTTPStatus.INSUFFICIENT_STORAGE
-        status = cade.value
+        status = code.value
         reason = "Project has run out of disk quota"
         message = f"{code.phrase}, {reason}"
         headers = {}
