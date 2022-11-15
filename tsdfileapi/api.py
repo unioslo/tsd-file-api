@@ -144,7 +144,7 @@ def set_config() -> None:
     define('max_body_size', _config['max_body_size'])
     define('default_file_owner', _config['default_file_owner'])
     define('create_tenant_dir', _config['create_tenant_dir'])
-    define('jwt_secret', _config['jwt_secret'] if 'jwt_secret' in _config.keys() else None)
+    define('jwt_secret', _config.get('jwt_secret', None))
     define('max_nacl_chunksize', _config.get('max_nacl_chunksize', _50MB))
     define('sealed_box', libnacl.sealed.SealedBox(
             libnacl.public.SecretKey(
