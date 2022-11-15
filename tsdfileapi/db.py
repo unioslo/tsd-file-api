@@ -63,7 +63,15 @@ def get_projects_migration_status(conn: psycopg2.extensions.connection,) -> dict
                     case
                         when project_metadata->>'sns_ess_migration' is null then false
                         else cast(project_metadata->'sns_ess_migration'->>'done' as boolean)
-                    end as sns_ess_migration
+                    end as sns_ess_migration,
+                    case
+                        when project_metadata->>'publication_backend' is null then 'hnas'
+                        else project_metadata->>'publication_backend'
+                    end as publication_backend,
+                    case
+                        when project_metadata->>'survey_backend' is null then 'hnas'
+                        else project_metadata->>'survey_backend'
+                    end as survey_backend
                 from projects
             """
         )
@@ -74,6 +82,8 @@ def get_projects_migration_status(conn: psycopg2.extensions.connection,) -> dict
             "sns_ess_delivery":row[2],
             "sns_loader_processing": row[3],
             "sns_ess_migration": row[4],
+            "publication_backend": row[5],
+            "survey_backend": row[6],
         }
     return out
 
