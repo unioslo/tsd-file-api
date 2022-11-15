@@ -56,7 +56,7 @@ def find_tenant_storage_path(
     Either one of these:
 
         - /tsd/{pnum}/data/durable
-        - /ess/projects0{1|2|3}/{pnum}/data/durable
+        - /ess/projects0{1|2|3|...|n}/{pnum}/data/durable
 
     Results are cached in a dict stored on options:
 
@@ -71,6 +71,8 @@ def find_tenant_storage_path(
                 hnas: bool,
                 ess: bool,
             }
+            publication: str,
+            survey: str,
         },
         ...
     }
@@ -84,6 +86,8 @@ def find_tenant_storage_path(
     sns_ess_delivery = tenant_info.get("sns_ess_delivery", False)
     sns_loader_processing = tenant_info.get("sns_loader_processing", False)
     sns_migration_done = tenant_info.get("sns_ess_migration", False)
+    publication_backend = tenant_info.get("publication_backend", "hnas")
+    survey_backend = tenant_info.get("survey_backend", "hnas")
     # always update cache
     if not cache.get(tenant):
         cache[tenant] = {
@@ -93,11 +97,12 @@ def find_tenant_storage_path(
                 "ess": None,
             },
         }
-
     cache[tenant]["sns"] = {
         "hnas": True if not (sns_loader_processing or sns_migration_done) else False,
         "ess": True if (sns_ess_delivery or sns_loader_processing or sns_migration_done) else False,
     }
+    cache[tenant]["publication"] = publication_backend
+    cache[tenant]["survey"] = survey_backend
     # optionally look for ESS path
     if (
         storage_backend == "ess"
@@ -124,6 +129,10 @@ def find_tenant_storage_path(
                 preferred = "ess"
             else:
                 preferred = "hnas"
+        elif endpoint_backend == "publication":
+            preferred = project.get("publication")
+        elif endpoint_backend == "survey":
+            preferred = project.get("survey")
         return project.get("storage_paths").get(preferred)
     else:
         return project.get("storage_paths").get("hnas")
