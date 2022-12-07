@@ -1720,7 +1720,7 @@ class FileRequestHandler(AuthRequestHandler):
                     data = fd.read(self.CHUNK_SIZE)
                     sent = sent + self.CHUNK_SIZE
                 fd.close()
-            logging.info(f'user: {self.requestor}, exported file: {self.filepath}, MIME type: {mime_type}')
+            logging.info(f'{self.requestor}, downloaded: {self.filepath}, MIME type: {mime_type}, size: {size}')
         except Exception as e:
             error = error_for_exception(e)
             logging.error(error.message)
