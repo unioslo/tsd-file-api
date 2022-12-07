@@ -215,7 +215,7 @@ def sns_dir(
         if use_hnas and not os.path.lexists(hnas_sns_dir):
             try:
                 os.makedirs(hnas_sns_dir)
-                os.chmod(hnas_sns_dir, _rwxrws___())
+                subprocess.call(["sudo", "chmod", "2770", hnas_sns_dir])
                 logging.info(f'Created: {hnas_sns_dir}')
             except OSError as e:
                 if e.errno == errno.ENOENT:
@@ -244,6 +244,7 @@ def sns_dir(
                 )
                 if not os.path.lexists(ess_sns_dir):
                     os.makedirs(ess_sns_dir)
+                    subprocess.call(["sudo", "chmod", "2770", ess_sns_dir])
                     os.chmod(ess_sns_dir, _rwxrws___())
                     logging.info(f"Created: {ess_sns_dir}")
             except OSError as e:
