@@ -1,5 +1,5 @@
 [tool.poetry]
-name = "tsd-file-api"
+name = "tsdfileapi"
 version = "2.10.4"
 description = ""
 authors = ["Your Name <you@example.com>"]
