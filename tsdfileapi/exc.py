@@ -39,6 +39,10 @@ class ClientIllegalFilenameError(ClientError):
     reason = "Filename not allowed"
     status = HTTPStatus.BAD_REQUEST
 
+class ClientIllegalFiletypeError(ClientError):
+    reason = "File type not allowed"
+    status = HTTPStatus.BAD_REQUEST
+
 class ClientSnsPathError(ClientError):
     reason = "Wrong URL path"
     status = HTTPStatus.BAD_REQUEST

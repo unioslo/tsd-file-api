@@ -5,6 +5,7 @@ import os
 import re
 import logging
 import hashlib
+import pathlib
 import subprocess
 import shlex
 import stat
@@ -15,8 +16,9 @@ from typing import Union, Optional
 
 import tornado.options
 
-from exc import (
+from tsdfileapi.exc import (
     ClientIllegalFilenameError,
+    ClientIllegalFiletypeError,
     ClientSnsPathError,
     ServerStorageTemporarilyUnavailableError,
     ServerStorageNotMountedError,
@@ -297,3 +299,29 @@ def set_mtime(path: str, mtime: int) -> None:
     mtime = mtime
     atime = mtime
     os.utime(path, (mtime, atime))
+
+def any_path_islink(path: Union[str, pathlib.Path], check_boundary: Union[str, pathlib.Path] = None) -> bool:
+    """Check if any part of a given path is a symlink.
+
+    Args:
+        path (Union[str, pathlib.Path]): path to check
+        check_boundary (Union[str, pathlib.Path], optional): Where to stop checking.
+                If not set, the boundry will be the root of path.
+
+    Raises:
+        ClientIllegalFiletypeError: if a symlink is found in the path
+
+    Returns:
+        bool: function returns false if no part of path is a symlink
+    """
+    path = pathlib.Path(path)
+    if check_boundary:
+        check_boundary = pathlib.Path(check_boundary)
+    else:
+        check_boundary = path.root
+    while path != check_boundary:
+        print(path)
+        if path.is_symlink():
+            raise ClientIllegalFiletypeError(f"Path '{path}' is a symlink.")
+        path = path.parent
+    return False
