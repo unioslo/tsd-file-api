@@ -1108,6 +1108,10 @@ class FileRequestHandler(AuthRequestHandler):
 
                 url_dirs = os.path.dirname(resource)
                 self.resource_dir = os.path.normpath(f'{self.tenant_dir}/{url_dirs}')
+
+                # ensure no part of resource_dir is a symlink
+                any_path_islink(self.resource_dir)
+
                 if not os.path.lexists(self.resource_dir):
                     logging.info(f'creating resource dir: {self.resource_dir}')
                     os.makedirs(self.resource_dir)
