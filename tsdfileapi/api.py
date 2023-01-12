@@ -79,6 +79,7 @@ from resumables import SerialResumable, ResumableNotFoundError, ResumableIncorre
 from rmq import PikaClient
 from tokens import tkn, gen_test_jwt_secrets
 from utils import (
+    any_path_islink,
     call_request_hook,
     sns_dir,
     check_filename,
@@ -1340,6 +1341,11 @@ class FileRequestHandler(AuthRequestHandler):
             check_filename(file, disallowed_start_chars=options.start_chars)
         except Exception as e:
             logging.error(f"Illegal export filename: {file}")
+            return status
+        try:
+            any_path_islink(filename, check_boundary=self.export_dir)
+        except Exception as e:
+            logging.error(f"Symlink in part of path: {filename}")
             return status
         if tenant in policy_config.keys():
             policy = policy_config[tenant]
