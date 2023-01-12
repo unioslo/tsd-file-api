@@ -1343,7 +1343,7 @@ class FileRequestHandler(AuthRequestHandler):
             logging.error(f"Illegal export filename: {file}")
             return status
         try:
-            any_path_islink(filename, check_boundary=self.export_dir)
+            any_path_islink(filename)
         except Exception as e:
             logging.error(f"Symlink in part of path: {filename}")
             return status

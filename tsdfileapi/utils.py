@@ -16,7 +16,7 @@ from typing import Union, Optional
 
 import tornado.options
 
-from tsdfileapi.exc import (
+from exc import (
     ClientIllegalFilenameError,
     ClientIllegalFiletypeError,
     ClientSnsPathError,
@@ -300,27 +300,20 @@ def set_mtime(path: str, mtime: int) -> None:
     atime = mtime
     os.utime(path, (mtime, atime))
 
-def any_path_islink(path: Union[str, pathlib.Path], check_boundary: Union[str, pathlib.Path] = None) -> bool:
+def any_path_islink(path: str) -> bool:
     """Check if any part of a given path is a symlink.
-
     Args:
-        path (Union[str, pathlib.Path]): path to check
-        check_boundary (Union[str, pathlib.Path], optional): Where to stop checking.
-                If not set, the boundry will be the root of path.
-
+        path (str): path to check
     Raises:
         ClientIllegalFiletypeError: if a symlink is found in the path
-
     Returns:
         bool: function returns false if no part of path is a symlink
     """
+    # HNAS paths always start with a symlink which we should not consider
+    if path.startswith("/tsd"):
+        path = re.sub(r"^/tsd", "/net/tsd-evs.tsd.usit.no", path)
     path = pathlib.Path(path)
-    if check_boundary:
-        check_boundary = pathlib.Path(check_boundary)
-    else:
-        check_boundary = path.root
-    while path != check_boundary:
-        print(path)
+    while path != path.parent:
         if path.is_symlink():
             raise ClientIllegalFiletypeError(f"Path '{path}' is a symlink.")
         path = path.parent
