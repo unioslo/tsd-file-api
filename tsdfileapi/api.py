@@ -1461,6 +1461,13 @@ class FileRequestHandler(AuthRequestHandler):
             raise ClientError('next values are natural numbers')
         if pagination_value > 50000:
             raise ClientError('per_page cannot exceed 1000')
+
+        # don't list symlinked directories
+        try:
+            any_path_islink(path)
+        except Exception as e: 
+            self.write({'files': [], 'page': None})
+
         # arbitrary order
         # if not returning what you want
         # then try next page
