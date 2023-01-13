@@ -309,12 +309,11 @@ def any_path_islink(path: str) -> bool:
     Returns:
         bool: function returns false if no part of path is a symlink
     """
-    # HNAS paths always start with a symlink which we should not consider
-    if path.startswith("/tsd"):
-        path = re.sub(r"^/tsd", "/net/tsd-evs.tsd.usit.no", path)
+    # HNAS /tsd is a symlink in TSD production
+    ALLOWED_SYMLINKS = [pathlib.Path("/tsd")]
     path = pathlib.Path(path)
     while path != path.parent:
-        if path.is_symlink():
+        if path.is_symlink() and not path in ALLOWED_SYMLINKS:
             raise ClientIllegalFiletypeError(f"Path '{path}' is a symlink.")
         path = path.parent
     return False
