@@ -1374,27 +1374,25 @@ class FileRequestHandler(AuthRequestHandler):
 
 
     def get_file_metadata(self, filename: str) -> tuple:
-        if os.path.islink(filename):
-            mime_type = 'inode/symlink'
-            size = 0
-            mtime = 0.0
-        else:
-            filename_raw_utf8 = filename.encode('utf-8')
-            mime_type = 'unknown'
-            try:
+        filename_raw_utf8 = filename.encode('utf-8')
+        mime_type = 'unknown'
+        try:
+            if os.path.islink(filename):
+                mime_type = 'inode/symlink'
+            else:
                 mime_type = magic.from_file(filename_raw_utf8, mime=True)
-            except IsADirectoryError:
+        except IsADirectoryError:
+            mime_type = 'directory'
+        except PermissionError:
+            # so the API user can read, and delete files owned by others
+            if os.path.isdir(filename):
+                subprocess.call(['sudo', 'chmod', '-R', 'g+r,o+rx', filename])
                 mime_type = 'directory'
-            except PermissionError:
-                # so the API user can read, and delete files owned by others
-                if os.path.isdir(filename):
-                    subprocess.call(['sudo', 'chmod', '-R', 'g+r,o+rx', filename])
-                    mime_type = 'directory'
-                else:
-                    subprocess.call(['sudo', 'chmod', 'g+r,o+rx', filename])
-                    mime_type = magic.from_file(filename_raw_utf8, mime=True)
-            size = os.stat(filename).st_size
-            mtime = os.stat(filename).st_mtime
+            else:
+                subprocess.call(['sudo', 'chmod', 'g+r,o+rx', filename])
+                mime_type = magic.from_file(filename_raw_utf8, mime=True)
+        size = os.lstat(filename).st_size
+        mtime = os.lstat(filename).st_mtime
         return size, mime_type, mtime
 
 
@@ -1524,11 +1522,9 @@ class FileRequestHandler(AuthRequestHandler):
                 for file in files:
                     filepath = file.path
                     size, mime_type, latest = self.get_file_metadata(filepath)
-                    if mime_type == "inode/symlink": # skip symlinks
-                        continue
                     status = self.enforce_export_policy(self.export_policy, filepath, tenant, size, mime_type)
                     reason = None if status else "not allowed"
-                    path_stat = file.stat()
+                    path_stat = file.stat(follow_symlinks=False)
                     etag = self.mtime_to_digest(latest)
                     date_time = str(datetime.datetime.fromtimestamp(latest).isoformat())
                     if self.has_posix_ownership:
@@ -1630,7 +1626,7 @@ class FileRequestHandler(AuthRequestHandler):
         try:
             etag = None
             if self.filepath:
-                mtime = os.stat(self.filepath).st_mtime
+                mtime = os.lstat(self.filepath).st_mtime
                 etag = self.mtime_to_digest(mtime)
             return etag
         except Exception:
@@ -1714,7 +1710,7 @@ class FileRequestHandler(AuthRequestHandler):
                 # clients specify the range in terms of 0-based index numbers
                 # with an inclusive interval: [start, end]
                 client_byte_index_range = self.request.headers['Range']
-                full_file_size = os.stat(self.filepath).st_size
+                full_file_size = os.lstat(self.filepath).st_size
                 start_and_end = client_byte_index_range.split('=')[-1].split('-')
                 if ',' in start_and_end:
                     raise ClientMethodNotAllowed('Multipart byte range requests not supported')
