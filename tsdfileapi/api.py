@@ -1158,6 +1158,9 @@ class FileRequestHandler(AuthRequestHandler):
                 self.path = os.path.normpath(f"{self.tenant_dir}/{filename}")
                 self.path_part = f"{self.path}.{str(uuid4())}.part"
 
+                # ensure there are no symlinks in path
+                any_path_islink(self.path)
+
                 # ensure idempotency
                 if os.path.lexists(self.path):
                     if os.path.isdir(self.path):
@@ -1663,6 +1666,8 @@ class FileRequestHandler(AuthRequestHandler):
             if not self.allow_export:
                 raise ClientMethodNotAllowed
             self.filepath = f"{self.path}/{resource}"
+            # ensure there are no symlinks in filepath
+            any_path_islink(self.filepath)
             if not os.path.lexists(f'{self.filepath}'):
                 raise ClientResourceNotFoundError(f'{self.filepath} not found')
             size, mime_type, mtime = self.get_file_metadata(self.filepath)
@@ -1764,6 +1769,8 @@ class FileRequestHandler(AuthRequestHandler):
                 raise ClientError('No resource specified')
             self.path = self.export_dir
             self.filepath = f"{self.path}/{url_unescape(self.resource)}"
+            # ensure there are no symlinks in filepath
+            any_path_islink(self.filepath)
             if not os.path.lexists(self.filepath):
                 raise ClientResourceNotFoundError(f"{self.filepath} not found")
             size, mime_type, mtime = self.get_file_metadata(self.filepath)
@@ -1790,6 +1797,8 @@ class FileRequestHandler(AuthRequestHandler):
                 raise ClientError("No resource specified")
             self.path = self.export_dir
             self.filepath = f"{self.path}/{url_unescape(self.resource)}"
+            # ensure there are no symlinks in filepath
+            any_path_islink(self.filepath)
             if not os.path.lexists(self.filepath):
                 raise ClientResourceNotFoundError(f'{self.filepath} not found')
             if os.path.isdir(self.filepath):
