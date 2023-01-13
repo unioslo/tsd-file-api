@@ -1659,6 +1659,8 @@ class FileRequestHandler(AuthRequestHandler):
         try:
             self.path = self.export_dir
             resource = url_unescape(self.resource) # parsed from URI
+            # ensure there are no symlinks in filepath
+            any_path_islink(f'{self.path}/{resource}')
             if not filename or os.path.isdir(f'{self.path}/{resource}'):
                 if not self.allow_list:
                     raise ClientMethodNotAllowed
@@ -1670,8 +1672,6 @@ class FileRequestHandler(AuthRequestHandler):
             if not self.allow_export:
                 raise ClientMethodNotAllowed
             self.filepath = f"{self.path}/{resource}"
-            # ensure there are no symlinks in filepath
-            any_path_islink(self.filepath)
             if not os.path.lexists(f'{self.filepath}'):
                 raise ClientResourceNotFoundError(f'{self.filepath} not found')
             size, mime_type, mtime = self.get_file_metadata(self.filepath)
