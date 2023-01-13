@@ -1374,22 +1374,27 @@ class FileRequestHandler(AuthRequestHandler):
 
 
     def get_file_metadata(self, filename: str) -> tuple:
-        filename_raw_utf8 = filename.encode('utf-8')
-        mime_type = 'unknown'
-        try:
-            mime_type = magic.from_file(filename_raw_utf8, mime=True)
-        except IsADirectoryError:
-            mime_type = 'directory'
-        except PermissionError:
-            # so the API user can read, and delete files owned by others
-            if os.path.isdir(filename):
-                subprocess.call(['sudo', 'chmod', '-R', 'g+r,o+rx', filename])
-                mime_type = 'directory'
-            else:
-                subprocess.call(['sudo', 'chmod', 'g+r,o+rx', filename])
+        if os.path.islink(filename):
+            mime_type = 'inode/symlink'
+            size = 0
+            mtime = 0.0
+        else:
+            filename_raw_utf8 = filename.encode('utf-8')
+            mime_type = 'unknown'
+            try:
                 mime_type = magic.from_file(filename_raw_utf8, mime=True)
-        size = os.stat(filename).st_size
-        mtime = os.stat(filename).st_mtime
+            except IsADirectoryError:
+                mime_type = 'directory'
+            except PermissionError:
+                # so the API user can read, and delete files owned by others
+                if os.path.isdir(filename):
+                    subprocess.call(['sudo', 'chmod', '-R', 'g+r,o+rx', filename])
+                    mime_type = 'directory'
+                else:
+                    subprocess.call(['sudo', 'chmod', 'g+r,o+rx', filename])
+                    mime_type = magic.from_file(filename_raw_utf8, mime=True)
+            size = os.stat(filename).st_size
+            mtime = os.stat(filename).st_mtime
         return size, mime_type, mtime
 
 
@@ -1519,6 +1524,8 @@ class FileRequestHandler(AuthRequestHandler):
                 for file in files:
                     filepath = file.path
                     size, mime_type, latest = self.get_file_metadata(filepath)
+                    if mime_type == "inode/symlink": # skip symlinks
+                        continue
                     status = self.enforce_export_policy(self.export_policy, filepath, tenant, size, mime_type)
                     reason = None if status else "not allowed"
                     path_stat = file.stat()
