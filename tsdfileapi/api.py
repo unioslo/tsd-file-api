@@ -1477,6 +1477,7 @@ class FileRequestHandler(AuthRequestHandler):
             any_path_islink(path)
         except Exception as e: 
             self.write({'files': [], 'page': None})
+            return
 
         # arbitrary order
         # if not returning what you want
