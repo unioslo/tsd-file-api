@@ -300,7 +300,7 @@ def set_mtime(path: str, mtime: int) -> None:
     atime = mtime
     os.utime(path, (mtime, atime))
 
-def any_path_islink(path: str) -> bool:
+def any_path_islink(path: Union[str, pathlib.Path]) -> bool:
     """Check if any part of a given path is a symlink.
     Args:
         path (str): path to check
@@ -311,9 +311,10 @@ def any_path_islink(path: str) -> bool:
     """
     # HNAS /tsd is a symlink in TSD production
     ALLOWED_SYMLINKS = [pathlib.Path("/tsd")]
-    path = pathlib.Path(path)
+    if isinstance(path, str):
+        path = pathlib.Path(path)
     while path != path.parent:
         if path.is_symlink() and not path in ALLOWED_SYMLINKS:
-            raise ClientIllegalFiletypeError(f"Path '{path}' is a symlink.")
+            raise ClientIllegalFiletypeError(f"Path '{path}' is a symlink to '{os.readlink(path)}'.")
         path = path.parent
     return False
