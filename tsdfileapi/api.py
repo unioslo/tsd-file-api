@@ -1352,7 +1352,7 @@ class FileRequestHandler(AuthRequestHandler):
         try:
             any_path_islink(filename)
         except Exception as e:
-            logging.error(f"Symlink in part of path '{filename}': {str(e)}")
+            logging.error(f"Symlink in part of path '{filename}' requested by {self.requestor}: {str(e)}")
             return status
         if tenant in policy_config.keys():
             policy = policy_config[tenant]
