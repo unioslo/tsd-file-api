@@ -300,7 +300,7 @@ def set_mtime(path: str, mtime: int) -> None:
     atime = mtime
     os.utime(path, (mtime, atime))
 
-def any_path_islink(path: Union[str, pathlib.Path]) -> bool:
+def any_path_islink(path: Union[str, pathlib.Path], opts: tornado.options.OptionParser,) -> bool:
     """Check if any part of a given path is a symlink.
     Args:
         path (str): path to check
@@ -309,12 +309,11 @@ def any_path_islink(path: Union[str, pathlib.Path]) -> bool:
     Returns:
         bool: function returns false if no part of path is a symlink
     """
-    # HNAS /tsd is a symlink in TSD production
-    ALLOWED_SYMLINKS = [pathlib.Path("/tsd")]
+    allowed_symlinks = [pathlib.Path(path) for path in opts.allowed_symlinks]
     if isinstance(path, str):
         path = pathlib.Path(path)
     while path != path.parent:
-        if path.is_symlink() and not path in ALLOWED_SYMLINKS:
+        if path.is_symlink() and not path in allowed_symlinks:
             raise ClientIllegalFiletypeError(f"Path '{path}' is a symlink to '{os.readlink(path)}'.")
         path = path.parent
     return False

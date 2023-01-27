@@ -140,6 +140,7 @@ def set_config() -> None:
     define('requestor_claim_name', _config['requestor_claim_name'])
     define('tenant_claim_name', _config['tenant_claim_name'])
     define('tenant_string_pattern', _config['tenant_string_pattern'])
+    define('allowed_symlinks', _config['allowed_symlinks'])
     define('export_chunk_size', _config['export_chunk_size'])
     define('valid_tenant', re.compile(r'{}'.format(_config['valid_tenant_regex'])))
     define('max_body_size', _config['max_body_size'])
@@ -1121,7 +1122,7 @@ class FileRequestHandler(AuthRequestHandler):
                 self.resource_dir = os.path.normpath(f'{self.tenant_dir}/{url_dirs}')
 
                 # ensure no part of resource_dir is a symlink
-                any_path_islink(self.resource_dir)
+                any_path_islink(self.resource_dir, opts=options)
 
                 if not os.path.lexists(self.resource_dir):
                     logging.info(f'creating resource dir: {self.resource_dir}')
@@ -1170,7 +1171,7 @@ class FileRequestHandler(AuthRequestHandler):
                 self.path_part = f"{self.path}.{str(uuid4())}.part"
 
                 # ensure there are no symlinks in path
-                any_path_islink(self.path)
+                any_path_islink(self.path, opts=options)
 
                 # ensure idempotency
                 if os.path.lexists(self.path):
@@ -1361,7 +1362,7 @@ class FileRequestHandler(AuthRequestHandler):
             logging.error(f"Illegal export filename: {file}")
             return status
         try:
-            any_path_islink(filename)
+            any_path_islink(filename, opts=options)
         except Exception as e:
             logging.error(f"Symlink in part of path '{filename}' requested by {self.requestor}: {str(e)}")
             return status
@@ -1485,7 +1486,7 @@ class FileRequestHandler(AuthRequestHandler):
 
         # don't list symlinked directories
         try:
-            any_path_islink(path)
+            any_path_islink(path, opts=options)
         except Exception as e: 
             self.write({'files': [], 'page': None})
             return
@@ -1671,7 +1672,7 @@ class FileRequestHandler(AuthRequestHandler):
             self.path = self.export_dir
             resource = url_unescape(self.resource) # parsed from URI
             # ensure there are no symlinks in filepath
-            any_path_islink(f'{self.path}/{resource}')
+            any_path_islink(f'{self.path}/{resource}', opts=options)
             if not filename or os.path.isdir(f'{self.path}/{resource}'):
                 if not self.allow_list:
                     raise ClientMethodNotAllowed
@@ -1785,7 +1786,7 @@ class FileRequestHandler(AuthRequestHandler):
             self.path = self.export_dir
             self.filepath = f"{self.path}/{url_unescape(self.resource)}"
             # ensure there are no symlinks in filepath
-            any_path_islink(self.filepath)
+            any_path_islink(self.filepath, opts=options)
             if not os.path.lexists(self.filepath):
                 raise ClientResourceNotFoundError(f"{self.filepath} not found")
             size, mime_type, mtime = self.get_file_metadata(self.filepath)
@@ -1813,7 +1814,7 @@ class FileRequestHandler(AuthRequestHandler):
             self.path = self.export_dir
             self.filepath = f"{self.path}/{url_unescape(self.resource)}"
             # ensure there are no symlinks in filepath
-            any_path_islink(self.filepath)
+            any_path_islink(self.filepath, opts=options)
             if not os.path.lexists(self.filepath):
                 raise ClientResourceNotFoundError(f'{self.filepath} not found')
             if os.path.isdir(self.filepath):
