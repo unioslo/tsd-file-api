@@ -113,7 +113,7 @@ Error = namedtuple(
     ["status", "reason", "message", "headers"],
 )
 
-def error_for_exception(exc: Exception) -> Error:
+def error_for_exception(exc: Exception, details: str = "") -> Error:
     """
     Return an Error, with information about:
 
@@ -143,26 +143,30 @@ def error_for_exception(exc: Exception) -> Error:
         - Disk quota exceeded
 
     """
+    def generate_message(components: list[str], separator: str = ", ") -> str:
+        return separator.join([component for component in components if component])
+
     if isinstance(exc, ApiError):
         status = exc.status.value
         reason = exc.reason
-        message = exc.message
+        message = generate_message([exc.message, details])
         headers = exc.headers
     elif isinstance(exc, HTTPError):
         status = exc.status_code
         reason = exc.log_message
-        message = f"{client.responses.get(status)}, {exc.log_message}"
+        message = generate_message([client.responses.get(status), exc.log_message, details])
         headers = {}
     elif hasattr(exc, "errno") and exc.errno == errno.EDQUOT:
         code = HTTPStatus.INSUFFICIENT_STORAGE
         status = code.value
         reason = "Project has run out of disk quota"
-        message = f"{code.phrase}, {reason}"
+        message = ", ".join(code.phrase, reason, details)
+        message = generate_message([code.phrase, reason, details])
         headers = {}
     else:
         default = HTTPStatus.INTERNAL_SERVER_ERROR
         status = default.value
         reason = default.phrase
-        message = f"{default.phrase}, {exc}"
+        message = generate_message([default.phrase, exc, details])
         headers = {}
     return Error(status, reason, message, headers)

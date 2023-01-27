@@ -946,7 +946,7 @@ class FileRequestHandler(AuthRequestHandler):
         )
         self.nacl_chunksize = int(headers['Nacl-Chunksize'])
     
-    def additional_log_details(self) -> str:
+    def additional_log_details(self, separator: str = ", ") -> str:
         """Retrieve additional details for logging.
 
         Returns:
@@ -955,7 +955,7 @@ class FileRequestHandler(AuthRequestHandler):
         additional_details = {}
         if hasattr(self, "requestor"):
             additional_details["Requestor"] = self.requestor
-        return " ".join(f"{k}: {v}." for k, v in additional_details.items())
+        return separator.join(f"{k}: {v}." for k, v in additional_details.items())
 
 
     def initialize(self, backend: str, namespace: str, endpoint: str) -> None:
@@ -1199,8 +1199,8 @@ class FileRequestHandler(AuthRequestHandler):
             self.set_status(HTTPStatus.BAD_REQUEST.value)
             self.finish({'message': 'chunk_order_incorrect'})
         except Exception as e:
-            error = error_for_exception(e)
-            logging.error("%s %s", error.message, self.additional_log_details())
+            error = error_for_exception(e, details=self.additional_log_details())
+            logging.error(error.message)
             for name, value in error.headers.items():
                 self.set_header(name, value)
             self.set_status(error.status, reason=error.reason)
@@ -1294,7 +1294,7 @@ class FileRequestHandler(AuthRequestHandler):
                     )
                 except Exception as e:
                     logging.error(e)
-                    error = error_for_exception(e)
+                    error = error_for_exception(e, details=self.additional_log_details())
                     self.set_status(error.status, reason=error.reason)
                     self.write(
                         {
@@ -1760,8 +1760,8 @@ class FileRequestHandler(AuthRequestHandler):
                 fd.close()
             logging.info(f'{self.requestor}, downloaded: {self.filepath}, MIME type: {mime_type}, size: {size}')
         except Exception as e:
-            error = error_for_exception(e)
-            logging.error("%s %s", error.message, self.additional_log_details())
+            error = error_for_exception(e, details=self.additional_log_details())
+            logging.error(error.message)
             for name, value in error.headers.items():
                 self.set_header(name, value)
             self.set_status(error.status, reason=error.reason)
@@ -1797,8 +1797,8 @@ class FileRequestHandler(AuthRequestHandler):
             self.set_header('Modified-Time', str(mtime))
             self.set_status(HTTPStatus.OK.value)
         except Exception as e:
-            error = error_for_exception(e)
-            logging.error("%s %s", error.message, self.additional_log_details())
+            error = error_for_exception(e, details=self.additional_log_details())
+            logging.error(error.message)
             for name, value in error.headers.items():
                 self.set_header(name, value)
             self.set_status(error.status, reason=error.reason)
@@ -1832,8 +1832,8 @@ class FileRequestHandler(AuthRequestHandler):
             self.set_status(HTTPStatus.OK.value)
             self.write({'message': f'deleted {self.filepath}'})
         except Exception as e:
-            error = error_for_exception(e)
-            logging.error("%s %s", error.message, self.additional_log_details())
+            error = error_for_exception(e, details=self.additional_log_details())
+            logging.error(error.message)
             for name, value in error.headers.items():
                 self.set_header(name, value)
             self.set_status(error.status, reason=error.reason)
@@ -2014,8 +2014,8 @@ class GenericTableHandler(AuthRequestHandler):
                     schema = self.tenant
                 self.db = PostgresBackend(options.pgpools.get(self.backend), schema=schema, requestor=self.requestor)
         except Exception as e:
-            error = error_for_exception(e)
-            logging.error("%s %s", error.message, self.additional_log_details())
+            error = error_for_exception(e, details=self.additional_log_details())
+            logging.error(error.message)
             for name, value in error.headers.items():
                 self.set_header(name, value)
             self.set_status(error.status, reason=error.reason)
@@ -2175,8 +2175,8 @@ class GenericTableHandler(AuthRequestHandler):
                 self.set_status(HTTPStatus.NOT_FOUND.value)
                 self.write({'message': f'table {table_name} does not exist'})
         except Exception as e:
-            error = error_for_exception(e)
-            logging.error("%s %s", error.message, self.additional_log_details())
+            error = error_for_exception(e, details=self.additional_log_details())
+            logging.error(error.message)
             for name, value in error.headers.items():
                 self.set_header(name, value)
             self.set_status(error.status, reason=error.reason)
@@ -2205,8 +2205,8 @@ class GenericTableHandler(AuthRequestHandler):
             self.set_status(HTTPStatus.NOT_FOUND.value)
             self.write({'message': f'table {table_name} does not exist'})
         except Exception as e:
-            error = error_for_exception(e)
-            logging.error("%s %s", error.message, self.additional_log_details())
+            error = error_for_exception(e, details=self.additional_log_details())
+            logging.error(error.message)
             for name, value in error.headers.items():
                 self.set_header(name, value)
             self.set_status(error.status, reason=error.reason)
@@ -2236,8 +2236,8 @@ class GenericTableHandler(AuthRequestHandler):
             self.set_status(HTTPStatus.NOT_FOUND.value)
             self.write({'message': f'table {table_name} does not exist'})
         except Exception as e:
-            error = error_for_exception(e)
-            logging.error("%s %s", error.message, self.additional_log_details())
+            error = error_for_exception(e, details=self.additional_log_details())
+            logging.error(error.message)
             for name, value in error.headers.items():
                 self.set_header(name, value)
             self.set_status(error.status, reason=error.reason)
@@ -2259,8 +2259,8 @@ class GenericTableHandler(AuthRequestHandler):
             self.set_status(HTTPStatus.NOT_FOUND.value)
             self.write({'message': f'table {table_name} does not exist'})
         except Exception as e:
-            error = error_for_exception(e)
-            logging.error("%s %s", error.message, self.additional_log_details())
+            error = error_for_exception(e, details=self.additional_log_details())
+            logging.error(error.message)
             for name, value in error.headers.items():
                 self.set_header(name, value)
             self.set_status(error.status, reason=error.reason)
@@ -2402,8 +2402,8 @@ class AuditLogViewerHandler(AuthRequestHandler):
             self.set_status(HTTPStatus.NOT_FOUND.value)
             self.write({'message': f'no logs available'})
         except Exception as e:
-            error = error_for_exception(e)
-            logging.error("%s %s", error.message, self.additional_log_details())
+            error = error_for_exception(e, details=self.additional_log_details())
+            logging.error(error.message)
             for name, value in error.headers.items():
                 self.set_header(name, value)
             self.set_status(error.status, reason=error.reason)
