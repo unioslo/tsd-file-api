@@ -13,6 +13,7 @@ import errno
 
 from collections import namedtuple
 from http import HTTPStatus, client
+from typing import List, Union
 
 from tornado.web import HTTPError
 
@@ -143,8 +144,14 @@ def error_for_exception(exc: Exception, details: str = "") -> Error:
         - Disk quota exceeded
 
     """
-    def generate_message(components: list[str], separator: str = ", ") -> str:
-        return separator.join([component for component in components if component])
+    def generate_message(components: List[Union[str, dict]], separator: str = ". ") -> str:
+        """Generate an error message from a list of components."""
+        def format_component(component: str) -> str:
+            if isinstance(component, dict):
+                return separator.join(f"{k}: {v}" for k, v in component.items())
+            else:
+                return str(component)
+        return separator.join([format_component(component) for component in components if component])
 
     if isinstance(exc, ApiError):
         status = exc.status.value

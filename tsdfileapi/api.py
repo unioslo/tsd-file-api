@@ -28,7 +28,7 @@ import traceback
 from collections import OrderedDict
 from http import HTTPStatus
 from sys import argv
-from typing import Union, Optional, Awaitable, Callable, Any
+from typing import Dict, Union, Optional, Awaitable, Callable, Any
 from uuid import uuid4
 
 import libnacl.sealed
@@ -946,7 +946,7 @@ class FileRequestHandler(AuthRequestHandler):
         )
         self.nacl_chunksize = int(headers['Nacl-Chunksize'])
     
-    def additional_log_details(self, separator: str = ", ") -> str:
+    def additional_log_details(self) -> Dict[str, Any]:
         """Retrieve additional details for logging.
 
         Returns:
@@ -955,7 +955,7 @@ class FileRequestHandler(AuthRequestHandler):
         additional_details = {}
         if hasattr(self, "requestor"):
             additional_details["Requestor"] = self.requestor
-        return separator.join(f"{k}: {v}." for k, v in additional_details.items())
+        return additional_details
 
 
     def initialize(self, backend: str, namespace: str, endpoint: str) -> None:
