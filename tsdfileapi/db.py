@@ -1,24 +1,19 @@
-
-import datetime
 import logging
-import re
-import json
 import sqlite3
-
-from abc import ABC, abstractmethod
 from contextlib import contextmanager
-from typing import Union, ContextManager, Iterable, Optional
+from typing import ContextManager
+from typing import Union
 
-import psycopg2
 import psycopg2.extensions
 import psycopg2.pool
 import sqlalchemy
-
 from pysquril.backends import postgres_session
-from sqlalchemy.pool import QueuePool
-from sqlalchemy.orm import sessionmaker
 from sqlalchemy import create_engine
-from sqlalchemy.exc import OperationalError, IntegrityError, StatementError
+from sqlalchemy.exc import IntegrityError
+from sqlalchemy.exc import OperationalError
+from sqlalchemy.exc import StatementError
+from sqlalchemy.orm import sessionmaker
+from sqlalchemy.pool import QueuePool
 
 
 def pg_listen_channel(
@@ -29,11 +24,13 @@ def pg_listen_channel(
     conn.set_isolation_level(psycopg2.extensions.ISOLATION_LEVEL_AUTOCOMMIT)
     curs = conn.cursor()
     curs.execute(f"listen {channel_name};")
-    logging.info(f'listening on postgres channel: {channel_name}')
+    logging.info(f"listening on postgres channel: {channel_name}")
     return conn
 
 
-def get_projects_migration_status(conn: psycopg2.extensions.connection,) -> dict:
+def get_projects_migration_status(
+    conn: psycopg2.extensions.connection,
+) -> dict:
     """
     sns backend behaviour:
         - sns_ess_delivery: {enabled: bool}   -> deliver to HNAS+ESS
@@ -79,7 +76,7 @@ def get_projects_migration_status(conn: psycopg2.extensions.connection,) -> dict
     for row in data:
         out[row[0]] = {
             "storage_backend": row[1],
-            "sns_ess_delivery":row[2],
+            "sns_ess_delivery": row[2],
             "sns_loader_processing": row[3],
             "sns_ess_migration": row[4],
             "publication_backend": row[5],
@@ -90,15 +87,15 @@ def get_projects_migration_status(conn: psycopg2.extensions.connection,) -> dict
 
 def sqlite_init(
     path: str,
-    name: str = 'api-data.db',
+    name: str = "api-data.db",
     builtin: bool = False,
 ) -> Union[sqlalchemy.engine.Engine, sqlite3.Connection]:
     dbname = name
     if not builtin:
-        dburl = 'sqlite:///' + path + '/' + dbname
+        dburl = "sqlite:///" + path + "/" + dbname
         engine = create_engine(dburl, poolclass=QueuePool)
     else:
-        engine = sqlite3.connect(path + '/' + dbname)
+        engine = sqlite3.connect(path + "/" + dbname)
     return engine
 
 
@@ -106,9 +103,7 @@ def postgres_init(dbconfig: dict) -> psycopg2.pool.SimpleConnectionPool:
     min_conn = 2
     max_conn = 4
     dsn = f"dbname={dbconfig['dbname']} user={dbconfig['user']} password={dbconfig['pw']} host={dbconfig['host']}"
-    pool = psycopg2.pool.SimpleConnectionPool(
-        min_conn, max_conn, dsn
-    )
+    pool = psycopg2.pool.SimpleConnectionPool(min_conn, max_conn, dsn)
     return pool
 
 

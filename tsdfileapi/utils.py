@@ -1,44 +1,43 @@
-# -*- coding: utf-8 -*-
-
 import errno
-import os
-import re
-import logging
 import hashlib
+import logging
+import os
 import pathlib
-import subprocess
-import shlex
-import stat
 import re
+import shlex
 import shutil
-
-from typing import Union, Optional
+import stat
+import subprocess
+from typing import Optional
+from typing import Union
 
 import tornado.options
+from exc import ClientIllegalFilenameError
+from exc import ClientIllegalFiletypeError
+from exc import ClientSnsPathError
+from exc import ServerSnsError
+from exc import ServerStorageNotMountedError
+from exc import ServerStorageTemporarilyUnavailableError
 
-from exc import (
-    ClientIllegalFilenameError,
-    ClientIllegalFiletypeError,
-    ClientSnsPathError,
-    ServerStorageTemporarilyUnavailableError,
-    ServerStorageNotMountedError,
-    ServerSnsError,
-)
+VALID_FORMID = re.compile(r"^[0-9]+$")
+PGP_KEY_FINGERPRINT = re.compile(r"^[0-9A-Z]{16}$")
+VALID_UUID = re.compile(r"([a-f\d0-9-]{32,36})")
 
-VALID_FORMID = re.compile(r'^[0-9]+$')
-PGP_KEY_FINGERPRINT = re.compile(r'^[0-9A-Z]{16}$')
-VALID_UUID = re.compile(r'([a-f\d0-9-]{32,36})')
 
 def _rwxrwx___() -> int:
     u = stat.S_IREAD | stat.S_IWRITE | stat.S_IXUSR
     g = stat.S_IRGRP | stat.S_IWGRP | stat.S_IXGRP
     return u | g
 
+
 def _rwxrws___() -> int:
     return _rwxrwx___() | stat.S_ISGID
 
 
-def _find_ess_dir(pnum: str, root: str = "/ess",) -> Optional[str]:
+def _find_ess_dir(
+    pnum: str,
+    root: str = "/ess",
+) -> Optional[str]:
     sub_dir = None
     for projects_dir in os.listdir(root):
         if pnum in os.listdir(f"{root}/{projects_dir}"):
@@ -101,14 +100,15 @@ def find_tenant_storage_path(
         }
     cache[tenant]["sns"] = {
         "hnas": True if not (sns_loader_processing or sns_migration_done) else False,
-        "ess": True if (sns_ess_delivery or sns_loader_processing or sns_migration_done) else False,
+        "ess": True
+        if (sns_ess_delivery or sns_loader_processing or sns_migration_done)
+        else False,
     }
     cache[tenant]["publication"] = publication_backend
     cache[tenant]["survey"] = survey_backend
     # optionally look for ESS path
-    if (
-        storage_backend == "ess"
-        and not cache.get(tenant).get("storage_paths").get("ess")
+    if storage_backend == "ess" and not cache.get(tenant).get("storage_paths").get(
+        "ess"
     ):
         cache[tenant]["storage_paths"]["ess"] = _find_ess_dir(tenant, root=root)
     # store updated cache
@@ -151,7 +151,9 @@ def choose_storage(
         return directory
     split_on = "data/durable"
     storage_path = find_tenant_storage_path(
-        tenant, endpoint_backend, opts,
+        tenant,
+        endpoint_backend,
+        opts,
     ).split(split_on)
     in_dir = directory.split(split_on)
     out_dir = "".join([storage_path[0], split_on, in_dir[-1]])
@@ -160,7 +162,7 @@ def choose_storage(
 
 def call_request_hook(path: str, params: list, as_sudo: bool = True) -> None:
     if as_sudo:
-        cmd = ['sudo']
+        cmd = ["sudo"]
     else:
         cmd = []
     cmd.append(shlex.quote(path))
@@ -169,11 +171,11 @@ def call_request_hook(path: str, params: list, as_sudo: bool = True) -> None:
 
 
 def tenant_from_url(url: str) -> list:
-    if 'v1' in url:
+    if "v1" in url:
         idx = 2
     else:
         idx = 1
-    return url.split('/')[idx]
+    return url.split("/")[idx]
 
 
 def check_filename(filename: str, disallowed_start_chars: list = []) -> str:
@@ -203,14 +205,18 @@ def sns_dir(
 
     """
     try:
-        uri_parts = uri.split('/')
+        uri_parts = uri.split("/")
         formid = uri_parts[-1]
         keyid = uri_parts[-2]
         if not VALID_FORMID.match(formid):
-            raise ClientSnsPathError(f'invalid form ID: {formid}')
+            raise ClientSnsPathError(f"invalid form ID: {formid}")
         if not PGP_KEY_FINGERPRINT.match(keyid):
-            raise ClientSnsPathError(f'invalid PGP fingerprint: {keyid}')
-        folder = base_pattern.replace(tenant_string_pattern, tenant).replace('KEYID', keyid).replace('FORMID', formid)
+            raise ClientSnsPathError(f"invalid PGP fingerprint: {keyid}")
+        folder = (
+            base_pattern.replace(tenant_string_pattern, tenant)
+            .replace("KEYID", keyid)
+            .replace("FORMID", formid)
+        )
         hnas_sns_dir = os.path.normpath(folder)
         if test:
             return hnas_sns_dir
@@ -218,10 +224,12 @@ def sns_dir(
             try:
                 os.makedirs(hnas_sns_dir)
                 subprocess.call(["sudo", "chmod", "2770", hnas_sns_dir])
-                logging.info(f'Created: {hnas_sns_dir}')
+                logging.info(f"Created: {hnas_sns_dir}")
             except OSError as e:
                 if e.errno == errno.ENOENT:
-                    raise ServerStorageNotMountedError(f"NFS mount missing for {tenant}") from e
+                    raise ServerStorageNotMountedError(
+                        f"NFS mount missing for {tenant}"
+                    ) from e
                 else:
                     raise e
             except Exception as e:
@@ -230,19 +238,16 @@ def sns_dir(
                 raise ServerSnsError from e
         if use_ess:
             try:
-                ess_path = options.tenant_storage_cache.get(tenant).get("storage_paths").get("ess")
-                ess_sns_dir = base_pattern.replace(
-                    tenant_string_pattern,
-                    tenant
-                ).replace(
-                    'KEYID',
-                    keyid
-                ).replace(
-                    'FORMID',
-                    formid
-                ).replace(
-                    f"/tsd/{tenant}/data/durable",
-                    ess_path
+                ess_path = (
+                    options.tenant_storage_cache.get(tenant)
+                    .get("storage_paths")
+                    .get("ess")
+                )
+                ess_sns_dir = (
+                    base_pattern.replace(tenant_string_pattern, tenant)
+                    .replace("KEYID", keyid)
+                    .replace("FORMID", formid)
+                    .replace(f"/tsd/{tenant}/data/durable", ess_path)
                 )
                 if not os.path.lexists(ess_sns_dir):
                     os.makedirs(ess_sns_dir)
@@ -250,7 +255,9 @@ def sns_dir(
                     logging.info(f"Created: {ess_sns_dir}")
             except OSError as e:
                 if e.errno == errno.ENOENT:
-                    raise ServerStorageNotMountedError(f"NFS mount missing for {ess_path}") from e
+                    raise ServerStorageNotMountedError(
+                        f"NFS mount missing for {ess_path}"
+                    ) from e
                 else:
                     raise e
             except Exception as e:
@@ -280,8 +287,8 @@ def move_data_to_folder(path: str, dest: str) -> Union[str, bool]:
         if not dest:
             return path
         filename = os.path.basename(path)
-        base_dir = path.replace(f'/{filename}', '')
-        new_path = os.path.normpath(dest + '/' + filename)
+        base_dir = path.replace(f"/{filename}", "")
+        new_path = os.path.normpath(dest + "/" + filename)
         if os.path.isdir(path):
             if os.path.lexists(new_path):
                 # idempotency
@@ -292,15 +299,20 @@ def move_data_to_folder(path: str, dest: str) -> Union[str, bool]:
         return new_path
     except Exception as e:
         logging.error(e)
-        logging.error('could not move file: %s', path)
+        logging.error("could not move file: %s", path)
         return False
+
 
 def set_mtime(path: str, mtime: int) -> None:
     mtime = mtime
     atime = mtime
     os.utime(path, (mtime, atime))
 
-def any_path_islink(path: Union[str, pathlib.Path], opts: tornado.options.OptionParser,) -> bool:
+
+def any_path_islink(
+    path: Union[str, pathlib.Path],
+    opts: tornado.options.OptionParser,
+) -> bool:
     """Check if any part of a given path is a symlink.
     Args:
         path (str): path to check
@@ -314,6 +326,8 @@ def any_path_islink(path: Union[str, pathlib.Path], opts: tornado.options.Option
         path = pathlib.Path(path)
     while path != path.parent:
         if path.is_symlink() and not path in allowed_symlinks:
-            raise ClientIllegalFiletypeError(f"Path '{path}' is a symlink to '{os.readlink(path)}'.")
+            raise ClientIllegalFiletypeError(
+                f"Path '{path}' is a symlink to '{os.readlink(path)}'."
+            )
         path = path.parent
     return False

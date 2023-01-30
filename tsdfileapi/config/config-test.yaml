@@ -189,5 +189,3 @@ gpg_homedir: '/root/.gnupg/'
 gpg_keyring: 'pubring.gpg'
 gpg_secring: 'secring.gpg'
 test_key_dir: '/root/tsd-file-api/tsdfileapi/tests/'
-
-

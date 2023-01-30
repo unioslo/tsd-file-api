@@ -1,4 +1,3 @@
-
 import json
 import logging
 import time
@@ -6,12 +5,10 @@ import urllib
 import uuid
 
 import pika
-
 from pika.adapters.tornado_connection import TornadoConnection
 
 
-class PikaClient(object):
-
+class PikaClient:
     def __init__(self, config: dict, exchanges: dict) -> None:
         self.connecting = False
         self.connection = None
@@ -21,16 +18,16 @@ class PikaClient(object):
 
     def connect(self):
         if self.connecting:
-            logging.info('connecting - so not re-connecting')
+            logging.info("connecting - so not re-connecting")
             return
         self.connecting = True
-        host = self.config.get('host')
-        port = 5671 if self.config.get('amqps') else 5672
-        scheme = 'amqps' if self.config.get('amqps') else 'amqp'
-        virtual_host = urllib.parse.quote(self.config.get('vhost'), safe='')
-        user = self.config.get('user')
-        pw = self.config.get('pw')
-        heartbeat = self.config.get('heartbeat') if self.config.get('heartbeat') else 0
+        host = self.config.get("host")
+        port = 5671 if self.config.get("amqps") else 5672
+        scheme = "amqps" if self.config.get("amqps") else "amqp"
+        virtual_host = urllib.parse.quote(self.config.get("vhost"), safe="")
+        user = self.config.get("user")
+        pw = self.config.get("pw")
+        heartbeat = self.config.get("heartbeat") if self.config.get("heartbeat") else 0
         params = pika.URLParameters(
             f"{scheme}://{user}:{pw}@{host}:{port}/{virtual_host}?heartbeat={heartbeat}"
         )
@@ -41,32 +38,32 @@ class PikaClient(object):
         self.connecting = False
         return
 
-    def on_open_error_callback(self, connection: TornadoConnection, exception: Exception) -> None:
-        logging.error('could not connect')
+    def on_open_error_callback(
+        self, connection: TornadoConnection, exception: Exception
+    ) -> None:
+        logging.error("could not connect")
 
     def on_connect(self, connection: TornadoConnection) -> None:
         self.connection = connection
-        self.channel = self.connection.channel(
-            on_open_callback=self.on_channel_open
-        )
+        self.channel = self.connection.channel(on_open_callback=self.on_channel_open)
         return
 
     def on_channel_open(self, channel: pika.channel.Channel) -> None:
         for backend, config in self.exchanges.items():
-            ex_name = config.get('exchange')
+            ex_name = config.get("exchange")
             channel.exchange_declare(
                 ex_name,
-                exchange_type='topic',
+                exchange_type="topic",
                 durable=True,
             )
-            logging.info(f'rabbitmq exchange: {ex_name} declared')
+            logging.info(f"rabbitmq exchange: {ex_name} declared")
         return
 
     def on_basic_cancel(self, frame: pika.frame.Frame) -> None:
         self.connection.close()
 
     def on_closed(self, connection: TornadoConnection, exception: Exception) -> None:
-        logging.info('rabbitmq connection closed')
+        logging.info("rabbitmq connection closed")
         logging.info(exception)
 
     def publish_message(
@@ -97,10 +94,10 @@ class PikaClient(object):
 
         """
         data = {
-            'method': method,
-            'uri': uri,
-            'version': version,
-            'data': data,
+            "method": method,
+            "uri": uri,
+            "version": version,
+            "data": data,
         }
         message = json.dumps(data)
         delivery_mode = 2 if persistent else 1
@@ -109,10 +106,10 @@ class PikaClient(object):
             routing_key=routing_key,
             body=message,
             properties=pika.BasicProperties(
-                content_type='application/json',
+                content_type="application/json",
                 delivery_mode=delivery_mode,
                 timestamp=timestamp,
                 message_id=str(uuid.uuid4()),
-            )
+            ),
         )
         return
