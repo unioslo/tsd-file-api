@@ -17,20 +17,21 @@ import libnacl.public
 import libnacl.sealed
 import libnacl.utils
 import requests
-from auth import process_access_token
-from db import postgres_init
-from exc import ServerStorageTemporarilyUnavailableError
 from pysquril.backends import postgres_session
-from resumables import SerialResumable
-from tokens import gen_test_token_for_user
-from tokens import gen_test_tokens
-from tokens import get_test_token_for_p12
 from tornado.escape import url_escape
 from tsdapiclient import fileapi
-from utils import choose_storage
-from utils import find_tenant_storage_path
-from utils import md5sum
-from utils import sns_dir
+
+from tsdfileapi.auth import process_access_token
+from tsdfileapi.db import postgres_init
+from tsdfileapi.exc import ServerStorageTemporarilyUnavailableError
+from tsdfileapi.resumables import SerialResumable
+from tsdfileapi.tokens import gen_test_token_for_user
+from tsdfileapi.tokens import gen_test_tokens
+from tsdfileapi.tokens import get_test_token_for_p12
+from tsdfileapi.utils import choose_storage
+from tsdfileapi.utils import find_tenant_storage_path
+from tsdfileapi.utils import md5sum
+from tsdfileapi.utils import sns_dir
 
 
 def project_import_dir(

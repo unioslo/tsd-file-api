@@ -37,30 +37,9 @@ import psycopg2.errors
 import tornado.httputil
 import tornado.log
 import yaml
-from auth import process_access_token
-from db import get_projects_migration_status
-from db import pg_listen_channel
-from db import postgres_init
-from db import sqlite_init
-from exc import ClientAuthorizationError
-from exc import ClientContentRangeError
-from exc import ClientError
-from exc import ClientGroupAccessError
-from exc import ClientMethodNotAllowed
-from exc import ClientNaclChunkSizeError
-from exc import ClientReservedResourceError
-from exc import ClientResourceNotFoundError
-from exc import error_for_exception
-from exc import ServerMaintenanceError
 from pysquril.backends import PostgresBackend
 from pysquril.backends import SqliteBackend
-from resumables import ResumableIncorrectChunkOrderError
-from resumables import ResumableNotFoundError
-from resumables import SerialResumable
-from rmq import PikaClient
 from termcolor import colored
-from tokens import gen_test_jwt_secrets
-from tokens import tkn
 from tornado import gen
 from tornado.escape import json_decode
 from tornado.escape import url_escape
@@ -72,17 +51,39 @@ from tornado.web import Application
 from tornado.web import HTTPError
 from tornado.web import RequestHandler
 from tornado.web import stream_request_body
-from utils import _rwxrws___
-from utils import any_path_islink
-from utils import call_request_hook
-from utils import check_filename
-from utils import choose_storage
-from utils import find_tenant_storage_path
-from utils import move_data_to_folder
-from utils import set_mtime
-from utils import sns_dir
-from utils import tenant_from_url
-from utils import VALID_UUID
+
+from tsdfileapi.auth import process_access_token
+from tsdfileapi.db import get_projects_migration_status
+from tsdfileapi.db import pg_listen_channel
+from tsdfileapi.db import postgres_init
+from tsdfileapi.db import sqlite_init
+from tsdfileapi.exc import ClientAuthorizationError
+from tsdfileapi.exc import ClientContentRangeError
+from tsdfileapi.exc import ClientError
+from tsdfileapi.exc import ClientGroupAccessError
+from tsdfileapi.exc import ClientMethodNotAllowed
+from tsdfileapi.exc import ClientNaclChunkSizeError
+from tsdfileapi.exc import ClientReservedResourceError
+from tsdfileapi.exc import ClientResourceNotFoundError
+from tsdfileapi.exc import error_for_exception
+from tsdfileapi.exc import ServerMaintenanceError
+from tsdfileapi.resumables import ResumableIncorrectChunkOrderError
+from tsdfileapi.resumables import ResumableNotFoundError
+from tsdfileapi.resumables import SerialResumable
+from tsdfileapi.rmq import PikaClient
+from tsdfileapi.tokens import gen_test_jwt_secrets
+from tsdfileapi.tokens import tkn
+from tsdfileapi.utils import _rwxrws___
+from tsdfileapi.utils import any_path_islink
+from tsdfileapi.utils import call_request_hook
+from tsdfileapi.utils import check_filename
+from tsdfileapi.utils import choose_storage
+from tsdfileapi.utils import find_tenant_storage_path
+from tsdfileapi.utils import move_data_to_folder
+from tsdfileapi.utils import set_mtime
+from tsdfileapi.utils import sns_dir
+from tsdfileapi.utils import tenant_from_url
+from tsdfileapi.utils import VALID_UUID
 
 
 _RW______ = stat.S_IREAD | stat.S_IWRITE
