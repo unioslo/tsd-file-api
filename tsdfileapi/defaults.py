@@ -26,7 +26,6 @@ _config = {
     'tenant_claim_name': 'proj',
     'valid_tenant_regex': '^[0-9a-z]+$',
     'tenant_string_pattern': 'pXX',
-    "allowed_symlinks": ["/tsd"],
     'export_max_num_list': 100,
     'export_chunk_size': 512000,
     'max_body_size': 5368709120,

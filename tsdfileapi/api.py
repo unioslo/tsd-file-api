@@ -140,7 +140,7 @@ def set_config() -> None:
     define('requestor_claim_name', _config['requestor_claim_name'])
     define('tenant_claim_name', _config['tenant_claim_name'])
     define('tenant_string_pattern', _config['tenant_string_pattern'])
-    define('allowed_symlinks', _config['allowed_symlinks'])
+    define('allowed_symlinks', _config.get('allowed_symlinks', ["/tsd"]))
     define('export_chunk_size', _config['export_chunk_size'])
     define('valid_tenant', re.compile(r'{}'.format(_config['valid_tenant_regex'])))
     define('max_body_size', _config['max_body_size'])
