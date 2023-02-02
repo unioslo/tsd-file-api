@@ -666,6 +666,17 @@ class AuthRequestHandler(RequestHandler):
         except Exception as e:
             logging.warning(f"could not update audit log: {e}")
 
+    def additional_log_details(self) -> Dict[str, Any]:
+        """Retrieve additional details for logging.
+
+        Returns:
+            str: details for appending to log output
+        """
+        additional_details = {}
+        if hasattr(self, "requestor"):
+            additional_details["Requestor"] = self.requestor
+        return additional_details
+
 
 class SnsFormDataHandler(AuthRequestHandler):
 
@@ -997,17 +1008,6 @@ class FileRequestHandler(AuthRequestHandler):
             base64.b64decode(headers["Nacl-Key"])
         )
         self.nacl_chunksize = int(headers["Nacl-Chunksize"])
-
-    def additional_log_details(self) -> Dict[str, Any]:
-        """Retrieve additional details for logging.
-
-        Returns:
-            str: details for appending to log output
-        """
-        additional_details = {}
-        if hasattr(self, "requestor"):
-            additional_details["Requestor"] = self.requestor
-        return additional_details
 
     def initialize(self, backend: str, namespace: str, endpoint: str) -> None:
         default_group_logic = {
