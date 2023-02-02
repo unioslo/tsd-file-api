@@ -720,7 +720,7 @@ class TestFileApi(unittest.TestCase):
         resp = requests.get(
             self.export + "/" + url_escape("blå_fil_3_(v1).txt"), headers=headers
         )
-        self.assertEqual(resp.text, "even more data")
+        self.assertEqual(resp.text, "even more data\n")
         self.assertEqual(resp.status_code, 200)
         resp = requests.head(
             self.export + "/" + url_escape("this is a file"), headers=headers
@@ -729,12 +729,12 @@ class TestFileApi(unittest.TestCase):
         resp = requests.get(
             self.export + "/" + url_escape("this is a file"), headers=headers
         )
-        self.assertEqual(resp.text, "Lol")
+        self.assertEqual(resp.text, "Lol\n")
         self.assertEqual(resp.status_code, 200)
         resp = requests.get(
             self.export + "/" + url_escape("this+is+another+file"), headers=headers
         )
-        self.assertEqual(resp.text, "epiphenomena")
+        self.assertEqual(resp.text, "epiphenomena\n")
         self.assertEqual(resp.status_code, 200)
 
     # resumable uploads
