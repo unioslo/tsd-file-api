@@ -2338,7 +2338,9 @@ def main() -> None:
         suite.addTest(TestFileApi(test))
     runner = unittest.TextTestRunner()
     #    runner = unittest.TextTestRunner(verbosity=3, failfast=True)
-    runner.run(suite)
+    result = runner.run(suite)
+    # in Python int(True) is 1, int(False) is 0
+    sys.exit(not result.wasSuccessful())
 
 
 if __name__ == "__main__":
