@@ -13,6 +13,7 @@ import uuid
 from datetime import datetime
 from typing import Optional
 
+import backoff
 import libnacl.public
 import libnacl.sealed
 import libnacl.utils
@@ -59,6 +60,11 @@ def lazy_file_reader(filename: str) -> bytes:
                 break
             else:
                 yield data
+
+
+@backoff.on_exception(backoff.expo, FileNotFoundError, max_time=0.2)
+def await_file(filename: str) -> bool:
+    return os.stat(filename) is not None
 
 
 class TestFileApi(unittest.TestCase):
@@ -274,10 +280,12 @@ class TestFileApi(unittest.TestCase):
         resp = self.mp_fd(newfilename, target, url, "PUT")
         uploaded_file = os.path.normpath(uploads_folder + "/" + newfilename)
         self.assertEqual(resp.status_code, 201)
+        self.assertTrue(await_file(uploaded_file))
         self.assertEqual(md5sum(self.example_csv), md5sum(uploaded_file))
         # req2
         resp2 = self.mp_fd(newfilename, target, url, "PUT")
         self.assertEqual(resp2.status_code, 201)
+        self.assertTrue(await_file(uploaded_file))
         self.assertEqual(md5sum(self.example_csv), md5sum(uploaded_file))
 
     def test_H1_put_file_multi_part_form_data_sns(self) -> None:
@@ -311,6 +319,7 @@ class TestFileApi(unittest.TestCase):
         resp = requests.put(self.stream, data=open(self.example_csv), headers=headers)
         self.assertEqual(resp.status_code, 201)
 
+        self.assertTrue(await_file(uploaded_file))
         self.assertEqual(md5sum(self.example_csv), md5sum(uploaded_file))
 
     def test_K_put_stream_file_chunked_transfer_encoding(self) -> None:
@@ -330,10 +339,12 @@ class TestFileApi(unittest.TestCase):
         resp = requests.put(
             self.stream, data=lazy_file_reader(self.example_csv), headers=headers
         )
+        self.assertTrue(await_file(uploaded_file))
         self.assertEqual(md5sum(self.example_csv), md5sum(uploaded_file))
         resp = requests.put(
             self.stream, data=lazy_file_reader(self.example_csv), headers=headers
         )
+        self.assertTrue(await_file(uploaded_file))
         self.assertEqual(md5sum(self.example_csv), md5sum(uploaded_file))
         self.assertEqual(resp.status_code, 201)
 
@@ -623,6 +634,7 @@ class TestFileApi(unittest.TestCase):
         uploaded_file2 = os.path.normpath(
             self.uploads_folder_p12 + "/p12-member-group/" + newfilename2
         )
+        self.assertTrue(await_file(uploaded_file2))
         self.assertEqual(md5sum(self.example_csv), md5sum(uploaded_file2))
 
     def test_ZB_sns_folder_logic_is_correct(self) -> None:
@@ -794,6 +806,7 @@ class TestFileApi(unittest.TestCase):
             if not uploads_folder:
                 uploads_folder = self.uploads_folder + "/" + self.test_group
             remote_resource = uploads_folder + "/" + os.path.basename(filepath)
+            self.assertTrue(await_file(remote_resource))
             self.assertEqual(md5sum(filepath), md5sum(remote_resource))
 
     def test_ZM_resume_new_upload_works_is_idempotent(self) -> None:
@@ -1035,9 +1048,11 @@ class TestFileApi(unittest.TestCase):
             dev_url=url,
             upload_id=upload_id1,
         ).get("response")
+        upload = self.uploads_folder + "/" + self.test_group + "/" + filename
+        self.assertTrue(await_file(upload))
         self.assertEqual(
             md5sum(filepath),
-            md5sum(self.uploads_folder + "/" + self.test_group + "/" + filename),
+            md5sum(upload),
         )
         uploaded_folder1 = self.uploads_folder + "/" + upload_id1
         merged_file1 = self.uploads_folder + "/" + filename + "." + upload_id1
@@ -1767,6 +1782,7 @@ class TestFileApi(unittest.TestCase):
                     decr = libnacl.crypto_stream_xor(_buffer, nonce, key)
                     fdecrypted.write(decr)
 
+        self.assertTrue(await_file(dec_test_file))
         assert md5sum(test_file) == md5sum(dec_test_file)
 
         # now with requests to the survey backend
@@ -1810,9 +1826,9 @@ class TestFileApi(unittest.TestCase):
             },
             data=lazy_file_reader(new_stream),
         )
-        self.assertEqual(
-            md5sum(test_file), md5sum(f"{self.uploads_folder_survey}/{target}")
-        )
+        upload = f"{self.uploads_folder_survey}/{target}"
+        self.assertTrue(await_file(upload))
+        self.assertEqual(md5sum(test_file), md5sum(upload))
 
         # send encrypted data, all in one
         target = "123456/attachments/auto-decrypt2"
@@ -1827,9 +1843,9 @@ class TestFileApi(unittest.TestCase):
             },
             data=open(new_stream, "rb").read(),
         )
-        self.assertEqual(
-            md5sum(test_file), md5sum(f"{self.uploads_folder_survey}/{target}")
-        )
+        upload = f"{self.uploads_folder_survey}/{target}"
+        self.assertTrue(await_file(upload))
+        self.assertEqual(md5sum(test_file), md5sum(upload))
 
         # send as a resumable
         self.start_new_resumable(self.resume_file1, chunksize=5, public_key=public_key)
@@ -1957,9 +1973,9 @@ class TestFileApi(unittest.TestCase):
         url = f"{self.stream}/{self.test_group}/{file}"
         resp = requests.put(url, data=lazy_file_reader(self.so_sweet), headers=headers)
         self.assertEqual(resp.status_code, 201)
-        new_file_mtime = os.stat(
-            f"{self.uploads_folder}/{self.test_group}/{name}"
-        ).st_mtime
+        upload = f"{self.uploads_folder}/{self.test_group}/{name}"
+        self.assertTrue(await_file(upload))
+        new_file_mtime = os.stat(upload).st_mtime
         self.assertEqual(new_file_mtime, original_file_mtime)
         # with info
         resp = requests.head(url, headers=headers)
@@ -2110,6 +2126,7 @@ class TestFileApi(unittest.TestCase):
             headers=headers,
         )
         uploaded_file = f"{self.uploads_folder}/p11-member-group/on-hnas/a-file"
+        self.assertTrue(await_file(uploaded_file))
         self.assertEqual(md5sum(self.example_csv), md5sum(uploaded_file))
         # now specify hnas, and see that it still works
         with postgres_session(pool) as session:
@@ -2123,6 +2140,7 @@ class TestFileApi(unittest.TestCase):
             headers=headers,
         )
         uploaded_file = f"{self.uploads_folder}/p11-member-group/on-hnas/another-file"
+        self.assertTrue(await_file(uploaded_file))
         self.assertEqual(md5sum(self.example_csv), md5sum(uploaded_file))
         # during migration, import/export should fail
         with postgres_session(pool) as session:
