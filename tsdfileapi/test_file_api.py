@@ -439,10 +439,11 @@ class TestFileApi(unittest.TestCase):
         )
         # get it back
         resp = requests.get(f"{self.survey}/123456/submissions", headers=headers)
-        data = json.loads(resp.text)
-        self.assertEqual(len(data), 2, "wrong number of submissions")
-        self.assertEqual(data[0].get("key1"), 7)
-        self.assertEqual(data[1].get("key1"), 99)
+        resp_data = json.loads(resp.text)
+        self.assertEqual(data, resp_data)
+        self.assertEqual(len(resp_data), 2, "wrong number of submissions")
+        self.assertEqual(resp_data[0].get("key1"), 7)
+        self.assertEqual(resp_data[1].get("key1"), 99)
         self.assertEqual(resp.status_code, 200)
         # audit functionality
         resp = requests.patch(
@@ -460,6 +461,7 @@ class TestFileApi(unittest.TestCase):
         # that we recorded the change in the audit
         resp = requests.get(f"{self.survey}/123456/audit", headers=headers)
         data = json.loads(resp.text)
+        self.assertTrue(data)
         self.assertEqual(data[-1].get("diff"), {"key1": 5})
         self.assertEqual(data[-1].get("previous").get("key1"), 7)
         self.assertEqual(resp.status_code, 200)
@@ -1661,6 +1663,7 @@ class TestFileApi(unittest.TestCase):
         resp = requests.get(f"{self.apps}/ega/tables/user_data/audit", headers=headers)
         self.assertEqual(resp.status_code, 200)
         data = json.loads(resp.text)
+        self.assertTrue(data)
         self.assertEqual(data[0].get("diff"), new_version)
 
         # metadata
