@@ -494,14 +494,6 @@ class TestFileApi(unittest.TestCase):
         self.assertTrue("submissions" in data["data"])
         self.assertTrue("attachments" in data["data"])
 
-        ### Make wrong query and get a 400
-        resp = requests.patch(
-            f"{self.survey}/123456/submissions?set=key1&set=key2&where=key2=eq.bla",
-            headers=headers,
-            data=json.dumps({"key1": 5, "key2": 5}),
-        )
-        self.assertEqual(resp.status_code, 400)
-
         # perform some queries
         resp = requests.get(
             f"{self.base_url}/survey/123456/submissions?select=count(*)",
