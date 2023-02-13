@@ -7,10 +7,15 @@ on:
 jobs:
   run-tests:
     runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ["3.7", "3.8", "3.9", "3.10", "3.11"]
     steps:
       - name: Check out repository
         uses: actions/checkout@v3
+      - name: Set container tag to variable
+        run: echo "CONTAINER_TAG=tsd-file-api:${{ github.sha }}-py${{ matrix.python-version }}-r${{ github.run_attempt }}" >> $GITHUB_ENV
       - name: Build test container image
-        run: docker build -t tsd-file-api -f "./.github/misc/containers/Dockerfile.test" .
+        run: docker build --tag "${{ env.CONTAINER_TAG }}" --build-arg PYTHON_VERSION="${{ matrix.python-version }}"  -f "./.github/misc/containers/Dockerfile.test" .
       - name: Run all tsd-file-api tests
-        run: docker run --rm tsd-file-api /bin/sh -c "python tsdfileapi/api.py & sleep 2 && python tsdfileapi/test_file_api.py"
+        run: docker run --rm "${{ env.CONTAINER_TAG }}" /bin/sh -c "python tsdfileapi/api.py & sleep 2 && python tsdfileapi/test_file_api.py"
