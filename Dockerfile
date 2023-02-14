@@ -27,29 +27,29 @@ RUN source /opt/rh/rh-ruby23/enable && gem install --no-ri --no-rdoc fpm
 # install Python 3.8 from SCL
 RUN yum install -y rh-python38 rh-python38-python-devel
 
-# hack needed because brp-python-bytecompile has hardcoded path to Python
-# used as part of bdist_rpm build below
-RUN ln -s /opt/rh/rh-python38/root/usr/bin/python /usr/bin/python3.8
-
 # install virtualenv with Python 3.8
 RUN source /opt/rh/rh-python38/enable &&\
     pip3 install virtualenv virtualenv-tools3
 
 # build rpms
 WORKDIR /file-api
-COPY requirements.txt ./
 RUN mkdir -p dist
+
+COPY requirements.txt ./
+COPY scripts ./scripts/
+COPY tsdfileapi ./tsdfileapi/
+COPY setup.py setup.cfg ./
+
+# get package version for use in RPM creation
+RUN source /opt/rh/rh-python38/enable && \
+    python -c 'from tsdfileapi import __version__; print(__version__)' > ./VERSION
+
+# add tsd-file-api to requirements.txt for installation in venv RPM
+RUN echo "." >> requirements.txt
 
 # build RPM of the dependencies virtual environment
 RUN source /opt/rh/rh-ruby23/enable &&\
     source /opt/rh/rh-python38/enable &&\
     fpm --verbose -s virtualenv -p /file-api/dist\
-    -t rpm --name tsd-file-api-venv --version 2.19\
+    -t rpm --name tsd-file-api-venv --version $(cat VERSION)\
     --prefix /opt/tsd-file-api-venv/virtualenv requirements.txt
-
-COPY scripts ./scripts/
-COPY tsdfileapi ./tsdfileapi/
-COPY setup.py setup.cfg ./
-
-RUN source /opt/rh/rh-python38/enable && \
-    python setup.py bdist_rpm --no-autoreq
