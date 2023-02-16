@@ -39,6 +39,6 @@ jobs:
       - name: Build test container image
         run: docker build --tag "${{ env.CONTAINER_TAG }}" --build-arg PYTHON_VERSION="${{ matrix.python-version }}"  -f "./.github/misc/containers/Dockerfile.test" .
       - name: Run all tsd-file-api tests (SQLite)
-        run: docker run --rm "${{ env.CONTAINER_TAG }}" /bin/sh -c "python tsdfileapi/api.py & sleep 2 && python tsdfileapi/test_file_api.py"
+        run: docker run --rm "${{ env.CONTAINER_TAG }}" /bin/sh -c "tsd-file-api & sleep 2 && python tsdfileapi/test_file_api.py"
       - name: Run all tsd-file-api tests (PostgreSQL)
-        run: docker run --rm "${{ env.CONTAINER_TAG }}" /bin/sh -c "python tsdfileapi/api.py tsdfileapi/config/config-test-container-postgres.yaml & sleep 2 && python tsdfileapi/test_file_api.py"
+        run: docker run --rm "${{ env.CONTAINER_TAG }}" /bin/sh -c "tsd-file-api tsdfileapi/config/config-test-container-postgres.yaml & sleep 2 && python tsdfileapi/test_file_api.py"
