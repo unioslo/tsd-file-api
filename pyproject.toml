@@ -1,8 +1,12 @@
 [tool.poetry]
 name = "tsdfileapi"
-version = "2.10.4"
-description = ""
-authors = ["Your Name <you@example.com>"]
+description = "A REST API for upload and download of files and JSON data."
+authors = [
+    "Leon du Toit <l.c.d.toit@usit.uio.no>",
+    "Eirik Haatveit <haatveit@uio.no>",
+    "Milen Kouylekov <milen.kouylekov@usit.uio.no>",
+    "Armen Michaeli <armen.michaeli@usit.uio.no>",
+]
 
 [tool.poetry.scripts]
 tsd-file-api = "tsdfileapi.api:main"
