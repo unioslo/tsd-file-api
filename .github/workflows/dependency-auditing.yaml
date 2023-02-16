@@ -1,5 +1,8 @@
 name: Dependency auditing
 
+env:
+  POETRY_VERSION: 1.3.2
+
 on:
   push:
   pull_request:
@@ -7,10 +10,27 @@ on:
     - cron: "15 2,14 * * *"
 
 jobs:
-  pip-audit:
+  export-requirements:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v3
+      - name: Install Poetry
+        run: pipx install poetry==${{env.POETRY_VERSION}}
+      - name: Export requirements.txt
+        run: poetry export --without-hashes --with dev -f requirements.txt -o requirements.txt
+      - uses: actions/upload-artifact@v3
+        with:
+          name: requirements.txt
+          path: requirements.txt
+          if-no-files-found: error
+  pip-audit:
+    runs-on: ubuntu-latest
+    needs: export-requirements
+    steps:
+      - uses: actions/download-artifact@v3
+        with:
+          name: requirements.txt
+          path: requirements.txt
       - uses: pypa/gh-action-pip-audit@v1.0.5
         with:
-          inputs: requirements.txt
+          inputs: requirements.txt/requirements.txt
