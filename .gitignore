@@ -15,4 +15,3 @@ definitions
 RUN.sh
 tsd-api-client/
 *.DS_Store
-poetry.lock
