@@ -103,8 +103,8 @@ def set_config() -> None:
     except IndexError as e:
         print(colored("Missing config file, running with default setup", "yellow"))
         print(colored("WARNING: do _not_ do this in production", "red"))
-        from defaults import _config
-        from tokens import tkn
+        from tsdfileapi.defaults import _config
+        from tsdfileapi.tokens import tkn
 
         for k, v in _config.items():
             print(colored(f"{k}:", "yellow"), colored(f"{v}", "magenta"))
