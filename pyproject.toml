@@ -25,11 +25,13 @@ pretty-bad-protocol = "3.1.1"
 click = "8.0"
 termcolor = "1.1.0"
 python-magic = "0.4.15"
-pika = "^1.1.0"
+pika = "1.1.0"
+pyyaml = "5.4"
 
 [tool.poetry.dev-dependencies]
 black = "^22.8.0"
 backoff = ">=2.2.1"
+requests = ">=2.27.1"
 
 [tool.poetry-dynamic-versioning]
 enable = true
