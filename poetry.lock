@@ -606,17 +606,15 @@ version = "0.2.2"
 description = "Python implementation of structured URI query language"
 category = "main"
 optional = false
-python-versions = "^3.7"
+python-versions = ">=3.7,<4.0"
 files = [
-    {file = "v0.2.2.tar.gz", hash = "sha256:154a8239c94c3f6fa531a7e9c5123d26cb26911c39ac86c9cc9b4246170af4f1"},
+    {file = "pysquril-0.2.2-py3-none-any.whl", hash = "sha256:c160c4a2ac2f3752845039299f07c69e769a23190af5fb0e78cf411082845cee"},
+    {file = "pysquril-0.2.2.tar.gz", hash = "sha256:e0de8ff8ba9746fbd8ceeaee5b7d07d84b3490569fa4f47d96e6d442ba038f5b"},
 ]
 
 [package.dependencies]
 psycopg2-binary = ">=2.9.3,<3.0.0"
 
-[package.source]
-type = "url"
-url = "https://github.com/unioslo/pysquril/archive/refs/tags/v0.2.2.tar.gz"
 [[package]]
 name = "python-magic"
 version = "0.4.15"
@@ -905,4 +903,4 @@ files = [
 [metadata]
 lock-version = "2.0"
 python-versions = "^3.7"
-content-hash = "b641b11dc24215599f00edd1bd93421e90a5a86955b3cc0dfcfd13fe0149fb8a"
+content-hash = "fc58596133b2b788ad04097bb794b6211012b009569cec98d3007ec2e709c0e9"

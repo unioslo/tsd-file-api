@@ -18,7 +18,7 @@ jwcrypto = ">=1.4"
 tornado = "6.0.3"
 psycopg2-binary = "2.9.3"
 libnacl = "1.7.1"
-pysquril = {url = "https://github.com/unioslo/pysquril/archive/refs/tags/v0.2.2.tar.gz"}
+pysquril = "^0"
 tsd-api-client = "3.5.2"
 SQLAlchemy = "1.3.8"
 pretty-bad-protocol = "3.1.1"
