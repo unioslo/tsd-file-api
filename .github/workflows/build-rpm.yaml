@@ -1,0 +1,38 @@
+name: Build RPM containing package and dependencies
+
+on:
+  push:
+    branches:
+      - master
+    tags:
+      - v*
+
+env:
+  POETRY_VERSION: "1.3.2"
+  POETRY_DYNAMIC_VERSIONING_VERSION: "0.21.3"
+
+jobs:
+  build-rpm:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v3
+        with:
+          fetch-depth: 0
+      - name: Set container tag to variable
+        run: echo "CONTAINER_TAG=tsd-file-api:${{ github.sha }}-rpmbuilder-r${{ github.run_attempt }}" >> $GITHUB_ENV
+      - name: Build the RPM builder container image
+        run: docker build --tag "${{ env.CONTAINER_TAG }}" --build-arg POETRY_VERSION="${{ env.POETRY_VERSION }}" --build-arg POETRY_DYNAMIC_VERSIONING_VERSION="${{ env.POETRY_DYNAMIC_VERSIONING_VERSION }}" -f "./containers/Dockerfile.rpm" .
+      - name: Extract built RPM from the container image
+        run: |
+          export CONTAINER_ID=$(docker create "${{ env.CONTAINER_TAG }}")
+          sleep 5
+          docker cp "$CONTAINER_ID":/file-api/rpm ./
+          docker rm "$CONTAINER_ID"
+      - name: Upload the extracted RPM as artifact
+        uses: actions/upload-artifact@v3
+        with:
+          name: RPM
+          path: rpm
+          if-no-files-found: error
