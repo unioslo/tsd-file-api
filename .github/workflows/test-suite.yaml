@@ -37,7 +37,7 @@ jobs:
       - name: Set container tag to variable
         run: echo "CONTAINER_TAG=tsd-file-api:${{ github.sha }}-py${{ matrix.python-version }}-r${{ github.run_attempt }}" >> $GITHUB_ENV
       - name: Build test container image
-        run: docker build --tag "${{ env.CONTAINER_TAG }}" --build-arg PYTHON_VERSION="${{ matrix.python-version }}"  -f "./.github/misc/containers/Dockerfile.test" .
+        run: docker build --tag "${{ env.CONTAINER_TAG }}" --build-arg PYTHON_VERSION="${{ matrix.python-version }}"  -f "./containers/Dockerfile.test" .
       - name: Run all tsd-file-api tests (SQLite)
         run: docker run --rm "${{ env.CONTAINER_TAG }}" /bin/sh -c "tsd-file-api & sleep 2 && python tsdfileapi/test_file_api.py"
       - name: Run all tsd-file-api tests (PostgreSQL)
