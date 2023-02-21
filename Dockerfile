@@ -14,9 +14,9 @@ RUN yum -y install gcc\
 ##########################################################################################
 FROM base as rpm
 
-RUN yum -y install make\
-                   rpm-build\
-                   rpmrebuild
+RUN yum -y install \
+    make \
+    rpm-build
 # Workaround to get ruby2.3:
 # ERROR:  Error installing fpm:
 #       ffi requires Ruby version >= 2.3.
@@ -31,18 +31,26 @@ RUN yum install -y rh-python38 rh-python38-python-devel
 RUN source /opt/rh/rh-python38/enable &&\
     pip3 install virtualenv virtualenv-tools3
 
+# install poetry
+ARG POETRY_VERSION=1.3.2
+ARG POETRY_DYNAMIC_VERSIONING_VERSION="0.21.3"
+RUN source /opt/rh/rh-python38/enable &&\
+    python -m venv /opt/poetry &&\
+    source /opt/poetry/bin/activate &&\
+    python -m pip install poetry==${POETRY_VERSION} &&\
+    poetry self add "poetry-dynamic-versioning[plugin]==${POETRY_DYNAMIC_VERSIONING_VERSION}" &&\
+    ln -s /opt/poetry/bin/poetry /usr/bin/poetry
+
 # build rpms
 WORKDIR /file-api
-RUN mkdir -p dist
 
-COPY requirements.txt ./
+COPY pyproject.toml poetry.lock ./
 COPY scripts ./scripts/
 COPY tsdfileapi ./tsdfileapi/
-COPY setup.py setup.cfg ./
+COPY .git ./.git/
 
-# get package version for use in RPM creation
-RUN source /opt/rh/rh-python38/enable && \
-    python -c 'from tsdfileapi import __version__; print(__version__)' > ./VERSION
+# export dependencies to requirements.txt for fpm
+RUN poetry export --without-hashes --format requirements.txt --output requirements.txt
 
 # add tsd-file-api to requirements.txt for installation in venv RPM
 RUN echo "." >> requirements.txt
@@ -50,6 +58,7 @@ RUN echo "." >> requirements.txt
 # build RPM of the dependencies virtual environment
 RUN source /opt/rh/rh-ruby23/enable &&\
     source /opt/rh/rh-python38/enable &&\
-    fpm --verbose -s virtualenv -p /file-api/dist\
-    -t rpm --name tsd-file-api-venv --version $(cat VERSION)\
-    --prefix /opt/tsd-file-api-venv/virtualenv requirements.txt
+    mkdir -p /file-api/rpm && \
+    fpm --verbose -s virtualenv -p /file-api/rpm \
+    -t rpm --name tsd-file-api --version $(poetry version --short --no-ansi) \
+    --prefix /opt/tsd-file-api requirements.txt
