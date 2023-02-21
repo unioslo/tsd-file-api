@@ -1,0 +1,73 @@
+name: Create and publish container images
+
+on:
+  push:
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ${{ github.repository }}
+  PYTHON_VERSION: "3.11"
+  POETRY_VERSION: "1.3.2"
+  POETRY_DYNAMIC_VERSIONING_VERSION: "0.21.3"
+
+jobs:
+  build-and-push-image:
+    strategy:
+      matrix:
+        variant: ["", "-alpine"]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v3
+        with:
+          fetch-depth: 0
+      - name: Install Poetry
+        run: pipx install poetry==${{env.POETRY_VERSION}}
+      - name: Install poetry-dynamic-versioning
+        run: poetry self add "poetry-dynamic-versioning[plugin]==${{env.POETRY_DYNAMIC_VERSIONING_VERSION}}"
+      - name: Get version
+        run: echo "PACKAGE_VERSION=$(poetry version --short --no-ansi)" >> $GITHUB_ENV
+      - name: Log in to the container registry
+        uses: docker/login-action@v2
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Extract metadata (tags, labels) for container
+        id: meta
+        uses: docker/metadata-action@v4
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          flavor: |
+            suffix=${{ matrix.variant}},onlatest=true
+          tags: |
+            type=ref,event=branch
+            type=ref,event=pr
+            type=raw,value=${{ env.PACKAGE_VERSION }}
+            type=sha,prefix=,format=short
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+          labels: |
+            org.opencontainers.image.version=${{ env.PACKAGE_VERSION }}
+
+      - name: Set container filename
+        run: |
+          VARIANT=${{ matrix.variant }}
+          echo "CONTAINER_FILE=./containers/Dockerfile${VARIANT/-/.}" >> $GITHUB_ENV
+      - name: Build and push container image
+        uses: docker/build-push-action@v3
+        with:
+          context: .
+          build-args: |
+            PYTHON_VERSION=${{ env.PYTHON_VERSION }}
+            POETRY_VERSION=${{ env.POETRY_VERSION }}
+            POETRY_DYNAMIC_VERSIONING_VERSION=${{ env.POETRY_DYNAMIC_VERSIONING_VERSION }}
+          file: "${{ env.CONTAINER_FILE }}"
+          push: ${{ github.event_name != 'pull_request' }}
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
