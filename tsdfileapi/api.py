@@ -2280,26 +2280,60 @@ class GenericTableHandler(AuthRequestHandler):
                         table_name, query, exclude_endswith=["_audit", "_metadata"]
                     )
                     # At this point the query was created and determined valid
-                    result = next(results, None)
+                    encrypt_data = False
+                    if "Nacl-Nonce" in self.request.headers.keys():
+                        self.decrypt_nacl_headers(self.request.headers)
+                        self.CHUNK_SIZE = self.nacl_chunksize
+                        encrypt_data = True
+                    empty_result: Union[str, bytes] = (
+                        "[]"
+                        if not encrypt_data
+                        else libnacl.crypto_stream_xor(
+                            msg=b"[]",
+                            nonce=self.nacl_nonce,
+                            key=self.nacl_key,
+                        )
+                    )
+                    result = next(results, empty_result)
                     self.set_status(HTTPStatus.OK.value)
-                    if not result:
-                        self.write("[]")
+                    if result == empty_result:
+                        self.write(result)
                         return
-                    self.write("[")
-                    self.write(json.dumps(result))
-                    for row in results:
-                        self.write(",")
-                        self.write(json.dumps(row))
+                    if encrypt_data:
+                        # building whole payload before sending anything
+                        # when we are using encryption
+                        json_data = f"[{json.dumps(result)}"
+                        for row in results:
+                            json_data += f",{json.dumps(row)}"
+                        json_data += "]"
+                        json_data = json_data.encode("utf-8")
+                        sent = 0
+                        while sent < len(json_data):
+                            self.write(
+                                libnacl.crypto_stream_xor(
+                                    msg=json_data[sent : sent + self.CHUNK_SIZE],
+                                    nonce=self.nacl_nonce,
+                                    key=self.nacl_key,
+                                )
+                            )
+                            self.flush()
+                            sent += self.CHUNK_SIZE
+                    else:
+                        self.write("[")
+                        self.write(json.dumps(result))
+                        for row in results:
+                            self.write(",")
+                            self.write(json.dumps(row))
+                            self.flush()
+                        self.write("]")
                         self.flush()
-                    self.write("]")
-                    self.flush()
         # TODO: raise custom exceptions from pysquril to identify query errors as 4XX
         except (psycopg2.errors.UndefinedTable, sqlite3.OperationalError) as e:
             if table_name.endswith("_audit"):
                 # Handle the audit table differently
                 # it is not created until the first change appears
                 self.set_status(HTTPStatus.OK.value)
-                self.write("[]")
+                self.write(empty_result)
             else:
                 logging.error(e)
                 self.set_status(HTTPStatus.NOT_FOUND.value)
