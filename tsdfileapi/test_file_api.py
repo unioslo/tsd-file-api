@@ -1390,7 +1390,6 @@ class TestFileApi(unittest.TestCase):
         file = f"file.{str(uuid.uuid4())}.part"
         resp = requests.delete(
             f"{self.publication_import}/{test_dir}/{file}",
-            data=lazy_file_reader(self.so_sweet),
             headers=headers,
         )
         self.assertEqual(resp.status_code, 400)
