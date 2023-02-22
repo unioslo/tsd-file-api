@@ -48,7 +48,7 @@ jobs:
           tags: |
             type=ref,event=branch
             type=ref,event=pr
-            type=raw,value=${{ env.PACKAGE_VERSION }}
+            type=raw,value=${{ env.PACKAGE_VERSION }},priority=50
             type=sha,prefix=,format=short
             type=semver,pattern={{version}}
             type=semver,pattern={{major}}.{{minor}}
