@@ -677,6 +677,19 @@ class AuthRequestHandler(RequestHandler):
             additional_details["Requestor"] = self.requestor
         return additional_details
 
+    def decrypt_nacl_headers(self, headers: tornado.httputil.HTTPHeaders) -> None:
+        if not headers.get("Nacl-Chunksize"):
+            raise ClientError("Missing Nacl-Chunksize header - cannot decrypt data")
+        self.custom_content_type = headers["Content-Type"]
+        self.nacl_stream_buffer = b""
+        self.nacl_nonce = options.sealed_box.decrypt(
+            base64.b64decode(headers["Nacl-Nonce"])
+        )
+        self.nacl_key = options.sealed_box.decrypt(
+            base64.b64decode(headers["Nacl-Key"])
+        )
+        self.nacl_chunksize = int(headers["Nacl-Chunksize"])
+
 
 class SnsFormDataHandler(AuthRequestHandler):
 
@@ -996,19 +1009,6 @@ class ResumablesHandler(AuthRequestHandler):
 
 @stream_request_body
 class FileRequestHandler(AuthRequestHandler):
-    def decrypt_nacl_headers(self, headers: tornado.httputil.HTTPHeaders) -> None:
-        if not headers.get("Nacl-Chunksize"):
-            raise ClientError("Missing Nacl-Chunksize header - cannot decrypt data")
-        self.custom_content_type = headers["Content-Type"]
-        self.nacl_stream_buffer = b""
-        self.nacl_nonce = options.sealed_box.decrypt(
-            base64.b64decode(headers["Nacl-Nonce"])
-        )
-        self.nacl_key = options.sealed_box.decrypt(
-            base64.b64decode(headers["Nacl-Key"])
-        )
-        self.nacl_chunksize = int(headers["Nacl-Chunksize"])
-
     def initialize(self, backend: str, namespace: str, endpoint: str) -> None:
         default_group_logic = {
             "enabled": False,
