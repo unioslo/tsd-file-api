@@ -1,4 +1,4 @@
-name: Build RPM containing package and dependencies
+name: Build el7 RPM containing package and dependencies
 
 on:
   push:
@@ -13,10 +13,6 @@ env:
 
 jobs:
   build-rpm:
-    strategy:
-      fail-fast: false
-      matrix:
-        EL_VERSION: ["8", "9"]
     runs-on: ubuntu-latest
 
     steps:
@@ -25,15 +21,14 @@ jobs:
         with:
           fetch-depth: 0
       - name: Set container tag to variable
-        run: echo "CONTAINER_TAG=tsd-file-api:${{ github.sha }}-rpmbuilder-el${{ matrix.EL_VERSION }}-r${{ github.run_attempt }}" >> $GITHUB_ENV
+        run: echo "CONTAINER_TAG=tsd-file-api:${{ github.sha }}-rpmbuilder-r${{ github.run_attempt }}" >> $GITHUB_ENV
       - name: Build the RPM builder container image
         run: >
           docker build
           --tag "${{ env.CONTAINER_TAG }}"
-          --build-arg ROCKY_VERSION="${{ matrix.EL_VERSION }}"
           --build-arg POETRY_VERSION="${{ env.POETRY_VERSION }}"
           --build-arg POETRY_DYNAMIC_VERSIONING_VERSION="${{ env.POETRY_DYNAMIC_VERSIONING_VERSION }}"
-          -f "./containers/Dockerfile.rocky.rpm"
+          -f "./containers/Dockerfile.centos.rpm"
           .
       - name: Extract built RPM from the container image
         run: |
@@ -44,6 +39,6 @@ jobs:
       - name: Upload the extracted RPM as artifact
         uses: actions/upload-artifact@v3
         with:
-          name: "RPM-el${{ matrix.EL_VERSION }}"
+          name: RPM-el7
           path: rpm
           if-no-files-found: error

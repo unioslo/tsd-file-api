@@ -35,10 +35,15 @@ Production ready service container using that is using
 [`docker.io/python:3-alpine`](https://hub.docker.com/_/python) as its base
 image.
 
-### `Dockerfile.rpm`
+### `Dockerfile.centos.rpm`
 
 Builds an RPM of this package and all its (Python) dependencies on CentOS 7,
 for deployment in RHEL7-like environments.
+
+### `Dockerfile.rocky.rpm`
+
+Builds an RPM of this package and all its (Python) dependencies on Rocky Linux
+(default: 8), for deployment in RHEL-like environments.
 
 ### `Dockerfile.test`
 
