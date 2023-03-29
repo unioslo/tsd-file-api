@@ -5,11 +5,17 @@ RUN apt-get update
 RUN apt-get install -y libsodium23 libmagic1 sudo
 RUN pip install poetry
 RUN poetry config virtualenvs.create false
-RUN poetry self add "poetry-dynamic-versioning[plugin]"
 
 RUN groupadd p11-member-group
 RUN groupadd p12-member-group
+
+COPY containers/test/entrypoint.sh ./
+ENTRYPOINT [ "/entrypoint.sh" ]
+
+EXPOSE 3003
+VOLUME [ "/file-api" ]
+
 WORKDIR /file-api
 
-COPY . ./
+COPY pyproject.toml poetry.lock ./
 RUN poetry install --no-interaction
