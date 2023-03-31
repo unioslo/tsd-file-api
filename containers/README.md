@@ -47,5 +47,6 @@ Builds an RPM of this package and all its (Python) dependencies on Rocky Linux
 
 ### `test/Dockerfile`
 
-Installs the package and all its dependencies (including development
-dependencies). Intended for use in running the package's test suite.
+Installs all of the package's dependencies, including development dependencies,
+except for the tsdfileapi package itself (before runtime). Intended for use in
+running the package's test suite and [local development](../DEVELOPMENT.md#alternative-container-based-development-setup).
