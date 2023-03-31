@@ -1,4 +1,4 @@
-name: Build RPM containing package and dependencies
+name: Build RPM
 
 on:
   push:

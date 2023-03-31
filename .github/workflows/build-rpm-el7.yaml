@@ -1,4 +1,4 @@
-name: Build el7 RPM containing package and dependencies
+name: Build RPM (el7)
 
 on:
   push:
