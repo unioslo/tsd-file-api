@@ -33,7 +33,7 @@ jobs:
           --build-arg ROCKY_VERSION="${{ matrix.EL_VERSION }}"
           --build-arg POETRY_VERSION="${{ env.POETRY_VERSION }}"
           --build-arg POETRY_DYNAMIC_VERSIONING_VERSION="${{ env.POETRY_DYNAMIC_VERSIONING_VERSION }}"
-          -f "./containers/Dockerfile.rocky.rpm"
+          -f "./containers/rpm/Dockerfile"
           .
       - name: Extract built RPM from the container image
         run: |

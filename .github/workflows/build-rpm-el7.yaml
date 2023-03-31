@@ -28,7 +28,7 @@ jobs:
           --tag "${{ env.CONTAINER_TAG }}"
           --build-arg POETRY_VERSION="${{ env.POETRY_VERSION }}"
           --build-arg POETRY_DYNAMIC_VERSIONING_VERSION="${{ env.POETRY_DYNAMIC_VERSIONING_VERSION }}"
-          -f "./containers/Dockerfile.centos.rpm"
+          -f "./containers/rpm-el7/Dockerfile"
           .
       - name: Extract built RPM from the container image
         run: |

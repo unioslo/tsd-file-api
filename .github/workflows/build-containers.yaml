@@ -58,7 +58,7 @@ jobs:
       - name: Set container filename
         run: |
           VARIANT=${{ matrix.variant }}
-          echo "CONTAINER_FILE=./containers/Dockerfile${VARIANT/-/.}" >> $GITHUB_ENV
+          echo "CONTAINER_FILE=./containers${VARIANT/-//}/Dockerfile" >> $GITHUB_ENV
       - name: Build and push container image
         uses: docker/build-push-action@v3
         with:

@@ -13,13 +13,13 @@ the positional parameter you pass when building with `podman`/`docker`.
 An example (with `$PWD` being the parent directory to this one):
 
 ```console
-podman build -f containers/Dockerfile.alpine .
+podman build -f containers/alpine/Dockerfile .
 ```
 
 Another example (passing the repository URL as context):
 
 ```console
-podman build -f containers/Dockerfile.alpine https://github.com/unioslo/tsd-file-api.git
+podman build -f containers/alpine/Dockerfile https://github.com/unioslo/tsd-file-api.git
 ```
 
 ## Container overview
@@ -29,23 +29,23 @@ podman build -f containers/Dockerfile.alpine https://github.com/unioslo/tsd-file
 Production ready service container using that is using
 [`docker.io/python:3-slim`](https://hub.docker.com/_/python) as its base image.
 
-### `Dockerfile.alpine`
+### `alpine/Dockerfile`
 
 Production ready service container using that is using
 [`docker.io/python:3-alpine`](https://hub.docker.com/_/python) as its base
 image.
 
-### `Dockerfile.centos.rpm`
+### `rpm-el7/Dockerfile`
 
 Builds an RPM of this package and all its (Python) dependencies on CentOS 7,
 for deployment in RHEL7-like environments.
 
-### `Dockerfile.rocky.rpm`
+### `rpm/Dockerfile`
 
 Builds an RPM of this package and all its (Python) dependencies on Rocky Linux
 (default: 8), for deployment in RHEL-like environments.
 
-### `Dockerfile.test`
+### `test/Dockerfile`
 
 Installs the package and all its dependencies (including development
 dependencies). Intended for use in running the package's test suite.
