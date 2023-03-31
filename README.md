@@ -1,6 +1,9 @@
 
 # tsd-file-api
 
+[![Dependency audit](https://github.com/unioslo/tsd-file-api/actions/workflows/audit.yaml/badge.svg)](https://github.com/unioslo/tsd-file-api/actions/workflows/audit.yaml)
+[![Tests](https://github.com/unioslo/tsd-file-api/actions/workflows/tests.yaml/badge.svg)](https://github.com/unioslo/tsd-file-api/actions/workflows/tests.yaml)
+
 A REST API for upload and download of files and JSON data.
 
 ## Running the service
