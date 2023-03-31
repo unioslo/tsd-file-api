@@ -4,6 +4,13 @@ on:
   push:
     branches:
       - master
+    paths:
+      - .github/workflows/build-rpm-el7.yaml
+      - containers/rpm-el7/Dockerfile
+      - pyproject.toml
+      - poetry.lock
+      - scripts/**
+      - tsdfileapi/**
     tags:
       - v*
 

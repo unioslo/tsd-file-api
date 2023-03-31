@@ -5,7 +5,15 @@ env:
 
 on:
   push:
+    paths:
+      - .github/workflows/audit.yaml
+      - pyproject.toml
+      - poetry.lock
   pull_request:
+    paths:
+      - .github/workflows/audit.yaml
+      - pyproject.toml
+      - poetry.lock
   schedule:
     - cron: "15 2,14 * * *"
 

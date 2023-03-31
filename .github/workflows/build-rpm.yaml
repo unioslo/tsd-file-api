@@ -4,6 +4,13 @@ on:
   push:
     branches:
       - master
+    paths:
+      - .github/workflows/build-rpm.yaml
+      - containers/rpm/Dockerfile
+      - pyproject.toml
+      - poetry.lock
+      - scripts/**
+      - tsdfileapi/**
     tags:
       - v*
 
