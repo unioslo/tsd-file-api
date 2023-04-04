@@ -22,7 +22,9 @@ RUN source /etc/os-release && \
     if [[ $PLATFORM_ID = "platform:el8" ]]; then \
         yum install -y \
             python39 \
-            python39-devel ;\
+            python39-devel && \
+            echo "--depends python39 " >> /build-options && \
+            echo "export VIRTUALENV_PYTHON=/usr/bin/python3.9" >> /build-env ;\
     else \
         yum install -y \
             python3 \
