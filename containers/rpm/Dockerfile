@@ -14,6 +14,9 @@ RUN yum install -y \
     ruby-devel \
     sudo
 
+RUN touch /build-env /build-options
+RUN echo "--depends libsodium --depends sudo " >> /build-options
+
 # On >EL8 the default Python 3 distribution is new enough
 RUN source /etc/os-release && \
     if [[ $PLATFORM_ID = "platform:el8" ]]; then \
@@ -58,6 +61,7 @@ RUN echo "." >> requirements.txt
 
 # Build RPM of the dependencies virtual environment
 RUN mkdir -p /file-api/rpm && \
+    source /build-env && \
     fpm --verbose \
         -s virtualenv \
         -p /file-api/rpm \
@@ -66,4 +70,5 @@ RUN mkdir -p /file-api/rpm && \
         --version $(poetry version --short --no-ansi) \
         --rpm-dist $(rpm --eval "%dist" | sed "s/\.//") \
         --prefix /opt/tsd-file-api \
+        $(cat /build-options) \
         requirements.txt
