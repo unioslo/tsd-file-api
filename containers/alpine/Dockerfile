@@ -45,8 +45,9 @@ RUN /app/bin/pip install dist/*.whl
 
 FROM base AS run
 
-COPY --from=build /app /app
-
 EXPOSE 3003
+ENV FORCE_COLOR=1
+
+COPY --from=build /app /app
 
 ENTRYPOINT [ "/app/bin/tsd-file-api" ]

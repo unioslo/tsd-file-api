@@ -14,6 +14,7 @@ ENTRYPOINT [ "/entrypoint.sh" ]
 
 EXPOSE 3003
 VOLUME [ "/file-api" ]
+ENV FORCE_COLOR=1
 
 WORKDIR /file-api
 
