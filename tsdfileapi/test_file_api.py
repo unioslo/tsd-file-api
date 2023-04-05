@@ -22,6 +22,8 @@ import libnacl.utils
 import requests
 from pysquril.backends import postgres_session
 from tornado.escape import url_escape
+from tornado.httpclient import HTTPClient
+from tornado.httpclient import HTTPRequest
 from tsdapiclient import fileapi
 
 from tsdfileapi.auth import process_access_token
@@ -1212,24 +1214,37 @@ class TestFileApi(unittest.TestCase):
 
     def test_ZZe_filename_rules_with_uploads(self) -> None:
         headers = {"Authorization": "Bearer " + TEST_TOKENS["VALID"]}
-        resp = requests.put(
+        http_client = HTTPClient()
+
+        request = HTTPRequest(
             self.stream + "/" + url_escape("så_søt(1).txt"),
-            data=lazy_file_reader(self.so_sweet),
+            method="PUT",
+            body=lazy_file_reader(self.so_sweet),
             headers=headers,
+            expect_100_continue=True,
         )
-        self.assertEqual(resp.status_code, 201)
-        resp = requests.put(
+        response = yield http_client.fetch(request)
+        self.assertEqual(response.code, 201)
+        request = HTTPRequest(
             self.stream + "/" + url_escape("rød fil (1).txt"),
-            data=lazy_file_reader(self.red),
+            method="PUT",
+            body=lazy_file_reader(self.red),
             headers=headers,
+            expect_100_continue=True,
         )
-        self.assertEqual(resp.status_code, 201)
-        resp = requests.put(
+        response = yield http_client.fetch(request)
+        self.assertEqual(response.code, 201)
+        request = HTTPRequest(
             self.stream + "/" + url_escape("~not allowed"),
-            data=lazy_file_reader(self.red),
+            method="PUT",
+            body=lazy_file_reader(self.red),
             headers=headers,
+            expect_100_continue=True,
         )
-        self.assertEqual(resp.status_code, 400)
+        response = yield http_client.fetch(request)
+        self.assertEqual(response.code, 400)
+
+        http_client.close()
 
     # publication system backend
 
@@ -1265,67 +1280,91 @@ class TestFileApi(unittest.TestCase):
     # directories
 
     def test_ZZZ_put_file_to_dir(self) -> None:
+        http_client = HTTPClient()
         # 1. backend where group logic is enabled
         headers = {"Authorization": "Bearer " + TEST_TOKENS["VALID"]}
         # nested, not compliant with group requirements
         file = url_escape("file-should-fail.txt")
-        resp = requests.put(
+        request = HTTPRequest(
             f"{self.stream}/mydir1/mydir2/{file}",
-            data=lazy_file_reader(self.so_sweet),
+            method="PUT",
+            body=lazy_file_reader(self.so_sweet),
             headers=headers,
+            expect_100_continue=True,
         )
-        self.assertEqual(resp.status_code, 403)
+        response = yield http_client.fetch(request)
+        self.assertEqual(response.code, 403)
         # nested, no group param
         file = url_escape("file-should-be-in-mydir-ååå.txt")
-        resp = requests.put(
+        request = HTTPRequest(
             f"{self.stream}/p11-member-group/mydir1/mydir2/{file}",
-            data=lazy_file_reader(self.so_sweet),
+            method="PUT",
+            body=lazy_file_reader(self.so_sweet),
             headers=headers,
+            expect_100_continue=True,
         )
-        self.assertEqual(resp.status_code, 201)
+        response = yield http_client.fetch(request)
+        self.assertEqual(response.code, 201)
         # not nested, no group info
         file = url_escape("file-should-be-in-default-group-dir.txt")
-        resp = requests.put(
+        request = HTTPRequest(
             f"{self.stream}/{file}",
-            data=lazy_file_reader(self.so_sweet),
+            method="PUT",
+            body=lazy_file_reader(self.so_sweet),
             headers=headers,
+            expect_100_continue=True,
         )
-        self.assertEqual(resp.status_code, 201)
+        response = yield http_client.fetch(request)
+        self.assertEqual(response.code, 201)
 
         # not nested, with group param
         file = url_escape("file-should-be-in-default-group-dir2.txt")
-        resp = requests.put(
+        request = HTTPRequest(
             f"{self.stream}/{file}?group=p11-member-group",
-            data=lazy_file_reader(self.so_sweet),
+            method="PUT",
+            body=lazy_file_reader(self.so_sweet),
             headers=headers,
+            expect_100_continue=True,
         )
-        self.assertEqual(resp.status_code, 201)
+        response = yield http_client.fetch(request)
+        self.assertEqual(response.code, 201)
         # inconsistent group info
         file = url_escape("should-not-make-it.txt")
-        resp = requests.put(
+        request = HTTPRequest(
             f"{self.stream}/p11-data-group/mydir1/mydir2/{file}?p11-member-group",
-            data=lazy_file_reader(self.so_sweet),
+            method="PUT",
+            body=lazy_file_reader(self.so_sweet),
             headers=headers,
+            expect_100_continue=True,
         )
-        self.assertEqual(resp.status_code, 403)
+        response = yield http_client.fetch(request)
+        self.assertEqual(response.code, 403)
         # with legacy Filename header
         file = url_escape("should-make-it.txt")
         legacy_headers = headers.copy()
         legacy_headers["Filename"] = file
-        resp = requests.put(
+        request = HTTPRequest(
             f"{self.stream}",
-            data=lazy_file_reader(self.so_sweet),
+            method="PUT",
+            body=lazy_file_reader(self.so_sweet),
             headers=legacy_headers,
+            expect_100_continue=True,
         )
-        self.assertEqual(resp.status_code, 201)
+        response = yield http_client.fetch(request)
+        self.assertEqual(response.code, 201)
         # 2. backend without group logic
         file = url_escape("no-group-logic.txt")
-        resp = requests.put(
+        request = HTTPRequest(
             f"{self.publication_import}/dir1/{file}",
-            data=lazy_file_reader(self.so_sweet),
+            method="PUT",
+            body=lazy_file_reader(self.so_sweet),
             headers=headers,
+            expect_100_continue=True,
         )
-        self.assertEqual(resp.status_code, 201)
+        response = yield http_client.fetch(request)
+        self.assertEqual(response.code, 201)
+
+        http_client.close()
 
     def test_ZZZ_patch_resumable_file_to_dir(self) -> None:
         self.start_new_resumable(
@@ -1337,14 +1376,18 @@ class TestFileApi(unittest.TestCase):
 
     def test_ZZZ_reserved_resources(self) -> None:
         headers = {"Authorization": "Bearer " + TEST_TOKENS["VALID"]}
+        http_client = HTTPClient()
         # 1. hidden files
         file = url_escape(".resumables-p11-user.db")
-        resp = requests.put(
+        request = HTTPRequest(
             f"{self.publication_import}/{file}",
-            data=lazy_file_reader(self.so_sweet),
+            method="PUT",
+            body=lazy_file_reader(self.so_sweet),
             headers=headers,
+            expect_100_continue=True,
         )
-        self.assertEqual(resp.status_code, 400)
+        response = yield http_client.fetch(request)
+        self.assertEqual(response.code, 400)
         # 2. resumable data folders
         file = url_escape("myfile.chunk.2")
         test_dir = str(uuid.uuid4())
@@ -1352,47 +1395,63 @@ class TestFileApi(unittest.TestCase):
         os.makedirs(test_res_dir)
         with open(f"{self.publication_import_folder}/{test_dir}/{file}", "w") as f:
             f.write("some data")
-        resp = requests.put(
+        request = HTTPRequest(
             f"{self.publication_import}/{test_dir}/{file}",
-            data=lazy_file_reader(self.so_sweet),
+            method="PUT",
+            body=lazy_file_reader(self.so_sweet),
             headers=headers,
+            expect_100_continue=True,
         )
-        self.assertEqual(resp.status_code, 400)
+        response = yield http_client.fetch(request)
+        self.assertEqual(response.code, 400)
         try:
             shutil.rmtree(f"{self.publication_import_folder}/{test_dir}")
         except OSError as e:
             pass
         # 3. merged resumable files
         file = f"file.{str(uuid.uuid4())}"
-        resp = requests.put(
+        request = HTTPRequest(
             f"{self.publication_import}/{test_dir}/{file}",
-            data=lazy_file_reader(self.so_sweet),
+            method="PUT",
+            body=lazy_file_reader(self.so_sweet),
             headers=headers,
+            expect_100_continue=True,
         )
-        self.assertEqual(resp.status_code, 400)
+        response = yield http_client.fetch(request)
+        self.assertEqual(response.code, 400)
         # 4. parial upload files
         file = f"file.{str(uuid.uuid4())}.part"
-        resp = requests.put(
+        request = HTTPRequest(
             f"{self.publication_import}/{test_dir}/{file}",
-            data=lazy_file_reader(self.so_sweet),
+            method="PUT",
+            body=lazy_file_reader(self.so_sweet),
             headers=headers,
+            expect_100_continue=True,
         )
-        self.assertEqual(resp.status_code, 400)
+        response = yield http_client.fetch(request)
+        self.assertEqual(response.code, 400)
         # 5. export
         file = f"file.{str(uuid.uuid4())}.part"
-        resp = requests.get(
+        request = HTTPRequest(
             f"{self.publication_import}/{test_dir}/{file}",
-            data=lazy_file_reader(self.so_sweet),
+            method="PUT",
+            body=lazy_file_reader(self.so_sweet),
             headers=headers,
+            expect_100_continue=True,
         )
-        self.assertEqual(resp.status_code, 400)
+        response = yield http_client.fetch(request)
+        self.assertEqual(response.code, 400)
         # 6. delete
         file = f"file.{str(uuid.uuid4())}.part"
-        resp = requests.delete(
+        request = HTTPRequest(
             f"{self.publication_import}/{test_dir}/{file}",
+            method="DELETE",
             headers=headers,
+            expect_100_continue=True,
         )
-        self.assertEqual(resp.status_code, 400)
+        response = yield http_client.fetch(request)
+        self.assertEqual(response.code, 400)
+        http_client.close()
 
     def test_ZZZ_listing_dirs(self) -> None:
         headers = {"Authorization": "Bearer " + TEST_TOKENS["EXPORT"]}
