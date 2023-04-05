@@ -24,6 +24,8 @@ VALID_FORMID = re.compile(r"^[0-9]+$")
 PGP_KEY_FINGERPRINT = re.compile(r"^[0-9A-Z]{16}$")
 VALID_UUID = re.compile(r"([a-f\d0-9-]{32,36})")
 
+logger = logging.getLogger(__name__)
+
 
 def _rwxrwx___() -> int:
     u = stat.S_IREAD | stat.S_IWRITE | stat.S_IXUSR
@@ -225,7 +227,7 @@ def sns_dir(
             try:
                 os.makedirs(hnas_sns_dir)
                 subprocess.call(["sudo", "chmod", "2770", hnas_sns_dir])
-                logging.info(f"Created: {hnas_sns_dir}")
+                logger.info(f"Created: {hnas_sns_dir}")
             except OSError as e:
                 if e.errno == errno.ENOENT:
                     raise ServerStorageNotMountedError(
@@ -234,8 +236,8 @@ def sns_dir(
                 else:
                     raise e
             except Exception as e:
-                logging.error(e)
-                logging.error(f"Could not create {hnas_sns_dir}")
+                logger.error(e)
+                logger.error(f"Could not create {hnas_sns_dir}")
                 raise ServerSnsError from e
         if use_ess:
             try:
@@ -253,7 +255,7 @@ def sns_dir(
                 if not os.path.lexists(ess_sns_dir):
                     os.makedirs(ess_sns_dir)
                     subprocess.call(["sudo", "chmod", "2770", ess_sns_dir])
-                    logging.info(f"Created: {ess_sns_dir}")
+                    logger.info(f"Created: {ess_sns_dir}")
             except OSError as e:
                 if e.errno == errno.ENOENT:
                     raise ServerStorageNotMountedError(
@@ -262,12 +264,12 @@ def sns_dir(
                 else:
                     raise e
             except Exception as e:
-                logging.error(e)
-                logging.error(f"Could not create {ess_sns_dir}")
+                logger.error(e)
+                logger.error(f"Could not create {ess_sns_dir}")
                 raise ServerSnsError from e
         return hnas_sns_dir if use_hnas else ess_sns_dir
     except Exception as e:
-        logging.error(e)
+        logger.error(e)
         raise ServerSnsError from e
 
 
@@ -299,8 +301,8 @@ def move_data_to_folder(path: str, dest: str) -> Union[str, bool]:
             os.rename(path, new_path)
         return new_path
     except Exception as e:
-        logging.error(e)
-        logging.error("could not move file: %s", path)
+        logger.error(e)
+        logger.error("could not move file: %s", path)
         return False
 
 

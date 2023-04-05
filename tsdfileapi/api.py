@@ -90,6 +90,8 @@ _RW______ = stat.S_IREAD | stat.S_IWRITE
 _RW_RW___ = _RW______ | stat.S_IRGRP | stat.S_IWGRP
 _50MB = 52428800
 
+logger = logging.getLogger(__name__)
+
 
 def read_config(filename: str) -> dict:
     with open(filename) as f:
@@ -190,7 +192,7 @@ def handle_iam_projects_events(
     conn.poll()
     while conn.notifies:
         notify = conn.notifies.pop(0)
-    logging.info(f"reloading project info")
+    logger.info(f"reloading project info")
     options.migration_statuses = get_projects_migration_status(options.projects_pool)
 
 
@@ -283,7 +285,7 @@ class AuthRequestHandler(RequestHandler):
                 "Authorization not possible: malformed header"
             )
         except Exception as e:
-            logging.error(e)
+            logger.error(e)
             raise ClientAuthorizationError("Authorization failed")
 
     def get_group_info(
@@ -319,7 +321,7 @@ class AuthRequestHandler(RequestHandler):
         try:
             group_memberships = authnz_status["claims"]["groups"]
         except Exception as e:
-            logging.info(
+            logger.info(
                 "Could not get group memberships - choosing default memberships"
             )
             default_membership = group_config["default_memberships"]
@@ -389,13 +391,13 @@ class AuthRequestHandler(RequestHandler):
         """
         resource_dir = resource.split("/")[0] if "/" in resource else resource
         if resource.startswith(".resumables-") and resource.endswith(".db"):
-            logging.error(f"resumable dbs not accessible {resource}")
+            logger.error(f"resumable dbs not accessible {resource}")
             return True
         elif re.match(r"(.+)\.([a-f\d0-9-]{32,36})$", resource):
-            logging.error("merged resumable files not accessible")
+            logger.error("merged resumable files not accessible")
             return True
         elif re.match(r"(.+).([a-f\d0-9-]{32,36}).part$", resource):
-            logging.error("partial upload files not accessible")
+            logger.error("partial upload files not accessible")
             return True
         elif VALID_UUID.match(resource_dir):
             potential_target = os.path.normpath(f"{work_dir}/{resource_dir}")
@@ -403,7 +405,7 @@ class AuthRequestHandler(RequestHandler):
                 content = os.listdir(potential_target)
                 for entry in content:
                     if re.match(r"(.+).chunk.[0-9]+$", entry):
-                        logging.error(f"resumable directories not accessible {entry}")
+                        logger.error(f"resumable directories not accessible {entry}")
                         return True
         return False
 
@@ -468,7 +470,7 @@ class AuthRequestHandler(RequestHandler):
 
         """
         if not self.application.settings.get("pika_client"):
-            logging.info("no pika_client found")
+            logger.info("no pika_client found")
             return
         if not mq_config:
             return
@@ -505,13 +507,13 @@ class AuthRequestHandler(RequestHandler):
                     "pika_client"
                 ).channel.is_open
                 if not channel_open:
-                    logging.info("RabbitMQ channel is closed")
+                    logger.info("RabbitMQ channel is closed")
                     re_open_connection = True
             if not connection_open:
-                logging.info("RabbitMQ connection is closed")
+                logger.info("RabbitMQ connection is closed")
                 re_open_connection = True
             if re_open_connection:
-                logging.info("trying to re-open RabbitMQ connection")
+                logger.info("trying to re-open RabbitMQ connection")
                 self.application.settings.get("pika_client").connect()
             self.pika_client = self.application.settings.get("pika_client")
             self.pika_client.publish_message(
@@ -524,7 +526,7 @@ class AuthRequestHandler(RequestHandler):
             )
             if not options.rabbitmq_cache.empty():  # if the broker was down
                 try:
-                    logging.info(
+                    logger.info(
                         f"publishing {options.rabbitmq_cache.qsize()} messages from cache"
                     )
                     message = options.rabbitmq_cache.get_nowait()
@@ -544,8 +546,8 @@ class AuthRequestHandler(RequestHandler):
         except (Exception, UnboundLocalError) as e:
             summary = f"exchange: {ex}, routing_key: {rkey}, version: {ver}"
             msg = f"problem publishing message, {summary}"
-            logging.error(msg)
-            logging.error(e)
+            logger.error(msg)
+            logger.error(e)
             options.rabbitmq_cache.put(
                 {
                     "ex": ex,
@@ -664,7 +666,7 @@ class AuthRequestHandler(RequestHandler):
             table_name = self._log_table_name(backend, app)
             db.table_insert(table_name, data)
         except Exception as e:
-            logging.warning(f"could not update audit log: {e}")
+            logger.warning(f"could not update audit log: {e}")
 
     def additional_log_details(self) -> Dict[str, Any]:
         """Retrieve additional details for logging.
@@ -748,7 +750,7 @@ class SnsFormDataHandler(AuthRequestHandler):
             )
         except Exception as e:
             error = error_for_exception(e)
-            logging.error(error.message)
+            logger.error(error.message)
             for name, value in error.headers.items():
                 self.set_header(name, value)
             self.set_status(error.status, reason=error.reason)
@@ -768,7 +770,6 @@ class SnsFormDataHandler(AuthRequestHandler):
     def write_file(
         self, filemode: str, filename: str, filebody: bytes, tenant: str
     ) -> None:
-
         # find storage backend preferences
         _ = find_tenant_storage_path(self.tenant, self.backend, options)  # update cache
         tenant_sns_info = options.tenant_storage_cache.get(tenant, {}).get("sns", {})
@@ -802,7 +803,7 @@ class SnsFormDataHandler(AuthRequestHandler):
         self.path = os.path.normpath(f"{tenant_dir}/{filename}")
         self.path_part = f"{self.path}.{str(uuid4())}.part"
         if os.path.lexists(self.path):
-            logging.debug(f"{self.path} exists, renaming to {self.path_part}")
+            logger.debug(f"{self.path} exists, renaming to {self.path_part}")
             os.rename(self.path, self.path_part)
 
         # write to partial file, rename, set permissions
@@ -828,17 +829,17 @@ class SnsFormDataHandler(AuthRequestHandler):
 
                 # 1. project-visible file
                 target = self.path.replace(hnas_durable, ess_path)
-                logging.info(f"copying {target} to ess")
+                logger.info(f"copying {target} to ess")
                 shutil.copy(self.path, target)
                 os.chmod(target, _RW_RW___)
 
                 # 2. data processing file
                 target = subfolder_path.replace(hnas_durable, ess_path)
-                logging.info(f"copying {target} to ess")
+                logger.info(f"copying {target} to ess")
                 shutil.copy(self.path, target)
                 os.chmod(target, _RW_RW___)
             except Exception as e:
-                logging.error(e)
+                logger.error(e)
                 raise ServerSnsError(f"could not copy {target} to ESS")
 
     def on_finish(self) -> None:
@@ -859,7 +860,7 @@ class SnsFormDataHandler(AuthRequestHandler):
             self.write({"message": "data uploaded"})
         except Exception as e:
             error = error_for_exception(e)
-            logging.error(error.message)
+            logger.error(error.message)
             for name, value in error.headers.items():
                 self.set_header(name, value)
             self.set_status(error.status, reason=error.reason)
@@ -943,7 +944,7 @@ class ResumablesHandler(AuthRequestHandler):
             )
         except Exception as e:
             error = error_for_exception(e)
-            logging.error(error.message)
+            logger.error(error.message)
             for name, value in error.headers.items():
                 self.set_header(name, value)
             self.set_status(error.status, reason=error.reason)
@@ -971,7 +972,7 @@ class ResumablesHandler(AuthRequestHandler):
             self.write({"message": "not found"})
         except Exception as e:
             error = error_for_exception(e)
-            logging.error(error.message)
+            logger.error(error.message)
             for name, value in error.headers.items():
                 self.set_header(name, value)
             self.set_status(error.status, reason=error.reason)
@@ -1001,7 +1002,7 @@ class ResumablesHandler(AuthRequestHandler):
             self.write({"message": "resumable deleted"})
         except Exception as e:
             error = error_for_exception(e)
-            logging.error(error.message)
+            logger.error(error.message)
             for name, value in error.headers.items():
                 self.set_header(name, value)
             self.set_status(error.status, reason=error.reason)
@@ -1115,7 +1116,7 @@ class FileRequestHandler(AuthRequestHandler):
             ]:
                 # Some legacy clients might not include the filename in the URL
                 # but instead in the Filename header :(
-                logging.warning(f"legacy Filename header used: {self.request.uri}")
+                logger.warning(f"legacy Filename header used: {self.request.uri}")
                 filename = self.request.headers.get(
                     "Filename", f"{datetime.datetime.now().isoformat()}.txt"
                 )
@@ -1206,7 +1207,6 @@ class FileRequestHandler(AuthRequestHandler):
 
             self.resource = resource
             if self.request.method in ("PUT", "PATCH"):
-
                 filename = self.filename
                 # optionally create dirs
                 if options.create_tenant_dir:
@@ -1220,7 +1220,7 @@ class FileRequestHandler(AuthRequestHandler):
                 any_path_islink(self.resource_dir, opts=options)
 
                 if not os.path.lexists(self.resource_dir):
-                    logging.info(f"creating resource dir: {self.resource_dir}")
+                    logger.info(f"creating resource dir: {self.resource_dir}")
                     os.makedirs(self.resource_dir)
                     target = self.tenant_dir
                     # optionally set permissions
@@ -1279,13 +1279,13 @@ class FileRequestHandler(AuthRequestHandler):
                 # ensure idempotency
                 if os.path.lexists(self.path):
                     if os.path.isdir(self.path):
-                        logging.info(
+                        logger.info(
                             "directory: %s already exists due to prior upload, removing",
                             self.path,
                         )
                         shutil.rmtree(self.path)
                     else:
-                        logging.info(
+                        logger.info(
                             "%s already exists, renaming to %s",
                             self.path,
                             self.path_part,
@@ -1310,7 +1310,7 @@ class FileRequestHandler(AuthRequestHandler):
             self.finish({"message": "chunk_order_incorrect"})
         except Exception as e:
             error = error_for_exception(e, details=self.additional_log_details())
-            logging.error(error.message)
+            logger.error(error.message)
             for name, value in error.headers.items():
                 self.set_header(name, value)
             self.set_status(error.status, reason=error.reason)
@@ -1338,8 +1338,8 @@ class FileRequestHandler(AuthRequestHandler):
                     else:
                         self.target_file.write(decrypted)
         except Exception as e:
-            logging.error(e)
-            logging.error(
+            logger.error(e)
+            logger.error(
                 "something went wrong with stream processing have to close file"
             )
             if self.target_file:
@@ -1398,7 +1398,7 @@ class FileRequestHandler(AuthRequestHandler):
                         }
                     )
                 except Exception as e:
-                    logging.error(e)
+                    logger.error(e)
                     error = error_for_exception(
                         e, details=self.additional_log_details()
                     )
@@ -1466,12 +1466,12 @@ class FileRequestHandler(AuthRequestHandler):
             file = os.path.basename(filename)
             check_filename(file, disallowed_start_chars=options.start_chars)
         except Exception as e:
-            logging.error(f"Illegal export filename: {file}")
+            logger.error(f"Illegal export filename: {file}")
             return status
         try:
             any_path_islink(filename, opts=options)
         except Exception as e:
-            logging.error(
+            logger.error(
                 f"Symlink in part of path '{filename}' requested by {self.requestor}: {str(e)}"
             )
             return status
@@ -1487,9 +1487,9 @@ class FileRequestHandler(AuthRequestHandler):
         else:
             status = True if mime_type in policy["allowed_mime_types"] else False
             if not status:
-                logging.error(f"not allowed to export file with MIME type: {mime_type}")
+                logger.error(f"not allowed to export file with MIME type: {mime_type}")
         if policy["max_size"] and size > policy["max_size"]:
-            logging.error(
+            logger.error(
                 f"{self.requestor} tried to export a file exceeding the maximum size limit"
             )
             status = False
@@ -1664,7 +1664,7 @@ class FileRequestHandler(AuthRequestHandler):
                                 os.chown(file.path, default_owner_id, group_id)
                                 owner = default_owner
                             except Exception:
-                                logging.error(
+                                logger.error(
                                     f"could not reset owner of {filepath} to {default_owner}"
                                 )
                                 owner = "nobody"
@@ -1733,7 +1733,7 @@ class FileRequestHandler(AuthRequestHandler):
                         "mtime": d,
                     }
                 )
-            logging.info(f"{self.requestor} listed {path}")
+            logger.info(f"{self.requestor} listed {path}")
             self.write({"files": file_info, "page": nextref})
 
     def mtime_to_digest(self, mtime: int) -> str:
@@ -1876,12 +1876,12 @@ class FileRequestHandler(AuthRequestHandler):
                     data = fd.read(self.CHUNK_SIZE)
                     sent = sent + self.CHUNK_SIZE
                 fd.close()
-            logging.info(
+            logger.info(
                 f"{self.requestor}, downloaded: {self.filepath}, MIME type: {mime_type}, size: {size}"
             )
         except Exception as e:
             error = error_for_exception(e, details=self.additional_log_details())
-            logging.error(error.message)
+            logger.error(error.message)
             for name, value in error.headers.items():
                 self.set_header(name, value)
             self.set_status(error.status, reason=error.reason)
@@ -1909,7 +1909,7 @@ class FileRequestHandler(AuthRequestHandler):
             if not os.path.lexists(self.filepath):
                 raise ClientResourceNotFoundError(f"{self.filepath} not found")
             size, mime_type, mtime = self.get_file_metadata(self.filepath)
-            logging.info(
+            logger.info(
                 f"user: {self.requestor}, checked file: {self.filepath} , MIME type: {mime_type}"
             )
             self.set_header("Content-Length", size)
@@ -1919,7 +1919,7 @@ class FileRequestHandler(AuthRequestHandler):
             self.set_status(HTTPStatus.OK.value)
         except Exception as e:
             error = error_for_exception(e, details=self.additional_log_details())
-            logging.error(error.message)
+            logger.error(error.message)
             for name, value in error.headers.items():
                 self.set_header(name, value)
             self.set_status(error.status, reason=error.reason)
@@ -1952,12 +1952,12 @@ class FileRequestHandler(AuthRequestHandler):
                     )
                 else:
                     os.remove(self.filepath)
-            logging.info(f"user: {self.requestor}, deleted file: {self.filepath}")
+            logger.info(f"user: {self.requestor}, deleted file: {self.filepath}")
             self.set_status(HTTPStatus.OK.value)
             self.write({"message": f"deleted {self.filepath}"})
         except Exception as e:
             error = error_for_exception(e, details=self.additional_log_details())
-            logging.error(error.message)
+            logger.error(error.message)
             for name, value in error.headers.items():
                 self.set_header(name, value)
             self.set_status(error.status, reason=error.reason)
@@ -1985,8 +1985,8 @@ class FileRequestHandler(AuthRequestHandler):
                         if client_mtime and client_mtime != "None":
                             set_mtime(resource_path, float(client_mtime))
                     except Exception as e:
-                        logging.info("could not move data to destination folder")
-                        logging.info(e)
+                        logger.info("could not move data to destination folder")
+                        logger.info(e)
                     try:
                         if self.request_hook["enabled"]:
                             call_request_hook(
@@ -2000,8 +2000,8 @@ class FileRequestHandler(AuthRequestHandler):
                                 as_sudo=self.request_hook["sudo"],
                             )
                     except Exception as e:
-                        logging.info("problem calling request hook")
-                        logging.info(e)
+                        logger.info("problem calling request hook")
+                        logger.info(e)
                 message_data = {
                     "path": resource_path if resource_created else None,
                     "requestor": self.requestor,
@@ -2022,7 +2022,7 @@ class FileRequestHandler(AuthRequestHandler):
                         claims=self.claims,
                     )
             except Exception as e:
-                logging.error(e)
+                logger.error(e)
             self.on_finish_called = True
 
     def on_connection_close(self) -> None:
@@ -2151,7 +2151,7 @@ class GenericTableHandler(AuthRequestHandler):
                 )
         except Exception as e:
             error = error_for_exception(e, details=self.additional_log_details())
-            logging.error(error.message)
+            logger.error(error.message)
             for name, value in error.headers.items():
                 self.set_header(name, value)
             self.set_status(error.status, reason=error.reason)
@@ -2335,12 +2335,12 @@ class GenericTableHandler(AuthRequestHandler):
                 self.set_status(HTTPStatus.OK.value)
                 self.write(empty_result)
             else:
-                logging.error(e)
+                logger.error(e)
                 self.set_status(HTTPStatus.NOT_FOUND.value)
                 self.write({"message": f"table {table_name} does not exist"})
         except Exception as e:
             error = error_for_exception(e, details=self.additional_log_details())
-            logging.error(error.message)
+            logger.error(error.message)
             for name, value in error.headers.items():
                 self.set_header(name, value)
             self.set_status(error.status, reason=error.reason)
@@ -2363,12 +2363,12 @@ class GenericTableHandler(AuthRequestHandler):
             self.set_status(HTTPStatus.CREATED.value)
             self.write({"message": "data stored"})
         except (psycopg2.errors.UndefinedTable, sqlite3.OperationalError) as e:
-            logging.error(e)
+            logger.error(e)
             self.set_status(HTTPStatus.NOT_FOUND.value)
             self.write({"message": f"table {table_name} does not exist"})
         except Exception as e:
             error = error_for_exception(e, details=self.additional_log_details())
-            logging.error(error.message)
+            logger.error(error.message)
             for name, value in error.headers.items():
                 self.set_header(name, value)
             self.set_status(error.status, reason=error.reason)
@@ -2392,12 +2392,12 @@ class GenericTableHandler(AuthRequestHandler):
             self.set_status(HTTPStatus.CREATED.value)
             self.write({"data": "data updated"})
         except (psycopg2.errors.UndefinedTable, sqlite3.OperationalError) as e:
-            logging.error(e)
+            logger.error(e)
             self.set_status(HTTPStatus.NOT_FOUND.value)
             self.write({"message": f"table {table_name} does not exist"})
         except Exception as e:
             error = error_for_exception(e, details=self.additional_log_details())
-            logging.error(error.message)
+            logger.error(error.message)
             for name, value in error.headers.items():
                 self.set_header(name, value)
             self.set_status(error.status, reason=error.reason)
@@ -2405,7 +2405,6 @@ class GenericTableHandler(AuthRequestHandler):
 
     def delete(self, tenant: str, table_name: str) -> None:
         try:
-
             table_name = self.create_table_name(table_name)
             if self.request.uri.endswith("/audit"):
                 raise ClientAuthorizationError(
@@ -2416,12 +2415,12 @@ class GenericTableHandler(AuthRequestHandler):
             self.set_status(HTTPStatus.OK.value)
             self.write({"data": data})
         except (psycopg2.errors.UndefinedTable, sqlite3.OperationalError) as e:
-            logging.error(e)
+            logger.error(e)
             self.set_status(HTTPStatus.NOT_FOUND.value)
             self.write({"message": f"table {table_name} does not exist"})
         except Exception as e:
             error = error_for_exception(e, details=self.additional_log_details())
-            logging.error(error.message)
+            logger.error(error.message)
             for name, value in error.headers.items():
                 self.set_header(name, value)
             self.set_status(error.status, reason=error.reason)
@@ -2447,7 +2446,7 @@ class GenericTableHandler(AuthRequestHandler):
                     claims=self.claims,
                 )
         except Exception as e:
-            logging.error(e)
+            logger.error(e)
 
 
 class HealthCheckHandler(RequestHandler):
@@ -2497,7 +2496,7 @@ class RunTimeConfigurationHandler(RequestHandler):
             self.write({"maintenance_mode_enabled": options.maintenance_mode_enabled})
         except Exception as e:
             self.set_status(HTTPStatus.BAD_REQUEST.value)
-            logging.error(e)
+            logger.error(e)
 
     def get(self) -> None:
         self.write({"maintenance_mode_enabled": options.maintenance_mode_enabled})
@@ -2551,12 +2550,12 @@ class AuditLogViewerHandler(AuthRequestHandler):
                 self.write("]")
                 self.flush()
         except (psycopg2.errors.UndefinedTable, sqlite3.OperationalError) as e:
-            logging.error(e)
+            logger.error(e)
             self.set_status(HTTPStatus.NOT_FOUND.value)
             self.write({"message": f"no logs available"})
         except Exception as e:
             error = error_for_exception(e, details=self.additional_log_details())
-            logging.error(error.message)
+            logger.error(error.message)
             for name, value in error.headers.items():
                 self.set_header(name, value)
             self.set_status(error.status, reason=error.reason)
@@ -2569,7 +2568,7 @@ class ConfigHandler(RequestHandler):
             self.write(options.config)
         except Exception as e:
             error = error_for_exception(e)
-            logging.error(error.message)
+            logger.error(error.message)
             for name, value in error.headers.items():
                 self.set_header(name, value)
             self.set_status(error.status, reason=error.reason)
@@ -2589,7 +2588,6 @@ class TestTokenHandler(RequestHandler):
 
 
 class Backends:
-
     default_routes = {
         "health": [
             ("/v1/(.*)/files/health", HealthCheckHandler),
@@ -2758,7 +2756,6 @@ class Backends:
     }
 
     def __init__(self, config: dict) -> None:
-
         self.config = config
         self.routes = []
         self.exchanges = {}
@@ -2801,7 +2798,7 @@ class Backends:
             try:
                 self.initdb_request_log()
             except Exception as e:
-                logging.warning(f"could not connect to request log db: {e}")
+                logger.warning(f"could not connect to request log db: {e}")
 
     def initdb(self, name: str, opts: tornado.options.OptionParser) -> None:
         engine_type = options.config["backends"]["dbs"][name]["db"]["engine"]

@@ -15,6 +15,8 @@ from sqlalchemy.exc import StatementError
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import QueuePool
 
+logger = logging.getLogger(__name__)
+
 
 def pg_listen_channel(
     pool: psycopg2.pool.SimpleConnectionPool,
@@ -24,7 +26,7 @@ def pg_listen_channel(
     conn.set_isolation_level(psycopg2.extensions.ISOLATION_LEVEL_AUTOCOMMIT)
     curs = conn.cursor()
     curs.execute(f"listen {channel_name};")
-    logging.info(f"listening on postgres channel: {channel_name}")
+    logger.info(f"listening on postgres channel: {channel_name}")
     return conn
 
 

@@ -38,6 +38,8 @@ from tsdfileapi.utils import find_tenant_storage_path
 from tsdfileapi.utils import md5sum
 from tsdfileapi.utils import sns_dir
 
+logger = logging.getLogger(__name__)
+
 
 def project_import_dir(
     config: dict,
@@ -213,7 +215,7 @@ class TestFileApi(unittest.TestCase):
                 try:
                     os.remove(os.path.normpath(cls.uploads_folder + "/" + _file))
                 except OSError as e:
-                    logging.error(e)
+                    logger.error(e)
                     continue
         sqlite_path = cls.uploads_folder + "/api-data.db"
         try:

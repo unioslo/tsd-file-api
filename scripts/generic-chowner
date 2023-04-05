@@ -22,6 +22,8 @@ import shutil
 import stat
 from sys import argv
 
+logger = logging.getLogger(__name__)
+
 
 def recursive_chown_and_chmod(path, uid, gid, mode):
     for item in glob.glob(path + "/*"):
@@ -74,13 +76,13 @@ def change_owner_and_mode(path, username, api_user, group_name):
         elif pnum_is_consistent_in_user_input(path, current_file_owner):
             pass
         else:
-            logging.error("not allowed to change ownership of %s to %s", path, username)
+            logger.error("not allowed to change ownership of %s to %s", path, username)
             return False
         pnum = path.split("/")[2]
         group = grp.getgrnam(group_name).gr_gid
     except Exception as e:
-        logging.error(e)
-        logging.error("could not get uid for %s and/or gid for member group", username)
+        logger.error(e)
+        logger.error("could not get uid for %s and/or gid for member group", username)
         return False
     os.chown(path, user, group)
     os.chmod(path, mode)
@@ -122,7 +124,7 @@ def move_data_to_group_folder(path, group_name, api_user):
         new_base_path = path.replace(filename, group_name)
         group_folder = os.path.normpath(new_base_path)
         if not os.path.lexists(group_folder):
-            logging.info("creating: %s", group_folder)
+            logger.info("creating: %s", group_folder)
             os.makedirs(group_folder)
             file_api_user_id = pwd.getpwnam(api_user).pw_uid
             group_id = grp.getgrnam(group_name).gr_gid
@@ -135,11 +137,11 @@ def move_data_to_group_folder(path, group_name, api_user):
             shutil.move(path, new_path)
         else:
             os.rename(path, new_path)
-        logging.info("successfully moved: %s", path)
+        logger.info("successfully moved: %s", path)
         return new_path
     except Exception as e:
-        logging.error(e)
-        logging.error("could not move file: %s", path)
+        logger.error(e)
+        logger.error("could not move file: %s", path)
         return False
 
 
@@ -157,7 +159,7 @@ def main():
     """
     if len(argv) < 4:
         return
-    logging.basicConfig(filename="/tmp/chowner-events.log", level=logging.INFO)
+    logging.basicConfig(filename="/tmp/chowner-events.log", level=logger.INFO)
     path = os.path.normpath(argv[1])
     user_name = argv[2]
     api_user = argv[3]
@@ -168,8 +170,8 @@ def main():
         assert new_path
         assert change_owner_and_mode(new_path, user_name, api_user, group_name)
     except Exception as e:
-        logging.error(e)
-        logging.error("Could not change %s to owner %s", path, user_name)
+        logger.error(e)
+        logger.error("Could not change %s to owner %s", path, user_name)
         return False
     return True
 

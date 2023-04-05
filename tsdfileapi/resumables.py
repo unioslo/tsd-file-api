@@ -26,6 +26,8 @@ from sqlalchemy.pool import QueuePool
 _IS_VALID_UUID = re.compile(r"([a-f\d0-9-]{32,36})")
 _RW______ = stat.S_IREAD | stat.S_IWRITE
 
+logger = logging.getLogger(__name__)
+
 
 class ResumableNotFoundError(Exception):
     pass
@@ -303,7 +305,7 @@ class SerialResumable(AbstractResumable):
         previous_chunk_num = int(full_chunks_on_disk[-1].split(".chunk.")[-1])
         if chunk_num <= previous_chunk_num or (chunk_num - previous_chunk_num) >= 2:
             chunk_order_correct = False
-            logging.error("chunks must be uploaded in sequential order")
+            logger.error("chunks must be uploaded in sequential order")
         return chunk_order_correct
 
     def _find_nth_chunk(
@@ -342,7 +344,7 @@ class SerialResumable(AbstractResumable):
         relevant = None
         potential_resumables = self._db_get_all_resumable_ids_for_owner(key=key)
         if not upload_id:
-            logging.info("Trying to find a matching resumable for %s", filename)
+            logger.info("Trying to find a matching resumable for %s", filename)
             candidates = []
             for item in potential_resumables:
                 pr = item[0]
@@ -438,7 +440,7 @@ class SerialResumable(AbstractResumable):
         is encouraged to end the upload.
 
         """
-        logging.info(
+        logger.info(
             "current merged file size: %d, current sum of chunks in db %d",
             merged_file_size,
             sum_chunks_size,
@@ -449,7 +451,7 @@ class SerialResumable(AbstractResumable):
             last_chunk = chunks[-1]
             last_chunk_size = os.stat(last_chunk).st_size
         if merged_file_size == sum_chunks_size:
-            logging.info("server-side data consistent")
+            logger.info("server-side data consistent")
             return chunks
         try:
             warning = None
@@ -463,7 +465,7 @@ class SerialResumable(AbstractResumable):
                     with open(last_chunk, "rb") as fin:
                         shutil.copyfileobj(fin, fout)
                 new_merged_size = os.stat(merged_file).st_size
-                logging.info(
+                logger.info(
                     "merged file after repair: %d sum of chunks: %d",
                     new_merged_size,
                     sum_chunks_size,
@@ -473,7 +475,7 @@ class SerialResumable(AbstractResumable):
                 else:
                     raise Exception("could not repair data")
         except (Exception, OSError) as e:
-            logging.error(e)
+            logger.error(e)
             return chunks, "not sure what to do", "end"
 
     def _get_resumable_chunk_info(self, resumable_dir: str, work_dir: str) -> tuple:
@@ -506,7 +508,7 @@ class SerialResumable(AbstractResumable):
                 assert _bytes(merged_file) == next_offset
             except AssertionError:
                 try:
-                    logging.info("trying to repair inconsistent data")
+                    logger.info("trying to repair inconsistent data")
                     (
                         chunks,
                         warning,
@@ -519,7 +521,7 @@ class SerialResumable(AbstractResumable):
                     )
                     return info(chunks)
                 except Exception as e:
-                    logging.error(e)
+                    logger.error(e)
                     return None, None, None, None, None, None, None, None
             return (
                 latest_size,
@@ -554,7 +556,7 @@ class SerialResumable(AbstractResumable):
             work_dir, filename, upload_id, key=key
         )
         if not relevant_dir:
-            logging.error("No resumable found for: %s", filename)
+            logger.error("No resumable found for: %s", filename)
             raise ResumableNotFoundError
         resumable_dir = f"{work_dir}/{relevant_dir}"
         (
@@ -620,8 +622,8 @@ class SerialResumable(AbstractResumable):
             ), "could not remove data from resumables db"
             return True
         except (Exception, AssertionError) as e:
-            logging.error(e)
-            logging.error("could not complete resumable deletion")
+            logger.error(e)
+            logger.error("could not complete resumable deletion")
             return False
 
     def finalise(
@@ -637,21 +639,21 @@ class SerialResumable(AbstractResumable):
         final = out.replace("." + upload_id, "")
         chunks_dir = work_dir + "/" + upload_id
         if ".chunk.end" in last_chunk_filename:
-            logging.info("deleting: %s", chunks_dir)
+            logger.info("deleting: %s", chunks_dir)
             try:
                 os.rename(out, final)
             except FileNotFoundError as e:
-                logging.error(e)
+                logger.error(e)
                 raise ResumableNotFoundError
             try:
                 shutil.rmtree(
                     chunks_dir
                 )  # do not need to fail upload if this does not work
             except OSError as e:
-                logging.error(e)
+                logger.error(e)
             assert self._db_remove_completed_for_owner(upload_id)
         else:
-            logging.error("finalise called on non-end chunk")
+            logger.error("finalise called on non-end chunk")
         return final
 
     def merge_chunk(
@@ -733,7 +735,7 @@ class SerialResumable(AbstractResumable):
             chunk_size = os.stat(chunk).st_size
             assert self._db_update_with_chunk_info(upload_id, chunk_num, chunk_size)
         except Exception as e:
-            logging.error(e)
+            logger.error(e)
             os.remove(chunk)
             with open(out, "ab") as fout:
                 fout.truncate(size_before_merge)
@@ -752,7 +754,7 @@ class SerialResumable(AbstractResumable):
             try:
                 os.remove(old_chunk)
             except Exception as e:
-                logging.error(e)
+                logger.error(e)
         return final
 
     def _db_insert_new_for_owner(

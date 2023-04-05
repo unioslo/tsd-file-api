@@ -8,6 +8,8 @@ from jwcrypto import jwk
 from jwcrypto import jws
 from jwcrypto import jwt
 
+logger = logging.getLogger(__name__)
+
 
 def b64_padder(payload: str) -> str:
     if payload is not None:
@@ -65,15 +67,15 @@ def process_access_token(
             except jws.InvalidJWSSignature as e:
                 return failure_message
     except Exception as e:
-        logging.error(e.message)
+        logger.error(e.message)
         failure_message["reason"] = e.message
         return failure_message
     if check_tenant and claims[tenant_claim_name] != tenant:
-        logging.error(
+        logger.error(
             "Access denied to tenant: %s != %s ", claims[tenant_claim_name], tenant
         )
         return failure_message
     if check_exp and int(time.time()) > int(claims["exp"]):
-        logging.error("JWT expired")
+        logger.error("JWT expired")
         return failure_message
     return {"message": "OK", "status": True, "claims": claims}

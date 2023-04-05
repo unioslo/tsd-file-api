@@ -7,6 +7,8 @@ import uuid
 import pika
 from pika.adapters.tornado_connection import TornadoConnection
 
+logger = logging.getLogger(__name__)
+
 
 class PikaClient:
     def __init__(self, config: dict, exchanges: dict) -> None:
@@ -18,7 +20,7 @@ class PikaClient:
 
     def connect(self):
         if self.connecting:
-            logging.info("connecting - so not re-connecting")
+            logger.info("connecting - so not re-connecting")
             return
         self.connecting = True
         host = self.config.get("host")
@@ -41,7 +43,7 @@ class PikaClient:
     def on_open_error_callback(
         self, connection: TornadoConnection, exception: Exception
     ) -> None:
-        logging.error("could not connect")
+        logger.error("could not connect")
 
     def on_connect(self, connection: TornadoConnection) -> None:
         self.connection = connection
@@ -56,15 +58,15 @@ class PikaClient:
                 exchange_type="topic",
                 durable=True,
             )
-            logging.info(f"rabbitmq exchange: {ex_name} declared")
+            logger.info(f"rabbitmq exchange: {ex_name} declared")
         return
 
     def on_basic_cancel(self, frame: pika.frame.Frame) -> None:
         self.connection.close()
 
     def on_closed(self, connection: TornadoConnection, exception: Exception) -> None:
-        logging.info("rabbitmq connection closed")
-        logging.info(exception)
+        logger.info("rabbitmq connection closed")
+        logger.info(exception)
 
     def publish_message(
         self,
