@@ -46,9 +46,21 @@ jobs:
       - name: Check out repository
         uses: actions/checkout@v3
       - name: Set container tag to variable
-        run: echo "CONTAINER_TAG=tsd-file-api:${{ github.sha }}-py${{ matrix.python-version }}-r${{ github.run_attempt }}" >> $GITHUB_ENV
+        run: echo "CONTAINER_TAG=tsd-file-api:test-py${{ matrix.python-version }}" >> $GITHUB_ENV
+      - uses: actions/cache@v3
+        id: cache
+        with:
+          path: container-image.tar
+          key: python-${{ matrix.python-version }}_poetry-${{ hashFiles('poetry.lock') }}_container-${{ hashFiles('containers/test/Dockerfile') }}
       - name: Build test container image
+        if: steps.cache.outputs.cache-hit != 'true'
         run: docker build --tag "${{ env.CONTAINER_TAG }}" --build-arg PYTHON_VERSION="${{ matrix.python-version }}"  -f "./containers/test/Dockerfile" .
+      - name: Save test container image
+        if: steps.cache.outputs.cache-hit != 'true'
+        run: docker save -o container-image.tar "${{ env.CONTAINER_TAG }}"
+      - name: Load test container image
+        if: steps.cache.outputs.cache-hit == 'true'
+        run: docker load -i container-image.tar
       - name: Start tsd-file-api container and run tests (SQLite backend)
         run: >
           docker run --rm
