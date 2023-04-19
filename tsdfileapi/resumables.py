@@ -644,7 +644,12 @@ class SerialResumable(AbstractResumable):
                 os.rename(out, final)
             except FileNotFoundError as e:
                 logger.error(e)
-                raise ResumableNotFoundError
+                if not os.path.exists(out) and os.path.exists(final):
+                    logger.warning(
+                        f"resumable upload '{upload_id}' has already been moved to its final path '{final}'"
+                    )
+                else:
+                    raise ResumableNotFoundError
             try:
                 shutil.rmtree(
                     chunks_dir
