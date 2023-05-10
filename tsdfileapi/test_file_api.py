@@ -552,6 +552,83 @@ class TestFileApi(unittest.TestCase):
         resp = requests.delete(f"{self.survey}/123456/submissions", headers=headers)
         self.assertEqual(resp.status_code, 200)
 
+        # tasks
+        # definitions
+        resp = requests.put(
+            f"{self.survey}/123456/tasks/definitions",
+            data=json.dumps({"definition": "this is a task"}),
+            headers=headers,
+        )
+        self.assertEqual(resp.status_code, 201)
+        resp = requests.get(
+            f"{self.survey}/123456/tasks/definitions",
+            headers=headers,
+        )
+        self.assertEqual(json.loads(resp.text), [{"definition": "this is a task"}])
+        resp = requests.delete(
+            f"{self.survey}/123456/tasks/definitions",
+            headers=headers,
+        )
+        self.assertEqual(resp.status_code, 200)
+
+        # deliveries
+        resp = requests.put(
+            f"{self.survey}/123456/tasks/deliveries",
+            data=json.dumps({"task_id": "lol", "task_data": "meh"}),
+            headers=headers,
+        )
+        self.assertEqual(resp.status_code, 201)
+        resp = requests.get(
+            f"{self.survey}/123456/tasks/deliveries",
+            headers=headers,
+        )
+        self.assertEqual(
+            json.loads(resp.text), [{"task_id": "lol", "task_data": "meh"}]
+        )
+        resp = requests.delete(
+            f"{self.survey}/123456/tasks/deliveries",
+            headers=headers,
+        )
+        self.assertEqual(resp.status_code, 200)
+
+        # config
+        resp = requests.put(
+            f"{self.survey}/config",
+            data=json.dumps({"something": "my app needs this data"}),
+            headers=headers,
+        )
+        self.assertEqual(resp.status_code, 201)
+        resp = requests.get(
+            f"{self.survey}/config",
+            headers=headers,
+        )
+        self.assertEqual(
+            json.loads(resp.text), [{"something": "my app needs this data"}]
+        )
+        resp = requests.delete(
+            f"{self.survey}/config",
+            headers=headers,
+        )
+        self.assertEqual(resp.status_code, 200)
+
+        # schema
+        resp = requests.put(
+            f"{self.survey}/schema",
+            data=json.dumps({"schema": {"var": "str"}}),
+            headers=headers,
+        )
+        self.assertEqual(resp.status_code, 201)
+        resp = requests.get(
+            f"{self.survey}/schema",
+            headers=headers,
+        )
+        self.assertEqual(json.loads(resp.text), [{"schema": {"var": "str"}}])
+        resp = requests.delete(
+            f"{self.survey}/schema",
+            headers=headers,
+        )
+        self.assertEqual(resp.status_code, 200)
+
     def test_XXX_load(self) -> None:
         numrows = 250000  # responses per survey
         numkeys = 1500  # questions per survey
