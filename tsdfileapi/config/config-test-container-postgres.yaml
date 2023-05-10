@@ -26,6 +26,10 @@ backends:
         - metadata
         - attachments
         - audit
+        - tasks/definitions
+        - tasks/deliveries
+        - config
+        - schema
       mq:
     publication:
       db:
