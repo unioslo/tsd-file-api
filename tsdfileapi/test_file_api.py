@@ -613,18 +613,18 @@ class TestFileApi(unittest.TestCase):
 
         # schema
         resp = requests.put(
-            f"{self.survey}/schema",
+            f"{self.survey}/schemas/submissions",
             data=json.dumps({"schema": {"var": "str"}}),
             headers=headers,
         )
         self.assertEqual(resp.status_code, 201)
         resp = requests.get(
-            f"{self.survey}/schema",
+            f"{self.survey}/schemas/submissions",
             headers=headers,
         )
         self.assertEqual(json.loads(resp.text), [{"schema": {"var": "str"}}])
         resp = requests.delete(
-            f"{self.survey}/schema",
+            f"{self.survey}/schemas/submissions",
             headers=headers,
         )
         self.assertEqual(resp.status_code, 200)

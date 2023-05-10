@@ -205,7 +205,9 @@ _config = {
                     "tasks/definitions",
                     "tasks/deliveries",
                     "config",
-                    "schema",
+                    "schemas/submissions",
+                    "schemas/metadata",
+                    "schemas/tasks",
                 ],
             },
             "publication": {
