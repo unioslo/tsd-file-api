@@ -202,6 +202,10 @@ _config = {
                     "attachments",
                     "metadata",
                     "audit",
+                    "tasks/definitions",
+                    "tasks/deliveries",
+                    "config",
+                    "schema",
                 ],
             },
             "publication": {
