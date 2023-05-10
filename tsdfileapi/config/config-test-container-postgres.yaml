@@ -29,7 +29,9 @@ backends:
         - tasks/definitions
         - tasks/deliveries
         - config
-        - schema
+        - schemas/submissions
+        - schemas/metadata
+        - schemas/tasks
       mq:
     publication:
       db:

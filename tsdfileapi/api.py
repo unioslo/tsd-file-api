@@ -2657,7 +2657,7 @@ class Backends:
                 dict(backend="survey"),
             ),
             (
-                "/v1/(.*)/survey/([a-zA-Z_0-9*]+/metadata|[a-zA-Z_0-9*]+/tasks/.+)",
+                "/v1/(.*)/survey/([a-zA-Z_0-9*]+/metadata)",
                 GenericTableHandler,
                 dict(backend="survey"),
             ),
@@ -2672,7 +2672,7 @@ class Backends:
                 dict(backend="survey"),
             ),
             (
-                "/v1/(.*)/survey/([a-zA-Z_0-9]+)$",
+                "/v1/(.*)/survey/(.+)$",
                 GenericTableHandler,
                 dict(backend="survey"),
             ),
