@@ -528,9 +528,13 @@ class TestFileApi(unittest.TestCase):
         ]
         for app, acl in [("/survey", nettskjema_url_tokens_method)]:
             self.use_generic_table(app, acl)
+
         resp = requests.delete(
             f"{self.base_url}/survey/56789/submissions", headers=headers
         )
+        self.assertEqual(resp.status_code, 200)
+
+        resp = requests.delete(f"{self.survey}/123456/submissions", headers=headers)
         self.assertEqual(resp.status_code, 200)
 
         resp = requests.get(
@@ -549,8 +553,16 @@ class TestFileApi(unittest.TestCase):
         resp = requests.get(f"{self.survey}/123456/attachments/{file}", headers=headers)
         self.assertEqual(resp.status_code, 200)
 
-        resp = requests.delete(f"{self.survey}/123456/submissions", headers=headers)
+        resp = requests.delete(
+            f"{self.survey}/123456/attachments/{file}", headers=headers
+        )
         self.assertEqual(resp.status_code, 200)
+
+        resp = requests.delete(f"{self.survey}/123456/attachments", headers=headers)
+        self.assertEqual(resp.status_code, 200)
+
+        resp = requests.get(f"{self.survey}/123456/attachments", headers=headers)
+        self.assertEqual(resp.status_code, 404)
 
         # tasks
         # definitions
