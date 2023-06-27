@@ -1023,36 +1023,26 @@ class FileRequestHandler(AuthRequestHandler):
         self.namespace = namespace
         self.endpoint = endpoint
         self.tenant = tenant_from_url(self.request.uri)
-        self.allow_export = options.config["backends"]["disk"][backend]["allow_export"]
-        self.allow_list = options.config["backends"]["disk"][backend]["allow_list"]
-        self.allow_info = options.config["backends"]["disk"][backend]["allow_info"]
-        self.allow_delete = options.config["backends"]["disk"][backend]["allow_delete"]
-        self.export_max = options.config["backends"]["disk"][backend][
-            "export_max_num_list"
-        ]
-        self.has_posix_ownership = options.config["backends"]["disk"][backend][
-            "has_posix_ownership"
-        ]
-        self.check_tenant = options.config["backends"]["disk"][backend].get(
-            "check_tenant"
-        )
-        self.mq_config = options.config["backends"]["disk"][backend].get("mq")
-        self.request_hook = options.config["backends"]["disk"][backend]["request_hook"]
-        self.use_original_uri = options.config["backends"]["disk"][backend].get(
-            "use_original_uri"
-        )
-        self.group_config = options.config["backends"]["disk"][backend].get(
-            "group_logic", default_group_logic
-        )
+        self.backend_config = options.config["backends"]["disk"][backend]
+        self.allow_export = self.backend_config["allow_export"]
+        self.allow_list = self.backend_config["allow_list"]
+        self.allow_info = self.backend_config["allow_info"]
+        self.allow_delete = self.backend_config["allow_delete"]
+        self.export_max = self.backend_config["export_max_num_list"]
+        self.has_posix_ownership = self.backend_config["has_posix_ownership"]
+        self.check_tenant = self.backend_config.get("check_tenant")
+        self.mq_config = self.backend_config.get("mq")
+        self.request_hook = self.backend_config["request_hook"]
+        self.use_original_uri = self.backend_config.get("use_original_uri")
+        self.group_config = self.backend_config.get("group_logic", default_group_logic)
         self.CHUNK_SIZE = options.export_chunk_size
-        self.backend_paths = options.config["backends"]["disk"][backend]
+        self.backend_paths = self.backend_config
         self.export_path_pattern = self.backend_paths["export_path"]
-        self.export_policy = options.config["backends"]["disk"][backend][
-            "export_policy"
-        ]
-        self.import_dir_pattern = options.config["backends"]["disk"][backend][
-            "import_path"
-        ]
+        self.export_policy = self.backend_config["export_policy"]
+        self.import_dir_pattern = self.backend_config["import_path"]
+        self.backup_deletes = self.backend_config.get("backup_deletes", {}).get(
+            "path_regex"
+        )
 
     @gen.coroutine
     def prepare(self) -> Optional[Awaitable[None]]:
@@ -1938,7 +1928,16 @@ class FileRequestHandler(AuthRequestHandler):
             if not os.path.lexists(self.filepath):
                 raise ClientResourceNotFoundError(f"{self.filepath} not found")
             if os.path.isdir(self.filepath):
+                if self.backup_deletes:
+                    backup_path = re.sub(
+                        self.backup_deletes, r"\1/backup", self.filepath
+                    )
+                    shutil.copytree(self.filepath, backup_path, dirs_exist_ok=True)
+                    logger.info(f"backed up: {self.filepath} -> {backup_path}")
                 shutil.rmtree(self.filepath)
+                logger.info(
+                    f"user: {self.requestor}, deleted directory: {self.filepath}"
+                )
             else:
                 if self.has_posix_ownership:
                     # Allow the file to be deleted by changing the rights temporary of the parent directory
@@ -1951,8 +1950,17 @@ class FileRequestHandler(AuthRequestHandler):
                         ["sudo", "chmod", "o-w", os.path.dirname(self.filepath)]
                     )
                 else:
+                    if self.backup_deletes:
+                        backup_path = re.sub(
+                            self.backup_deletes, r"\1/backup\3", self.filepath
+                        )
+                        os.makedirs(os.path.dirname(backup_path), exist_ok=True)
+                        shutil.copyfile(self.filepath, backup_path)
+                        logger.info(f"backed up: {self.filepath} -> {backup_path}")
                     os.remove(self.filepath)
-            logger.info(f"user: {self.requestor}, deleted file: {self.filepath}")
+                    logger.info(
+                        f"user: {self.requestor}, deleted file: {self.filepath}"
+                    )
             self.set_status(HTTPStatus.OK.value)
             self.write({"message": f"deleted {self.filepath}"})
         except Exception as e:
@@ -2647,6 +2655,11 @@ class Backends:
             ("/v1/(.*)/survey/crypto/key", NaclKeyHander),
             (
                 "/v1/(.*)/survey/([a-zA-Z_0-9]+/attachments.*)",
+                FileRequestHandler,
+                dict(backend="survey", namespace="survey", endpoint=None),
+            ),
+            (
+                "/v1/(.*)/survey/([a-zA-Z_0-9]+/backup.*)",
                 FileRequestHandler,
                 dict(backend="survey", namespace="survey", endpoint=None),
             ),
