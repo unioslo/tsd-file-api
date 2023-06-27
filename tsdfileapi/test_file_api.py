@@ -550,6 +550,7 @@ class TestFileApi(unittest.TestCase):
             headers=headers,
         )
         self.assertEqual(resp.status_code, 201)
+
         resp = requests.get(f"{self.survey}/123456/attachments/{file}", headers=headers)
         self.assertEqual(resp.status_code, 200)
 
@@ -558,11 +559,37 @@ class TestFileApi(unittest.TestCase):
         )
         self.assertEqual(resp.status_code, 200)
 
+        # check the backup
+        resp = requests.get(f"{self.survey}/123456/backup/{file}", headers=headers)
+        self.assertEqual(resp.status_code, 200)
+
+        # restore the specific attachment
+
+        resp = requests.put(
+            f"{self.survey}/123456/attachments/another-amazing-file.json",
+            data=lazy_file_reader(self.so_sweet),
+            headers=headers,
+        )
+        self.assertEqual(resp.status_code, 201)
+
         resp = requests.delete(f"{self.survey}/123456/attachments", headers=headers)
         self.assertEqual(resp.status_code, 200)
 
         resp = requests.get(f"{self.survey}/123456/attachments", headers=headers)
         self.assertEqual(resp.status_code, 404)
+
+        # check the backup
+        resp = requests.get(f"{self.survey}/123456/backup", headers=headers)
+        self.assertEqual(resp.status_code, 200)
+        # check contents
+
+        # now restore all deleted attachments
+
+        # get both
+
+        # delete them again
+
+        # delete the backups
 
         # tasks
         # definitions
