@@ -560,10 +560,24 @@ class TestFileApi(unittest.TestCase):
         self.assertEqual(resp.status_code, 200)
 
         # check the backup
-        resp = requests.get(f"{self.survey}/123456/backup/{file}", headers=headers)
+        resp = requests.get(
+            f"{self.survey}/123456/backup/attachments/{file}", headers=headers
+        )
         self.assertEqual(resp.status_code, 200)
 
         # restore the specific attachment
+        resp = requests.post(
+            f"{self.survey}/123456/backup/attachments/{file}?restore",
+            headers=headers,
+        )
+        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(json.loads(resp.text), {"restores": [file]})
+        resp = requests.get(
+            f"{self.survey}/123456/backup/attachments/{file}", headers=headers
+        )
+        self.assertEqual(resp.status_code, 404)
+        resp = requests.get(f"{self.survey}/123456/attachments/{file}", headers=headers)
+        self.assertEqual(resp.status_code, 200)
 
         resp = requests.put(
             f"{self.survey}/123456/attachments/another-amazing-file.json",
@@ -579,17 +593,34 @@ class TestFileApi(unittest.TestCase):
         self.assertEqual(resp.status_code, 404)
 
         # check the backup
-        resp = requests.get(f"{self.survey}/123456/backup", headers=headers)
+        resp = requests.get(f"{self.survey}/123456/backup/attachments", headers=headers)
         self.assertEqual(resp.status_code, 200)
         # check contents
 
         # now restore all deleted attachments
-
-        # get both
+        resp = requests.post(
+            f"{self.survey}/123456/backup/attachments?restore",
+            headers=headers,
+        )
+        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(len(json.loads(resp.text).get("restores")), 2)
+        resp = requests.get(f"{self.survey}/123456/attachments/{file}", headers=headers)
+        self.assertEqual(resp.status_code, 200)
+        resp = requests.get(
+            f"{self.survey}/123456/attachments/another-amazing-file.json",
+            headers=headers,
+        )
+        self.assertEqual(resp.status_code, 200)
 
         # delete them again
+        resp = requests.delete(f"{self.survey}/123456/attachments", headers=headers)
+        self.assertEqual(resp.status_code, 200)
 
         # delete the backups
+        resp = requests.delete(
+            f"{self.survey}/123456/backup/attachments", headers=headers
+        )
+        self.assertEqual(resp.status_code, 200)
 
         # tasks
         # definitions
