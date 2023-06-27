@@ -144,6 +144,7 @@ backends:
       allow_export: true
       allow_info: true
       allow_list: true
+      allow_rpc: true
       export_max_num_list: null
       export_path: /tmp/pXX/survey
       export_policy:
