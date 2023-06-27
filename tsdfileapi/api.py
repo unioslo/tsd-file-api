@@ -409,7 +409,13 @@ class AuthRequestHandler(RequestHandler):
                         return True
         return False
 
-    def handle_mq_publication(self, mq_config: dict = None, data: dict = None) -> None:
+    def handle_mq_publication(
+        self,
+        mq_config: Optional[dict] = None,
+        data: Optional[dict] = None,
+        http_method: Optional[str] = None,
+        http_uri: Optional[str] = None,
+    ) -> None:
         """
         Publish a message to RabbitMQ, as the result of a HTTP request.
         NB: The API assumes that a vhost has been created.
@@ -519,8 +525,8 @@ class AuthRequestHandler(RequestHandler):
             self.pika_client.publish_message(
                 exchange=ex,
                 routing_key=rkey,
-                method=self.request.method,
-                uri=uri,
+                method=self.request.method if not http_method else http_method,
+                uri=uri if not http_uri else http_uri,
                 version=ver,
                 data=data,
             )
@@ -1989,15 +1995,25 @@ class FileRequestHandler(AuthRequestHandler):
             if "backup" not in self.resource:
                 raise ClientMethodNotAllowed
             restore_target = self.filepath.replace("/backup/", "/")
+
             os.makedirs(os.path.dirname(restore_target), exist_ok=True)
             if os.path.isdir(self.filepath):
                 restores = os.listdir(self.filepath)
                 shutil.copytree(self.filepath, restore_target, dirs_exist_ok=True)
+                self.restores = list(
+                    map(lambda x: f"{restore_target}/{x}", os.listdir(self.filepath))
+                )
+                self.restore_uri = self.request.uri.split("?")[0].replace(
+                    "/backup/", "/"
+                )
             else:
                 restored = shutil.move(self.filepath, restore_target)
                 restores = [os.path.basename(filename)]
+                self.restores = [restore_target]
+                self.restore_uri = os.path.dirname(
+                    self.request.uri.split("?")[0].replace("/backup/", "/")
+                )
             logger.info(f"restored: {self.filepath} -> {restore_target}")
-            self.restores = restores  # for generating MQ messages
             self.set_status(HTTPStatus.OK.value)
             self.write({"restores": restores})
         except Exception as e:
@@ -2012,10 +2028,15 @@ class FileRequestHandler(AuthRequestHandler):
         resource_created = self.request.method == "PUT" or (
             self.request.method == "PATCH" and self.chunk_num == "end"
         )
+        resource_restored = self.request.method == "POST"
         if (
             not options.maintenance_mode_enabled
             and self._status_code < 300
-            and (self.request.method in ("GET", "HEAD", "DELETE") or resource_created)
+            and (
+                self.request.method in ("GET", "HEAD", "DELETE")
+                or resource_created
+                or resource_restored
+            )
         ):
             try:
                 if resource_created:
@@ -2047,15 +2068,29 @@ class FileRequestHandler(AuthRequestHandler):
                     except Exception as e:
                         logger.info("problem calling request hook")
                         logger.info(e)
-                message_data = {
-                    "path": resource_path if resource_created else None,
-                    "requestor": self.requestor,
-                    "group": self.group_name if resource_created else None,
-                }
-                self.handle_mq_publication(
-                    mq_config=self.mq_config,
-                    data=message_data,
-                )
+                if resource_restored:
+                    for restore in self.restores:
+                        message_data = {
+                            "path": restore,
+                            "requestor": self.requestor,
+                            "group": None,
+                        }
+                        self.handle_mq_publication(
+                            mq_config=self.mq_config,
+                            data=message_data,
+                            http_method="PUT",
+                            http_uri=f"{self.restore_uri}/{os.path.basename(restore)}",
+                        )
+                else:
+                    message_data = {
+                        "path": resource_path if resource_created else None,
+                        "requestor": self.requestor,
+                        "group": self.group_name if resource_created else None,
+                    }
+                    self.handle_mq_publication(
+                        mq_config=self.mq_config,
+                        data=message_data,
+                    )
                 if not self.listing_dir:
                     self.update_request_log(
                         tenant=self.tenant,
