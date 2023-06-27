@@ -108,7 +108,7 @@ _config = {
                 "allow_list": True,
                 "allow_info": True,
                 "allow_delete": True,
-                # TODO: allow_rpc
+                "allow_rpc": True,
                 "request_hook": {
                     "enabled": False,
                 },
