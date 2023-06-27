@@ -1028,6 +1028,7 @@ class FileRequestHandler(AuthRequestHandler):
         self.allow_list = self.backend_config["allow_list"]
         self.allow_info = self.backend_config["allow_info"]
         self.allow_delete = self.backend_config["allow_delete"]
+        self.allow_rpc = self.backend_config.get("allow_rpc")
         self.export_max = self.backend_config["export_max_num_list"]
         self.has_posix_ownership = self.backend_config["has_posix_ownership"]
         self.check_tenant = self.backend_config.get("check_tenant")
@@ -1043,6 +1044,7 @@ class FileRequestHandler(AuthRequestHandler):
         self.backup_deletes = self.backend_config.get("backup_deletes", {}).get(
             "path_regex"
         )
+        self.restores = []
 
     @gen.coroutine
     def prepare(self) -> Optional[Awaitable[None]]:
@@ -1130,7 +1132,7 @@ class FileRequestHandler(AuthRequestHandler):
             resource = resource_parts[-1] if resource_parts else None
             if self.request.method in ("GET", "HEAD", "DELETE"):
                 work_dir = self.export_dir
-            elif self.request.method in ("PUT", "PATCH"):
+            elif self.request.method in ("PUT", "PATCH", "POST"):
                 work_dir = self.import_dir
             elif not resource and self.request.method == "DELETE":
                 raise ClientError("no resource to delete")
@@ -1930,10 +1932,11 @@ class FileRequestHandler(AuthRequestHandler):
             if os.path.isdir(self.filepath):
                 if self.backup_deletes:
                     backup_path = re.sub(
-                        self.backup_deletes, r"\1/backup", self.filepath
+                        self.backup_deletes, r"\1/backup/\2", self.filepath
                     )
-                    shutil.copytree(self.filepath, backup_path, dirs_exist_ok=True)
-                    logger.info(f"backed up: {self.filepath} -> {backup_path}")
+                    if backup_path != self.filepath:  # don't backup backups
+                        shutil.copytree(self.filepath, backup_path, dirs_exist_ok=True)
+                        logger.info(f"backed up: {self.filepath} -> {backup_path}")
                 shutil.rmtree(self.filepath)
                 logger.info(
                     f"user: {self.requestor}, deleted directory: {self.filepath}"
@@ -1952,17 +1955,51 @@ class FileRequestHandler(AuthRequestHandler):
                 else:
                     if self.backup_deletes:
                         backup_path = re.sub(
-                            self.backup_deletes, r"\1/backup\3", self.filepath
+                            self.backup_deletes, r"\1/backup/\2\3", self.filepath
                         )
-                        os.makedirs(os.path.dirname(backup_path), exist_ok=True)
-                        shutil.copyfile(self.filepath, backup_path)
-                        logger.info(f"backed up: {self.filepath} -> {backup_path}")
+                        if backup_path != self.filepath:  # don't backup backups
+                            os.makedirs(os.path.dirname(backup_path), exist_ok=True)
+                            shutil.copyfile(self.filepath, backup_path)
+                            logger.info(f"backed up: {self.filepath} -> {backup_path}")
                     os.remove(self.filepath)
                     logger.info(
                         f"user: {self.requestor}, deleted file: {self.filepath}"
                     )
             self.set_status(HTTPStatus.OK.value)
             self.write({"message": f"deleted {self.filepath}"})
+        except Exception as e:
+            error = error_for_exception(e, details=self.additional_log_details())
+            logger.error(error.message)
+            for name, value in error.headers.items():
+                self.set_header(name, value)
+            self.set_status(error.status, reason=error.reason)
+            self.finish()
+
+    def post(self, tenant: str, filename: str = "") -> None:
+        try:
+            if not self.allow_rpc:
+                raise ClientMethodNotAllowed(
+                    f"POST not enabled for backend: {self.backend}"
+                )
+            self.path = self.export_dir
+            self.filepath = f"{self.path}/{url_unescape(self.resource)}"
+            query = self.request.uri.split("?")[-1]
+            if "restore" not in query.split("&"):
+                raise ClientError("Missing rpc directive in URI")
+            if "backup" not in self.resource:
+                raise ClientMethodNotAllowed
+            restore_target = self.filepath.replace("/backup/", "/")
+            os.makedirs(os.path.dirname(restore_target), exist_ok=True)
+            if os.path.isdir(self.filepath):
+                restores = os.listdir(self.filepath)
+                shutil.copytree(self.filepath, restore_target, dirs_exist_ok=True)
+            else:
+                restored = shutil.move(self.filepath, restore_target)
+                restores = [os.path.basename(filename)]
+            logger.info(f"restored: {self.filepath} -> {restore_target}")
+            self.restores = restores  # for generating MQ messages
+            self.set_status(HTTPStatus.OK.value)
+            self.write({"restores": restores})
         except Exception as e:
             error = error_for_exception(e, details=self.additional_log_details())
             logger.error(error.message)
