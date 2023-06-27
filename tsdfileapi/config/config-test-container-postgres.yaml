@@ -161,6 +161,8 @@ backends:
       import_path: /tmp/pXX/survey
       request_hook:
         enabled: false
+      backup_deletes:
+        path_regex: "(/.+/survey/[0-9]+)/(attachments)(.*)"
 create_tenant_dir: true
 data_folder: /file-api/tsdfileapi/data
 debug: true
