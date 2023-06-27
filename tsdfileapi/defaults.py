@@ -108,6 +108,7 @@ _config = {
                 "allow_list": True,
                 "allow_info": True,
                 "allow_delete": True,
+                # TODO: allow_rpc
                 "request_hook": {
                     "enabled": False,
                 },
@@ -121,6 +122,9 @@ _config = {
                 },
                 "export_policy": {
                     "default": {"enabled": False},
+                },
+                "backup_deletes": {
+                    "path_regex": "(/.+/survey/[0-9]+)/(attachments)(.*)"
                 },
             },
             "form_data": {
