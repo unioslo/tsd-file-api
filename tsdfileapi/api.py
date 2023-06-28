@@ -2188,6 +2188,7 @@ class GenericTableHandler(AuthRequestHandler):
         self.table_structure = self.backend_config["table_structure"]
         self.mq_config = self.backend_config.get("mq")
         self.check_tenant = self.backend_config.get("check_tenant")
+        self.restored = None
 
     def prepare(self) -> Optional[Awaitable[None]]:
         try:
@@ -2280,7 +2281,12 @@ class GenericTableHandler(AuthRequestHandler):
                 values.append(target)
         return values
 
-    def set_resource_identifier_info(self, data: Union[list, dict]) -> None:
+    def set_resource_identifier_info(
+        self,
+        data: Union[list, dict],
+        primary_key: Optional[str] = None,
+        pk_value: Optional[Any] = None,
+    ) -> None:
         """
         When publising messages to rabbitmq, it is useful
         for queue consumers to have references to the specific
@@ -2315,8 +2321,8 @@ class GenericTableHandler(AuthRequestHandler):
             Resource-Identifier-Key: metadata.id
 
         """
-        rid_key = self.request.headers.get("Resource-Identifier-Key")
-        rid = self.request.headers.get("Resource-Identifier")
+        rid_key = self.request.headers.get("Resource-Identifier-Key") or primary_key
+        rid = self.request.headers.get("Resource-Identifier") or pk_value
         if rid_key and rid:
             self.rid_info = {"key": rid_key, "values": [rid]}
         if rid_key and not rid:  # then we look into the data
@@ -2522,15 +2528,68 @@ class GenericTableHandler(AuthRequestHandler):
             self.write({"message": error.reason})
 
     def on_finish(self) -> None:
-        try:  # TODO: handle restores, and rid
+        try:
             if not options.maintenance_mode_enabled and self._status_code < 300:
-                message_data = {
-                    "path": None,
-                    "requestor": self.requestor,
-                    "group": None,
-                    "resource_identifier": self.rid_info,
-                }
-                self.handle_mq_publication(mq_config=self.mq_config, data=message_data)
+                if self.restored:
+                    # constuct the URI for simulated request
+                    replacement = "/submissions" if self.backend == "survey" else ""
+                    uri = self.request.uri.replace("/audit", replacement).split("?")[0]
+                    for restore in self.restored.get("restores"):
+                        primary_key = self.get_query_argument("primary_key")
+                        pk_value = self.db._get_pk_value(
+                            primary_key, restore.get("previous")
+                        )
+                        self.set_resource_identifier_info(
+                            restore.get("previous"),
+                            primary_key,
+                            pk_value,
+                        )
+                        message_data = {
+                            "path": None,
+                            "requestor": self.requestor,
+                            "group": None,
+                            "resource_identifier": self.rid_info,
+                        }
+                        self.handle_mq_publication(
+                            mq_config=self.mq_config,
+                            data=message_data,
+                            http_method="PUT",
+                            http_uri=uri,
+                        )
+                    for update in self.restored.get("updates"):
+                        # construct update query for simulated request
+                        primary_key = self.get_query_argument("primary_key")
+                        pk_value = self.db._get_pk_value(
+                            primary_key, update.get("previous")
+                        )
+                        query = update.get("query")
+                        self.set_resource_identifier_info(
+                            update.get("previous"),
+                            primary_key,
+                            pk_value,
+                        )
+                        message_data = {
+                            "path": None,
+                            "requestor": self.requestor,
+                            "group": None,
+                            "resource_identifier": self.rid_info,
+                        }
+                        self.handle_mq_publication(
+                            mq_config=self.mq_config,
+                            data=message_data,
+                            http_method="PATCH",
+                            http_uri=f"{uri}?{query}",
+                        )
+                else:
+                    message_data = {
+                        "path": None,
+                        "requestor": self.requestor,
+                        "group": None,
+                        "resource_identifier": self.rid_info,
+                    }
+                    self.handle_mq_publication(
+                        mq_config=self.mq_config, data=message_data
+                    )
                 self.update_request_log(
                     tenant=self.tenant,
                     backend=self.backend,
