@@ -713,8 +713,8 @@ class TestFileApi(unittest.TestCase):
 
         # make an edit, and delete
         resp = requests.patch(
-            f"{self.base_url}/survey/{formid}/submissions?set=x,y&where=answers.pk=eq.0",
-            data=json.dumps({"x": 5, "y": 1}),
+            f"{self.base_url}/survey/{formid}/submissions?set=answers&where=answers.pk=eq.0",
+            data=json.dumps({"answers": {"pk": 0, "x": 5, "y": 1}}),
             headers=headers,
         )
         self.assertEqual(resp.status_code, 201)
@@ -766,6 +766,42 @@ class TestFileApi(unittest.TestCase):
             headers=headers,
         )
         self.assertEqual(json.loads(resp.text), [])
+
+        # edit-only restore
+        sub1 = {"answers": {"pk": 0, "x": 4, "y": 0}, "metadata": {"such": "meta"}}
+        sub2 = {"answers": {"pk": 1, "x": 9, "y": 8}, "metadata": {"such": "wow"}}
+        submissions = [sub1, sub2]
+        formid = "8083601"
+        resp = requests.put(
+            f"{self.base_url}/survey/{formid}/submissions",
+            data=json.dumps(submissions),
+            headers=headers,
+        )
+        self.assertEqual(resp.status_code, 201)
+
+        # make an edit
+        resp = requests.patch(
+            f"{self.base_url}/survey/{formid}/submissions?set=answers&where=answers.pk=eq.0",
+            data=json.dumps({"answers": {"pk": 0, "x": 999}}),
+            headers=headers,
+        )
+        self.assertEqual(resp.status_code, 201)
+        resp = requests.post(
+            f"{self.base_url}/survey/{formid}/audit?restore&primary_key=answers.pk",
+            headers=headers,
+        )
+        self.assertTrue((len(json.loads(resp.text).get("updates")), 1))
+        # cleanup
+        resp = requests.delete(
+            f"{self.base_url}/survey/{formid}/submissions",
+            headers=headers,
+        )
+        self.assertEqual(resp.status_code, 200)
+        resp = requests.delete(
+            f"{self.base_url}/survey/{formid}/audit",
+            headers=headers,
+        )
+        self.assertEqual(resp.status_code, 200)
 
     def test_XXX_load(self) -> None:
         numrows = 250000  # responses per survey
