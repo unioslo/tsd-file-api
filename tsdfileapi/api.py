@@ -2483,13 +2483,28 @@ class GenericTableHandler(AuthRequestHandler):
             self.set_status(error.status, reason=error.reason)
             self.write({"message": error.reason})
 
+    def post(self, tenant: str, table_name: str) -> None:
+        try:
+            table_name = self.create_table_name(table_name)
+            if not table_name.endswith("_audit"):
+                raise ClientMethodNotAllowed
+            query = self.get_uri_query(self.request.uri)
+            self.restored = self.db.table_restore(
+                table_name.replace("_audit", ""), query
+            )
+            self.set_status(HTTPStatus.OK.value)
+            self.write(self.restored)
+        except Exception as e:
+            error = error_for_exception(e, details=self.additional_log_details())
+            logger.error(error.message)
+            for name, value in error.headers.items():
+                self.set_header(name, value)
+            self.set_status(error.status, reason=error.reason)
+            self.write({"message": error.reason})
+
     def delete(self, tenant: str, table_name: str) -> None:
         try:
             table_name = self.create_table_name(table_name)
-            if self.request.uri.endswith("/audit"):
-                raise ClientAuthorizationError(
-                    "Not allowed to delete from audit tables"
-                )
             query = self.get_uri_query(self.request.uri)
             data = self.db.table_delete(table_name, query)
             self.set_status(HTTPStatus.OK.value)
@@ -2507,7 +2522,7 @@ class GenericTableHandler(AuthRequestHandler):
             self.write({"message": error.reason})
 
     def on_finish(self) -> None:
-        try:
+        try:  # TODO: handle restores, and rid
             if not options.maintenance_mode_enabled and self._status_code < 300:
                 message_data = {
                     "path": None,
