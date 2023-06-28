@@ -471,7 +471,7 @@ class TestFileApi(unittest.TestCase):
         self.assertEqual(data[-1].get("previous").get("key1"), 7)
         self.assertEqual(resp.status_code, 200)
         resp = requests.delete(f"{self.survey}/123456/audit", headers=headers)
-        self.assertEqual(resp.status_code, 403)
+        self.assertEqual(resp.status_code, 200)
         # metadata functionality
         resp = requests.put(
             f"{self.base_url}/survey/123456/metadata",
@@ -603,7 +603,6 @@ class TestFileApi(unittest.TestCase):
             headers=headers,
         )
         self.assertEqual(resp.status_code, 200)
-        self.assertEqual(len(json.loads(resp.text).get("restores")), 2)
         resp = requests.get(f"{self.survey}/123456/attachments/{file}", headers=headers)
         self.assertEqual(resp.status_code, 200)
         resp = requests.get(
@@ -698,6 +697,75 @@ class TestFileApi(unittest.TestCase):
             headers=headers,
         )
         self.assertEqual(resp.status_code, 200)
+
+        ### restoring edited and deleted submission data
+
+        sub1 = {"answers": {"pk": 0, "x": 4, "y": 0}, "metadata": {"such": "meta"}}
+        sub2 = {"answers": {"pk": 1, "x": 9, "y": 8}, "metadata": {"such": "wow"}}
+        submissions = [sub1, sub2]
+        formid = "8865852"
+        resp = requests.put(
+            f"{self.base_url}/survey/{formid}/submissions",
+            data=json.dumps(submissions),
+            headers=headers,
+        )
+        self.assertEqual(resp.status_code, 201)
+
+        # make an edit, and delete
+        resp = requests.patch(
+            f"{self.base_url}/survey/{formid}/submissions?set=x,y&where=answers.pk=eq.0",
+            data=json.dumps({"x": 5, "y": 1}),
+            headers=headers,
+        )
+        self.assertEqual(resp.status_code, 201)
+        resp = requests.delete(
+            f"{self.base_url}/survey/{formid}/submissions",
+            headers=headers,
+        )
+        self.assertEqual(resp.status_code, 200)
+
+        # restore to original state
+        resp = requests.post(
+            f"{self.base_url}/survey/{formid}/audit?restore&primary_key=answers.pk",
+            headers=headers,
+        )
+        self.assertTrue((len(json.loads(resp.text).get("restores")), 2))
+
+        # correct amount of events
+        resp = requests.get(
+            f"{self.base_url}/survey/{formid}/submissions",
+            headers=headers,
+        )
+        self.assertTrue(len(json.loads(resp.text)), 2)
+
+        # check contents match originals
+        resp = requests.get(
+            f"{self.base_url}/survey/{formid}/submissions?where=answers.pk=eq.0",
+            headers=headers,
+        )
+        self.assertEqual(json.loads(resp.text)[0], sub1)
+        resp = requests.get(
+            f"{self.base_url}/survey/{formid}/submissions?where=answers.pk=eq.1",
+            headers=headers,
+        )
+        self.assertEqual(json.loads(resp.text)[0], sub2)
+
+        # cleanup
+        resp = requests.delete(
+            f"{self.base_url}/survey/{formid}/submissions",
+            headers=headers,
+        )
+        self.assertEqual(resp.status_code, 200)
+        resp = requests.delete(
+            f"{self.base_url}/survey/{formid}/audit",
+            headers=headers,
+        )
+        self.assertEqual(resp.status_code, 200)
+        resp = requests.get(
+            f"{self.base_url}/survey/{formid}/audit",
+            headers=headers,
+        )
+        self.assertEqual(json.loads(resp.text), [])
 
     def test_XXX_load(self) -> None:
         numrows = 250000  # responses per survey
