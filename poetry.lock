@@ -704,13 +704,13 @@ files = [
 
 [[package]]
 name = "pysquril"
-version = "0.3.2"
+version = "0.3.3"
 description = "Python implementation of structured URI query language"
 optional = false
 python-versions = ">=3.7,<4.0"
 files = [
-    {file = "pysquril-0.3.2-py3-none-any.whl", hash = "sha256:79a4beecb84ee23b98c7db37c393635a6c863708bbe2e51c3a5007bc25d7b6cf"},
-    {file = "pysquril-0.3.2.tar.gz", hash = "sha256:b467f913f04e6a58e4cd453de9dcb8858f90183d409edf9b7cc63560d364cf93"},
+    {file = "pysquril-0.3.3-py3-none-any.whl", hash = "sha256:d05707873729611c618c9bbf190474c3b2437f1ded2cae02069b1881ef82ba9a"},
+    {file = "pysquril-0.3.3.tar.gz", hash = "sha256:932ae540948e29c1b538596fbdbb641b8049906c2ab1c613bb9659c98ee8a5dd"},
 ]
 
 [package.dependencies]
@@ -1069,4 +1069,4 @@ files = [
 [metadata]
 lock-version = "2.0"
 python-versions = "^3.8"
-content-hash = "4c8f6607c5221114f1496f9a4fcce13b57470cf2b1c64b62bc78064b74ab59eb"
+content-hash = "058dd9e0dd1d9a2ede92dbf96110f714a38b13cb4b673eaeae1daa468018447f"
