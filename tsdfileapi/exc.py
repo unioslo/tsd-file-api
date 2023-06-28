@@ -14,6 +14,7 @@ from http import HTTPStatus
 from typing import List
 from typing import Union
 
+from pysquril.exc import PySqurilError
 from tornado.web import HTTPError
 
 
@@ -188,6 +189,11 @@ def error_for_exception(exc: Exception, details: str = "") -> Error:
         message = generate_message(
             [client.responses.get(status), exc.log_message, details]
         )
+        headers = {}
+    elif isinstance(exc, PySqurilError):
+        status = exc.status.value
+        reason = exc.reason
+        message = generate_message([client.responses.get(status), exc.reason, details])
         headers = {}
     elif hasattr(exc, "errno") and exc.errno == errno.EDQUOT:
         code = HTTPStatus.INSUFFICIENT_STORAGE
