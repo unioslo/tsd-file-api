@@ -58,7 +58,7 @@ jobs:
           --health-interval=2s
           "${{ env.CONTAINER_TAG }}" &
           until [ "$(docker inspect -f {{.State.Health.Status}} tsd-file-api-sqlite)" == "healthy" ]; do sleep 0.1; done &&
-          docker exec tsd-file-api-sqlite python tsdfileapi/test_file_api.py
+          docker exec tsd-file-api-sqlite pytest tsdfileapi/test_file_api.py
       - name: Start tsd-file-api container and run tests (PostgreSQL backend)
         run: >
           docker run --rm
@@ -69,4 +69,4 @@ jobs:
           "${{ env.CONTAINER_TAG }}"
           tsdfileapi/config/config-test-container-postgres.yaml &
           until [ "$(docker inspect -f {{.State.Health.Status}} tsd-file-api-postgres)" == "healthy" ]; do sleep 0.1; done &&
-          docker exec tsd-file-api-postgres python tsdfileapi/test_file_api.py
+          docker exec tsd-file-api-postgres pytest tsdfileapi/test_file_api.py

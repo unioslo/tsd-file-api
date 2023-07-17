@@ -22,7 +22,7 @@ poetry run tsd-file-api
 While the file API is running on your machine, run this in a separate terminal:
 
 ```console
-poetry run python tsdfileapi/test_file_api.py
+poetry run pytest tsdfileapi/test_file_api.py
 ```
 
 ## Alternative container based development setup
