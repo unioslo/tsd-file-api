@@ -15,7 +15,7 @@ on:
       - pyproject.toml
       - poetry.lock
   schedule:
-    - cron: "15 2,14 * * *"
+    - cron: "15 2 * * *"
 
 jobs:
   export-requirements:
