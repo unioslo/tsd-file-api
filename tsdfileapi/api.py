@@ -67,6 +67,7 @@ from tsdfileapi.exc import ClientReservedResourceError
 from tsdfileapi.exc import ClientResourceNotFoundError
 from tsdfileapi.exc import error_for_exception
 from tsdfileapi.exc import ServerMaintenanceError
+from tsdfileapi.exc import ServerSnsError
 from tsdfileapi.resumables import ResumableIncorrectChunkOrderError
 from tsdfileapi.resumables import ResumableNotFoundError
 from tsdfileapi.resumables import SerialResumable
