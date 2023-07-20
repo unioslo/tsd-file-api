@@ -15,8 +15,8 @@ env:
   REGISTRY: ghcr.io
   IMAGE_NAME: ${{ github.repository }}
   PYTHON_VERSION: "3.11"
-  POETRY_VERSION: "1.3.2"
-  POETRY_DYNAMIC_VERSIONING_VERSION: "0.21.3"
+  POETRY_VERSION: "1.5.1"
+  POETRY_DYNAMIC_VERSIONING_VERSION: "0.25.0"
 
 jobs:
   build-and-push-image:
