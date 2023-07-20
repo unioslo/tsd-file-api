@@ -21,6 +21,7 @@ env:
 jobs:
   build-and-push-image:
     strategy:
+      fail-fast: false
       matrix:
         variant: ["", "-alpine"]
     runs-on: ubuntu-latest
