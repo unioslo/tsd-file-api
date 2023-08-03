@@ -21,8 +21,9 @@ RUN yum -y install \
 # ERROR:  Error installing fpm:
 #       ffi requires Ruby version >= 2.3.
 RUN yum -y install centos-release-scl-rh centos-release-scl
-RUN yum --enablerepo=centos-sclo-rh -y install rh-ruby23 rh-ruby23-ruby-devel
-RUN source /opt/rh/rh-ruby23/enable && gem install --no-ri --no-rdoc fpm
+RUN yum --enablerepo=centos-sclo-rh -y install rh-ruby30 rh-ruby30-ruby-devel
+RUN source /opt/rh/rh-ruby30/enable && \
+    gem install --no-document fpm
 
 # install Python 3.8 from SCL
 RUN yum install -y rh-python38 rh-python38-python-devel
@@ -56,7 +57,7 @@ RUN poetry export --without-hashes --format requirements.txt --output requiremen
 RUN echo "." >> requirements.txt
 
 # build RPM of the dependencies virtual environment
-RUN source /opt/rh/rh-ruby23/enable &&\
+RUN source /opt/rh/rh-ruby30/enable &&\
     source /opt/rh/rh-python38/enable &&\
     mkdir -p /file-api/rpm && \
     fpm --verbose -s virtualenv -p /file-api/rpm \
