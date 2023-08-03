@@ -62,5 +62,6 @@ RUN source /opt/rh/rh-ruby30/enable &&\
     mkdir -p /file-api/rpm && \
     fpm --verbose -s virtualenv -p /file-api/rpm \
     -t rpm --name tsd-file-api --version $(poetry version --short --no-ansi) \
+    --rpm-dist $(rpm --eval "%dist" | sed "s/\.//") \
     --depends libsodium --depends sudo \
     --prefix /opt/tsd-file-api requirements.txt
