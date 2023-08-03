@@ -43,9 +43,11 @@ jobs:
           sleep 5
           docker cp "$CONTAINER_ID":/file-api/rpm ./
           docker rm "$CONTAINER_ID"
+      - name: Get artifact filename
+        run: echo "ARTIFACT_NAME=$(ls rpm/)" >> $GITHUB_ENV
       - name: Upload the extracted RPM as artifact
         uses: actions/upload-artifact@v3
         with:
-          name: RPM-el7
+          name: "${{ env.ARTIFACT_NAME }}"
           path: rpm
           if-no-files-found: error
