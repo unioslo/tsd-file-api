@@ -23,7 +23,7 @@ RUN yum -y install \
 RUN yum -y install centos-release-scl-rh centos-release-scl
 RUN yum --enablerepo=centos-sclo-rh -y install rh-ruby30 rh-ruby30-ruby-devel
 RUN source /opt/rh/rh-ruby30/enable && \
-    gem install --no-document fpm
+    gem install --no-document fpm --version 1.15.1
 
 # install Python 3.8 from SCL
 RUN yum install -y rh-python38 rh-python38-python-devel
