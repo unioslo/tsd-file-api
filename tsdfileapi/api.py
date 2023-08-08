@@ -2803,12 +2803,12 @@ class Backends:
             (
                 "/v1/(.*)/survey/([a-zA-Z_0-9]+/attachments.*)",
                 FileRequestHandler,
-                dict(backend="survey", namespace="survey", endpoint=None),
+                dict(backend="survey", namespace="survey", endpoint="survey"),
             ),
             (
                 "/v1/(.*)/survey/([a-zA-Z_0-9]+/backup.*)",
                 FileRequestHandler,
-                dict(backend="survey", namespace="survey", endpoint=None),
+                dict(backend="survey", namespace="survey", endpoint="survey"),
             ),
             ("/v1/(.*)/survey/resumables", ResumablesHandler, dict(backend="survey")),
             (
