@@ -165,14 +165,16 @@ def set_config() -> None:
             "accept_calls_per_event_loop"
         ]
     options.logging = _config.get("log_level", "info")
-    try:  # limit size to 1
+    try:
         projects_pool = postgres_init(
             {
                 "user": _config.get("iamdb_user"),
                 "pw": _config.get("iamdb_pw"),
                 "host": _config.get("iamdb_host"),
                 "dbname": _config.get("iamdb_dbname"),
-            }
+            },
+            min_conn=1,
+            max_conn=2,
         )
     except Exception as e:
         projects_pool = None
