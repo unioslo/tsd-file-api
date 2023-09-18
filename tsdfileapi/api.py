@@ -2747,7 +2747,7 @@ class TestTokenHandler(RequestHandler):
 class Backends:
     default_routes = {
         "health": [
-            ("/v1/(.*)/files/health", HealthCheckHandler),
+            ("/v1/([^/]+)/files/health", HealthCheckHandler),
         ],
         "runtime_configuration": [
             ("/v1/admin.*", RunTimeConfigurationHandler),
