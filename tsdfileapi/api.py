@@ -2753,8 +2753,8 @@ class Backends:
             ("/v1/admin.*", RunTimeConfigurationHandler),
         ],
         "audit_log_viewer": [
-            ("/v1/(.+)/logs", AuditLogViewerHandler),
-            ("/v1/(.+)/logs/(.+)", AuditLogViewerHandler),
+            ("/v1/([^/]+)/logs", AuditLogViewerHandler),
+            ("/v1/([^/]+)/logs/(.+)", AuditLogViewerHandler),
         ],
         "config": [
             ("/v1/all/config", ConfigHandler),
