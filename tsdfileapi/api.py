@@ -2760,7 +2760,7 @@ class Backends:
             ("/v1/all/config", ConfigHandler),
         ],
         "token": [
-            ("/v1/(.+)/token", TestTokenHandler),
+            ("/v1/([^/]+)/token", TestTokenHandler),
         ],
     }
 
