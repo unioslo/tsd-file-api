@@ -11,6 +11,8 @@ RUN apt-get update && apt-get install -y \
 
 FROM docker.io/python:${PYTHON_VERSION} AS build
 
+RUN apt-get install libpq-dev
+
 # install Poetry
 ARG POETRY_VERSION="1.3.2"
 RUN pip install poetry==${POETRY_VERSION}

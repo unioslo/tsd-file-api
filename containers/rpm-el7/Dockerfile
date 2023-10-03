@@ -8,6 +8,7 @@ RUN yum -y install epel-release
 RUN yum -y install gcc\
                    git\
                    libsodium\
+                   postgresql-devel\
                    openssl\
                    sudo
 

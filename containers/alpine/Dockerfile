@@ -14,7 +14,7 @@ FROM docker.io/python:${PYTHON_VERSION}-alpine AS build
 RUN apk --no-cache add \
     alpine-sdk \
     libffi-dev \
-    postgresql-dev
+    libpq-dev
 
 # install Poetry
 ARG POETRY_VERSION="1.3.2"
