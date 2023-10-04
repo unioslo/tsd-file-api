@@ -10,6 +10,7 @@ on:
       - pyproject.toml
       - poetry.lock
   pull_request:
+    types: [opened, reopened, synchronize]
     paths:
       - .github/workflows/audit.yaml
       - pyproject.toml
@@ -20,6 +21,7 @@ on:
 jobs:
   export-requirements:
     runs-on: ubuntu-latest
+    if: github.event_name == 'push' || (github.event_name == 'pull_request' && github.event.pull_request.head.repo.owner.login != github.repository_owner)
     steps:
       - uses: actions/checkout@v3
       - name: Install Poetry
