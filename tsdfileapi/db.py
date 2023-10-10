@@ -102,7 +102,7 @@ def sqlite_init(
 
 
 def postgres_init(
-    dbconfig: dict, min_conn: int = 2, max_conn: int = 4
+    dbconfig: dict, min_conn: int = 1, max_conn: int = 2
 ) -> psycopg2.pool.SimpleConnectionPool:
     dsn = f"dbname={dbconfig['dbname']} user={dbconfig['user']} password={dbconfig['pw']} host={dbconfig['host']}"
     pool = psycopg2.pool.SimpleConnectionPool(min_conn, max_conn, dsn)
