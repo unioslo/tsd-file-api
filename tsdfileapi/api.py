@@ -183,6 +183,7 @@ def set_config() -> None:
     define("tenant_storage_cache", {})
     define("prefer_ess", _config.get("prefer_ess", []))
     define("sns_migrations", _config.get("sns_migrations", []))
+    define("backup_days", _config.get("backup_days", 90))
 
 
 set_config()
@@ -2001,6 +2002,7 @@ class FileRequestHandler(AuthRequestHandler):
 
             os.makedirs(os.path.dirname(restore_target), exist_ok=True)
             if os.path.isdir(self.filepath):
+                # TODO: check that it is not older than the allowed retention time
                 restores = os.listdir(self.filepath)
                 shutil.copytree(self.filepath, restore_target, dirs_exist_ok=True)
                 self.restores = list(
@@ -2221,7 +2223,11 @@ class GenericTableHandler(AuthRequestHandler):
                 self.engine = sqlite_init(
                     self.tenant_dir, name=self.db_name, builtin=True
                 )
-                self.db = SqliteBackend(self.engine, requestor=self.requestor)
+                self.db = SqliteBackend(
+                    self.engine,
+                    requestor=self.requestor,
+                    backup_days=options.backup_days,
+                )
             elif self.dbtype == "postgres":
                 if self.backend == "apps_tables":
                     app_name = self.request.uri.split("/")[4]
@@ -2232,6 +2238,7 @@ class GenericTableHandler(AuthRequestHandler):
                     options.pgpools.get(self.backend),
                     schema=schema,
                     requestor=self.requestor,
+                    backup_days=options.backup_days,
                 )
         except Exception as e:
             error = error_for_exception(e, details=self.additional_log_details())
