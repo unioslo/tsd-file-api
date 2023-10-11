@@ -33,6 +33,8 @@ backends:
         - schemas/metadata
         - schemas/tasks
       mq:
+      backup_deletes:
+        backup_days: 90
     publication:
       db:
         engine: postgres
@@ -164,6 +166,7 @@ backends:
         enabled: false
       backup_deletes:
         path_regex: "(/.+/survey/[0-9]+)/(attachments)(.*)"
+        backup_days: 90
 create_tenant_dir: true
 data_folder: /file-api/tsdfileapi/data
 debug: true
