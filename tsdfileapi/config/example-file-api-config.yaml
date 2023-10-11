@@ -12,7 +12,7 @@ valid_tenant_regex: '^[0-9a-z]+$'
 tenant_string_pattern: 'pXX'
 export_max_num_list: 100
 export_chunk_size: 512000
-
+backup_days: 90
 # endpoint backends
 backends:
   disk:
