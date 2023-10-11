@@ -130,6 +130,8 @@ backends:
       import_path: /tmp/pXX/survey
       export_max_num_list: None
       export_path: /tmp/pXX/export
+      backup_deletes:
+        backup_days: 90
     sns:
       request_hook:
         path: false
@@ -169,6 +171,8 @@ backends:
         path: /pXX/import
         mq: None
         table_structure: None
+      backup_deletes:
+        backup_days: 90
     apps_tables:
       db:
         engine: sqlite
