@@ -1,3 +1,4 @@
+import datetime
 import errno
 import hashlib
 import logging
@@ -25,6 +26,18 @@ PGP_KEY_FINGERPRINT = re.compile(r"^[0-9A-Z]{16}$")
 VALID_UUID = re.compile(r"([a-f\d0-9-]{32,36})")
 
 logger = logging.getLogger(__name__)
+
+
+def days_since_mod(path: str) -> int:
+    """
+    Calculate the amount of days that have elapsed
+    since the given path was modified.
+
+    """
+    current_moment = datetime.datetime.now()
+    mtime_moment = datetime.datetime.fromtimestamp(os.stat(path).st_mtime)
+    days_since = (current_moment - mtime_moment).days
+    return days_since
 
 
 def _rwxrwx___() -> int:
