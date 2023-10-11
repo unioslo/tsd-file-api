@@ -32,7 +32,6 @@ _config = {
     "jwt_test_secret": "jS25aQbePizfTsetg8LbFsNKl1W6wi4nQaBj705ofWA=",
     "jwt_secret": None,
     "allowed_symlinks": ["/var"],
-    "backup_days": 90,
     "nacl_public": {
         "public": "mZQEzkyi7bCvmDVfHGsU/7HX1+gT/R3PkSnyDU4OaiY=",
         "private": "fTEB1MZz8MskkZHSIM9ypxJc4e45Z8fmLGGXkUrp1hQ=",
@@ -125,7 +124,8 @@ _config = {
                     "default": {"enabled": False},
                 },
                 "backup_deletes": {
-                    "path_regex": "(/.+/survey/[0-9]+)/(attachments)(.*)"
+                    "path_regex": "(/.+/survey/[0-9]+)/(attachments)(.*)",
+                    "backup_days": 90,
                 },
             },
             "form_data": {
@@ -214,6 +214,9 @@ _config = {
                     "schemas/metadata",
                     "schemas/tasks",
                 ],
+                "backup_deletes": {
+                    "backup_days": 90,
+                },
             },
             "publication": {
                 "db": {

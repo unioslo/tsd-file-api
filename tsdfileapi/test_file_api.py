@@ -601,10 +601,11 @@ class TestFileApi(unittest.TestCase):
         self.assertTrue("another-amazing-file.json" in file_list)
 
         # manipulate the mtime of the backed up folder, to fall outside retention period
-        survey_path = (
-            self.config.get("backends").get("disk").get("survey").get("import_path")
+        survey_disk_config = self.config.get("backends").get("disk").get("survey")
+        survey_path = survey_disk_config.get("import_path")
+        retention_period = survey_disk_config.get("backup_deletes", {}).get(
+            "backup_days", 90
         )
-        retention_period = self.config.get("backup_days")
         new_mtime = int(
             (datetime.now() - timedelta(days=retention_period + 1)).timestamp()
         )
