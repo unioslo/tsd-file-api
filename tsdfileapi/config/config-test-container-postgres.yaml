@@ -210,4 +210,3 @@ test_user: p11-testing
 token_check_exp: true
 token_check_tenant: true
 valid_tenant_regex: ^[0-9a-z]+$
-backup_days: 90

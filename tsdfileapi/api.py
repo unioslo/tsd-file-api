@@ -184,7 +184,6 @@ def set_config() -> None:
     define("tenant_storage_cache", {})
     define("prefer_ess", _config.get("prefer_ess", []))
     define("sns_migrations", _config.get("sns_migrations", []))
-    define("backup_days", _config.get("backup_days", 90))
 
 
 set_config()
@@ -1055,6 +1054,9 @@ class FileRequestHandler(AuthRequestHandler):
         self.backup_deletes = self.backend_config.get("backup_deletes", {}).get(
             "path_regex"
         )
+        self.backup_days = self.backend_config.get("backup_deletes", {}).get(
+            "backup_days"
+        )
         self.restores = []
 
     @gen.coroutine
@@ -1580,7 +1582,7 @@ class FileRequestHandler(AuthRequestHandler):
         have been deleted.
 
         """
-        if not self.backup_deletes:
+        if not self.backup_deletes or not self.backup_days:
             return True  # irrelevant for backend
         backup_path = re.sub(self.backup_deletes, r"\1/backup/\2", path)
         if path != backup_path:
@@ -1592,7 +1594,7 @@ class FileRequestHandler(AuthRequestHandler):
         backup_src_dir = path_dir.replace("/backup/", "/")
         if os.path.lexists(backup_src_dir):
             return True  # can always restore when this exists
-        if days_since_mod(path_dir) > options.backup_days:
+        if days_since_mod(path_dir) > self.backup_days:
             return False  # older than retention period
         else:
             return True  # younger then retention period
@@ -2246,6 +2248,9 @@ class GenericTableHandler(AuthRequestHandler):
         self.mq_config = self.backend_config.get("mq")
         self.check_tenant = self.backend_config.get("check_tenant")
         self.restored = None
+        self.backup_days = self.backend_config.get("backup_deletes", {}).get(
+            "backup_days"
+        )
 
     def prepare(self) -> Optional[Awaitable[None]]:
         try:
@@ -2278,7 +2283,7 @@ class GenericTableHandler(AuthRequestHandler):
                 self.db = SqliteBackend(
                     self.engine,
                     requestor=self.requestor,
-                    backup_days=options.backup_days,
+                    backup_days=self.backup_days,
                 )
             elif self.dbtype == "postgres":
                 if self.backend == "apps_tables":
@@ -2290,7 +2295,7 @@ class GenericTableHandler(AuthRequestHandler):
                     options.pgpools.get(self.backend),
                     schema=schema,
                     requestor=self.requestor,
-                    backup_days=options.backup_days,
+                    backup_days=self.backup_days,
                 )
         except Exception as e:
             error = error_for_exception(e, details=self.additional_log_details())
