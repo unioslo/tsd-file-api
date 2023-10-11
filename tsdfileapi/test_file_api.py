@@ -13,6 +13,7 @@ import time
 import unittest
 import uuid
 from datetime import datetime
+from datetime import timedelta
 from typing import Optional
 
 import backoff
@@ -36,6 +37,7 @@ from tsdfileapi.tokens import get_test_token_for_p12
 from tsdfileapi.utils import choose_storage
 from tsdfileapi.utils import find_tenant_storage_path
 from tsdfileapi.utils import md5sum
+from tsdfileapi.utils import set_mtime
 from tsdfileapi.utils import sns_dir
 
 logger = logging.getLogger(__name__)
@@ -595,7 +597,34 @@ class TestFileApi(unittest.TestCase):
         # check the backup
         resp = requests.get(f"{self.survey}/123456/backup/attachments", headers=headers)
         self.assertEqual(resp.status_code, 200)
-        # check contents
+        file_list = map(lambda x: x.get("filename"), json.loads(resp.text).get("files"))
+        self.assertTrue("another-amazing-file.json" in file_list)
+
+        # manipulate the mtime of the backed up folder, to fall outside retention period
+        survey_path = (
+            self.config.get("backends").get("disk").get("survey").get("import_path")
+        )
+        retention_period = self.config.get("backup_days")
+        new_mtime = int(
+            (datetime.now() - timedelta(days=retention_period + 1)).timestamp()
+        )
+        target = f"{survey_path}/123456/backup/attachments".replace(
+            self.config.get("tenant_string_pattern"),
+            self.config.get("test_project"),
+        )
+        set_mtime(target, new_mtime)
+        resp = requests.get(f"{self.survey}/123456/backup/attachments", headers=headers)
+        self.assertEqual(resp.status_code, 404)  # not available anymore
+
+        # try to restore resource that is outside retention period
+        resp = requests.post(
+            f"{self.survey}/123456/backup/attachments?restore",
+            headers=headers,
+        )
+        self.assertEqual(resp.status_code, 404)
+
+        # reset mtime
+        set_mtime(target, int(time.time()))
 
         # now restore all deleted attachments
         resp = requests.post(
