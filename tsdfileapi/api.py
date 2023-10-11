@@ -79,6 +79,7 @@ from tsdfileapi.utils import any_path_islink
 from tsdfileapi.utils import call_request_hook
 from tsdfileapi.utils import check_filename
 from tsdfileapi.utils import choose_storage
+from tsdfileapi.utils import days_since_mod
 from tsdfileapi.utils import find_tenant_storage_path
 from tsdfileapi.utils import move_data_to_folder
 from tsdfileapi.utils import set_mtime
@@ -1558,6 +1559,44 @@ class FileRequestHandler(AuthRequestHandler):
             uri = self.request.uri
         return uri.split("?")[0]
 
+    def enforce_restore_policy(self, path: str) -> bool:
+        """
+        Some backend have backup enabled. In that case, when
+        resources (folders and/or files) are deleted, they are
+        copied to a backup folder before being removed.
+
+        The restore policy returns a boolean value which indicates whether
+        the given path is available for being restored.
+
+        E.g.:
+        - assume backup have a retention period of 90 days (the default, configurable)
+        - in the case of listing the backup directory, any folders or files
+          which were backed up longer than 90 days ago will be omitted from
+          the list
+        - in the case of downloading a file, trying to download a resource
+          which was backed up longer than 90 days ago will result in a 404
+
+        Retention restrictions only apply to files if their parent folders
+        have been deleted.
+
+        """
+        if not self.backup_deletes:
+            return True  # irrelevant for backend
+        backup_path = re.sub(self.backup_deletes, r"\1/backup/\2", path)
+        if path != backup_path:
+            return True  # only applies to backed up resources
+        if not os.path.isdir(path):
+            path_dir = os.path.dirname(path)
+        else:
+            path_dir = path
+        backup_src_dir = path_dir.replace("/backup/", "/")
+        if os.path.lexists(backup_src_dir):
+            return True  # can always restore when this exists
+        if days_since_mod(path_dir) > options.backup_days:
+            return False  # older than retention period
+        else:
+            return True  # younger then retention period
+
     def list_files(self, path: str, tenant: str, root: str) -> None:
         """
         List a directory.
@@ -1646,13 +1685,19 @@ class FileRequestHandler(AuthRequestHandler):
                 default_owner = options.default_file_owner.replace(
                     options.tenant_string_pattern, tenant
                 )
+                if not self.enforce_restore_policy(path):
+                    raise ClientResourceNotFoundError(
+                        f"backup for {path} no longer available"
+                    )
                 for file in files:
                     filepath = file.path
+                    if not self.enforce_restore_policy(filepath):
+                        continue  # don't list it
                     size, mime_type, latest = self.get_file_metadata(filepath)
-                    status = self.enforce_export_policy(
+                    export_status = self.enforce_export_policy(
                         self.export_policy, filepath, tenant, size, mime_type
                     )
-                    reason = None if status else "not allowed"
+                    reason = None if export_status else "access not authorized"
                     path_stat = file.stat(follow_symlinks=False)
                     etag = self.mtime_to_digest(latest)
                     date_time = str(datetime.datetime.fromtimestamp(latest).isoformat())
@@ -1674,7 +1719,7 @@ class FileRequestHandler(AuthRequestHandler):
                         owner = options.api_user
                     names.append(os.path.basename(filepath))
                     times.append(date_time)
-                    exportable.append(status)
+                    exportable.append(export_status)
                     reasons.append(reason)
                     sizes.append(size)
                     mimes.append(mime_type)
@@ -1809,6 +1854,8 @@ class FileRequestHandler(AuthRequestHandler):
                 self.export_policy, self.filepath, tenant, size, mime_type
             ):
                 raise ClientError("export policy violation")
+            if not self.enforce_restore_policy(self.filepath):
+                raise ClientResourceNotFoundError(f"{self.filepath} not found")
             encrypt_data = False
             if "Nacl-Nonce" in self.request.headers.keys():
                 self.decrypt_nacl_headers(self.request.headers)
@@ -1998,11 +2045,16 @@ class FileRequestHandler(AuthRequestHandler):
                 raise ClientError("Missing rpc directive in URI")
             if "backup" not in self.resource:
                 raise ClientMethodNotAllowed
+
+            if not self.enforce_restore_policy(self.filepath):
+                raise ClientResourceNotFoundError(
+                    f"backup for {self.filepath} no longer available"
+                )
+
             restore_target = self.filepath.replace("/backup/", "/")
 
             os.makedirs(os.path.dirname(restore_target), exist_ok=True)
             if os.path.isdir(self.filepath):
-                # TODO: check that it is not older than the allowed retention time
                 restores = os.listdir(self.filepath)
                 shutil.copytree(self.filepath, restore_target, dirs_exist_ok=True)
                 self.restores = list(
