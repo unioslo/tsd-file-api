@@ -1623,6 +1623,7 @@ class FileRequestHandler(AuthRequestHandler):
         current_page = 0
         pagination_value = 100
         disable_metadata = self.get_query_argument("disable_metadata", None)
+        max_page = 50000
         try:
             current_page = int(self.get_query_argument("page"))
             pagination_value = int(self.get_query_argument("per_page"))
@@ -1632,8 +1633,8 @@ class FileRequestHandler(AuthRequestHandler):
             raise ClientError("next values must be integers")
         if current_page < 0:
             raise ClientError("next values are natural numbers")
-        if pagination_value > 50000:
-            raise ClientError("per_page cannot exceed 1000")
+        if pagination_value > max_page:
+            raise ClientError(f"per_page cannot exceed {max_page}")
 
         # don't list symlinked directories
         try:
