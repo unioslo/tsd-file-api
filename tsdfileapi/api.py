@@ -2676,6 +2676,10 @@ class HealthCheckHandler(RequestHandler):
         self.set_status(HTTPStatus.OK.value)
         self.write({"message": "healthy"})
 
+    def get(self, tenant: str) -> None:
+        self.set_status(HTTPStatus.OK.value)
+        self.write({"message": "healthy"})
+
 
 class NaclKeyHander(RequestHandler):
     def get(self, tenant: str) -> None:
