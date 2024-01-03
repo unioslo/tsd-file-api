@@ -48,11 +48,11 @@ def get_projects_migration_status(
             """select
                     project_number,
                     case
-                        when project_metadata->>'storage_backend' is null then 'hnas'
+                        when project_metadata->>'storage_backend' is null then 'ess'
                         else project_metadata->>'storage_backend'
                     end as storage_backend,
                     case
-                        when project_metadata->>'sns_ess_delivery' is null then false
+                        when project_metadata->>'sns_ess_delivery' is null then true
                         else cast(project_metadata->'sns_ess_delivery'->>'enabled' as boolean)
                     end as sns_ess_delivery,
                     case
@@ -60,15 +60,15 @@ def get_projects_migration_status(
                         else cast(project_metadata->'sns_loader_processing'->>'done' as boolean)
                     end as sns_loader_processing,
                     case
-                        when project_metadata->>'sns_ess_migration' is null then false
+                        when project_metadata->>'sns_ess_migration' is null then true
                         else cast(project_metadata->'sns_ess_migration'->>'done' as boolean)
                     end as sns_ess_migration,
                     case
-                        when project_metadata->>'publication_backend' is null then 'hnas'
+                        when project_metadata->>'publication_backend' is null then 'ess'
                         else project_metadata->>'publication_backend'
                     end as publication_backend,
                     case
-                        when project_metadata->>'survey_backend' is null then 'hnas'
+                        when project_metadata->>'survey_backend' is null then 'ess'
                         else project_metadata->>'survey_backend'
                     end as survey_backend
                 from projects
