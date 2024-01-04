@@ -2231,11 +2231,14 @@ class GenericTableHandler(AuthRequestHandler):
     """
 
     def create_table_name(self, table_name: str) -> str:
-        return table_name.replace("/", "_")
+        name = table_name.replace("/", "_")
+        return name
 
     def get_uri_query(self, uri: str) -> str:
         if "?" in uri:
-            return url_unescape(uri.split("?")[-1])
+            q = uri.split("?")[-1]
+            esc = url_unescape(q)
+            return esc
         else:
             return ""
 
@@ -2428,10 +2431,15 @@ class GenericTableHandler(AuthRequestHandler):
                     self.set_header("Content-Type", "application/json")
                     query = self.get_uri_query(self.request.uri)
                     # don't include metadata and audit tables
-                    # when broadcasting an aggregate query with *
+                    # when broadcasting a query with *
                     # unless the URI specifies they should be
+                    excludes = []
+                    default_excludes = {"/audit": "_audit", "/metadata": "_metadata"}
+                    for k, v in default_excludes.items():
+                        if not self.request.uri.split("?")[0].endswith(k):
+                            excludes.append(v)
                     results = self.db.table_select(
-                        table_name, query, exclude_endswith=["_audit", "_metadata"]
+                        table_name, query, exclude_endswith=excludes
                     )
                     # At this point the query was created and determined valid
                     encrypt_data = False

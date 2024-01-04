@@ -833,6 +833,134 @@ class TestFileApi(unittest.TestCase):
         )
         self.assertEqual(resp.status_code, 200)
 
+    def test_survey_api_queries(self) -> None:
+        headers = {"Authorization": "Bearer " + TEST_TOKENS["VALID"]}
+
+        # add data
+        sub1 = {
+            "answers": {"pk": 0, "x": 4, "y": 0, "z": "meh"},
+            "metadata": {"food": "sisselrot"},
+        }
+        sub2 = {
+            "answers": {"pk": 1, "x": 9, "y": 8, "z": ":), :|, :("},
+            "metadata": {"food": "strutseving"},
+        }
+        meta = {
+            "answers": {"pk": "int", "x": "int", "y": "int"},
+            "metadata": {"food": "str"},
+        }
+        submissions = [sub1, sub2]
+
+        formid = "11223344"
+        resp = requests.put(
+            f"{self.base_url}/survey/{formid}/submissions",
+            data=json.dumps(submissions),
+            headers=headers,
+        )
+        self.assertEqual(resp.status_code, 201)
+        resp = requests.put(
+            f"{self.base_url}/survey/{formid}/metadata",
+            data=json.dumps(meta),
+            headers=headers,
+        )
+        self.assertEqual(resp.status_code, 201)
+
+        formid = "55667788"
+        resp = requests.put(
+            f"{self.base_url}/survey/{formid}/submissions",
+            data=json.dumps(submissions),
+            headers=headers,
+        )
+        self.assertEqual(resp.status_code, 201)
+        resp = requests.put(
+            f"{self.base_url}/survey/{formid}/metadata",
+            data=json.dumps(meta),
+            headers=headers,
+        )
+        self.assertEqual(resp.status_code, 201)
+
+        formid = "11999999"
+        resp = requests.put(
+            f"{self.base_url}/survey/{formid}/submissions",
+            data=json.dumps(submissions),
+            headers=headers,
+        )
+        self.assertEqual(resp.status_code, 201)
+        resp = requests.put(
+            f"{self.base_url}/survey/{formid}/metadata",
+            data=json.dumps(meta),
+            headers=headers,
+        )
+        self.assertEqual(resp.status_code, 201)
+
+        # fuzzy matching, aggregate
+        resp = requests.get(
+            f"{self.base_url}/survey/11*/submissions?select=count(*)",
+            headers=headers,
+        )
+        out = json.loads(resp.text)
+        self.assertEqual(len(out), 2)
+        for entry in out:
+            for k in ["11223344", "11999999"]:
+                num = entry.get(k)
+                if num:
+                    self.assertEqual(num, [2])
+
+        # fuzzy matching, non aggregate
+        resp = requests.get(
+            f"{self.base_url}/survey/11*/submissions?where=metadata.food=eq.sisselrot",
+            headers=headers,
+        )
+        out = json.loads(resp.text)
+        self.assertEqual(len(out), 2)
+        for entry in out:
+            for k, v in entry.items():
+                self.assertTrue(k in ["11223344", "11999999"])
+                self.assertTrue(len(v) == 1)
+
+        resp = requests.get(
+            f"{self.base_url}/survey/*/metadata",
+            headers=headers,
+        )
+        out = json.loads(resp.text)
+        self.assertEqual(len(out), 3)
+
+        # quoting
+        resp = requests.get(
+            f"{self.base_url}/survey/11223344/submissions?select=answers.x&where=answers.z=eq.':), :|, :('",
+            headers=headers,
+        )
+        out = json.loads(resp.text)
+        self.assertEqual(out, [[9]])
+
+        # set to null
+        resp = requests.patch(
+            f"{self.base_url}/survey/11223344/submissions?set=answers&where=answers.z=eq.meh",
+            headers=headers,
+            data=json.dumps({"answers": None}),
+        )
+        resp = requests.get(
+            f"{self.base_url}/survey/11223344/submissions?where=metadata.food=eq.sisselrot",
+            headers=headers,
+        )
+        out = json.loads(resp.text)
+        self.assertEqual(out[0].get("answers"), None)
+
+        # cleanup
+        for formid in ["11223344", "11999999", "55667788"]:
+            requests.delete(
+                f"{self.base_url}/survey/{formid}/submissions",
+                headers=headers,
+            )
+            requests.delete(
+                f"{self.base_url}/survey/{formid}/metadata",
+                headers=headers,
+            )
+            requests.delete(
+                f"{self.base_url}/survey/{formid}/audit",
+                headers=headers,
+            )
+
     def test_XXX_load(self) -> None:
         numrows = 250000  # responses per survey
         numkeys = 1500  # questions per survey
@@ -2745,6 +2873,7 @@ def main() -> None:
     ns = [
         "test_XXX_query_invalid",
         "test_XXX_nettskjema_backend",
+        "test_survey_api_queries",
     ]
     load = ["test_XXX_load"]
     apps = [
