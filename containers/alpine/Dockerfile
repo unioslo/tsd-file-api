@@ -4,8 +4,10 @@ FROM docker.io/python:${PYTHON_VERSION}-alpine AS base
 RUN apk --no-cache add \
     libmagic \
     libpq \
-    libsodium \
     sudo
+
+# Temporary workaround for libnacl not supporting new version of libsodium
+RUN apk add --no-cache --repository=https://dl-cdn.alpinelinux.org/alpine/v3.18/main "libsodium=1.0.18-r3"
 
 
 FROM docker.io/python:${PYTHON_VERSION}-alpine AS build
