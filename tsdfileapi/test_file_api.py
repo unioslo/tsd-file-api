@@ -21,6 +21,7 @@ import libnacl.public
 import libnacl.sealed
 import libnacl.utils
 import requests
+from pysquril.backends import PostgresBackend
 from pysquril.backends import postgres_session
 from tornado.escape import url_escape
 from tornado.httpclient import HTTPClient
@@ -219,13 +220,6 @@ class TestFileApi(unittest.TestCase):
                 except OSError as e:
                     logger.error(e)
                     continue
-        sqlite_path = cls.uploads_folder + "/api-data.db"
-        try:
-            # os.remove(sqlite_path)
-            pass
-        except OSError:
-            print("no tables to cleanup")
-            return
 
     # Import Auth
     # ------------
@@ -1081,7 +1075,7 @@ class TestFileApi(unittest.TestCase):
             "Authorization": "Bearer " + token,
             "Filename": "testing-chowner.txt",
         }
-        resp = requests.put(
+        requests.put(
             self.stream, data=lazy_file_reader(self.example_gz_aes), headers=headers
         )
         intended_owner = pwd.getpwnam(self.test_user).pw_uid
@@ -1344,7 +1338,7 @@ class TestFileApi(unittest.TestCase):
         url = f"{self.resumables}/{filename}"
         print("---> resume should fail:")
         # now this _should_ start a new upload due to md5 mismatch
-        resp = fileapi.initiate_resumable(
+        fileapi.initiate_resumable(
             proj,
             self.test_project,
             filepath,
@@ -1361,7 +1355,6 @@ class TestFileApi(unittest.TestCase):
 
     def test_ZR_cancel_resumable(self) -> None:
         cs = 5
-        proj = ""
         filepath = self.resume_file2
         filename = os.path.basename(filepath)
         upload_id = self.start_new_resumable(filepath, chunksize=cs, stop_at=1)
@@ -1419,7 +1412,6 @@ class TestFileApi(unittest.TestCase):
         resp = requests.get(
             self.resumables, headers={"Authorization": "Bearer " + token}
         )
-        data = json.loads(resp.text)
         self.assertEqual(resp.status_code, 200)
         uploaded_folder1 = self.uploads_folder + "/" + upload_id1
         uploaded_folder2 = self.uploads_folder + "/" + upload_id2
@@ -1443,7 +1435,7 @@ class TestFileApi(unittest.TestCase):
         url = f"{self.resumables}/{filename}"
         token = TEST_TOKENS["VALID"]
         print("---> going to resume from chunk 2, with a new chunk size:")
-        resp = fileapi.initiate_resumable(
+        fileapi.initiate_resumable(
             "",
             self.test_project,
             filepath,
@@ -1521,8 +1513,6 @@ class TestFileApi(unittest.TestCase):
         )
         self.assertEqual(resp.status_code, 403)
         uploaded_folder1 = self.uploads_folder + "/" + upload_id1
-        merged_file1 = self.uploads_folder + "/" + filename + "." + upload_id1
-        uploaded_folder2 = self.uploads_folder + "/" + upload_id2
         merged_file2 = self.uploads_folder + "/" + filename + "." + upload_id2
         try:
             shutil.rmtree(uploaded_folder1)
@@ -1817,7 +1807,7 @@ class TestFileApi(unittest.TestCase):
         self.assertEqual(response.code, 400)
         try:
             shutil.rmtree(f"{self.publication_import_folder}/{test_dir}")
-        except OSError as e:
+        except OSError:
             pass
         # 3. merged resumable files
         file = f"file.{str(uuid.uuid4())}"
@@ -1920,7 +1910,7 @@ class TestFileApi(unittest.TestCase):
         self.assertEqual(resp.status_code, 400)
         try:
             shutil.rmtree(f"{dirs}")
-        except OSError as e:
+        except OSError:
             pass
         # posix backend
         resp = requests.get(f"{self.export}/data-folder", headers=headers)
@@ -1990,7 +1980,7 @@ class TestFileApi(unittest.TestCase):
         self.assertEqual(resp.status_code, 200)
         try:
             shutil.rmtree(f"{dirs}")
-        except OSError as e:
+        except OSError:
             pass
 
     def test_ZZZ_delete(self) -> None:
@@ -2021,7 +2011,7 @@ class TestFileApi(unittest.TestCase):
         self.assertEqual(resp.status_code, 404)
         try:
             shutil.rmtree(f"{dirs}")
-        except OSError as e:
+        except OSError:
             pass
 
     def test_token_signature_validation(self) -> None:
@@ -2068,20 +2058,20 @@ class TestFileApi(unittest.TestCase):
             resp = requests.delete(
                 f"{self.apps}/ega/tables/user_data?where=key1=gte.0", headers=headers
             )
-        except Exception as e:
+        except Exception:
             pass
         try:
             resp = requests.delete(
                 f"{self.apps}/ega/tables/user_data/metadata?where=key1=gte.0",
                 headers=headers,
             )
-        except Exception as e:
+        except Exception:
             pass
         try:
             resp = requests.delete(
                 f"{self.apps}/ega/tables/persons/pid1", headers=headers
             )
-        except Exception as e:
+        except Exception:
             pass
 
         # add some data
@@ -2345,8 +2335,6 @@ class TestFileApi(unittest.TestCase):
 
         # write an encryptde stream to a file (save a stream)
         chunk_size = 10
-        smaller = []
-        larger = []
         with open("/tmp/lines", "w") as f:
             for i in range(20):
                 f.write(f"{i} good day sir, hwo are you doing? ")
@@ -2927,8 +2915,6 @@ def main() -> None:
         tests.extend(ns)
     if "load" in sys.argv:
         tests.extend(load)
-    if "db" in sys.argv:
-        tests.extend(db)
     if "apps" in sys.argv:
         tests.extend(apps)
     if "crypt" in sys.argv:

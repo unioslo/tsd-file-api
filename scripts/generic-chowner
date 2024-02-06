@@ -17,7 +17,6 @@ import grp
 import logging
 import os
 import pwd
-import re
 import shutil
 import stat
 from sys import argv
@@ -73,12 +72,9 @@ def change_owner_and_mode(path, username, api_user, group_name):
             return True
         elif current_file_owner == api_user:
             pass
-        elif pnum_is_consistent_in_user_input(path, current_file_owner):
-            pass
         else:
             logger.error("not allowed to change ownership of %s to %s", path, username)
             return False
-        pnum = path.split("/")[2]
         group = grp.getgrnam(group_name).gr_gid
     except Exception as e:
         logger.error(e)
@@ -120,7 +116,6 @@ def move_data_to_group_folder(path, group_name, api_user):
     try:
         path_segments = path.split("/")
         filename = path_segments[-1]
-        pnum = path_segments[2]
         new_base_path = path.replace(filename, group_name)
         group_folder = os.path.normpath(new_base_path)
         if not os.path.lexists(group_folder):

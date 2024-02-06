@@ -22,7 +22,6 @@ from sqlalchemy.exc import StatementError
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import QueuePool
 
-
 _IS_VALID_UUID = re.compile(r"([a-f\d0-9-]{32,36})")
 _RW______ = stat.S_IREAD | stat.S_IWRITE
 
@@ -372,7 +371,6 @@ class SerialResumable(AbstractResumable):
         key: str = None,
     ) -> dict:
         potential_resumables = self._db_get_all_resumable_ids_for_owner(key=key)
-        resumables = []
         info = []
         for item in potential_resumables:
             chunk_size = None
@@ -397,7 +395,7 @@ class SerialResumable(AbstractResumable):
                 if chunk_size:
                     try:
                         group = self._db_get_group(pr)
-                    except Exception as e:
+                    except Exception:
                         group = None
                     key = None
                     try:
@@ -571,7 +569,7 @@ class SerialResumable(AbstractResumable):
         identifier = upload_id if upload_id else relevant_dir
         try:
             group = self._db_get_group(identifier)
-        except Exception as e:
+        except Exception:
             group = None
         try:
             key = self._db_get_key(identifier)
@@ -801,7 +799,7 @@ class SerialResumable(AbstractResumable):
                         f"""
                         alter table {resumable_accounting_table} add column key text"""
                     )
-                except OperationalError as e:
+                except OperationalError:
                     pass  # ^ already altered the table before
             session.execute(
                 f"""
@@ -834,7 +832,7 @@ class SerialResumable(AbstractResumable):
     def _db_pop_chunk(self, resumable_id: str, chunk_num: int) -> bool:
         resumable_table = f"resumable_{resumable_id}"
         with session_scope(self.engine) as session:
-            res = session.execute(
+            session.execute(
                 f"""
                 delete from "{resumable_table}"
                 where chunk_num = :chunk_num""",

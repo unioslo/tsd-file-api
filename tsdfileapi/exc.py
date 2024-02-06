@@ -10,8 +10,8 @@ References:
 
 import errno
 from collections import namedtuple
-from http import client
 from http import HTTPStatus
+from http import client
 from typing import List
 from typing import Union
 

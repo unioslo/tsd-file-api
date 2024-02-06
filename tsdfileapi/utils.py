@@ -305,7 +305,6 @@ def move_data_to_folder(path: str, dest: str) -> Union[str, bool]:
         if not dest:
             return path
         filename = os.path.basename(path)
-        base_dir = path.replace(f"/{filename}", "")
         new_path = os.path.normpath(dest + "/" + filename)
         if os.path.isdir(path):
             if os.path.lexists(new_path):
@@ -343,7 +342,7 @@ def any_path_islink(
     if isinstance(path, str):
         path = pathlib.Path(path)
     while path != path.parent:
-        if path.is_symlink() and not path in allowed_symlinks:
+        if path.is_symlink() and path not in allowed_symlinks:
             raise ClientIllegalFiletypeError(
                 f"Path '{path}' is a symlink to '{os.readlink(path)}'."
             )

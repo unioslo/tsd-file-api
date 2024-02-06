@@ -39,6 +39,9 @@ vcs = "git"
 style = "pep440"
 bump = true
 
+[tool.ruff.lint]
+select = ["F", "I"]
+
 [tool.ruff.lint.isort]
 force-single-line = true
 

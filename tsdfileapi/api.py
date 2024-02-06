@@ -66,15 +66,16 @@ from tsdfileapi.exc import ClientMethodNotAllowed
 from tsdfileapi.exc import ClientNaclChunkSizeError
 from tsdfileapi.exc import ClientReservedResourceError
 from tsdfileapi.exc import ClientResourceNotFoundError
-from tsdfileapi.exc import error_for_exception
 from tsdfileapi.exc import ServerMaintenanceError
 from tsdfileapi.exc import ServerSnsError
+from tsdfileapi.exc import error_for_exception
 from tsdfileapi.resumables import ResumableIncorrectChunkOrderError
 from tsdfileapi.resumables import ResumableNotFoundError
 from tsdfileapi.resumables import SerialResumable
 from tsdfileapi.rmq import PikaClient
 from tsdfileapi.tokens import gen_test_jwt_secrets
 from tsdfileapi.tokens import tkn
+from tsdfileapi.utils import VALID_UUID
 from tsdfileapi.utils import _rwxrws___
 from tsdfileapi.utils import any_path_islink
 from tsdfileapi.utils import call_request_hook
@@ -86,8 +87,6 @@ from tsdfileapi.utils import move_data_to_folder
 from tsdfileapi.utils import set_mtime
 from tsdfileapi.utils import sns_dir
 from tsdfileapi.utils import tenant_from_url
-from tsdfileapi.utils import VALID_UUID
-
 
 _RW______ = stat.S_IREAD | stat.S_IWRITE
 _RW_RW___ = _RW______ | stat.S_IRGRP | stat.S_IWGRP
@@ -105,7 +104,7 @@ def read_config(filename: str) -> dict:
 def set_config() -> None:
     try:
         _config = read_config(argv[1])
-    except IndexError as e:
+    except IndexError:
         print(colored("Missing config file, running with default setup", "yellow"))
         print(colored("WARNING: do _not_ do this in production", "red"))
         from tsdfileapi.defaults import _config
@@ -178,7 +177,7 @@ def set_config() -> None:
             min_conn=1,
             max_conn=2,
         )
-    except Exception as e:
+    except Exception:
         projects_pool = None
     define("projects_pool", projects_pool)
     define("migration_statuses", get_projects_migration_status(projects_pool))
@@ -196,8 +195,8 @@ def handle_iam_projects_events(
 ) -> bool:
     conn.poll()
     while conn.notifies:
-        notify = conn.notifies.pop(0)
-    logger.info(f"reloading project info")
+        conn.notifies.pop(0)
+    logger.info("reloading project info")
     options.migration_statuses = get_projects_migration_status(options.projects_pool)
 
 
@@ -284,7 +283,7 @@ class AuthRequestHandler(RequestHandler):
             self.claims = authnz.get("claims")
             self.requestor = self.claims[options.requestor_claim_name]
             return authnz
-        except IndexError as e:
+        except IndexError:
             raise ClientAuthorizationError(
                 "Authorization not possible: malformed header"
             )
@@ -308,7 +307,7 @@ class AuthRequestHandler(RequestHandler):
             )
         try:
             group_name = url_unescape(self.get_query_argument("group"))
-        except HTTPError as e:
+        except HTTPError:
             # first check if it is in the url
             found = re.sub(
                 r"/v1/.+/(p[0-9]+-[a-zA-Z0-9-]+-group).*", r"\1", self.request.uri
@@ -324,7 +323,7 @@ class AuthRequestHandler(RequestHandler):
                 group_name = found
         try:
             group_memberships = authnz_status["claims"]["groups"]
-        except Exception as e:
+        except Exception:
             logger.info(
                 "Could not get group memberships - choosing default memberships"
             )
@@ -652,7 +651,7 @@ class AuthRequestHandler(RequestHandler):
                 or method not in backends.get(backend).get("methods")
             ):
                 return
-        except (AttributeError, KeyError, AssertionError) as e:
+        except (AttributeError, KeyError, AssertionError):
             return
         try:
             engine_type = options.request_log.get("db").get("engine")
@@ -979,7 +978,7 @@ class ResumablesHandler(AuthRequestHandler):
                 )
             self.set_status(HTTPStatus.OK.value)
             self.write(info)
-        except ResumableNotFoundError as e:
+        except ResumableNotFoundError:
             self.set_status(HTTPStatus.NOT_FOUND.value)
             self.write({"message": "not found"})
         except Exception as e:
@@ -1314,7 +1313,7 @@ class FileRequestHandler(AuthRequestHandler):
                     elif self.request.method == "PATCH":
                         if not self.completed_resumable_file:
                             self.target_file = self.res.open_file(self.path, filemode)
-        except ResumableIncorrectChunkOrderError as e:
+        except ResumableIncorrectChunkOrderError:
             self.set_status(HTTPStatus.BAD_REQUEST.value)
             self.finish({"message": "chunk_order_incorrect"})
         except Exception as e:
@@ -1474,7 +1473,7 @@ class FileRequestHandler(AuthRequestHandler):
         try:
             file = os.path.basename(filename)
             check_filename(file, disallowed_start_chars=options.start_chars)
-        except Exception as e:
+        except Exception:
             logger.error(f"Illegal export filename: {file}")
             return status
         try:
@@ -1631,7 +1630,7 @@ class FileRequestHandler(AuthRequestHandler):
         try:
             current_page = int(self.get_query_argument("page"))
             pagination_value = int(self.get_query_argument("per_page"))
-        except HTTPError as e:
+        except HTTPError:
             pass  # use default value
         except ValueError:
             raise ClientError("next values must be integers")
@@ -1643,7 +1642,7 @@ class FileRequestHandler(AuthRequestHandler):
         # don't list symlinked directories
         try:
             any_path_islink(path, opts=options)
-        except Exception as e:
+        except Exception:
             self.write({"files": [], "page": None})
             return
 
@@ -1905,7 +1904,7 @@ class FileRequestHandler(AuthRequestHandler):
                 cursor_start = client_start
                 try:
                     client_end = int(start_and_end[1])
-                except Exception as e:
+                except Exception:
                     client_end = full_file_size - 1
                 if client_end > full_file_size:
                     raise ClientContentRangeError(
@@ -1944,7 +1943,7 @@ class FileRequestHandler(AuthRequestHandler):
         finally:
             try:
                 fd.close()
-            except (OSError, UnboundLocalError) as e:
+            except (OSError, UnboundLocalError):
                 pass
             self.finish()
 
@@ -2071,7 +2070,7 @@ class FileRequestHandler(AuthRequestHandler):
                     "/backup/", "/"
                 )
             else:
-                restored = shutil.move(self.filepath, restore_target)
+                shutil.move(self.filepath, restore_target)
                 restores = [os.path.basename(filename)]
                 self.restores = [restore_target]
                 self.restore_uri = os.path.dirname(
@@ -2107,7 +2106,7 @@ class FileRequestHandler(AuthRequestHandler):
                     try:
                         # switch path variables back
                         if not self.completed_resumable_file:
-                            path, path_part = self.path_part, self.path
+                            path = self.path_part
                         else:
                             path = self.completed_resumable_filename
                         resource_path = move_data_to_folder(path, self.resource_dir)
@@ -2791,7 +2790,7 @@ class AuditLogViewerHandler(AuthRequestHandler):
         except (psycopg2.errors.UndefinedTable, sqlite3.OperationalError) as e:
             logger.error(e)
             self.set_status(HTTPStatus.NOT_FOUND.value)
-            self.write({"message": f"no logs available"})
+            self.write({"message": "no logs available"})
         except Exception as e:
             error = error_for_exception(e, details=self.additional_log_details())
             logger.error(error.message)
