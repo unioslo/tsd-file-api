@@ -7,6 +7,7 @@ A multi-tenent API for uploading and downloading files and JSON data,
 designed for the University of Oslo's Services for Sensitive Data (TSD).
 
 """
+
 import base64
 import datetime
 import hashlib
@@ -201,7 +202,6 @@ def handle_iam_projects_events(
 
 
 class AuthRequestHandler(RequestHandler):
-
     """
     All RequestHandler(s), with the exception of the HealthCheckHandler
     inherit from this one, giving them access to the
@@ -704,7 +704,6 @@ class AuthRequestHandler(RequestHandler):
 
 
 class SnsFormDataHandler(AuthRequestHandler):
-
     """
     Implements processing files uploaded via multipart/form-data,
     for legacy Nettskjema.
@@ -741,9 +740,11 @@ class SnsFormDataHandler(AuthRequestHandler):
             self.new_paths = []
             self.group_name = None
             self.authnz = self.process_token_and_extract_claims(
-                check_tenant=self.check_tenant
-                if self.check_tenant is not None
-                else options.check_tenant
+                check_tenant=(
+                    self.check_tenant
+                    if self.check_tenant is not None
+                    else options.check_tenant
+                )
             )
             if not self.request.files["file"]:
                 raise ClientError("No files included in the request")
@@ -881,7 +882,6 @@ class SnsFormDataHandler(AuthRequestHandler):
 
 
 class ResumablesHandler(AuthRequestHandler):
-
     """
     Manage resumables, report information.
 
@@ -948,9 +948,11 @@ class ResumablesHandler(AuthRequestHandler):
             if options.maintenance_mode_enabled:
                 raise ServerMaintenanceError
             self.authnz = self.process_token_and_extract_claims(
-                check_tenant=self.check_tenant
-                if self.check_tenant is not None
-                else options.check_tenant
+                check_tenant=(
+                    self.check_tenant
+                    if self.check_tenant is not None
+                    else options.check_tenant
+                )
             )
         except Exception as e:
             error = error_for_exception(e)
@@ -1103,9 +1105,11 @@ class FileRequestHandler(AuthRequestHandler):
             )
 
             self.authnz = self.process_token_and_extract_claims(
-                check_tenant=self.check_tenant
-                if self.check_tenant is not None
-                else options.check_tenant
+                check_tenant=(
+                    self.check_tenant
+                    if self.check_tenant is not None
+                    else options.check_tenant
+                )
             )
 
             tenant = tenant_from_url(self.request.uri)
@@ -2224,7 +2228,6 @@ class FileRequestHandler(AuthRequestHandler):
 
 
 class GenericTableHandler(AuthRequestHandler):
-
     """
     Manage data in generic db backend.
 
@@ -2262,9 +2265,11 @@ class GenericTableHandler(AuthRequestHandler):
                 raise ServerMaintenanceError
             self.rid_info = {"key": None, "values": []}
             self.authnz = self.process_token_and_extract_claims(
-                check_tenant=self.check_tenant
-                if self.check_tenant is not None
-                else options.check_tenant
+                check_tenant=(
+                    self.check_tenant
+                    if self.check_tenant is not None
+                    else options.check_tenant
+                )
             )
             if self.dbtype == "sqlite":
                 self.import_dir_pattern = self.backend_config["db"]["path"]

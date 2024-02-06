@@ -1,4 +1,5 @@
 """Helper functions for testing JWT."""
+
 import base64
 import os
 import random

@@ -181,7 +181,6 @@ class AbstractResumable(ABC):
 
 
 class SerialResumable(AbstractResumable):
-
     """
     Class for creating files in a piecemeal fashion,
     useful for resumable uploads, for example.

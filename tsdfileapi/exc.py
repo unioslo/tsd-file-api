@@ -7,6 +7,7 @@ References:
 - https://httpwg.org/specs/rfc9110.html#overview.of.status.codes
 
 """
+
 import errno
 from collections import namedtuple
 from http import client
@@ -19,7 +20,6 @@ from tornado.web import HTTPError
 
 
 class ApiError(Exception):
-
     reason = "API error"
     status = None
     headers = {}

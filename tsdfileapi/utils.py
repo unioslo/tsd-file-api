@@ -116,9 +116,11 @@ def find_tenant_storage_path(
         }
     cache[tenant]["sns"] = {
         "hnas": True if not (sns_loader_processing or sns_migration_done) else False,
-        "ess": True
-        if (sns_ess_delivery or sns_loader_processing or sns_migration_done)
-        else False,
+        "ess": (
+            True
+            if (sns_ess_delivery or sns_loader_processing or sns_migration_done)
+            else False
+        ),
     }
     cache[tenant]["publication"] = publication_backend
     cache[tenant]["survey"] = survey_backend

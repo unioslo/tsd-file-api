@@ -1,4 +1,5 @@
 """Tools to do authentication and authorization with JWT."""
+
 import base64
 import json
 import logging
