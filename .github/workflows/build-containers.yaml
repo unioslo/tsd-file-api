@@ -84,6 +84,7 @@ jobs:
             PYTHON_VERSION=${{ env.PYTHON_VERSION }}
             POETRY_VERSION=${{ env.POETRY_VERSION }}
             POETRY_DYNAMIC_VERSIONING_VERSION=${{ env.POETRY_DYNAMIC_VERSIONING_VERSION }}
+          platforms: linux/amd64,linux/arm64
           file: "${{ env.CONTAINER_FILE }}"
           push: ${{ github.event_name != 'pull_request' }}
           tags: ${{ steps.meta.outputs.tags }}
