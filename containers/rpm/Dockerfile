@@ -34,7 +34,9 @@ RUN source /etc/os-release && \
 
 # Install the fpm packaging utility
 # https://fpm.readthedocs.io/en/latest/index.html
-RUN gem install --no-document fpm --version 1.15.1
+RUN gem install bundler -v 1.17.2
+COPY containers/rpm/Gemfile* ./
+RUN bundle install --system
 
 # Install virtualenv with Python 3
 RUN python3 -m pip install virtualenv virtualenv-tools3
