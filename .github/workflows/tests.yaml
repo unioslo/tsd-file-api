@@ -60,22 +60,36 @@ jobs:
           .
       - name: Start tsd-file-api container and run tests (SQLite backend)
         run: >
-          docker run --rm
+          docker run -d
           -v $PWD:/file-api:ro
           --name tsd-file-api-sqlite
           --health-cmd "curl --fail http://127.0.0.1:3003/v1/all/config || exit 1"
           --health-interval=2s
-          "${{ env.CONTAINER_TAG }}" &
-          until [ "$(docker inspect -f {{.State.Health.Status}} tsd-file-api-sqlite)" == "healthy" ]; do sleep 0.1; done &&
+          "${{ env.CONTAINER_TAG }}" && sleep 1 &&
+          until [ "$(docker inspect -f {{.State.Health.Status}} tsd-file-api-sqlite)" == "healthy" ]; do
+            if [ "$(docker inspect -f {{.State.Running}} tsd-file-api-sqlite)" == "false" ]; then
+              echo "The tsd-file-api container appears to have crashed."
+              docker logs tsd-file-api-sqlite
+              exit 1
+            else
+              sleep 0.1
+            fi; done &&
           docker exec tsd-file-api-sqlite python tsdfileapi/test_file_api.py
       - name: Start tsd-file-api container and run tests (PostgreSQL backend)
         run: >
-          docker run --rm
+          docker run -d
           -v $PWD:/file-api:ro
           --name tsd-file-api-postgres
           --health-cmd "curl --fail http://127.0.0.1:3003/v1/all/config || exit 1"
           --health-interval=2s
           "${{ env.CONTAINER_TAG }}"
-          tsdfileapi/config/config-test-container-postgres.yaml &
-          until [ "$(docker inspect -f {{.State.Health.Status}} tsd-file-api-postgres)" == "healthy" ]; do sleep 0.1; done &&
+          tsdfileapi/config/config-test-container-postgres.yaml  && sleep 1 &&
+          until [ "$(docker inspect -f {{.State.Health.Status}} tsd-file-api-postgres)" == "healthy" ]; do
+            if [ "$(docker inspect -f {{.State.Running}} tsd-file-api-postgres)" == "false" ]; then
+              echo "The tsd-file-api container appears to have crashed."
+              docker logs tsd-file-api-postgres
+              exit 1
+            else
+              sleep 0.1
+            fi; done &&
           docker exec tsd-file-api-postgres python tsdfileapi/test_file_api.py
