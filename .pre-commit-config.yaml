@@ -26,10 +26,6 @@ repos:
       - id: ruff
       # Run the formatter.
       - id: ruff-format
-  - repo: https://github.com/psf/black
-    rev: 24.1.1
-    hooks:
-      - id: black
   - repo: https://github.com/hadialqattan/pycln
     rev: v2.4.0
     hooks:
