@@ -12,6 +12,7 @@ Defaults:fileapiuser            !requiretty
 fileapiuser ALL = (ALL) NOPASSWD: <path/to/executable>
 
 """
+
 import glob
 import grp
 import logging
