@@ -34,6 +34,7 @@ def tkn(
     role: str = None,
     tenant: str = None,
     user: str = None,
+    full_name: str = None,
 ) -> str:
     allowed_roles = ["import_user", "export_user", "admin_user", "wrong_user"]
     if role in allowed_roles:
@@ -52,6 +53,7 @@ def tkn(
                 "pid": str(uuid.uuid4()),
                 "name": "import",
                 "host": "test.api.tsd.usit.no",
+                "full_name": full_name,
             }
         else:
             claims = {"role": role, "exp": exp}
@@ -73,8 +75,9 @@ def gen_test_tokens(config: dict) -> dict:
     secret = store[proj]
     wrong = store["p01"]
     user = config["test_user"]
+    full_name = "Test Test"
     return {
-        "VALID": tkn(secret, role="import_user", tenant=proj),
+        "VALID": tkn(secret, role="import_user", tenant=proj, full_name=full_name),
         "MANGLED_VALID": tkn(secret, role="import_user", tenant=proj)[:-1],
         "INVALID_SIGNATURE": tkn(wrong, role="import_user", tenant=proj),
         "WRONG_ROLE": tkn(secret, role="wrong_user", tenant=proj),

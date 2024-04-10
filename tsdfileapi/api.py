@@ -2293,6 +2293,7 @@ class GenericTableHandler(AuthRequestHandler):
                 self.db = SqliteBackend(
                     self.engine,
                     requestor=self.requestor,
+                    requestor_name=self.requestor_name,
                     backup_days=self.backup_days,
                 )
             elif self.dbtype == "postgres":
@@ -2305,6 +2306,7 @@ class GenericTableHandler(AuthRequestHandler):
                     options.pgpools.get(self.backend),
                     schema=schema,
                     requestor=self.requestor,
+                    requestor_name=self.requestor_name,
                     backup_days=self.backup_days,
                 )
         except Exception as e:
