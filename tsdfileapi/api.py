@@ -216,6 +216,7 @@ class AuthRequestHandler(RequestHandler):
         self.tenant
         self.claims
         self.requestor
+        self.requestor_name
 
     Subsequent request handlers (HTTP method implementations), use these properties
     for request processing, and enforcement of access control where needed.
@@ -282,6 +283,7 @@ class AuthRequestHandler(RequestHandler):
                 raise ClientAuthorizationError("JWT verification failed")
             self.claims = authnz.get("claims")
             self.requestor = self.claims[options.requestor_claim_name]
+            self.requestor_name = self.claims.get("full_name")
             return authnz
         except IndexError:
             raise ClientAuthorizationError(
