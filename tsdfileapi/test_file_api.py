@@ -2116,6 +2116,7 @@ class TestFileApi(unittest.TestCase):
         data = json.loads(resp.text)
         self.assertTrue(data)
         self.assertEqual(data[0].get("diff"), new_version)
+        self.assertEqual(data[0].get("identity_name"), "Test Test")
 
         # metadata
         resp = requests.put(
