@@ -19,7 +19,6 @@ from tsdfileapi.exc import ClientIllegalFiletypeError
 from tsdfileapi.exc import ClientSnsPathError
 from tsdfileapi.exc import ServerSnsError
 from tsdfileapi.exc import ServerStorageNotMountedError
-from tsdfileapi.exc import ServerStorageTemporarilyUnavailableError
 
 VALID_FORMID = re.compile(r"^[0-9]+$")
 PGP_KEY_FINGERPRINT = re.compile(r"^[0-9A-Z]{16}$")
@@ -67,95 +66,23 @@ def find_tenant_storage_path(
     endpoint_backend: str,
     opts: tornado.options.OptionParser,
     root: str = "/ess",
-    default_storage_backend: str = "hnas",
 ) -> str:
     """
-    Either one of these:
-
-        - /tsd/{pnum}/data/durable
-        - /ess/projects0{1|2|3|...|n}/{pnum}/data/durable
-
-    Results are cached in a dict stored on options:
-
-    {
-        pnum: {
-            storage_backend: Optional[str] (hnas|migrating|ess),
-            storage_paths: {
-                hnas: str,
-                ess: Optional[str],
-            },
-            sns: {
-                hnas: bool,
-                ess: bool,
-            }
-            publication: str,
-            survey: str,
-        },
-        ...
-    }
-
-    Returns the path which the endpoint_backend should use.
+    Either one of these: /ess/projects0{1|2|3|...|n}/{pnum}/data/durable
+    Results are cached in a dict stored on options.
+    Returns the base path which the endpoint_backend should use.
 
     """
     cache = opts.tenant_storage_cache.copy()
-    tenant_info = opts.migration_statuses.get(tenant, {})
-    storage_backend = tenant_info.get("storage_backend", default_storage_backend)
-    sns_ess_delivery = tenant_info.get("sns_ess_delivery", False)
-    sns_loader_processing = tenant_info.get("sns_loader_processing", False)
-    sns_migration_done = tenant_info.get("sns_ess_migration", False)
-    publication_backend = tenant_info.get("publication_backend", "hnas")
-    survey_backend = tenant_info.get("survey_backend", "hnas")
-    # always update cache
     if not cache.get(tenant):
         cache[tenant] = {
-            "storage_backend": storage_backend,
+            "storage_backend": "ess",
             "storage_paths": {
-                "hnas": f"/tsd/{tenant}/data/durable",
-                "ess": None,
+                "ess": _find_ess_dir(tenant, root=root),
             },
         }
-    cache[tenant]["sns"] = {
-        "hnas": True if not (sns_loader_processing or sns_migration_done) else False,
-        "ess": (
-            True
-            if (sns_ess_delivery or sns_loader_processing or sns_migration_done)
-            else False
-        ),
-    }
-    cache[tenant]["publication"] = publication_backend
-    cache[tenant]["survey"] = survey_backend
-    # optionally look for ESS path
-    if storage_backend == "ess" and not cache.get(tenant).get("storage_paths").get(
-        "ess"
-    ):
-        cache[tenant]["storage_paths"]["ess"] = _find_ess_dir(tenant, root=root)
-    # store updated cache
-    opts.tenant_storage_cache = cache.copy()
-    # use updated info from now on
-    project = cache.get(tenant)
-    preferred = "ess" if endpoint_backend in opts.prefer_ess else "hnas"
-    current_storage_backend = project.get("storage_backend")
-    # determine which path to return
-    if current_storage_backend == "migrating":
-        if preferred == "ess":
-            raise ServerStorageTemporarilyUnavailableError
-        else:
-            return project.get("storage_paths").get(preferred)
-    elif current_storage_backend == "ess":
-        if endpoint_backend == "sns":
-            if project.get("sns").get("hnas"):
-                preferred = "hnas"
-            elif project.get("sns").get("ess"):
-                preferred = "ess"
-            else:
-                preferred = "hnas"
-        elif endpoint_backend == "publication":
-            preferred = project.get("publication")
-        elif endpoint_backend == "survey":
-            preferred = project.get("survey")
-        return project.get("storage_paths").get(preferred)
-    else:
-        return project.get("storage_paths").get("hnas")
+        opts.tenant_storage_cache = cache.copy()
+    return opts.tenant_storage_cache["storage_paths"]["ess"]
 
 
 def choose_storage(
