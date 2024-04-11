@@ -22,7 +22,6 @@ import libnacl.sealed
 import libnacl.utils
 import requests
 from pysquril.backends import PostgresBackend
-from pysquril.backends import postgres_session
 from tornado.escape import url_escape
 from tornado.httpclient import HTTPClient
 from tornado.httpclient import HTTPRequest
@@ -30,12 +29,10 @@ from tsdapiclient import fileapi
 
 from tsdfileapi.auth import process_access_token
 from tsdfileapi.db import postgres_init
-from tsdfileapi.exc import ServerStorageTemporarilyUnavailableError
 from tsdfileapi.resumables import SerialResumable
 from tsdfileapi.tokens import gen_test_token_for_user
 from tsdfileapi.tokens import gen_test_tokens
 from tsdfileapi.tokens import get_test_token_for_p12
-from tsdfileapi.utils import choose_storage
 from tsdfileapi.utils import find_tenant_storage_path
 from tsdfileapi.utils import md5sum
 from tsdfileapi.utils import set_mtime
@@ -2619,11 +2616,6 @@ class TestFileApi(unittest.TestCase):
         os.makedirs(f"{root}/projects02/p12/.from-hnas/data/durable")
 
         class Options:
-            migration_statuses = {
-                "p11": "ess",
-                "p12": "hnas",
-                "p13": "migrating",
-            }
             tenant_storage_cache = {}
             prefer_ess = ["files_import", "files_export"]
 
@@ -2637,154 +2629,6 @@ class TestFileApi(unittest.TestCase):
                 root=root,
             ).endswith("/projects01/p11/data/durable")
         )
-        # choose hnas, regardless of migration status
-        self.assertTrue(
-            find_tenant_storage_path(
-                "p11",
-                "sns",
-                opts,
-                root=root,
-            ).endswith("/p11/data/durable")
-        )
-        self.assertTrue(
-            find_tenant_storage_path(
-                "p12",
-                "sns",
-                opts,
-                root=root,
-            ).endswith("/p12/data/durable")
-        )
-        self.assertTrue(
-            find_tenant_storage_path(
-                "p13",
-                "publication",
-                opts,
-                root=root,
-            ).endswith("/p13/data/durable")
-        )
-        # choose hnas - no ess available yet
-        self.assertTrue(
-            find_tenant_storage_path(
-                "p12",
-                "files_import",
-                opts,
-                root=root,
-            ).endswith("/p12/data/durable")
-        )
-        # choose hnas - no info about project
-        self.assertTrue(
-            find_tenant_storage_path(
-                "p111",
-                "files_import",
-                opts,
-                root=root,
-            ).endswith("/p111/data/durable")
-        )
-        # should raise
-        self.assertRaises(
-            ServerStorageTemporarilyUnavailableError,
-            find_tenant_storage_path,
-            "p13",
-            "files_import",
-            opts,
-            root=root,
-        )
-        self.assertRaises(
-            ServerStorageTemporarilyUnavailableError,
-            find_tenant_storage_path,
-            "p13",
-            "files_export",
-            opts,
-            root=root,
-        )
-        # constructing directories from config
-        out_dir = choose_storage(
-            tenant=self.test_project,
-            endpoint_backend="files_import",
-            opts=opts,
-            directory="/tsd/p11/data/durable/publication",
-        )
-        self.assertTrue(out_dir.startswith(root))
-        self.assertTrue(out_dir.endswith("p11/data/durable/publication"))
-
-    def test_ess_migration(self) -> None:
-        pool = postgres_init(
-            {
-                "user": self.config.get("iamdb_user"),
-                "pw": self.config.get("iamdb_pw"),
-                "host": self.config.get("iamdb_host"),
-                "dbname": self.config.get("iamdb_dbname"),
-            }
-        )
-        with postgres_session(pool) as session:
-            session.execute("delete from projects")
-        with postgres_session(pool) as session:
-            session.execute(
-                f"insert into projects (project_number, project_name, project_start_date, project_end_date) \
-                  values ('{self.test_project}', 'raka', '2020-01-02', '2050-01-01')"
-            )
-        # hnas should be default, even if not specified
-        headers = {
-            "Authorization": f"Bearer {TEST_TOKENS['VALID']}",
-        }
-        resp = requests.put(
-            f"{self.stream}/p11-member-group/on-hnas/a-file",
-            data=lazy_file_reader(self.example_csv),
-            headers=headers,
-        )
-        uploaded_file = f"{self.uploads_folder}/p11-member-group/on-hnas/a-file"
-        self.assertTrue(await_file(uploaded_file))
-        self.assertEqual(md5sum(self.example_csv), md5sum(uploaded_file))
-        # now specify hnas, and see that it still works
-        with postgres_session(pool) as session:
-            session.execute(
-                "update projects set project_metadata = '{\"storage_backend\": \"hnas\"}' \
-                 where project_name = 'raka'"
-            )
-        resp = requests.put(
-            f"{self.stream}/p11-member-group/on-hnas/another-file",
-            data=lazy_file_reader(self.example_csv),
-            headers=headers,
-        )
-        uploaded_file = f"{self.uploads_folder}/p11-member-group/on-hnas/another-file"
-        self.assertTrue(await_file(uploaded_file))
-        self.assertEqual(md5sum(self.example_csv), md5sum(uploaded_file))
-        # during migration, import/export should fail
-        with postgres_session(pool) as session:
-            session.execute(
-                "update projects set project_metadata = '{\"storage_backend\": \"migrating\"}' \
-                 where project_name = 'raka'"
-            )
-        # resumables
-        resp = requests.get(self.resumables, headers=headers)
-        self.assertEqual(resp.status_code, 503)
-        self.assertEqual(resp.reason, "Project Storage Migrating")
-        self.assertEqual(resp.headers.get("X-Project-Storage"), "Migrating")
-        # import
-        resp = requests.put(
-            f"{self.stream}/lol-file",
-            data=lazy_file_reader(self.example_csv),
-            headers=headers,
-        )
-        self.assertEqual(resp.status_code, 503)
-        self.assertEqual(resp.reason, "Project Storage Migrating")
-        self.assertEqual(resp.headers.get("X-Project-Storage"), "Migrating")
-        # now use ess
-        with postgres_session(pool) as session:
-            session.execute(
-                "update projects set project_metadata = '{\"storage_backend\": \"ess\"}' \
-                 where project_name = 'raka'"
-            )
-        # resumables
-        resp = requests.get(self.resumables, headers=headers)
-        self.assertEqual(resp.status_code, 200)
-        # import
-        resp = requests.put(
-            f"{self.stream}/lol-file",
-            data=lazy_file_reader(self.example_csv),
-            headers=headers,
-        )
-        self.assertEqual(resp.status_code, 201)
 
 
 def main() -> None:
@@ -2881,7 +2725,6 @@ def main() -> None:
     ]
     storage = [
         "test_find_tenant_storage_path",
-        "test_ess_migration",
     ]
     if len(sys.argv) == 1:
         sys.argv.append("all")
