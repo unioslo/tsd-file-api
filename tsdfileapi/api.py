@@ -54,8 +54,6 @@ from tornado.web import RequestHandler
 from tornado.web import stream_request_body
 
 from tsdfileapi.auth import process_access_token
-from tsdfileapi.db import get_projects_migration_status
-from tsdfileapi.db import pg_listen_channel
 from tsdfileapi.db import postgres_init
 from tsdfileapi.db import sqlite_init
 from tsdfileapi.exc import ClientAuthorizationError
@@ -82,7 +80,6 @@ from tsdfileapi.utils import call_request_hook
 from tsdfileapi.utils import check_filename
 from tsdfileapi.utils import choose_storage
 from tsdfileapi.utils import days_since_mod
-from tsdfileapi.utils import find_tenant_storage_path
 from tsdfileapi.utils import move_data_to_folder
 from tsdfileapi.utils import set_mtime
 from tsdfileapi.utils import sns_dir
@@ -166,38 +163,11 @@ def set_config() -> None:
             "accept_calls_per_event_loop"
         ]
     options.logging = _config.get("log_level", "info")
-    try:
-        projects_pool = postgres_init(
-            {
-                "user": _config.get("iamdb_user"),
-                "pw": _config.get("iamdb_pw"),
-                "host": _config.get("iamdb_host"),
-                "dbname": _config.get("iamdb_dbname"),
-            },
-            min_conn=1,
-            max_conn=2,
-        )
-    except Exception:
-        projects_pool = None
-    define("projects_pool", projects_pool)
-    define("migration_statuses", get_projects_migration_status(projects_pool))
     define("tenant_storage_cache", {})
-    define("prefer_ess", _config.get("prefer_ess", []))
     define("sns_migrations", _config.get("sns_migrations", []))
 
 
 set_config()
-
-
-def handle_iam_projects_events(
-    conn: psycopg2.extensions.connection,
-    events: int,
-) -> bool:
-    conn.poll()
-    while conn.notifies:
-        conn.notifies.pop(0)
-    logger.info("reloading project info")
-    options.migration_statuses = get_projects_migration_status(options.projects_pool)
 
 
 class AuthRequestHandler(RequestHandler):
@@ -783,7 +753,6 @@ class SnsFormDataHandler(AuthRequestHandler):
         self, filemode: str, filename: str, filebody: bytes, tenant: str
     ) -> None:
         # find storage backend preferences
-        _ = find_tenant_storage_path(self.tenant, self.backend, options)  # update cache
         tenant_sns_info = options.tenant_storage_cache.get(tenant, {}).get("sns", {})
         use_hnas = tenant_sns_info.get("hnas", True)
         use_ess = tenant_sns_info.get("ess") and (
@@ -3107,9 +3076,6 @@ def main() -> None:
     ioloop = IOLoop.instance()
     if pika_client:
         ioloop.add_timeout(time.time() + 0.1, pika_client.connect)
-    if options.projects_pool:
-        channel_projects = pg_listen_channel(options.projects_pool, "channel_projects")
-        ioloop.add_handler(channel_projects, handle_iam_projects_events, IOLoop.READ)
     ioloop.start()
 
 
