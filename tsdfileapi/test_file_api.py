@@ -125,12 +125,17 @@ class TestFileApi(unittest.TestCase):
         cls.test_sns_dir = cls.config["backends"]["disk"]["sns"]["import_path"]
         cls.test_formid = cls.config["test_formid"]
         cls.test_keyid = cls.config["test_keyid"]
+
+        class Options:
+            tenant_storage_cache = {}
+
         cls.sns_uploads_folder = sns_dir(
             cls.test_sns_dir,
             cls.config["test_project"],
             cls.test_sns_url,
             cls.config["tenant_string_pattern"],
             test=True,
+            options=Options(),
         )
         cls.publication_import_folder = cls.config["backends"]["disk"]["publication"][
             "import_path"
@@ -1037,6 +1042,9 @@ class TestFileApi(unittest.TestCase):
         self.assertEqual(md5sum(self.example_csv), md5sum(uploaded_file2))
 
     def test_ZB_sns_folder_logic_is_correct(self) -> None:
+        class Options:
+            tenant_storage_cache = {}
+
         # lowercase in key id
         self.assertRaises(
             Exception,
@@ -1045,6 +1053,7 @@ class TestFileApi(unittest.TestCase):
             "p11",
             "/v1/p11/sns/255cE5ED50A7558B/98765",
             self.tenant_string_pattern,
+            options=Options(),
         )
         # too long but still valid key id
         self.assertRaises(
@@ -1054,6 +1063,7 @@ class TestFileApi(unittest.TestCase):
             "p11",
             "/v1/p11/sns/255CE5ED50A7558BXIJIJ87878/98765",
             self.tenant_string_pattern,
+            options=Options(),
         )
         # non-numeric formid
         self.assertRaises(
@@ -1064,6 +1074,7 @@ class TestFileApi(unittest.TestCase):
             "255CE5ED50A7558B",
             "99999-%$%&*",
             self.tenant_string_pattern,
+            options=Options(),
         )
 
     def test_ZC_setting_ownership_based_on_user_works(self) -> None:

@@ -140,13 +140,9 @@ def sns_dir(
     tenant_string_pattern: str,
     test: bool = False,
     options: tornado.options.OptionParser = None,
-    use_hnas: bool = True,
-    use_ess: bool = False,
 ) -> str:
     """
     Construct and create a path for sns uploads.
-    If ESS is ready, create the path there too.
-    If HNAS is no longer in use, ignore it, and return the ESS path.
 
     """
     try:
@@ -157,59 +153,30 @@ def sns_dir(
             raise ClientSnsPathError(f"invalid form ID: {formid}")
         if not PGP_KEY_FINGERPRINT.match(keyid):
             raise ClientSnsPathError(f"invalid PGP fingerprint: {keyid}")
-        folder = (
-            base_pattern.replace(tenant_string_pattern, tenant)
-            .replace("KEYID", keyid)
-            .replace("FORMID", formid)
-        )
-        hnas_sns_dir = os.path.normpath(folder)
-        if test:
-            return hnas_sns_dir
-        if use_hnas and not os.path.lexists(hnas_sns_dir):
-            try:
-                os.makedirs(hnas_sns_dir)
-                subprocess.call(["sudo", "chmod", "2770", hnas_sns_dir])
-                logger.info(f"Created: {hnas_sns_dir}")
-            except OSError as e:
-                if e.errno == errno.ENOENT:
-                    raise ServerStorageNotMountedError(
-                        f"NFS mount missing for {tenant}"
-                    ) from e
-                else:
-                    raise e
-            except Exception as e:
-                logger.error(e)
-                logger.error(f"Could not create {hnas_sns_dir}")
-                raise ServerSnsError from e
-        if use_ess:
-            try:
-                ess_path = (
-                    options.tenant_storage_cache.get(tenant)
-                    .get("storage_paths")
-                    .get("ess")
-                )
-                ess_sns_dir = (
-                    base_pattern.replace(tenant_string_pattern, tenant)
-                    .replace("KEYID", keyid)
-                    .replace("FORMID", formid)
-                    .replace(f"/tsd/{tenant}/data/durable", ess_path)
-                )
-                if not os.path.lexists(ess_sns_dir):
-                    os.makedirs(ess_sns_dir)
-                    subprocess.call(["sudo", "chmod", "2770", ess_sns_dir])
-                    logger.info(f"Created: {ess_sns_dir}")
-            except OSError as e:
-                if e.errno == errno.ENOENT:
-                    raise ServerStorageNotMountedError(
-                        f"NFS mount missing for {ess_path}"
-                    ) from e
-                else:
-                    raise e
-            except Exception as e:
-                logger.error(e)
-                logger.error(f"Could not create {ess_sns_dir}")
-                raise ServerSnsError from e
-        return hnas_sns_dir if use_hnas else ess_sns_dir
+        try:
+            ess_path = (
+                options.tenant_storage_cache.get(tenant, {})
+                .get("storage_paths", {})
+                .get("ess", "")
+            )
+            ess_sns_dir = (
+                base_pattern.replace(tenant_string_pattern, tenant)
+                .replace("KEYID", keyid)
+                .replace("FORMID", formid)
+                .replace(f"/tsd/{tenant}/data/durable", ess_path)
+            )
+            if not os.path.lexists(ess_sns_dir):
+                os.makedirs(ess_sns_dir)
+                subprocess.call(["sudo", "chmod", "2770", ess_sns_dir])
+                logger.info(f"Created: {ess_sns_dir}")
+        except OSError as e:
+            if e.errno == errno.ENOENT:
+                raise ServerStorageNotMountedError(
+                    f"NFS mount missing for {ess_path}"
+                ) from e
+            else:
+                raise e
+        return ess_sns_dir
     except Exception as e:
         logger.error(e)
         raise ServerSnsError from e
