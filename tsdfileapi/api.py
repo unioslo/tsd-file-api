@@ -65,7 +65,6 @@ from tsdfileapi.exc import ClientNaclChunkSizeError
 from tsdfileapi.exc import ClientReservedResourceError
 from tsdfileapi.exc import ClientResourceNotFoundError
 from tsdfileapi.exc import ServerMaintenanceError
-from tsdfileapi.exc import ServerSnsError
 from tsdfileapi.exc import error_for_exception
 from tsdfileapi.resumables import ResumableIncorrectChunkOrderError
 from tsdfileapi.resumables import ResumableNotFoundError
@@ -80,6 +79,7 @@ from tsdfileapi.utils import call_request_hook
 from tsdfileapi.utils import check_filename
 from tsdfileapi.utils import choose_storage
 from tsdfileapi.utils import days_since_mod
+from tsdfileapi.utils import find_tenant_storage_path
 from tsdfileapi.utils import move_data_to_folder
 from tsdfileapi.utils import set_mtime
 from tsdfileapi.utils import sns_dir
@@ -752,14 +752,8 @@ class SnsFormDataHandler(AuthRequestHandler):
     def write_file(
         self, filemode: str, filename: str, filebody: bytes, tenant: str
     ) -> None:
-        # find storage backend preferences
-        tenant_sns_info = options.tenant_storage_cache.get(tenant, {}).get("sns", {})
-        use_hnas = tenant_sns_info.get("hnas", True)
-        use_ess = tenant_sns_info.get("ess") and (
-            tenant in options.sns_migrations or "all" in options.sns_migrations
-        )
-        copy_to_ess = use_hnas and use_ess
-
+        # update cache
+        _ = find_tenant_storage_path(self.tenant, self.backend, options)
         # create form directories where needed
         tsd_hidden_folder = sns_dir(
             self.tsd_hidden_folder_pattern,
@@ -767,8 +761,6 @@ class SnsFormDataHandler(AuthRequestHandler):
             self.request.uri,
             options.tenant_string_pattern,
             options=options,
-            use_hnas=use_hnas,
-            use_ess=use_ess,
         )
         tenant_dir = sns_dir(
             self.tenant_dir_pattern,
@@ -776,8 +768,6 @@ class SnsFormDataHandler(AuthRequestHandler):
             self.request.uri,
             options.tenant_string_pattern,
             options=options,
-            use_hnas=use_hnas,
-            use_ess=use_ess,
         )
 
         # ensure idempotent uploads
@@ -797,31 +787,6 @@ class SnsFormDataHandler(AuthRequestHandler):
         subfolder_path = os.path.normpath(tsd_hidden_folder + "/" + filename)
         shutil.copy(self.path, subfolder_path)
         os.chmod(subfolder_path, _RW_RW___)
-
-        if copy_to_ess:
-            try:
-                target = ""
-                ess_path = (
-                    options.tenant_storage_cache.get(tenant, {})
-                    .get("storage_paths", {})
-                    .get("ess")
-                )
-                hnas_durable = f"/tsd/{self.tenant}/data/durable"
-
-                # 1. project-visible file
-                target = self.path.replace(hnas_durable, ess_path)
-                logger.info(f"copying {target} to ess")
-                shutil.copy(self.path, target)
-                os.chmod(target, _RW_RW___)
-
-                # 2. data processing file
-                target = subfolder_path.replace(hnas_durable, ess_path)
-                logger.info(f"copying {target} to ess")
-                shutil.copy(self.path, target)
-                os.chmod(target, _RW_RW___)
-            except Exception as e:
-                logger.error(e)
-                raise ServerSnsError(f"could not copy {target} to ESS")
 
     def on_finish(self) -> None:
         if self.request.method in ("PUT", "POST", "PATCH") and self.request_hook.get(
