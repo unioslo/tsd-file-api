@@ -79,7 +79,6 @@ from tsdfileapi.utils import call_request_hook
 from tsdfileapi.utils import check_filename
 from tsdfileapi.utils import choose_storage
 from tsdfileapi.utils import days_since_mod
-from tsdfileapi.utils import find_tenant_storage_path
 from tsdfileapi.utils import move_data_to_folder
 from tsdfileapi.utils import set_mtime
 from tsdfileapi.utils import sns_dir
@@ -752,8 +751,6 @@ class SnsFormDataHandler(AuthRequestHandler):
     def write_file(
         self, filemode: str, filename: str, filebody: bytes, tenant: str
     ) -> None:
-        # update cache
-        _ = find_tenant_storage_path(self.tenant, self.backend, options)
         # create form directories where needed
         tsd_hidden_folder = sns_dir(
             self.tsd_hidden_folder_pattern,
