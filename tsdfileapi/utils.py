@@ -82,7 +82,8 @@ def find_tenant_storage_path(
             },
         }
         opts.tenant_storage_cache = cache.copy()
-    return opts.tenant_storage_cache["storage_paths"]["ess"]
+    out = opts.tenant_storage_cache["storage_paths"]["ess"]
+    return out
 
 
 def choose_storage(
@@ -153,30 +154,30 @@ def sns_dir(
             raise ClientSnsPathError(f"invalid form ID: {formid}")
         if not PGP_KEY_FINGERPRINT.match(keyid):
             raise ClientSnsPathError(f"invalid PGP fingerprint: {keyid}")
+        directory = (
+            base_pattern.replace(tenant_string_pattern, tenant)
+            .replace("KEYID", keyid)
+            .replace("FORMID", formid)
+        )
+        sns_dir = choose_storage(
+            tenant=tenant,
+            endpoint_backend="sns",
+            opts=options,
+            directory=directory,
+        )
         try:
-            ess_path = (
-                options.tenant_storage_cache.get(tenant, {})
-                .get("storage_paths", {})
-                .get("ess", "")
-            )
-            ess_sns_dir = (
-                base_pattern.replace(tenant_string_pattern, tenant)
-                .replace("KEYID", keyid)
-                .replace("FORMID", formid)
-                .replace(f"/tsd/{tenant}/data/durable", ess_path)
-            )
-            if not os.path.lexists(ess_sns_dir):
-                os.makedirs(ess_sns_dir)
-                subprocess.call(["sudo", "chmod", "2770", ess_sns_dir])
-                logger.info(f"Created: {ess_sns_dir}")
+            if not os.path.lexists(sns_dir):
+                os.makedirs(sns_dir)
+                subprocess.call(["sudo", "chmod", "2770", sns_dir])
+                logger.info(f"Created: {sns_dir}")
         except OSError as e:
             if e.errno == errno.ENOENT:
                 raise ServerStorageNotMountedError(
-                    f"NFS mount missing for {ess_path}"
+                    f"NFS mount missing for {sns_dir}"
                 ) from e
             else:
                 raise e
-        return ess_sns_dir
+        return sns_dir
     except Exception as e:
         logger.error(e)
         raise ServerSnsError from e
