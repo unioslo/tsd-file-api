@@ -609,6 +609,7 @@ class AuthRequestHandler(RequestHandler):
         uri: str,
         app: str = None,
         claims: dict = {},
+        requestor_name: Optional[str] = None,
     ) -> None:
         """
         Log request information - for audit purposes.
@@ -634,6 +635,7 @@ class AuthRequestHandler(RequestHandler):
             data = {
                 "timestamp": datetime.datetime.utcnow().isoformat(),
                 "requestor": requestor,
+                "requestor_name": requestor_name,
                 "method": method,
                 "uri": uri,
             }
@@ -2092,6 +2094,7 @@ class FileRequestHandler(AuthRequestHandler):
                         tenant=self.tenant,
                         backend=self.backend,
                         requestor=self.requestor,
+                        requestor_name=self.requestor_name,
                         method=self.request.method,
                         uri=self.request.uri,
                         app=self.get_app_name(self.request.uri),
@@ -2152,6 +2155,7 @@ class FileRequestHandler(AuthRequestHandler):
                 tenant=self.tenant,
                 backend=self.backend,
                 requestor=self.requestor,
+                requestor_name=self.requestor_name,
                 method=self.request.method,
                 uri=self.request.headers.get("Original-Uri"),
                 app=self.get_app_name(self.request.uri),
@@ -2609,6 +2613,7 @@ class GenericTableHandler(AuthRequestHandler):
                     tenant=self.tenant,
                     backend=self.backend,
                     requestor=self.requestor,
+                    requestor_name=self.requestor_name,
                     method=self.request.method,
                     uri=self.request.uri,
                     app=self.get_app_name(self.request.uri),
