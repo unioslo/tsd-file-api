@@ -2861,7 +2861,7 @@ class Backends:
             ),
             ("/v1/(.*)/survey", GenericTableHandler, dict(backend="survey")),
         ],
-        "form_data": [
+        "sns": [
             ("/v1/(.*)/sns/(.*)/(.*)", SnsFormDataHandler, dict(backend="sns")),
         ],
         "publication": [
@@ -2959,6 +2959,9 @@ class Backends:
                     for route in self.optional_routes[backend]:
                         print(colored(f"- {route[0]}", "yellow"))
                         self.routes.append(route)
+                else:
+                    # TODO: change to exit once config has been cleaned
+                    logger.warning(f"Unknown backend in config: {backend}")
 
         db_backends = self.config["backends"]["dbs"].items()
         if db_backends:
