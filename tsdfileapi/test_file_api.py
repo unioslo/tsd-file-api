@@ -2081,6 +2081,10 @@ class TestFileApi(unittest.TestCase):
             )
         except Exception:
             pass
+        try:
+            resp = requests.delete(f"{self.apps}/ega/tables/lol", headers=headers)
+        except Exception:
+            pass
 
         # add some data
         resp = requests.put(
@@ -2153,6 +2157,37 @@ class TestFileApi(unittest.TestCase):
         resp = requests.get(f"{self.apps}/ega/tables/user_data/audit", headers=headers)
         self.assertEqual(resp.status_code, 200)
         self.assertTrue(len(json.loads(resp.text)) > 0)
+
+        # test query features
+        data = [
+            {"id": 1, "cat": "&", "comment": "dis 'n mooi dag"},
+            {"id": 2, "cat": None},
+            {"id": 3, "cat": "yes"},
+        ]
+        resp = requests.put(
+            f"{self.apps}/ega/tables/lol",
+            data=json.dumps(data),
+            headers=headers,
+        )
+        self.assertEqual(resp.status_code, 201)
+
+        # ampersand in where
+        resp = requests.get(
+            f"{self.apps}/ega/tables/lol?select=id&where=cat=eq.'&'",
+            headers=headers,
+        )
+        self.assertEqual(json.loads(resp.text), [[1]])
+
+        # escaping a single quote
+        resp = requests.get(
+            f"{self.apps}/ega/tables/lol?select=id&where=comment=eq.'dis \\'n mooi dag'",
+            headers=headers,
+        )
+        self.assertEqual(json.loads(resp.text), [[1]])
+
+        # cleanup
+        resp = requests.delete(f"{self.apps}/ega/tables/lol", headers=headers)
+        self.assertEqual(resp.status_code, 200)
 
     def test_app_backend_encryption(self) -> None:
         """Test app backend with encrypted retrieval of data."""
