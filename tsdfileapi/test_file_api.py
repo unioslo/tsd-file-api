@@ -2134,6 +2134,11 @@ class TestFileApi(unittest.TestCase):
         )
         self.assertEqual(resp.status_code, 201)
 
+        # listing tables
+        resp = requests.get(f"{self.apps}/ega/tables", headers=headers)
+        app_tables = json.loads(resp.text)
+        self.assertEqual(len(app_tables.get("tables")), 3)
+
         # clean up
         resp = requests.delete(f"{self.apps}/ega/tables/user_data", headers=headers)
         self.assertEqual(resp.status_code, 200)

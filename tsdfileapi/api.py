@@ -2348,8 +2348,11 @@ class GenericTableHandler(AuthRequestHandler):
     def get(self, tenant: str, table_name: str = None) -> None:
         try:
             if not table_name:
+                excludes = ["_audit"]
+                if self.backend == "survey":
+                    excludes.append("_metadata")
                 tables = self.db.tables_list(
-                    exclude_endswith=["_audit", "_metadata"],
+                    exclude_endswith=excludes,
                     remove_pattern="_submissions",
                 )
                 self.set_status(HTTPStatus.OK.value)
@@ -2926,6 +2929,11 @@ class Backends:
         "apps_tables": [
             (
                 "/v1/(.*)/apps/.+/tables/(.+)$",
+                GenericTableHandler,
+                dict(backend="apps_tables"),
+            ),
+            (
+                "/v1/(.*)/apps/.+/tables",
                 GenericTableHandler,
                 dict(backend="apps_tables"),
             ),
