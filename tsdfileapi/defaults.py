@@ -81,12 +81,13 @@ _config = {
             "apps_files": {
                 "has_posix_ownership": False,
                 "export_max_num_list": None,
-                "import_path": f"{TMP}/pXX",
-                "export_path": f"{TMP}/pXX",
+                "import_path": f"{TMP}/pXX/apps",
+                "export_path": f"{TMP}/pXX/apps",
                 "allow_export": True,
                 "allow_list": True,
                 "allow_info": True,
                 "allow_delete": True,
+                "allow_rpc": True,
                 "export_policy": {
                     "default": {"enabled": False},
                 },
@@ -97,6 +98,10 @@ _config = {
                 },
                 "request_hook": {
                     "enabled": False,
+                },
+                "backup_deletes": {
+                    "path_regex": "(/.+/apps/.+)/(files)(.*)",
+                    "backup_days": 90,
                 },
             },
             "survey": {

@@ -2189,6 +2189,53 @@ class TestFileApi(unittest.TestCase):
         resp = requests.delete(f"{self.apps}/ega/tables/lol", headers=headers)
         self.assertEqual(resp.status_code, 200)
 
+        # backup and restoring files
+
+        file = "some.data"
+        resp = requests.put(
+            f"{self.apps}/ega/files/dir1/{file}",
+            data=lazy_file_reader(self.so_sweet),
+            headers=headers,
+        )
+        self.assertEqual(resp.status_code, 201)
+
+        resp = requests.delete(
+            f"{self.apps}/ega/files/dir1/{file}",
+            headers=headers,
+        )
+        self.assertEqual(resp.status_code, 200)
+
+        # check the backup
+        resp = requests.get(
+            f"{self.apps}/ega/backup/files/dir1",
+            headers=headers,
+        )
+        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(
+            json.loads(resp.text).get("files")[0].get("filename"),
+            "some.data",
+        )
+
+        # restore the file
+        resp = requests.post(
+            f"{self.apps}/ega/backup/files/dir1/{file}?restore",
+            headers=headers,
+        )
+        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(len(json.loads(resp.text).get("restores")), 1)
+
+        # remove it completely
+        resp = requests.delete(
+            f"{self.apps}/ega/files/dir1/{file}",
+            headers=headers,
+        )
+        self.assertEqual(resp.status_code, 200)
+        resp = requests.delete(
+            f"{self.apps}/ega/backup/files/dir1/{file}",
+            headers=headers,
+        )
+        self.assertEqual(resp.status_code, 200)
+
     def test_app_backend_encryption(self) -> None:
         """Test app backend with encrypted retrieval of data."""
 
