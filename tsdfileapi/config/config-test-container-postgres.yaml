@@ -68,7 +68,7 @@ backends:
       request_hook:
         enabled: false
       backup_deletes:
-        path_regex": "(/.+/apps/.+)/(files)(.*)"
+        path_regex: "(/.+/apps/.+)/(files)(.*)"
         backup_days: 90
     files_export:
       allow_delete: true
