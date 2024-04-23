@@ -69,12 +69,14 @@ jobs:
           until [ "$(docker inspect -f {{.State.Health.Status}} tsd-file-api-sqlite)" == "healthy" ]; do
             if [ "$(docker inspect -f {{.State.Running}} tsd-file-api-sqlite)" == "false" ]; then
               echo "The tsd-file-api container appears to have crashed."
-              docker logs tsd-file-api-sqlite
               exit 1
             else
               sleep 0.1
             fi; done &&
           docker exec tsd-file-api-sqlite python tsdfileapi/test_file_api.py
+      - name: Log tsd-file-api (SQLite backend) container output on failure
+        if: ${{ failure() }}
+        run: docker logs tsd-file-api-sqlite
       - name: Start tsd-file-api container and run tests (PostgreSQL backend)
         run: >
           docker run -d
@@ -87,9 +89,11 @@ jobs:
           until [ "$(docker inspect -f {{.State.Health.Status}} tsd-file-api-postgres)" == "healthy" ]; do
             if [ "$(docker inspect -f {{.State.Running}} tsd-file-api-postgres)" == "false" ]; then
               echo "The tsd-file-api container appears to have crashed."
-              docker logs tsd-file-api-postgres
               exit 1
             else
               sleep 0.1
             fi; done &&
           docker exec tsd-file-api-postgres python tsdfileapi/test_file_api.py
+      - name: Log tsd-file-api (PostgreSQL backend) container output on failure
+        if: ${{ failure() }}
+        run: docker logs tsd-file-api-postgres
