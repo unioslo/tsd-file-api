@@ -54,7 +54,7 @@ backends:
       allow_list: true
       allow_rpc: true
       export_max_num_list: null
-      export_path: /tmp/pXX
+      export_path: /tmp/pXX/apps
       export_policy:
         default:
           enabled: false
@@ -64,7 +64,7 @@ backends:
         default_url_group: null
         enabled: false
       has_posix_ownership: false
-      import_path: /tmp/pXX
+      import_path: /tmp/pXX/apps
       request_hook:
         enabled: false
       backup_deletes:
