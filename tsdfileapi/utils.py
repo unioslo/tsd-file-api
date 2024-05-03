@@ -82,7 +82,7 @@ def find_tenant_storage_path(
             },
         }
         opts.tenant_storage_cache = cache.copy()
-    out = opts.tenant_storage_cache["storage_paths"]["ess"]
+    out = opts.tenant_storage_cache[tenant]["storage_paths"]["ess"]
     return out
 
 
