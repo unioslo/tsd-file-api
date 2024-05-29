@@ -24,7 +24,6 @@ _config = {
     "tenant_claim_name": "proj",
     "valid_tenant_regex": "^[0-9a-z]+$",
     "tenant_string_pattern": "pXX",
-    "export_max_num_list": 100,
     "export_chunk_size": 512000,
     "max_body_size": 5368709120,
     "default_file_owner": "pXX-nobody",
@@ -59,7 +58,6 @@ _config = {
         "disk": {
             "publication": {
                 "has_posix_ownership": False,
-                "export_max_num_list": None,
                 "import_path": f"{TMP}/pXX",
                 "export_path": f"{TMP}/pXX",
                 "allow_export": True,
@@ -80,7 +78,6 @@ _config = {
             },
             "apps_files": {
                 "has_posix_ownership": False,
-                "export_max_num_list": None,
                 "import_path": f"{TMP}/pXX/apps",
                 "export_path": f"{TMP}/pXX/apps",
                 "allow_export": True,
@@ -106,7 +103,6 @@ _config = {
             },
             "survey": {
                 "has_posix_ownership": False,
-                "export_max_num_list": None,
                 "import_path": f"{TMP}/pXX/survey",
                 "export_path": f"{TMP}/pXX/survey",
                 "allow_export": True,
@@ -144,7 +140,6 @@ _config = {
             },
             "files_import": {
                 "has_posix_ownership": True,
-                "export_max_num_list": None,
                 "import_path": f"{TMP}/pXX/import",
                 "export_path": f"{TMP}/pXX/import",
                 "allow_export": True,
@@ -170,7 +165,6 @@ _config = {
             },
             "files_export": {
                 "has_posix_ownership": False,
-                "export_max_num_list": None,
                 "import_path": f"{TMP}/pXX",
                 "export_path": f"{os.getcwd()}/tsdfileapi/data/tsd/pXX/export",
                 "allow_export": True,

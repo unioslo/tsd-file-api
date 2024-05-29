@@ -53,7 +53,6 @@ backends:
       allow_info: true
       allow_list: true
       allow_rpc: true
-      export_max_num_list: null
       export_path: /tmp/pXX/apps
       export_policy:
         default:
@@ -75,7 +74,6 @@ backends:
       allow_export: true
       allow_info: true
       allow_list: true
-      export_max_num_list: null
       export_path: /file-api/tsdfileapi/data/tsd/pXX/export
       export_policy:
         default:
@@ -94,7 +92,6 @@ backends:
       allow_export: true
       allow_info: true
       allow_list: true
-      export_max_num_list: null
       export_path: /tmp/pXX/import
       export_policy:
         default:
@@ -124,7 +121,6 @@ backends:
       allow_export: true
       allow_info: true
       allow_list: true
-      export_max_num_list: null
       export_path: /tmp/pXX
       export_policy:
         default:
@@ -151,7 +147,6 @@ backends:
       allow_info: true
       allow_list: true
       allow_rpc: true
-      export_max_num_list: null
       export_path: /tmp/pXX/survey
       export_policy:
         default:
@@ -177,7 +172,6 @@ debug: true
 default_file_owner: pXX-nobody
 disallowed_start_chars: '~'
 export_chunk_size: 512000
-export_max_num_list: 100
 jwt_secret: null
 jwt_test_secret: jS25aQbePizfTsetg8LbFsNKl1W6wi4nQaBj705ofWA=
 log_level: info
