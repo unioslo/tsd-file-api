@@ -10,7 +10,6 @@ valid_tenant_regex: ^[0-9a-z]+$
 tenant_string_pattern: pXX
 allowed_symlinks:
   - "/tsd"
-export_max_num_list: 100
 export_chunk_size: 512000
 max_body_size: 5368709120
 default_file_owner: pXX-nobody
@@ -44,7 +43,6 @@ backends:
         ensure_tenant_in_group_name: false
       has_posix_ownership: false
       import_path: /tmp/pXX
-      export_max_num_list: None
       export_path: /tmp/pXX/export
     apps_files:
       allow_list: true
@@ -63,7 +61,6 @@ backends:
         enabled: false
       has_posix_ownership: false
       import_path: /tmp/pXX
-      export_max_num_list: None
       export_path: /tmp/pXX/export
     files_export:
       allow_list: true
@@ -82,7 +79,6 @@ backends:
         enabled: false
       has_posix_ownership: false
       import_path: /tmp/pXX
-      export_max_num_list: None
       export_path: /tmp/pXX/export
     cluster:
       allow_list: true
@@ -106,7 +102,6 @@ backends:
         ensure_tenant_in_group_name: false
       has_posix_ownership: false
       import_path: /tmp/pXX/cluster/
-      export_max_num_list: None
       export_path: /tmp/pXX/export
     survey:
       allow_list: true
@@ -128,7 +123,6 @@ backends:
         ensure_tenant_in_group_name: false
       has_posix_ownership: false
       import_path: /tmp/pXX/survey
-      export_max_num_list: None
       export_path: /tmp/pXX/export
       backup_deletes:
         backup_days: 90
@@ -162,7 +156,6 @@ backends:
         enabled: false
       has_posix_ownership: false
       import_path: /tmp/pXX/store
-      export_max_num_list: None
       export_path: /tmp/pXX/store
   dbs:
     survey:
