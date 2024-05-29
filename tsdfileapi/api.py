@@ -975,7 +975,6 @@ class FileRequestHandler(AuthRequestHandler):
         self.allow_info = self.backend_config["allow_info"]
         self.allow_delete = self.backend_config["allow_delete"]
         self.allow_rpc = self.backend_config.get("allow_rpc")
-        self.export_max = self.backend_config["export_max_num_list"]
         self.has_posix_ownership = self.backend_config["has_posix_ownership"]
         self.check_tenant = self.backend_config.get("check_tenant")
         self.mq_config = self.backend_config.get("mq")
@@ -1609,10 +1608,6 @@ class FileRequestHandler(AuthRequestHandler):
                 next_page = None
             baseuri = self._base_uri()
             nextref = f"{baseuri}?page={next_page}" if next_page else None
-            if self.export_max and len(files) > self.export_max:
-                raise ClientError(
-                    f"number of files exceed configured maximum: {self.export_max}"
-                )
             names = []
             times = []
             exportable = []
