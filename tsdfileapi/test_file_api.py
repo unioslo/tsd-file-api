@@ -413,7 +413,7 @@ class TestFileApi(unittest.TestCase):
         self.assertEqual(resp.status_code, 404)
         # Do not throw non exist at audit
         resp = requests.get(
-            f"{self.base_url}/survey/number_audit/submissions?select=count(*)",
+            f"{self.base_url}/survey/user_number/audit?select=count(*)",
             headers=headers,
         )
         self.assertEqual(resp.status_code, 200)
