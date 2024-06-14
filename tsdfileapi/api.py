@@ -2165,8 +2165,7 @@ class GenericTableHandler(AuthRequestHandler):
     """
 
     def create_table_name(self, table_name: str) -> str:
-        name = table_name.replace("/", "_")
-        return name
+        return table_name
 
     def get_uri_query(self, uri: str) -> str:
         if "?" in uri:
@@ -2343,9 +2342,9 @@ class GenericTableHandler(AuthRequestHandler):
     def get(self, tenant: str, table_name: str = None) -> None:
         try:
             if not table_name:
-                excludes = ["_audit"]
+                excludes = ["/audit"]
                 if self.backend == "survey":
-                    excludes.append("_metadata")
+                    excludes.append("/metadata")
                 tables = self.db.tables_list(
                     exclude_endswith=excludes,
                     remove_pattern="_submissions",
@@ -2375,7 +2374,7 @@ class GenericTableHandler(AuthRequestHandler):
                     # when broadcasting a query with *
                     # unless the URI specifies they should be
                     excludes = []
-                    default_excludes = {"/audit": "_audit", "/metadata": "_metadata"}
+                    default_excludes = {"/audit": "/audit", "/metadata": "/metadata"}
                     for k, v in default_excludes.items():
                         if not self.request.uri.split("?")[0].endswith(k):
                             excludes.append(v)
@@ -2430,9 +2429,8 @@ class GenericTableHandler(AuthRequestHandler):
                             self.flush()
                         self.write("]")
                         self.flush()
-        # TODO: raise custom exceptions from pysquril to identify query errors as 4XX
         except (psycopg2.errors.UndefinedTable, sqlite3.OperationalError) as e:
-            if table_name.endswith("_audit"):
+            if table_name.endswith("/audit"):
                 # Handle the audit table differently
                 # it is not created until the first change appears
                 self.set_status(HTTPStatus.OK.value)
@@ -2509,11 +2507,11 @@ class GenericTableHandler(AuthRequestHandler):
     def post(self, tenant: str, table_name: str) -> None:
         try:
             table_name = self.create_table_name(table_name)
-            if not table_name.endswith("_audit"):
+            if not table_name.endswith("/audit"):
                 raise ClientMethodNotAllowed
             query = self.get_uri_query(self.request.uri)
             self.restored = self.db.table_restore(
-                table_name.replace("_audit", ""), query
+                table_name.replace("/audit", ""), query
             )
             self.set_status(HTTPStatus.OK.value)
             self.write(self.restored)
