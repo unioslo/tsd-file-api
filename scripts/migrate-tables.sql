@@ -18,8 +18,9 @@ create or replace function migrate_tables(target text)
                 raise info 'migrating: %', _table_name;
                 _new_name := replace(_table_name, '_', '/');
                 execute format(
-                    'alter table $1."$2" rename to "$3"'
-                ) using _schema, _table_name, _new_name;
+                    'alter table %s."%s" rename to "%s"',
+                    _schema, _table_name, _new_name
+                );
             end loop;
         elsif target = 'apps' then
             for _schema, _table_name in
@@ -32,8 +33,9 @@ create or replace function migrate_tables(target text)
                 raise info 'migrating: %', _table_name;
                 _new_name := replace(_table_name, '_', '/');
                 execute format(
-                    'alter table $1."$2" rename to "$3"',
-                 ) using _schema, _table_name, _new_name;
+                    'alter table %s."%s" rename to "%s"',
+                    _schema, _table_name, _new_name
+                );
             end loop;
         end if;
     end;
