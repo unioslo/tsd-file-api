@@ -3,7 +3,7 @@ FROM docker.io/python:${PYTHON_VERSION}
 
 RUN apt-get update
 RUN apt-get install -y libsodium23 libmagic1 sudo libpq-dev
-ARG POETRY_VERSION="1.3.2"
+ARG POETRY_VERSION="1.8.3"
 RUN pip install poetry==${POETRY_VERSION}
 RUN poetry config virtualenvs.create false
 
