@@ -2988,10 +2988,13 @@ class Backends:
                 logger.warning(f"could not connect to request log db: {e}")
 
     def initdb(self, name: str, opts: tornado.options.OptionParser) -> None:
-        engine_type = options.config["backends"]["dbs"][name]["db"]["engine"]
+        db_config = options.config["backends"]["dbs"][name]["db"]
+        engine_type = db_config["engine"]
         if engine_type == "postgres":
             pool = postgres_init(
-                options.config["backends"]["dbs"][name]["db"]["dbconfig"]
+                db_config["dbconfig"],
+                db_config.get("pool_min", 3),
+                db_config.get("pool_max", 5),
             )
             options.pgpools[name] = pool
             db = PostgresBackend(pool)
@@ -3002,9 +3005,14 @@ class Backends:
     def initdb_request_log(self) -> None:
         if not options.request_log:
             return
-        engine_type = options.request_log.get("db").get("engine")
+        db_config = options.request_log.get("db")
+        engine_type = db_config.get("engine")
         if engine_type == "postgres":
-            pool = postgres_init(options.request_log.get("db").get("dbconfig"))
+            pool = postgres_init(
+                db_config.get("dbconfig"),
+                db_config.get("pool_min", 3),
+                db_config.get("pool_max", 5),
+            )
             try:
                 define("pgpool_request_log", pool)
             except tornado.options.Error:
