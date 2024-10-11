@@ -1078,7 +1078,7 @@ class FileRequestHandler(AuthRequestHandler):
 
             # ensure resource is not reserved
             delimiter = self.endpoint or self.namespace
-            resource_parts = uri.split(f"/{delimiter}/")
+            resource_parts = re.split(rf"/{delimiter}(?:/|$)", uri)
             resource = resource_parts[-1] if resource_parts else None
             if self.request.method in ("GET", "HEAD", "DELETE"):
                 work_dir = self.export_dir
