@@ -2964,7 +2964,11 @@ class Backends:
                     # TODO: change to exit once config has been cleaned
                     logger.warning(f"Unknown backend in config: {backend}")
 
-        db_backends = self.config["backends"]["dbs"].items()
+        db_backends = (
+            self.config["backends"]["dbs"].items()
+            if "dbs" in self.config["backends"]
+            else []
+        )
         if db_backends:
             define("pgpools", {})
             print(colored("Initialising database backends", "magenta"))
