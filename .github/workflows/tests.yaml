@@ -3,17 +3,17 @@ name: Tests
 on:
   push:
     paths:
-      - .github/workflows/tests.yaml
-      - pyproject.toml
-      - poetry.lock
-      - tsdfileapi/**
+    - .github/workflows/tests.yaml
+    - pyproject.toml
+    - poetry.lock
+    - tsdfileapi/**
   pull_request:
     types: [opened, reopened, synchronize]
     paths:
-      - .github/workflows/tests.yaml
-      - pyproject.toml
-      - poetry.lock
-      - tsdfileapi/**
+    - .github/workflows/tests.yaml
+    - pyproject.toml
+    - poetry.lock
+    - tsdfileapi/**
 
 env:
   TSD_FILE_API_DB_NAME: tsd_file_api_db
@@ -28,7 +28,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        python-version: ["3.8", "3.9", "3.10", "3.11", "3.12"]
+        python-version: ["3.9", "3.10", "3.11", "3.12"]
 
     services:
       postgres:
@@ -38,62 +38,41 @@ jobs:
           POSTGRES_USER: ${{env.TSD_FILE_API_DB_USER}}
           POSTGRES_PASSWORD: ${{env.TSD_FILE_API_DB_PASS}}
         options: >-
-          --health-cmd pg_isready
-          --health-interval 10s
-          --health-timeout 5s
-          --health-retries 5
+          --health-cmd pg_isready --health-interval 10s --health-timeout 5s --health-retries 5
         ports:
-          - 5432:5432
+        - 5432:5432
 
     steps:
-      - name: Check out repository
-        uses: actions/checkout@v4
-      - name: Set container tag to variable
-        run: echo "CONTAINER_TAG=tsd-file-api:${{ github.sha }}-py${{ matrix.python-version }}-r${{ github.run_attempt }}" >> $GITHUB_ENV
-      - name: Build test container image
-        run: >
-          docker build
-          --tag "${{ env.CONTAINER_TAG }}"
-          --build-arg PYTHON_VERSION="${{ matrix.python-version }}"
-          --build-arg POETRY_VERSION="${{env.POETRY_VERSION}}"
-          -f "./containers/test/Dockerfile"
-          .
-      - name: Start tsd-file-api container and run tests (SQLite backend)
-        run: >
-          docker run -d
-          -v $PWD:/file-api:ro
-          --name tsd-file-api-sqlite
-          --health-cmd "curl --fail http://127.0.0.1:3003/v1/all/config || exit 1"
-          --health-interval=2s
-          "${{ env.CONTAINER_TAG }}" && sleep 1 &&
-          until [ "$(docker inspect -f {{.State.Health.Status}} tsd-file-api-sqlite)" == "healthy" ]; do
-            if [ "$(docker inspect -f {{.State.Running}} tsd-file-api-sqlite)" == "false" ]; then
-              echo "The tsd-file-api container appears to have crashed."
-              exit 1
-            else
-              sleep 0.1
-            fi; done &&
-          docker exec tsd-file-api-sqlite python tsdfileapi/test_file_api.py
-      - name: Log tsd-file-api (SQLite backend) container output on failure
-        if: ${{ failure() }}
-        run: docker logs tsd-file-api-sqlite
-      - name: Start tsd-file-api container and run tests (PostgreSQL backend)
-        run: >
-          docker run -d
-          -v $PWD:/file-api:ro
-          --name tsd-file-api-postgres
-          --health-cmd "curl --fail http://127.0.0.1:3003/v1/all/config || exit 1"
-          --health-interval=2s
-          "${{ env.CONTAINER_TAG }}"
-          tsdfileapi/config/config-test-container-postgres.yaml  && sleep 1 &&
-          until [ "$(docker inspect -f {{.State.Health.Status}} tsd-file-api-postgres)" == "healthy" ]; do
-            if [ "$(docker inspect -f {{.State.Running}} tsd-file-api-postgres)" == "false" ]; then
-              echo "The tsd-file-api container appears to have crashed."
-              exit 1
-            else
-              sleep 0.1
-            fi; done &&
-          docker exec tsd-file-api-postgres python tsdfileapi/test_file_api.py
-      - name: Log tsd-file-api (PostgreSQL backend) container output on failure
-        if: ${{ failure() }}
-        run: docker logs tsd-file-api-postgres
+    - name: Check out repository
+      uses: actions/checkout@v4
+    - name: Set container tag to variable
+      run: echo "CONTAINER_TAG=tsd-file-api:${{ github.sha }}-py${{ matrix.python-version }}-r${{ github.run_attempt }}" >> $GITHUB_ENV
+    - name: Build test container image
+      run: >
+        docker build --tag "${{ env.CONTAINER_TAG }}" --build-arg PYTHON_VERSION="${{ matrix.python-version }}" --build-arg POETRY_VERSION="${{env.POETRY_VERSION}}" -f "./containers/test/Dockerfile" .
+    - name: Start tsd-file-api container and run tests (SQLite backend)
+      run: >
+        docker run -d -v $PWD:/file-api:ro --name tsd-file-api-sqlite --health-cmd "curl --fail http://127.0.0.1:3003/v1/all/config || exit 1" --health-interval=2s "${{ env.CONTAINER_TAG }}" && sleep 1 && until [ "$(docker inspect -f {{.State.Health.Status}} tsd-file-api-sqlite)" == "healthy" ]; do
+          if [ "$(docker inspect -f {{.State.Running}} tsd-file-api-sqlite)" == "false" ]; then
+            echo "The tsd-file-api container appears to have crashed."
+            exit 1
+          else
+            sleep 0.1
+          fi; done &&
+        docker exec tsd-file-api-sqlite python tsdfileapi/test_file_api.py
+    - name: Log tsd-file-api (SQLite backend) container output on failure
+      if: ${{ failure() }}
+      run: docker logs tsd-file-api-sqlite
+    - name: Start tsd-file-api container and run tests (PostgreSQL backend)
+      run: >
+        docker run -d -v $PWD:/file-api:ro --name tsd-file-api-postgres --health-cmd "curl --fail http://127.0.0.1:3003/v1/all/config || exit 1" --health-interval=2s "${{ env.CONTAINER_TAG }}" tsdfileapi/config/config-test-container-postgres.yaml  && sleep 1 && until [ "$(docker inspect -f {{.State.Health.Status}} tsd-file-api-postgres)" == "healthy" ]; do
+          if [ "$(docker inspect -f {{.State.Running}} tsd-file-api-postgres)" == "false" ]; then
+            echo "The tsd-file-api container appears to have crashed."
+            exit 1
+          else
+            sleep 0.1
+          fi; done &&
+        docker exec tsd-file-api-postgres python tsdfileapi/test_file_api.py
+    - name: Log tsd-file-api (PostgreSQL backend) container output on failure
+      if: ${{ failure() }}
+      run: docker logs tsd-file-api-postgres
