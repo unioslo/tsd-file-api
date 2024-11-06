@@ -585,13 +585,13 @@ dev = ["build", "flake8", "mypy", "pytest", "twine"]
 
 [[package]]
 name = "pysquril"
-version = "1.0.2"
+version = "1.0.4"
 description = "Python implementation of structured URI query language"
 optional = false
-python-versions = "<4.0,>=3.7"
+python-versions = "<4.0,>=3.9"
 files = [
-    {file = "pysquril-1.0.2-py3-none-any.whl", hash = "sha256:4b1ac757271dafc1a6837f5731e6686fe37c7a901212950d49a1077482510cfe"},
-    {file = "pysquril-1.0.2.tar.gz", hash = "sha256:31866b9b5a74da5b6aa85c53269a51b8d9ab699be6382a66c3fdb5ce3a37a7bf"},
+    {file = "pysquril-1.0.4-py3-none-any.whl", hash = "sha256:b5048223b3814a82a8458bcd22d6fdfc518cdc73a714f5571db684f13d56dd08"},
+    {file = "pysquril-1.0.4.tar.gz", hash = "sha256:0c4a7715d99f618afe297a100a368838fd7683c46056a9bb32a9681ecd6a1c7d"},
 ]
 
 [package.dependencies]
@@ -789,13 +789,13 @@ sqlcipher = ["sqlcipher3_binary"]
 
 [[package]]
 name = "termcolor"
-version = "2.4.0"
+version = "2.5.0"
 description = "ANSI color formatting for output in terminal"
 optional = false
-python-versions = ">=3.8"
+python-versions = ">=3.9"
 files = [
-    {file = "termcolor-2.4.0-py3-none-any.whl", hash = "sha256:9297c0df9c99445c2412e832e882a7884038a25617c60cea2ad69488d4040d63"},
-    {file = "termcolor-2.4.0.tar.gz", hash = "sha256:aab9e56047c8ac41ed798fa36d892a37aca6b3e9159f3e0c24bc64a9b3ac7b7a"},
+    {file = "termcolor-2.5.0-py3-none-any.whl", hash = "sha256:37b17b5fc1e604945c2642c872a3764b5d547a48009871aea3edd3afa180afb8"},
+    {file = "termcolor-2.5.0.tar.gz", hash = "sha256:998d8d27da6d48442e8e1f016119076b690d962507531df4890fcd2db2ef8a6f"},
 ]
 
 [package.extras]
@@ -870,5 +870,5 @@ zstd = ["zstandard (>=0.18.0)"]
 
 [metadata]
 lock-version = "2.0"
-python-versions = "^3.8"
-content-hash = "87d24eff99fc5fe4f00221586073e4db42b3d84de1d9204806c2dd3f72a88f08"
+python-versions = "^3.9"
+content-hash = "81bf361c8fd05c04ceaab051b05e9840609d66854ef7dc0ef6114b2c7b5ee0db"
