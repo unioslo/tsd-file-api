@@ -30,7 +30,7 @@ pyyaml = ">=5.4"
 [tool.poetry.group.dev.dependencies]
 backoff = ">=2.2.1"
 requests = ">=2.27.1"
-tsd-api-client = ">=3.6.2"
+tsd-api-client = ">=3.6.3"
 
 [tool.poetry-dynamic-versioning]
 enable = true

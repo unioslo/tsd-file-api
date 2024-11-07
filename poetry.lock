@@ -823,13 +823,13 @@ files = [
 
 [[package]]
 name = "tsd-api-client"
-version = "3.6.2"
+version = "3.6.3"
 description = "A client for the TSD REST API"
 optional = false
 python-versions = "<4.0,>=3.8"
 files = [
-    {file = "tsd_api_client-3.6.2-py3-none-any.whl", hash = "sha256:f4db82a63fda20cc35c351f84771dcbd54a729fcced666b882aac37c7af8d76b"},
-    {file = "tsd_api_client-3.6.2.tar.gz", hash = "sha256:6cf99c82e641eda4170c9d2157bc057111542f3031f4274c750384c1d4f132a9"},
+    {file = "tsd_api_client-3.6.3-py3-none-any.whl", hash = "sha256:2b0c1970e19f718420d82093137a83c3a20b026806ce51863addb730e77eba2f"},
+    {file = "tsd_api_client-3.6.3.tar.gz", hash = "sha256:e930c0eec4d39fb92b19f0b6e630483e6cc623bd365207dfb126357003b121cd"},
 ]
 
 [package.dependencies]
@@ -871,4 +871,4 @@ zstd = ["zstandard (>=0.18.0)"]
 [metadata]
 lock-version = "2.0"
 python-versions = "^3.9"
-content-hash = "81bf361c8fd05c04ceaab051b05e9840609d66854ef7dc0ef6114b2c7b5ee0db"
+content-hash = "cc309c75bb58c91a82b2267095b7e7cbdb4ab74f1500bfc74cb453bddaabfad0"
