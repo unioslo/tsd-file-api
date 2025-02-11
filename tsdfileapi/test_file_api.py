@@ -363,7 +363,7 @@ class TestFileApi(unittest.TestCase):
             self.assertTrue(resp.status_code in [200, 201])
 
     def test_tables(self) -> None:
-        headers = {"Authorization": f'Bearer {TEST_TOKENS["EXPORT"]}'}
+        headers = {"Authorization": f"Bearer {TEST_TOKENS['EXPORT']}"}
 
         # if it exists
         resp = requests.delete(
@@ -1261,7 +1261,7 @@ class TestFileApi(unittest.TestCase):
         from urllib.parse import quote
 
         target = os.path.basename(self.resume_file1)
-        url = f'{self.resumables}/{target}?key={quote(top_level_dir, safe="")}'
+        url = f"{self.resumables}/{target}?key={quote(top_level_dir, safe='')}"
         env = ""  # not used when passing url
         resp = fileapi.get_resumable(
             env,
@@ -1270,7 +1270,7 @@ class TestFileApi(unittest.TestCase):
             dev_url=url,
         ).get("overview")
         self.assertEqual(resp["id"], top_id)
-        url = f'{self.resumables}/{target}?key={quote(sub_dir, safe="")}'
+        url = f"{self.resumables}/{target}?key={quote(sub_dir, safe='')}"
         resp = fileapi.get_resumable(
             env,
             self.test_project,

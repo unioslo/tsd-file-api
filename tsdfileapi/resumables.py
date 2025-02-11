@@ -607,16 +607,16 @@ class SerialResumable(AbstractResumable):
         owner: str,
     ) -> bool:
         try:
-            assert self._db_upload_belongs_to_owner(
-                upload_id
-            ), "upload does not belong to user"
+            assert self._db_upload_belongs_to_owner(upload_id), (
+                "upload does not belong to user"
+            )
             relevant_dir = work_dir + "/" + upload_id
             relevant_merged_file = work_dir + "/" + filename + "." + upload_id
             shutil.rmtree(relevant_dir)
             os.remove(relevant_merged_file)
-            assert self._db_remove_completed_for_owner(
-                upload_id
-            ), "could not remove data from resumables db"
+            assert self._db_remove_completed_for_owner(upload_id), (
+                "could not remove data from resumables db"
+            )
             return True
         except (Exception, AssertionError) as e:
             logger.error(e)
