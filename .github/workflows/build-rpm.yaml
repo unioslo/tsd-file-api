@@ -51,7 +51,7 @@ jobs:
       - name: Get artifact filename
         run: echo "ARTIFACT_NAME=$(ls rpm/)" >> $GITHUB_ENV
       - name: Upload the extracted RPM as artifact
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: "${{ env.ARTIFACT_NAME }}"
           path: rpm
