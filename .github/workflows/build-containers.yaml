@@ -34,10 +34,16 @@ jobs:
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+      - name: Install pipx
+        run: python -m pip install --upgrade pipx
       - name: Install Poetry
-        run: pipx install poetry==${{env.POETRY_VERSION}}
+        run: python -m pipx install poetry==${{env.POETRY_VERSION}}
       - name: Install poetry-dynamic-versioning
-        run: poetry self add "poetry-dynamic-versioning[plugin]==${{env.POETRY_DYNAMIC_VERSIONING_VERSION}}"
+        run: python -m pipx inject poetry "poetry-dynamic-versioning[plugin]==${{env.POETRY_DYNAMIC_VERSIONING_VERSION}}"
       - name: Get version
         run: echo "PACKAGE_VERSION=$(poetry version --short --no-ansi)" >> $GITHUB_ENV
       - name: Log in to the container registry
