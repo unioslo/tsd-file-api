@@ -354,26 +354,6 @@ class TestFileApi(unittest.TestCase):
     # Informational
     # --------------
 
-    def test_W_create_and_insert_into_generic_table(self) -> None:
-        # TODO: harden these tests - check return values
-        data = [
-            {"key1": 7, "key2": "bla", "id": random.randint(0, 1000000)},
-            {"key1": 99, "key3": False, "id": random.randint(0, 1000000)},
-        ]
-        headers = {"Authorization": "Bearer " + TEST_TOKENS["VALID"]}
-        resp = requests.put(
-            self.base_url + "/tables/generic/mytest1",
-            data=json.dumps(data),
-            headers=headers,
-        )
-        self.assertEqual(resp.status_code, 201)
-        headers = {
-            "Authorization": "Bearer " + TEST_TOKENS["EXPORT"],
-            "Accept": "text/csv",
-        }
-        resp = requests.get(self.base_url + "/tables/generic/mytest1", headers=headers)
-        self.assertTrue(resp.status_code in [200, 201])
-
     def use_generic_table(self, app_route: str, url_tokens_method: str) -> None:
         methods = {"GET": requests.get, "PUT": requests.put, "DELETE": requests.delete}
         for url, token, method in url_tokens_method:
@@ -382,26 +362,50 @@ class TestFileApi(unittest.TestCase):
             resp = methods[method](full_url, headers=headers)
             self.assertTrue(resp.status_code in [200, 201])
 
-    def test_X_use_generic_table(self) -> None:
-        # TODO: harden these tests - check return values
-        generic_url_tokens_method = [
-            ("", "VALID", "GET"),
-            ("/mytest1", "EXPORT", "GET"),
-            ("/mytest1?select=key1&where=key2=eq.bla&order=key1.desc", "EXPORT", "GET"),
-            ("/mytest1", "EXPORT", "GET"),
-            ("/mytest1?where=key1=eq.99", "ADMIN", "DELETE"),
-            ("/mytest1", "EXPORT", "GET"),
-            ("/mytest1?where=key1=not.is.null", "ADMIN", "DELETE"),
-        ]
-        for app, acl in [("/tables/generic", generic_url_tokens_method)]:
-            self.use_generic_table(app, acl)
-        headers = {"Authorization": "Bearer " + TEST_TOKENS["VALID"]}
-        resp = requests.patch(
-            self.base_url + "/tables/generic/mytest1?set=key1&where=key2=eq.bla",
-            data=json.dumps({"key1": 1000}),
+    def test_tables(self) -> None:
+        headers = {"Authorization": f'Bearer {TEST_TOKENS["EXPORT"]}'}
+
+        # if it exists
+        resp = requests.delete(
+            f"{self.base_url}/apps/generic/tables/table1",
             headers=headers,
         )
-        self.assertEqual(resp.status_code, 201)
+        resp = requests.delete(
+            f"{self.base_url}/apps/generic/tables/table2",
+            headers=headers,
+        )
+
+        # create  a table
+        data = {"x": 10, "y": 11}
+        resp = requests.put(
+            f"{self.base_url}/apps/generic/tables/table1",
+            data=json.dumps(data),
+            headers=headers,
+        )
+        resp = requests.get(
+            f"{self.base_url}/apps/generic/tables/table1",
+            headers=headers,
+        )
+        self.assertEqual(json.loads(resp.text), [data])
+
+        # rename the table
+        resp = requests.post(
+            f"{self.base_url}/apps/generic/tables/table1?alter=name=eq.table2",
+            headers=headers,
+        )
+        self.assertEqual(json.loads(resp.text), {"tables": ["table1"]})
+
+        resp = requests.get(
+            f"{self.base_url}/apps/generic/tables/table2",
+            headers=headers,
+        )
+        self.assertEqual(json.loads(resp.text), [data])
+
+        resp = requests.get(
+            f"{self.base_url}/apps/generic/tables/table1",
+            headers=headers,
+        )
+        self.assertEqual(resp.status_code, 404)
 
     def test_XXX_query_invalid(self) -> None:
         headers = {"Authorization": "Bearer " + TEST_TOKENS["VALID"]}
@@ -2806,6 +2810,9 @@ def main() -> None:
         "test_XXX_nettskjema_backend",
         "test_survey_api_queries",
     ]
+    tables = [
+        "test_tables",
+    ]
     load = ["test_XXX_load"]
     apps = [
         "test_app_backend",
@@ -2869,6 +2876,8 @@ def main() -> None:
         tests.extend(logs)
     if "storage" in sys.argv:
         tests.extend(storage)
+    if "tables" in sys.argv:
+        tests.extend(tables)
     if "all" in sys.argv:
         tests.extend(base)
         tests.extend(sns)
@@ -2885,6 +2894,7 @@ def main() -> None:
         tests.extend(crypt)
         tests.extend(mtime)
         tests.extend(logs)
+        tests.extend(tables)
     tests.sort()
     suite = unittest.TestSuite()
     for test in tests:
