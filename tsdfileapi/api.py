@@ -2507,14 +2507,24 @@ class GenericTableHandler(AuthRequestHandler):
     def post(self, tenant: str, table_name: str) -> None:
         try:
             table_name = self.create_table_name(table_name)
-            if not table_name.endswith("/audit"):
-                raise ClientMethodNotAllowed
             query = self.get_uri_query(self.request.uri)
-            self.restored = self.db.table_restore(
-                table_name.replace("/audit", ""), query
-            )
+            if query.startswith("restore"):
+                if not table_name.endswith("/audit"):
+                    raise ClientMethodNotAllowed(
+                        "Restore is only supported on audit tables"
+                    )
+                self.restored = self.db.table_restore(
+                    table_name.replace("/audit", ""), query
+                )
+                out = self.restored
+            elif query.startswith("alter"):
+                if table_name.endswith("/audit"):
+                    raise ClientMethodNotAllowed(
+                        "Renaming audit tables is not supported"
+                    )
+                out = self.db.table_alter(table_name, query)
             self.set_status(HTTPStatus.OK.value)
-            self.write(self.restored)
+            self.write(out)
         except Exception as e:
             error = error_for_exception(e, details=self.additional_log_details())
             logger.error(error.message)
