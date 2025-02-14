@@ -44,6 +44,7 @@ FROM base AS run
 
 EXPOSE 3003
 ENV FORCE_COLOR=1
+ENV RUNNING_IN_CONTAINER=1
 
 COPY --from=build /app /app
 

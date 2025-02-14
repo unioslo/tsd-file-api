@@ -93,7 +93,7 @@ def choose_storage(
     opts: tornado.options.OptionParser,
     directory: str,
 ) -> str:
-    if not directory.startswith("/tsd"):
+    if not directory.startswith("/tsd") or running_in_container():
         return directory
     split_on = "data/durable"
     storage_path = find_tenant_storage_path(
@@ -104,6 +104,13 @@ def choose_storage(
     in_dir = directory.split(split_on)
     out_dir = "".join([storage_path[0], split_on, in_dir[-1]])
     return out_dir
+
+
+def running_in_container() -> bool:
+    if os.getenv("RUNNING_IN_CONTAINER"):
+        return True
+    else:
+        return False
 
 
 def call_request_hook(path: str, params: list, as_sudo: bool = True) -> None:
