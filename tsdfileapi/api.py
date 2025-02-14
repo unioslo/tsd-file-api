@@ -164,6 +164,8 @@ def set_config() -> None:
     options.logging = _config.get("log_level", "info")
     define("tenant_storage_cache", {})
     define("sns_migrations", _config.get("sns_migrations", []))
+    if _config.get("log_level", "").lower() == "debug":
+        logging.basicConfig(level=logging.DEBUG)
 
 
 set_config()
