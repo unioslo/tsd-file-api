@@ -1041,6 +1041,9 @@ class FileRequestHandler(AuthRequestHandler):
                     options.tenant_string_pattern, self.tenant
                 ),
             )
+            logger.debug(f"export dir: {self.export_dir}")
+            logger.debug(f"import dir: {self.import_dir}")
+            logger.debug(f"tenant dir: {self.tenant_dir}")
 
             self.authnz = self.process_token_and_extract_claims(
                 check_tenant=(
@@ -1050,6 +1053,7 @@ class FileRequestHandler(AuthRequestHandler):
                 )
             )
 
+            logger.debug("validating tenant from url")
             tenant = tenant_from_url(self.request.uri)
             if not options.valid_tenant.match(tenant):
                 raise ClientAuthorizationError("URI does not contain a valid tenant")
