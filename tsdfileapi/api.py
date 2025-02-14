@@ -1050,6 +1050,7 @@ class FileRequestHandler(AuthRequestHandler):
                 raise ClientAuthorizationError("URI does not contain a valid tenant")
             self.tenant = tenant
 
+            logger.debug(f"request uri: {self.request.uri}")
             uri = self.request.uri.split("?")[0]
             uri_parts = uri.split("/")
             if uri.endswith("/files/stream") and self.request.method in [
