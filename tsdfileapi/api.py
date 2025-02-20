@@ -2638,6 +2638,10 @@ class HealthCheckHandler(RequestHandler):
         self.set_status(HTTPStatus.OK.value)
         self.write({"message": "healthy"})
 
+    def _log(self) -> None:
+        # disable logging for health check requests
+        pass
+
 
 class NaclKeyHander(RequestHandler):
     def get(self, tenant: str) -> None:
