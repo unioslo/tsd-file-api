@@ -199,7 +199,7 @@ def error_for_exception(exc: Exception, details: str = "") -> Error:
         code = HTTPStatus.INSUFFICIENT_STORAGE
         status = code.value
         reason = "Project has run out of disk quota"
-        message = ", ".join([ code.phrase, reason, details ])
+        message = ", ".join([code.phrase, reason, details])
         message = generate_message([code.phrase, reason, details])
         headers = {}
     else:
