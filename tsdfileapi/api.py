@@ -2732,7 +2732,7 @@ class AuditLogViewerHandler(AuthRequestHandler):
                 for row in db.table_select(table_name, query):
                     if not first:
                         self.write(",")
-                    self.write(row)
+                    self.write(json.dumps(row))
                     self.flush()
                     first = False
                 self.write("]")

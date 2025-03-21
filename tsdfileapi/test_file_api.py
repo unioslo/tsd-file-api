@@ -2710,6 +2710,11 @@ class TestFileApi(unittest.TestCase):
         resp = requests.get(f"{self.logs}/apps", headers=headers)
         self.assertEqual(resp.status_code, 200)
         self.assertTrue(isinstance(json.loads(resp.text).get("apps"), list))
+        # and that aggregations work
+        resp = requests.get(
+            f"{self.logs}/files_export?select=count(1)", headers=headers
+        )
+        self.assertEqual(resp.status_code, 200)
 
     def test_find_tenant_storage_path(self) -> None:
         td = tempfile.TemporaryDirectory()
