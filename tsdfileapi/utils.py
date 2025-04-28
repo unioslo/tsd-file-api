@@ -9,6 +9,7 @@ import shlex
 import shutil
 import stat
 import subprocess
+from ipaddress import ip_network
 from typing import Optional
 from typing import Union
 
@@ -243,3 +244,24 @@ def any_path_islink(
             )
         path = path.parent
     return False
+
+
+def cidr_to_set(ip: str) -> set:
+    """Converts a CIDR to a set of IP addresses."""
+    return {str(x) for x in ip_network(ip)}
+
+
+def trusted_proxies_to_trusted_downstream(
+    trusted_proxies: list = None,
+) -> Optional[list]:
+    """Convert our trusted_proxies (CIDR supported) format to a list of IP addresses.
+
+    Tornado expects a list of IP addresses, so we must expand CIDR network
+    ranges to lists of IP addresses that it can support.
+    """
+    if not trusted_proxies:
+        return None
+    trusted_downstream = set()
+    for proxy in trusted_proxies:
+        trusted_downstream = trusted_downstream | cidr_to_set(proxy)
+    return list(trusted_downstream)

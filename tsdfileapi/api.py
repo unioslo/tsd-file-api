@@ -83,6 +83,7 @@ from tsdfileapi.utils import move_data_to_folder
 from tsdfileapi.utils import set_mtime
 from tsdfileapi.utils import sns_dir
 from tsdfileapi.utils import tenant_from_url
+from tsdfileapi.utils import trusted_proxies_to_trusted_downstream
 
 _RW______ = stat.S_IREAD | stat.S_IWRITE
 _RW_RW___ = _RW______ | stat.S_IRGRP | stat.S_IWGRP
@@ -164,6 +165,8 @@ def set_config() -> None:
     options.logging = _config.get("log_level", "info")
     define("tenant_storage_cache", {})
     define("sns_migrations", _config.get("sns_migrations", []))
+    define("parse_proxy_headers", _config.get("parse_proxy_headers", False))
+    define("trusted_proxies", _config.get("trusted_proxies", None))
 
 
 set_config()
@@ -3069,7 +3072,14 @@ def main() -> None:
     app = Application(
         backends.routes, **{"pika_client": pika_client, "debug": options.debug}
     )
-    app.listen(options.port, max_body_size=options.max_body_size)
+    app.listen(
+        options.port,
+        max_body_size=options.max_body_size,
+        xheaders=options.parse_proxy_headers,
+        trusted_downstream=trusted_proxies_to_trusted_downstream(
+            options.trusted_proxies
+        ),
+    )
     ioloop = IOLoop.instance()
     if pika_client:
         ioloop.add_timeout(time.time() + 0.1, pika_client.connect)
