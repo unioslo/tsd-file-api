@@ -76,10 +76,14 @@ def find_tenant_storage_path(
     """
     cache = opts.tenant_storage_cache.copy()
     if not cache.get(tenant):
+        storage_path_ess = _find_ess_dir(tenant, root=root)
+        if not storage_path_ess:
+            return None
+
         cache[tenant] = {
             "storage_backend": "ess",
             "storage_paths": {
-                "ess": _find_ess_dir(tenant, root=root),
+                "ess": storage_path_ess,
             },
         }
         opts.tenant_storage_cache = cache.copy()
