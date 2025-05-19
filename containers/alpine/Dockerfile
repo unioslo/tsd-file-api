@@ -20,10 +20,8 @@ RUN apk --no-cache add \
 
 # install Poetry
 ARG POETRY_VERSION="1.3.2"
-RUN pip install poetry==${POETRY_VERSION}
 ARG POETRY_DYNAMIC_VERSIONING_VERSION="0.21.3"
-RUN poetry self add "poetry-dynamic-versioning[plugin]==${POETRY_DYNAMIC_VERSIONING_VERSION}"
-RUN poetry config virtualenvs.in-project true
+RUN pip install poetry==${POETRY_VERSION} poetry-dynamic-versioning[plugin]==${POETRY_DYNAMIC_VERSIONING_VERSION}
 
 # add source files for building
 WORKDIR /src
