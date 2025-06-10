@@ -1802,6 +1802,7 @@ class FileRequestHandler(AuthRequestHandler):
                 encrypt_data = True
             self.set_header("Content-Type", mime_type)
             self.set_header("Modified-Time", str(mtime))
+            self.set_header("Accept-Ranges", "bytes")
             if "Range" not in self.request.headers:
                 self.set_header("Content-Length", size)
                 self.flush()
