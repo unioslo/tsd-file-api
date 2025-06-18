@@ -2835,6 +2835,18 @@ class Backends:
                 dict(backend="files_export", namespace="files", endpoint="export"),
             ),
         ],
+        "files_transfer": [
+            (
+                "/v1/(.*)/files/transfer",
+                FileRequestHandler,
+                dict(backend="files_transfer", namespace="files", endpoint="transfer"),
+            ),
+            (
+                "/v1/(.*)/files/transfer/(.*)",
+                FileRequestHandler,
+                dict(backend="files_transfer", namespace="files", endpoint="transfer"),
+            ),
+        ],
         "survey": [
             ("/v1/(.*)/survey/crypto/key", NaclKeyHander),
             (
