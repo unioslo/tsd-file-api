@@ -1956,9 +1956,16 @@ class FileRequestHandler(AuthRequestHandler):
                         )
                         if backup_path != self.filepath:  # don't backup backups
                             os.makedirs(os.path.dirname(backup_path), exist_ok=True)
-                            shutil.copyfile(self.filepath, backup_path)
+                            shutil.move(self.filepath, backup_path)
                             logger.info(f"backed up: {self.filepath} -> {backup_path}")
-                    os.remove(self.filepath)
+                    try:
+                        os.remove(self.filepath)
+                    except FileNotFoundError:
+                        if self.backup_deletes:
+                            # the file was moved to the backup directory
+                            pass
+                        else:
+                            raise
                     logger.info(
                         f"user: {self.requestor}, deleted file: {self.filepath}"
                     )
