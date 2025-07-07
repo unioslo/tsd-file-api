@@ -1932,7 +1932,22 @@ class FileRequestHandler(AuthRequestHandler):
                         self.backup_deletes, r"\1/backup/\2", self.filepath
                     )
                     if backup_path != self.filepath:  # don't backup backups
-                        shutil.copytree(self.filepath, backup_path, dirs_exist_ok=True)
+                        # Ensure the backup directory exists
+                        os.makedirs(os.path.dirname(backup_path), exist_ok=True)
+                        # Walk the source directory and move files one by one
+                        for root, dirs, files in os.walk(self.filepath):
+                            # Compute relative path from source
+                            rel_path = os.path.relpath(root, self.filepath)
+                            # Build the full backup path for this directory
+                            target_dir = os.path.join(backup_path, rel_path)
+                            os.makedirs(target_dir, exist_ok=True)
+
+                            # Moving each individual file
+                            for file in files:
+                                src_file = os.path.join(root, file)
+                                dst_file = os.path.join(target_dir, file)
+                                shutil.move(src_file, dst_file)
+                                logger.info(f"backed up: {src_file} -> {dst_file}")
                         logger.info(f"backed up: {self.filepath} -> {backup_path}")
                 shutil.rmtree(self.filepath)
                 logger.info(
