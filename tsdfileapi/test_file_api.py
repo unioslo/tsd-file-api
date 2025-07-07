@@ -2240,6 +2240,92 @@ class TestFileApi(unittest.TestCase):
         )
         self.assertEqual(resp.status_code, 200)
 
+        # backup and restoring directories
+
+        directory = "importantresearch"
+        files = ["some.data", "other.data", "my.db"]
+
+        # upload files
+        for file in files:
+            resp = requests.put(
+                f"{self.apps}/ega/files/{directory}/{file}",
+                data=lazy_file_reader(self.so_sweet),
+                headers=headers,
+            )
+            self.assertEqual(resp.status_code, 201)
+
+        resp = requests.delete(
+            f"{self.apps}/ega/files/{directory}",
+            headers=headers,
+        )
+        self.assertEqual(resp.status_code, 200)
+
+        # verify deletion
+        for file in files:
+            resp = requests.get(
+                f"{self.apps}/ega/files/{directory}/{file}",
+                headers=headers,
+            )
+            self.assertEqual(resp.status_code, 404)
+
+        # check the backup
+        resp = requests.get(
+            f"{self.apps}/ega/backup/files/{directory}",
+            headers=headers,
+        )
+        self.assertEqual(resp.status_code, 200)
+        for file in files:
+            self.assertEqual(
+                json.loads(resp.text).get("files")[0].get("filename"),
+                file,
+            )
+
+        # restore the directory
+        resp = requests.post(
+            f"{self.apps}/ega/backup/files/{directory}?restore",
+            headers=headers,
+        )
+        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(len(json.loads(resp.text).get("restores")), 1)
+
+        # check the restored files
+        resp = requests.get(
+            f"{self.apps}/ega/files/{directory}",
+            headers=headers,
+        )
+        self.assertEqual(resp.status_code, 200)
+        for file in files:
+            self.assertEqual(
+                json.loads(resp.text).get("files")[0].get("filename"),
+                file,
+            )
+
+        # remove the directory completely
+        resp = requests.delete(
+            f"{self.apps}/ega/files/{directory}",
+            headers=headers,
+        )
+        self.assertEqual(resp.status_code, 200)
+        resp = requests.delete(
+            f"{self.apps}/ega/backup/files/{directory}",
+            headers=headers,
+        )
+        self.assertEqual(resp.status_code, 200)
+
+        # verify deletion
+        for file in files:
+            resp = requests.get(
+                f"{self.apps}/ega/files/{directory}/{file}",
+                headers=headers,
+            )
+            self.assertEqual(resp.status_code, 404)
+        for file in files:
+            resp = requests.get(
+                f"{self.apps}/ega/backup/files/{directory}/{file}",
+                headers=headers,
+            )
+            self.assertEqual(resp.status_code, 404)
+
     def test_app_backend_encryption(self) -> None:
         """Test app backend with encrypted retrieval of data."""
 
