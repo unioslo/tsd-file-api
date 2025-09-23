@@ -921,7 +921,7 @@ class ResumablesHandler(AuthRequestHandler):
             self.write({"message": "not found"})
         except Exception as e:
             error = error_for_exception(e)
-            logger.error(error.message)
+            logger.exception(error.message)
             for name, value in error.headers.items():
                 self.set_header(name, value)
             self.set_status(error.status, reason=error.reason)
