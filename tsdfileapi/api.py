@@ -1282,8 +1282,15 @@ class FileRequestHandler(AuthRequestHandler):
                         self.res.add_chunk(self.target_file, decrypted)
                     else:
                         self.target_file.write(decrypted)
-        except Exception as e:
-            logger.exception("something went wrong with stream processing" + ((" have to close file '%s'" % self.target_file.name) if self.target_file else ''))
+        except Exception:
+            logger.exception(
+                "something went wrong with stream processing"
+                + (
+                    (" have to close file '%s'" % self.target_file.name)
+                    if self.target_file
+                    else ""
+                )
+            )
             if self.target_file:
                 self.target_file.close()
             os.rename(self.path, self.path_part)
