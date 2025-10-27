@@ -9,6 +9,7 @@ designed for the University of Oslo's Services for Sensitive Data (TSD).
 """
 
 import base64
+import contextvars
 import datetime
 import hashlib
 import json
@@ -50,7 +51,7 @@ from tornado.options import define
 from tornado.options import options
 from tornado.web import Application
 from tornado.web import HTTPError
-from tornado.web import RequestHandler
+from tornado.web import RequestHandler as _RequestHandler
 from tornado.web import stream_request_body
 
 from tsdfileapi.auth import process_access_token
@@ -170,6 +171,63 @@ def set_config() -> None:
 
 
 set_config()
+
+request_id_var = contextvars.ContextVar("request-id")
+
+
+class RequestHandler(_RequestHandler):
+    """
+    A base (abstract) request handler class for handling _all_ requests by the API.
+
+    Quoting Tornado's own [User Guide](https://www.tornadoweb.org/en/latest/guide/structure.html#subclassing-requesthandler):
+
+    > Many methods in `RequestHandler` are designed to be overridden in subclasses and be used throughout the application. It is common to define a "BaseHandler" class that overrides methods such as `write_error` and `get_current_user` and then subclass your own "BaseHandler" instead of `RequestHandler` for all your specific handlers.
+    """
+
+    _next_request_id = 1  # Shared among requests (i.e. is a "static" variable); for assigning incrementally larger numbers as identifiers to requests; range of `int` is _unbounded_ in Python
+    _request_id_token: contextvars.Token  # Allows maintaining processing context (see `contextvars`), for purposes of logging
+
+    @staticmethod
+    def enable_request_id_logging(handler: logging.Handler) -> None:
+        """Enable logging of request IDs in log records emitted by the specified handler.
+
+        The good old `logging` module doesn't necessarily facilitate the kind of operation, and yet we don't want to override Tornado's logging set-up (use of e.g. `colorama`) but instead build on top of that -- and that isn't trivial.
+        """
+
+        def log_record_filter(record: logging.LogRecord) -> bool:
+            """Attach an identifier to a request.
+
+            This procedure is a _filter_ -- to be registered using the `logging` API and invoked by the latter automatically. Despite it being a filter, per documentation of `logging` it is permitted (and recommended for the use case) to use filters for adding attributes to log records."""
+            # Not feeling great about mixing value types for the `request-id` variable, but it will have to do for now as it's less work than crafting and using a `logging.Formatter` sub-class
+            record.request_id = request_id_var.get("-")
+            return True  # Do not filter the record
+
+        handler.addFilter(log_record_filter)
+        formatter = handler.formatter  # Not documented (because initialised by the constructor and otherwise not declared by the class) and yet `formatter` is a "public" attribute
+        if (
+            not isinstance(formatter, tornado.log.LogFormatter)
+            or formatter._fmt
+            != "%(color)s[%(levelname)1.1s %(asctime)s %(module)s:%(lineno)d]%(end_color)s %(message)s"
+        ):
+            # We cannot modify an arbitrary formatter to include request IDs because a) we don't know where to put the request ID in the format string [we aren't parsing], and b) `_fmt` is subject to change and generally may not be available, so _modification_ of formatter objects already in use isn't in fact facilitated by any known APIs, unfortunately
+            raise NotImplementedError(
+                "The formatter used on the logger isn't the expected, default Tornado formatter"
+            )
+        # Knowing the _exact_ format string, we can confidently patch it to include a `%{request_id}s` in a good location of our choosing
+        formatter._fmt = "%(color)s[%(levelname)1.1s %(asctime)s %(module)s:%(lineno)d %(request_id)s]%(end_color)s %(message)s"
+        # `_style` is a cache -- need to re-built it; another necessity courtesy of using mechanisms not intended for general use
+        formatter._style = type(formatter._style)(formatter._fmt)
+
+    def prepare(self):
+        # Allocate a unique identifier and make it part of the context
+        self._request_id_token = request_id_var.set(
+            self.request.headers.get("Request-ID") or RequestHandler._next_request_id
+        )
+        RequestHandler._next_request_id += 1  # The next identifier to be allocated will just be the one just used plus one
+
+    def on_finish(self):
+        # Restore original value of the variable stored with the context -- Tornado is free to reuse tasks and thus contexts _between_ requests (crucially, one task cannot by nature process two requests at once though), which makes restoration mandatory so that logging done in context of the same task that finished processing this request, won't be "related" (through the context) to the "finished" request any longer -- it's just the right thing to do conceptually
+        request_id_var.reset(self._request_id_token)
 
 
 class AuthRequestHandler(RequestHandler):
@@ -707,6 +765,7 @@ class SnsFormDataHandler(AuthRequestHandler):
         )
 
     def prepare(self) -> Optional[Awaitable[None]]:
+        super().prepare()
         try:
             if not options.valid_tenant.match(self.tenant):
                 raise ClientError(f"malformed tenant: {self.tenant}")
@@ -791,15 +850,20 @@ class SnsFormDataHandler(AuthRequestHandler):
         os.chmod(subfolder_path, _RW_RW___)
 
     def on_finish(self) -> None:
-        if self.request.method in ("PUT", "POST", "PATCH") and self.request_hook.get(
-            "enabled"
-        ):
-            for path in self.new_paths:
-                call_request_hook(
-                    self.request_hook["path"],
-                    [path, self.requestor, options.api_user, self.group_name],
-                    as_sudo=self.request_hook["sudo"],
-                )
+        try:
+            if self.request.method in (
+                "PUT",
+                "POST",
+                "PATCH",
+            ) and self.request_hook.get("enabled"):
+                for path in self.new_paths:
+                    call_request_hook(
+                        self.request_hook["path"],
+                        [path, self.requestor, options.api_user, self.group_name],
+                        as_sudo=self.request_hook["sudo"],
+                    )
+        finally:
+            super().on_finish()
 
     def handle_data(self, filemode: str, tenant: str) -> None:
         try:
@@ -873,6 +937,7 @@ class ResumablesHandler(AuthRequestHandler):
         )
 
     def prepare(self) -> Optional[Awaitable[None]]:
+        super().prepare()
         try:
             self.tenant_dir = choose_storage(
                 tenant=self.tenant,
@@ -999,6 +1064,7 @@ class FileRequestHandler(AuthRequestHandler):
 
     @gen.coroutine
     def prepare(self) -> Optional[Awaitable[None]]:
+        super().prepare()
         self.error = None
         self.completed_resumable_file = False
         self.target_file = None
@@ -2048,86 +2114,89 @@ class FileRequestHandler(AuthRequestHandler):
             self.finish()
 
     def on_finish(self) -> None:
-        resource_created = self.request.method == "PUT" or (
-            self.request.method == "PATCH" and self.chunk_num == "end"
-        )
-        resource_restored = self.request.method == "POST"
-        if (
-            not options.maintenance_mode_enabled
-            and self._status_code < 300
-            and (
-                self.request.method in ("GET", "HEAD", "DELETE")
-                or resource_created
-                or resource_restored
+        try:
+            resource_created = self.request.method == "PUT" or (
+                self.request.method == "PATCH" and self.chunk_num == "end"
             )
-        ):
-            try:
-                if resource_created:
-                    try:
-                        # switch path variables back
-                        if not self.completed_resumable_file:
-                            path = self.path_part
-                        else:
-                            path = self.completed_resumable_filename
-                        resource_path = move_data_to_folder(path, self.resource_dir)
-                        client_mtime = self.request.headers.get("Modified-Time")
-                        if client_mtime and client_mtime != "None":
-                            set_mtime(resource_path, float(client_mtime))
-                    except Exception as e:
-                        logger.info("could not move data to destination folder")
-                        logger.info(e)
-                    try:
-                        if self.request_hook["enabled"]:
-                            call_request_hook(
-                                self.request_hook["path"],
-                                [
-                                    resource_path,
-                                    self.requestor,
-                                    options.api_user,
-                                    self.group_name,
-                                ],
-                                as_sudo=self.request_hook["sudo"],
+            resource_restored = self.request.method == "POST"
+            if (
+                not options.maintenance_mode_enabled
+                and self._status_code < 300
+                and (
+                    self.request.method in ("GET", "HEAD", "DELETE")
+                    or resource_created
+                    or resource_restored
+                )
+            ):
+                try:
+                    if resource_created:
+                        try:
+                            # switch path variables back
+                            if not self.completed_resumable_file:
+                                path = self.path_part
+                            else:
+                                path = self.completed_resumable_filename
+                            resource_path = move_data_to_folder(path, self.resource_dir)
+                            client_mtime = self.request.headers.get("Modified-Time")
+                            if client_mtime and client_mtime != "None":
+                                set_mtime(resource_path, float(client_mtime))
+                        except Exception as e:
+                            logger.info("could not move data to destination folder")
+                            logger.info(e)
+                        try:
+                            if self.request_hook["enabled"]:
+                                call_request_hook(
+                                    self.request_hook["path"],
+                                    [
+                                        resource_path,
+                                        self.requestor,
+                                        options.api_user,
+                                        self.group_name,
+                                    ],
+                                    as_sudo=self.request_hook["sudo"],
+                                )
+                        except Exception as e:
+                            logger.info("problem calling request hook")
+                            logger.info(e)
+                    if resource_restored:
+                        for restore in self.restores:
+                            message_data = {
+                                "path": restore,
+                                "requestor": self.requestor,
+                                "group": None,
+                            }
+                            self.handle_mq_publication(
+                                mq_config=self.mq_config,
+                                data=message_data,
+                                http_method="PUT",
+                                http_uri=f"{self.restore_uri}/{os.path.basename(restore)}",
                             )
-                    except Exception as e:
-                        logger.info("problem calling request hook")
-                        logger.info(e)
-                if resource_restored:
-                    for restore in self.restores:
+                    else:
                         message_data = {
-                            "path": restore,
+                            "path": resource_path if resource_created else None,
                             "requestor": self.requestor,
-                            "group": None,
+                            "group": self.group_name if resource_created else None,
                         }
                         self.handle_mq_publication(
                             mq_config=self.mq_config,
                             data=message_data,
-                            http_method="PUT",
-                            http_uri=f"{self.restore_uri}/{os.path.basename(restore)}",
                         )
-                else:
-                    message_data = {
-                        "path": resource_path if resource_created else None,
-                        "requestor": self.requestor,
-                        "group": self.group_name if resource_created else None,
-                    }
-                    self.handle_mq_publication(
-                        mq_config=self.mq_config,
-                        data=message_data,
-                    )
-                if not self.listing_dir:
-                    self.update_request_log(
-                        tenant=self.tenant,
-                        backend=self.backend,
-                        requestor=self.requestor,
-                        requestor_name=self.requestor_name,
-                        method=self.request.method,
-                        uri=self.request.uri,
-                        app=self.get_app_name(self.request.uri),
-                        claims=self.claims,
-                    )
-            except Exception as e:
-                logger.error(e)
-            self.on_finish_called = True
+                    if not self.listing_dir:
+                        self.update_request_log(
+                            tenant=self.tenant,
+                            backend=self.backend,
+                            requestor=self.requestor,
+                            requestor_name=self.requestor_name,
+                            method=self.request.method,
+                            uri=self.request.uri,
+                            app=self.get_app_name(self.request.uri),
+                            claims=self.claims,
+                        )
+                except Exception as e:
+                    logger.error(e)
+                self.on_finish_called = True
+        finally:
+            super().on_finish()
 
     def on_connection_close(self) -> None:
         """
@@ -2220,6 +2289,7 @@ class GenericTableHandler(AuthRequestHandler):
         )
 
     def prepare(self) -> Optional[Awaitable[None]]:
+        super().prepare()
         try:
             if options.maintenance_mode_enabled:
                 raise ServerMaintenanceError
@@ -2657,6 +2727,8 @@ class GenericTableHandler(AuthRequestHandler):
                 )
         except Exception as e:
             logger.error(e)
+        finally:
+            super().on_finish()
 
 
 class HealthCheckHandler(RequestHandler):
@@ -3102,6 +3174,8 @@ class Backends:
 
 def main() -> None:
     tornado.log.enable_pretty_logging()
+    for handler in logging.getLogger().handlers:  # Enable logging of request ID by "all" loggers ("all" here means descendant loggers that propagate handling to the root logger; see also https://docs.python.org/3/howto/logging.html#logging-flow)
+        RequestHandler.enable_request_id_logging(handler)
     backends = Backends(options.config)
     pika_client = (
         PikaClient(options.rabbitmq, backends.exchanges)
@@ -3109,7 +3183,12 @@ def main() -> None:
         else None
     )
     app = Application(
-        backends.routes, **{"pika_client": pika_client, "debug": options.debug}
+        backends.routes,
+        **{
+            "pika_client": pika_client,
+            "debug": options.debug,
+            "default_handler_class": RequestHandler,
+        },
     )
     app.listen(
         options.port,
