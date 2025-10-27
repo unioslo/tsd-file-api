@@ -11,6 +11,7 @@ designed for the University of Oslo's Services for Sensitive Data (TSD).
 import base64
 import contextvars
 import datetime
+import functools
 import hashlib
 import json
 import logging
@@ -187,6 +188,28 @@ class RequestHandler(_RequestHandler):
     _next_request_id = 1  # Shared among requests (i.e. is a "static" variable); for assigning incrementally larger numbers as identifiers to requests; range of `int` is _unbounded_ in Python
     _request_id_token: contextvars.Token  # Allows maintaining processing context (see `contextvars`), for purposes of logging
 
+    def __init_subclass__(cls):
+        """Wrap `prepare` and `on_finish` methods of every sub-class of this request handler class, so that the request identifier is automatically made available from the context, for the lifetime of processing the request.
+
+        This mechanism of hooking into sub-class initialisation, allows request handler classes inheriting this class to not have to explicitly call `RequestHandler.prepare` and `RequestHandler.on_finish` with e.g. `super().prepare()` and `super().finish()` respectively. Given how _every_ request should have identifier logging, needing such statements is arguably not a net-benefit -- this procedure alone ensures business logic remains as-is, and allows the application to continue following Tornado's convention which doesn't require `super().prepare()` or `super().on_finish()` _for most cases_.
+        """
+
+        def prepare(handler, wrapped):
+            RequestHandler.prepare(handler)
+            return wrapped(handler)
+
+        def on_finish(handler, wrapped):
+            try:
+                return wrapped(handler)
+            finally:
+                RequestHandler.on_finish(handler)
+
+        # If the sub-class doesn't have its own `prepare` then there is nothing to wrap and `cls.prepare` being `RequestHandler.prepare`, is usable as-is
+        if cls.prepare != RequestHandler.prepare:
+            cls.prepare = functools.partialmethod(prepare, cls.prepare)
+        if cls.on_finish != RequestHandler.on_finish:  # Likewise for `on_finish`
+            cls.on_finish = functools.partialmethod(on_finish, cls.on_finish)
+
     @staticmethod
     def enable_request_id_logging(handler: logging.Handler) -> None:
         """Enable logging of request IDs in log records emitted by the specified handler.
@@ -226,8 +249,10 @@ class RequestHandler(_RequestHandler):
         RequestHandler._next_request_id += 1  # The next identifier to be allocated will just be the one just used plus one
 
     def on_finish(self):
-        # Restore original value of the variable stored with the context -- Tornado is free to reuse tasks and thus contexts _between_ requests (crucially, one task cannot by nature process two requests at once though), which makes restoration mandatory so that logging done in context of the same task that finished processing this request, won't be "related" (through the context) to the "finished" request any longer -- it's just the right thing to do conceptually
-        request_id_var.reset(self._request_id_token)
+        # A missing token value signifies there is a context mismatch -- the variable was _not_ set in current context so resetting it is neither necessary nor will it work (the call will raise an error); we therefore "look before we leap" instead of taking a chance on handling an e.g. `ValueError` assuming `reset` failed because of context mismatch specifically; a context mismatch may happen in cases where a `prepare` call (in a sub-class) raises an error, as Tornado apparently executes error handling in a _different_ (copy of) context than the one used for processing the request
+        if self._request_id_token.old_value != contextvars.Token.MISSING:
+            # Restore original value of the variable stored with the context -- Tornado is free to reuse tasks and thus contexts _between_ requests (crucially, one task cannot by nature process two requests at once though), which makes restoration mandatory so that logging done in context of the same task that finished processing this request, won't be "related" (through the context) to the "finished" request any longer -- it's just the right thing to do conceptually
+            request_id_var.reset(self._request_id_token)
 
 
 class AuthRequestHandler(RequestHandler):
@@ -765,7 +790,6 @@ class SnsFormDataHandler(AuthRequestHandler):
         )
 
     def prepare(self) -> Optional[Awaitable[None]]:
-        super().prepare()
         try:
             if not options.valid_tenant.match(self.tenant):
                 raise ClientError(f"malformed tenant: {self.tenant}")
@@ -850,20 +874,17 @@ class SnsFormDataHandler(AuthRequestHandler):
         os.chmod(subfolder_path, _RW_RW___)
 
     def on_finish(self) -> None:
-        try:
-            if self.request.method in (
-                "PUT",
-                "POST",
-                "PATCH",
-            ) and self.request_hook.get("enabled"):
-                for path in self.new_paths:
-                    call_request_hook(
-                        self.request_hook["path"],
-                        [path, self.requestor, options.api_user, self.group_name],
-                        as_sudo=self.request_hook["sudo"],
-                    )
-        finally:
-            super().on_finish()
+        if self.request.method in (
+            "PUT",
+            "POST",
+            "PATCH",
+        ) and self.request_hook.get("enabled"):
+            for path in self.new_paths:
+                call_request_hook(
+                    self.request_hook["path"],
+                    [path, self.requestor, options.api_user, self.group_name],
+                    as_sudo=self.request_hook["sudo"],
+                )
 
     def handle_data(self, filemode: str, tenant: str) -> None:
         try:
@@ -937,7 +958,6 @@ class ResumablesHandler(AuthRequestHandler):
         )
 
     def prepare(self) -> Optional[Awaitable[None]]:
-        super().prepare()
         try:
             self.tenant_dir = choose_storage(
                 tenant=self.tenant,
@@ -1064,7 +1084,6 @@ class FileRequestHandler(AuthRequestHandler):
 
     @gen.coroutine
     def prepare(self) -> Optional[Awaitable[None]]:
-        super().prepare()
         self.error = None
         self.completed_resumable_file = False
         self.target_file = None
@@ -2114,89 +2133,86 @@ class FileRequestHandler(AuthRequestHandler):
             self.finish()
 
     def on_finish(self) -> None:
-        try:
-            resource_created = self.request.method == "PUT" or (
-                self.request.method == "PATCH" and self.chunk_num == "end"
+        resource_created = self.request.method == "PUT" or (
+            self.request.method == "PATCH" and self.chunk_num == "end"
+        )
+        resource_restored = self.request.method == "POST"
+        if (
+            not options.maintenance_mode_enabled
+            and self._status_code < 300
+            and (
+                self.request.method in ("GET", "HEAD", "DELETE")
+                or resource_created
+                or resource_restored
             )
-            resource_restored = self.request.method == "POST"
-            if (
-                not options.maintenance_mode_enabled
-                and self._status_code < 300
-                and (
-                    self.request.method in ("GET", "HEAD", "DELETE")
-                    or resource_created
-                    or resource_restored
-                )
-            ):
-                try:
-                    if resource_created:
-                        try:
-                            # switch path variables back
-                            if not self.completed_resumable_file:
-                                path = self.path_part
-                            else:
-                                path = self.completed_resumable_filename
-                            resource_path = move_data_to_folder(path, self.resource_dir)
-                            client_mtime = self.request.headers.get("Modified-Time")
-                            if client_mtime and client_mtime != "None":
-                                set_mtime(resource_path, float(client_mtime))
-                        except Exception as e:
-                            logger.info("could not move data to destination folder")
-                            logger.info(e)
-                        try:
-                            if self.request_hook["enabled"]:
-                                call_request_hook(
-                                    self.request_hook["path"],
-                                    [
-                                        resource_path,
-                                        self.requestor,
-                                        options.api_user,
-                                        self.group_name,
-                                    ],
-                                    as_sudo=self.request_hook["sudo"],
-                                )
-                        except Exception as e:
-                            logger.info("problem calling request hook")
-                            logger.info(e)
-                    if resource_restored:
-                        for restore in self.restores:
-                            message_data = {
-                                "path": restore,
-                                "requestor": self.requestor,
-                                "group": None,
-                            }
-                            self.handle_mq_publication(
-                                mq_config=self.mq_config,
-                                data=message_data,
-                                http_method="PUT",
-                                http_uri=f"{self.restore_uri}/{os.path.basename(restore)}",
+        ):
+            try:
+                if resource_created:
+                    try:
+                        # switch path variables back
+                        if not self.completed_resumable_file:
+                            path = self.path_part
+                        else:
+                            path = self.completed_resumable_filename
+                        resource_path = move_data_to_folder(path, self.resource_dir)
+                        client_mtime = self.request.headers.get("Modified-Time")
+                        if client_mtime and client_mtime != "None":
+                            set_mtime(resource_path, float(client_mtime))
+                    except Exception as e:
+                        logger.info("could not move data to destination folder")
+                        logger.info(e)
+                    try:
+                        if self.request_hook["enabled"]:
+                            call_request_hook(
+                                self.request_hook["path"],
+                                [
+                                    resource_path,
+                                    self.requestor,
+                                    options.api_user,
+                                    self.group_name,
+                                ],
+                                as_sudo=self.request_hook["sudo"],
                             )
-                    else:
+                    except Exception as e:
+                        logger.info("problem calling request hook")
+                        logger.info(e)
+                if resource_restored:
+                    for restore in self.restores:
                         message_data = {
-                            "path": resource_path if resource_created else None,
+                            "path": restore,
                             "requestor": self.requestor,
-                            "group": self.group_name if resource_created else None,
+                            "group": None,
                         }
                         self.handle_mq_publication(
                             mq_config=self.mq_config,
                             data=message_data,
+                            http_method="PUT",
+                            http_uri=f"{self.restore_uri}/{os.path.basename(restore)}",
                         )
-                    if not self.listing_dir:
-                        self.update_request_log(
-                            tenant=self.tenant,
-                            backend=self.backend,
-                            requestor=self.requestor,
-                            requestor_name=self.requestor_name,
-                            method=self.request.method,
-                            uri=self.request.uri,
-                            app=self.get_app_name(self.request.uri),
-                            claims=self.claims,
-                        )
-                except Exception as e:
-                    logger.error(e)
-                self.on_finish_called = True
-        finally:
-            super().on_finish()
+                else:
+                    message_data = {
+                        "path": resource_path if resource_created else None,
+                        "requestor": self.requestor,
+                        "group": self.group_name if resource_created else None,
+                    }
+                    self.handle_mq_publication(
+                        mq_config=self.mq_config,
+                        data=message_data,
+                    )
+                if not self.listing_dir:
+                    self.update_request_log(
+                        tenant=self.tenant,
+                        backend=self.backend,
+                        requestor=self.requestor,
+                        requestor_name=self.requestor_name,
+                        method=self.request.method,
+                        uri=self.request.uri,
+                        app=self.get_app_name(self.request.uri),
+                        claims=self.claims,
+                    )
+            except Exception as e:
+                logger.error(e)
+            self.on_finish_called = True
 
     def on_connection_close(self) -> None:
         """
@@ -2289,7 +2305,6 @@ class GenericTableHandler(AuthRequestHandler):
         )
 
     def prepare(self) -> Optional[Awaitable[None]]:
-        super().prepare()
         try:
             if options.maintenance_mode_enabled:
                 raise ServerMaintenanceError
@@ -2727,8 +2742,6 @@ class GenericTableHandler(AuthRequestHandler):
                 )
         except Exception as e:
             logger.error(e)
-        finally:
-            super().on_finish()
 
 
 class HealthCheckHandler(RequestHandler):
