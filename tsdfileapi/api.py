@@ -195,7 +195,7 @@ class RequestHandler(_RequestHandler):
         """
 
         def log_record_filter(record: logging.LogRecord) -> bool:
-            """Attach an identifier to a request.
+            """Attach an identifier to a log record.
 
             This procedure is a _filter_ -- to be registered using the `logging` API and invoked by the latter automatically. Despite it being a filter, per documentation of `logging` it is permitted (and recommended for the use case) to use filters for adding attributes to log records."""
             # Not feeling great about mixing value types for the `request-id` variable, but it will have to do for now as it's less work than crafting and using a `logging.Formatter` sub-class
