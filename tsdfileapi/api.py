@@ -255,6 +255,22 @@ class RequestHandler(_RequestHandler):
             request_id_var.reset(self._request_id_token)
 
 
+class FallbackHandler(RequestHandler):
+    """Class of derivative (app-specific) request handlers to deal with fallback cases.
+
+    Conventionally we serve with HTTP status code 404 for e.g. endpoints we do not recognize/define. Registering this class (with an appropriate status code for initialisation) allows us to do exactly that.
+
+    This class largely replicates Tornado's own `tornado.web.ErrorHandler` class, except we have ours inherit from our `RequestHandler` (to build on features the latter offers).
+    """
+
+    def initialize(self, status_code: int):
+        self.set_status(status_code)
+
+    def prepare(self) -> None:
+        # This is how Tornado itself does it (see `tornado.web.ErrorHandler`), since it otherwise -- if `prepare` returns -- would find missing methods corresponding to the HTTP method and reset the status code to 405
+        raise tornado.web.HTTPError(self.get_status())
+
+
 class AuthRequestHandler(RequestHandler):
     """
     All RequestHandler(s), with the exception of the HealthCheckHandler
@@ -3200,7 +3216,8 @@ def main() -> None:
         **{
             "pika_client": pika_client,
             "debug": options.debug,
-            "default_handler_class": RequestHandler,
+            "default_handler_class": FallbackHandler,
+            "default_handler_args": {"status_code": 404},
         },
     )
     app.listen(
