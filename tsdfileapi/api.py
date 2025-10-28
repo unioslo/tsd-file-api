@@ -185,7 +185,6 @@ class RequestHandler(_RequestHandler):
     > Many methods in `RequestHandler` are designed to be overridden in subclasses and be used throughout the application. It is common to define a "BaseHandler" class that overrides methods such as `write_error` and `get_current_user` and then subclass your own "BaseHandler" instead of `RequestHandler` for all your specific handlers.
     """
 
-    _next_request_id = 1  # Shared among requests (i.e. is a "static" variable); for assigning incrementally larger numbers as identifiers to requests; range of `int` is _unbounded_ in Python
     _request_id_token: contextvars.Token  # Allows maintaining processing context (see `contextvars`), for purposes of logging
 
     def __init_subclass__(cls):
@@ -244,9 +243,8 @@ class RequestHandler(_RequestHandler):
     def prepare(self):
         # Allocate a unique identifier and make it part of the context
         self._request_id_token = request_id_var.set(
-            self.request.headers.get("Request-ID") or RequestHandler._next_request_id
+            self.request.headers.get("Request-ID") or uuid4()
         )
-        RequestHandler._next_request_id += 1  # The next identifier to be allocated will just be the one just used plus one
 
     def on_finish(self):
         # A missing token value signifies there is a context mismatch -- the variable was _not_ set in current context so resetting it is neither necessary nor will it work (the call will raise an error); we therefore "look before we leap" instead of taking a chance on handling an e.g. `ValueError` assuming `reset` failed because of context mismatch specifically; a context mismatch may happen in cases where a `prepare` call (in a sub-class) raises an error, as Tornado apparently executes error handling in a _different_ (copy of) context than the one used for processing the request
