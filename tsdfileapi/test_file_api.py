@@ -21,6 +21,7 @@ import libnacl.public
 import libnacl.sealed
 import libnacl.utils
 import requests
+from pyresumable.resumables import SerialResumable
 from pysquril.backends import PostgresBackend
 from tornado.escape import url_escape
 from tornado.httpclient import HTTPClient
@@ -29,7 +30,6 @@ from tsdapiclient import fileapi
 
 from tsdfileapi.auth import process_access_token
 from tsdfileapi.db import postgres_init
-from tsdfileapi.resumables import SerialResumable
 from tsdfileapi.tokens import gen_test_token_for_user
 from tsdfileapi.tokens import gen_test_tokens
 from tsdfileapi.tokens import get_test_token_for_p12

@@ -40,6 +40,9 @@ import psycopg2.errors
 import tornado.httputil
 import tornado.log
 import yaml
+from pyresumable.resumables import ResumableIncorrectChunkOrderError
+from pyresumable.resumables import ResumableNotFoundError
+from pyresumable.resumables import SerialResumable
 from pysquril.backends import PostgresBackend
 from pysquril.backends import SqliteBackend
 from termcolor import colored
@@ -68,9 +71,6 @@ from tsdfileapi.exc import ClientReservedResourceError
 from tsdfileapi.exc import ClientResourceNotFoundError
 from tsdfileapi.exc import ServerMaintenanceError
 from tsdfileapi.exc import error_for_exception
-from tsdfileapi.resumables import ResumableIncorrectChunkOrderError
-from tsdfileapi.resumables import ResumableNotFoundError
-from tsdfileapi.resumables import SerialResumable
 from tsdfileapi.rmq import PikaClient
 from tsdfileapi.tokens import gen_test_jwt_secrets
 from tsdfileapi.tokens import tkn
