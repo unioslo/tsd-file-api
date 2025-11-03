@@ -37,8 +37,14 @@ RUN source /etc/os-release && \
 
 # Install the fpm packaging utility
 # https://fpm.readthedocs.io/en/latest/index.html
-RUN gem install bundler
 COPY containers/rpm/Gemfile* ./
+RUN source /etc/os-release && \
+    if [[ $PLATFORM_ID == "platform:el8" || $PLATFORM_ID == "platform:el9" ]]; then \
+        mv Gemfile.lock.1.17.2 Gemfile.lock && \
+        gem install bundler -v 1.17.2 ;\
+    else \
+        gem install bundler ;\
+    fi
 RUN bundle install --system
 
 # Install virtualenv with Python 3
