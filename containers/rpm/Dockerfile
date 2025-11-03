@@ -25,6 +25,7 @@ RUN source /etc/os-release && \
             python3.12 \
             python3.12-pip \
             python3.12-devel && \
+            alternatives --set python3 /usr/bin/python3.12 && \
             echo "--depends python3.12 " >> /build-options && \
             echo "export VIRTUALENV_PYTHON=/usr/bin/python3.12" >> /build-env ;\
     else \
