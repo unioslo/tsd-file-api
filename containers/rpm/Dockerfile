@@ -18,18 +18,19 @@ RUN yum install -y \
 RUN touch /build-env /build-options
 RUN echo "--depends libsodium --depends sudo " >> /build-options
 
-# On >EL8 the default Python 3 distribution is new enough
+# On >=EL10 the default Python 3 distribution is new enough
 RUN source /etc/os-release && \
-    if [[ $PLATFORM_ID = "platform:el8" ]]; then \
+    if [[ $PLATFORM_ID == "platform:el8" || $PLATFORM_ID == "platform:el9" ]]; then \
         yum install -y \
-            python39 \
-            python39-devel && \
-            echo "--depends python39 " >> /build-options && \
-            echo "export VIRTUALENV_PYTHON=/usr/bin/python3.9" >> /build-env ;\
+            python3.12 \
+            python3.12-devel && \
+            echo "--depends python3.12 " >> /build-options && \
+            echo "export VIRTUALENV_PYTHON=/usr/bin/python3.12" >> /build-env ;\
     else \
         yum install -y \
             python3 \
-            python3-devel ;\
+            python3-devel && \
+            echo "--depends python3 " >> /build-options ;\
     fi
 
 # Install the fpm packaging utility
