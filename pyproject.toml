@@ -13,7 +13,7 @@ authors = [
 tsd-file-api = "tsdfileapi.api:main"
 
 [tool.poetry.dependencies]
-python = "^3.9"
+python = "^3.10"
 jwcrypto = ">=1.4.2"
 tornado = ">=6.3.2"
 psycopg2 = ">=2.9.3"
@@ -26,6 +26,7 @@ termcolor = ">=1.1.0"
 python-magic = ">=0.4.15"
 pika = ">=1.1.0"
 pyyaml = ">=5.4"
+pyresumable = ">=0.0.2"
 
 [tool.poetry.group.dev.dependencies]
 backoff = ">=2.2.1"
