@@ -23,6 +23,7 @@ RUN source /etc/os-release && \
     if [[ $PLATFORM_ID == "platform:el8" || $PLATFORM_ID == "platform:el9" ]]; then \
         yum install -y \
             python3.12 \
+            python3.12-pip \
             python3.12-devel && \
             echo "--depends python3.12 " >> /build-options && \
             echo "export VIRTUALENV_PYTHON=/usr/bin/python3.12" >> /build-env ;\
