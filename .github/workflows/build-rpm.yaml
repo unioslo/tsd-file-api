@@ -23,7 +23,10 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        EL_VERSION: ["8", "9"]
+        EL_VERSION:
+          - "8"
+          - "9"
+          - "10"
     runs-on: ubuntu-latest
 
     steps:
