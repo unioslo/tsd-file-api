@@ -35,7 +35,7 @@ RUN source /etc/os-release && \
 
 # Install the fpm packaging utility
 # https://fpm.readthedocs.io/en/latest/index.html
-RUN gem install bundler -v 1.17.2
+RUN gem install bundler
 COPY containers/rpm/Gemfile* ./
 RUN bundle install --system
 
