@@ -1,5 +1,5 @@
 ARG ROCKY_VERSION=8
-FROM docker.io/rockylinux:${ROCKY_VERSION}
+FROM docker.io/rockylinux/rockylinux:${ROCKY_VERSION}
 
 # Install required packages
 RUN yum install -y epel-release
