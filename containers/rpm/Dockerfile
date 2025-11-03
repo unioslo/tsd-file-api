@@ -43,12 +43,10 @@ RUN bundle install --system
 RUN python3 -m pip install virtualenv virtualenv-tools3
 
 # Install poetry
-ARG POETRY_VERSION=1.4.0
-ARG POETRY_DYNAMIC_VERSIONING_VERSION="0.21.4"
 RUN python3 -m venv /opt/poetry &&\
     source /opt/poetry/bin/activate &&\
-    python -m pip install poetry==${POETRY_VERSION} &&\
-    poetry self add "poetry-dynamic-versioning[plugin]==${POETRY_DYNAMIC_VERSIONING_VERSION}" &&\
+    python -m pip install "poetry>=2.2,<3" "poetry-plugin-export>=1,<2" &&\
+    poetry self add "poetry-dynamic-versioning[plugin]>=1,<2" &&\
     ln -s /opt/poetry/bin/poetry /usr/bin/poetry
 
 # Get ready for building RPM
