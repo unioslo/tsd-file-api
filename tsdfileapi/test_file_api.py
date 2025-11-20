@@ -2931,9 +2931,7 @@ def main() -> None:
     elif len(sys.argv) == 2:
         print("usage:")
         print("python3 tsdfileapi/test_file_api.py config.yaml ARGS")
-        print(
-            "ARGS: all, base, names, pipelines, export, basic-stream, gpg, dirs, listing"
-        )
+        print("ARGS: all, base, names, pipelines, export, basic-stream, dirs, listing")
         sys.exit(0)
     if "base" in sys.argv:
         tests.extend(base)
