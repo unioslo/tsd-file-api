@@ -81,11 +81,14 @@ from tsdfileapi.utils import call_request_hook
 from tsdfileapi.utils import check_filename
 from tsdfileapi.utils import choose_storage
 from tsdfileapi.utils import days_since_mod
+from tsdfileapi.utils import enable_per_context_logging_level_control
+from tsdfileapi.utils import log_level_var
 from tsdfileapi.utils import move_data_to_folder
 from tsdfileapi.utils import set_mtime
 from tsdfileapi.utils import sns_dir
 from tsdfileapi.utils import tenant_from_url
 from tsdfileapi.utils import trusted_proxies_to_trusted_downstream
+from tsdfileapi.utils import with_logged_calls
 
 _RW______ = stat.S_IREAD | stat.S_IWRITE
 _RW_RW___ = _RW______ | stat.S_IRGRP | stat.S_IWGRP
@@ -186,6 +189,15 @@ class RequestHandler(_RequestHandler):
     """
 
     _request_id_token: contextvars.Token  # Allows maintaining processing context (see `contextvars`), for purposes of logging
+    _request_processing_context: contextvars.Context
+    logger = logger.getChild(
+        "<trace>"
+    )  # Creating one logger per object is an anti-pattern; instead we use the same logger across request handlers, but importantly a distinct one that has the "default" (module-level) logger as parent so it can work with most of the features enabled for the former (request-ID added to the log records etc)
+    logger.setLevel(
+        -1
+    )  # Baseline level, necessary because if not set the [effective] level is that of the closest ancestor which has a level set; we want to _decouple_ ability to trace with this logger, from the level of such ancestor logger
+
+    with_logged_calls = functools.partial(with_logged_calls, logger)
 
     def __init_subclass__(cls):
         """Wrap `prepare` and `on_finish` methods of every sub-class of this request handler class, so that the request identifier is automatically made available from the context, for the lifetime of processing the request.
@@ -240,11 +252,24 @@ class RequestHandler(_RequestHandler):
         # `_style` is a cache -- need to re-built it; another necessity courtesy of using mechanisms not intended for general use
         formatter._style = type(formatter._style)(formatter._fmt)
 
+    @staticmethod
+    def run_in_request_processing_context(method):
+        @functools.wraps(method)
+        def wrapper(self: RequestHandler, *args, **kwargs):
+            return self._request_processing_context.run(method, self, *args, **kwargs)
+
+        return wrapper
+
     def prepare(self):
         # Allocate a unique identifier and make it part of the context
         self._request_id_token = request_id_var.set(
             self.request.headers.get("Request-ID") or uuid4()
         )
+        level = self.request.headers.get("Log-Level")
+        if level is not None:
+            levels = logging.getLevelNamesMapping()
+            log_level_var.set(levels[level] if level in levels else int(level))
+        self._request_processing_context = contextvars.copy_context()
 
     def on_finish(self):
         # A missing token value signifies there is a context mismatch -- the variable was _not_ set in current context so resetting it is neither necessary nor will it work (the call will raise an error); we therefore "look before we leap" instead of taking a chance on handling an e.g. `ValueError` assuming `reset` failed because of context mismatch specifically; a context mismatch may happen in cases where a `prepare` call (in a sub-class) raises an error, as Tornado apparently executes error handling in a _different_ (copy of) context than the one used for processing the request
@@ -1349,18 +1374,27 @@ class FileRequestHandler(AuthRequestHandler):
                     elif self.request.method == "PATCH":
                         if not self.completed_resumable_file:
                             self.target_file = self.res.open_file(self.path, filemode)
+                if self.target_file:
+                    self.target_file.write = self.with_logged_calls(
+                        level=logging.DEBUG
+                    )(self.target_file.write)
+                    self.target_file.close = self.with_logged_calls(
+                        level=logging.DEBUG
+                    )(self.target_file.close)
         except ResumableIncorrectChunkOrderError:
             self.set_status(HTTPStatus.BAD_REQUEST.value)
             self.finish({"message": "chunk_order_incorrect"})
         except Exception as e:
             error = error_for_exception(e, details=self.additional_log_details())
-            logger.error(error.message)
+            logger.exception(error.message)
             for name, value in error.headers.items():
                 self.set_header(name, value)
             self.set_status(error.status, reason=error.reason)
             self.finish()
 
+    @RequestHandler.run_in_request_processing_context
     @gen.coroutine
+    @RequestHandler.with_logged_calls(level=logging.DEBUG)
     def data_received(self, chunk: bytes) -> Optional[Awaitable[None]]:
         try:
             if not self.custom_content_type:
@@ -1446,7 +1480,7 @@ class FileRequestHandler(AuthRequestHandler):
                         }
                     )
                 except Exception as e:
-                    logger.error(e)
+                    logger.exception(e)
                     error = error_for_exception(
                         e, details=self.additional_log_details()
                     )
@@ -3203,6 +3237,7 @@ def main() -> None:
     tornado.log.enable_pretty_logging()
     for handler in logging.getLogger().handlers:  # Enable logging of request ID by "all" loggers ("all" here means descendant loggers that propagate handling to the root logger; see also https://docs.python.org/3/howto/logging.html#logging-flow)
         RequestHandler.enable_request_id_logging(handler)
+    enable_per_context_logging_level_control(RequestHandler.logger)
     backends = Backends(options.config)
     pika_client = (
         PikaClient(options.rabbitmq, backends.exchanges)

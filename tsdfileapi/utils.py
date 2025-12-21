@@ -1,15 +1,20 @@
+import contextvars
 import datetime
 import errno
+import functools
 import hashlib
 import logging
 import os
 import pathlib
 import re
+import reprlib
 import shlex
 import shutil
 import stat
 import subprocess
+import sys
 from ipaddress import ip_network
+from typing import Callable
 from typing import Optional
 from typing import Union
 
@@ -269,3 +274,59 @@ def trusted_proxies_to_trusted_downstream(
     for proxy in trusted_proxies:
         trusted_downstream = trusted_downstream | cidr_to_set(proxy)
     return list(trusted_downstream)
+
+
+log_level_var = contextvars.ContextVar("log-level")
+
+
+def enable_per_context_logging_level_control(logger: logging.Logger):
+    def passable_in_context(record: logging.LogRecord):
+        return record.levelno >= (
+            log_level_var.get(None) or (logger.parent or logger).getEffectiveLevel()
+        )
+
+    logger.addFilter(passable_in_context)
+
+
+class LoggedObjectRepr(reprlib.Repr):
+    def repr_call(self, callable, args, kwargs):
+        return (
+            self.repr(callable)
+            + "("
+            + ", ".join(self.repr(arg) for arg in args)
+            + (
+                (
+                    ", "
+                    + ", ".join(
+                        (name + "=" + self.repr(value))
+                        for name, value in kwargs.items()
+                    )
+                )
+                if kwargs
+                else ""
+            )
+            + ")"
+        )
+
+    @staticmethod
+    def repr_bytes(obj, *_):
+        return f"<{len(obj)} byte(s)>"
+
+
+logged_object_repr = LoggedObjectRepr()
+logged_object_repr.maxother = sys.maxsize
+
+
+def with_logged_calls(logger: logging.Logger, level: Union[int | str]) -> Callable:
+    if not isinstance(level, int):
+        level = logging.getLevelNamesMapping()[level]
+
+    def decorator(callable):
+        @functools.wraps(callable)
+        def wrapper(*args, **kwargs):
+            logger.log(level, logged_object_repr.repr_call(callable, args, kwargs))
+            return callable(*args, **kwargs)
+
+        return wrapper
+
+    return decorator
