@@ -81,8 +81,6 @@ from tsdfileapi.utils import call_request_hook
 from tsdfileapi.utils import check_filename
 from tsdfileapi.utils import choose_storage
 from tsdfileapi.utils import days_since_mod
-from tsdfileapi.utils import enable_per_context_logging_level_control
-from tsdfileapi.utils import log_level_var
 from tsdfileapi.utils import move_data_to_folder
 from tsdfileapi.utils import set_mtime
 from tsdfileapi.utils import sns_dir
@@ -95,6 +93,8 @@ _RW_RW___ = _RW______ | stat.S_IRGRP | stat.S_IWGRP
 _50MB = 52428800
 
 logger = logging.getLogger(__name__)
+
+with_logged_calls = functools.partial(with_logged_calls, logger)
 
 
 def read_config(filename: str) -> dict:
@@ -176,8 +176,6 @@ def set_config() -> None:
 
 set_config()
 
-request_id_var = contextvars.ContextVar("request-id")
-
 
 class RequestHandler(_RequestHandler):
     """
@@ -188,22 +186,20 @@ class RequestHandler(_RequestHandler):
     > Many methods in `RequestHandler` are designed to be overridden in subclasses and be used throughout the application. It is common to define a "BaseHandler" class that overrides methods such as `write_error` and `get_current_user` and then subclass your own "BaseHandler" instead of `RequestHandler` for all your specific handlers.
     """
 
-    _request_id_token: contextvars.Token  # Allows maintaining processing context (see `contextvars`), for purposes of logging
+    # For tracking of requests across their processing context
+    _request_context_var = contextvars.ContextVar("request")
+    _request_context_var_token: contextvars.Token
     _request_processing_context: contextvars.Context
-    logger = logger.getChild(
-        "<trace>"
-    )  # Creating one logger per object is an anti-pattern; instead we use the same logger across request handlers, but importantly a distinct one that has the "default" (module-level) logger as parent so it can work with most of the features enabled for the former (request-ID added to the log records etc)
-    logger.setLevel(
-        -1
-    )  # Baseline level, necessary because if not set the [effective] level is that of the closest ancestor which has a level set; we want to _decouple_ ability to trace with this logger, from the level of such ancestor logger
-
-    with_logged_calls = functools.partial(with_logged_calls, logger)
 
     def __init_subclass__(cls):
-        """Wrap `prepare` and `on_finish` methods of every sub-class of this request handler class, so that the request identifier is automatically made available from the context, for the lifetime of processing the request.
+        """Wraps certain methods of every sub-class of this request handler class, so that the request is "automagically" made available from the context, for the lifetime of processing the request.
 
-        This mechanism of hooking into sub-class initialisation, allows request handler classes inheriting this class to not have to explicitly call `RequestHandler.prepare` and `RequestHandler.on_finish` with e.g. `super().prepare()` and `super().finish()` respectively. Given how _every_ request should have identifier logging, needing such statements is arguably not a net-benefit -- this procedure alone ensures business logic remains as-is, and allows the application to continue following Tornado's convention which doesn't require `super().prepare()` or `super().on_finish()` _for most cases_.
+        This mechanism of hooking into sub-class initialisation, allows request handler classes inheriting this class to not have to explicitly have `super().<method-name>(...)` as part of their override, if any. Given how _every_ request should have identifier logging, needing such explicit statements is arguably not a net-benefit -- this procedure alone ensures business logic remains as-is, and allows the application to continue following Tornado's convention which doesn't require e.g. `super().initialise()` or `super().prepare()` etc. Admittedly, explicitly calling the super-class method is both an OOP convention _and_ in line with Python's "explicit is better than implicit" best practice, it's just that it's either this approach or sprinkling _every_ overriden method in every request handler class, with `super()....` which would have cost of its own.
         """
+
+        def initialize(handler, wrapped, *args, **kwargs):
+            RequestHandler.initialize(handler, *args, **kwargs)
+            return wrapped(handler, *args, **kwargs)
 
         def prepare(handler, wrapped):
             RequestHandler.prepare(handler)
@@ -215,10 +211,12 @@ class RequestHandler(_RequestHandler):
             finally:
                 RequestHandler.on_finish(handler)
 
-        # If the sub-class doesn't have its own `prepare` then there is nothing to wrap and `cls.prepare` being `RequestHandler.prepare`, is usable as-is
+        # If the sub-class doesn't have its own method then there is nothing to wrap as the method then is of `RequestHandler` (usable as-is)
+        if cls.initialize != RequestHandler.initialize:
+            cls.initialize = functools.partialmethod(initialize, cls.initialize)
         if cls.prepare != RequestHandler.prepare:
             cls.prepare = functools.partialmethod(prepare, cls.prepare)
-        if cls.on_finish != RequestHandler.on_finish:  # Likewise for `on_finish`
+        if cls.on_finish != RequestHandler.on_finish:
             cls.on_finish = functools.partialmethod(on_finish, cls.on_finish)
 
     @staticmethod
@@ -233,7 +231,9 @@ class RequestHandler(_RequestHandler):
 
             This procedure is a _filter_ -- to be registered using the `logging` API and invoked by the latter automatically. Despite it being a filter, per documentation of `logging` it is permitted (and recommended for the use case) to use filters for adding attributes to log records."""
             # Not feeling great about mixing value types for the `request-id` variable, but it will have to do for now as it's less work than crafting and using a `logging.Formatter` sub-class
-            record.request_id = request_id_var.get("-")
+            record.request_id = getattr(
+                RequestHandler._request_context_var.get(None), "_id", "-"
+            )
             return True  # Do not filter the record
 
         handler.addFilter(log_record_filter)
@@ -260,22 +260,41 @@ class RequestHandler(_RequestHandler):
 
         return wrapper
 
-    def prepare(self):
-        # Allocate a unique identifier and make it part of the context
-        self._request_id_token = request_id_var.set(
+    def initialize(self, *args, **kwargs):
+        self.request._id = (
             self.request.headers.get("Request-ID") or uuid4()
-        )
-        level = self.request.headers.get("Log-Level")
-        if level is not None:
-            levels = logging.getLevelNamesMapping()
-            log_level_var.set(levels[level] if level in levels else int(level))
+        )  # Assign a unique identifier to the request being handled
+
+    def prepare(self):
+        self._request_context_var_token = self._request_context_var.set(self.request)
         self._request_processing_context = contextvars.copy_context()
 
     def on_finish(self):
         # A missing token value signifies there is a context mismatch -- the variable was _not_ set in current context so resetting it is neither necessary nor will it work (the call will raise an error); we therefore "look before we leap" instead of taking a chance on handling an e.g. `ValueError` assuming `reset` failed because of context mismatch specifically; a context mismatch may happen in cases where a `prepare` call (in a sub-class) raises an error, as Tornado apparently executes error handling in a _different_ (copy of) context than the one used for processing the request
-        if self._request_id_token.old_value != contextvars.Token.MISSING:
+        if self._request_context_var_token.old_value != contextvars.Token.MISSING:
             # Restore original value of the variable stored with the context -- Tornado is free to reuse tasks and thus contexts _between_ requests (crucially, one task cannot by nature process two requests at once though), which makes restoration mandatory so that logging done in context of the same task that finished processing this request, won't be "related" (through the context) to the "finished" request any longer -- it's just the right thing to do conceptually
-            request_id_var.reset(self._request_id_token)
+            self._request_context_var.reset(self._request_context_var_token)
+
+    @staticmethod
+    def enable_per_request_log_level_control(logger):
+        def wrap(original):
+            def isEnabledFor(self, level):
+                request = RequestHandler._request_context_var.get(None)
+                if request and "Log-Level" in request.headers:
+                    requested_level_header_value = request.headers["Log-Level"]
+                    levels_by_name = logging.getLevelNamesMapping()
+                    requested_level = (
+                        levels_by_name[requested_level_header_value]
+                        if requested_level_header_value in levels_by_name
+                        else int(requested_level_header_value)
+                    )
+                    return level >= requested_level
+                else:
+                    return original(self, level)
+
+            return isEnabledFor
+
+        logger.isEnabledFor = wrap(logger.isEnabledFor)
 
 
 class FallbackHandler(RequestHandler):
@@ -1375,12 +1394,12 @@ class FileRequestHandler(AuthRequestHandler):
                         if not self.completed_resumable_file:
                             self.target_file = self.res.open_file(self.path, filemode)
                 if self.target_file:
-                    self.target_file.write = self.with_logged_calls(
-                        level=logging.DEBUG
-                    )(self.target_file.write)
-                    self.target_file.close = self.with_logged_calls(
-                        level=logging.DEBUG
-                    )(self.target_file.close)
+                    self.target_file.write = with_logged_calls(level=logging.DEBUG)(
+                        self.target_file.write
+                    )
+                    self.target_file.close = with_logged_calls(level=logging.DEBUG)(
+                        self.target_file.close
+                    )
         except ResumableIncorrectChunkOrderError:
             self.set_status(HTTPStatus.BAD_REQUEST.value)
             self.finish({"message": "chunk_order_incorrect"})
@@ -1394,7 +1413,7 @@ class FileRequestHandler(AuthRequestHandler):
 
     @RequestHandler.run_in_request_processing_context
     @gen.coroutine
-    @RequestHandler.with_logged_calls(level=logging.DEBUG)
+    @with_logged_calls(level=logging.DEBUG)
     def data_received(self, chunk: bytes) -> Optional[Awaitable[None]]:
         try:
             if not self.custom_content_type:
@@ -3237,7 +3256,9 @@ def main() -> None:
     tornado.log.enable_pretty_logging()
     for handler in logging.getLogger().handlers:  # Enable logging of request ID by "all" loggers ("all" here means descendant loggers that propagate handling to the root logger; see also https://docs.python.org/3/howto/logging.html#logging-flow)
         RequestHandler.enable_request_id_logging(handler)
-    enable_per_context_logging_level_control(RequestHandler.logger)
+    RequestHandler.enable_per_request_log_level_control(
+        logging.Logger
+    )  # Enable for _all_ loggers
     backends = Backends(options.config)
     pika_client = (
         PikaClient(options.rabbitmq, backends.exchanges)

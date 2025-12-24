@@ -1,4 +1,3 @@
-import contextvars
 import datetime
 import errno
 import functools
@@ -274,18 +273,6 @@ def trusted_proxies_to_trusted_downstream(
     for proxy in trusted_proxies:
         trusted_downstream = trusted_downstream | cidr_to_set(proxy)
     return list(trusted_downstream)
-
-
-log_level_var = contextvars.ContextVar("log-level")
-
-
-def enable_per_context_logging_level_control(logger: logging.Logger):
-    def passable_in_context(record: logging.LogRecord):
-        return record.levelno >= (
-            log_level_var.get(None) or (logger.parent or logger).getEffectiveLevel()
-        )
-
-    logger.addFilter(passable_in_context)
 
 
 class LoggedObjectRepr(reprlib.Repr):
