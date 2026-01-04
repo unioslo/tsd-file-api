@@ -2,6 +2,7 @@ import datetime
 import errno
 import functools
 import hashlib
+import itertools
 import logging
 import os
 import pathlib
@@ -12,8 +13,10 @@ import shutil
 import stat
 import subprocess
 import sys
+from dataclasses import dataclass
 from ipaddress import ip_network
 from typing import Callable
+from typing import Mapping
 from typing import Optional
 from typing import Union
 
@@ -322,3 +325,47 @@ def with_logged_calls(logger: logging.Logger, level: Union[int | str]) -> Callab
         return wrapper
 
     return decorator
+
+
+@dataclass
+class ParametrisedField:
+    """
+    Parsed elements of values of HTTP request headers like `Prefer` (et al. -- the same syntax is reused across HTTP)
+
+    See `parse_http_request_handling_preference` which does the parsing and returns an object of this class.
+    """
+
+    name: str
+    value: str
+    params: dict[str, str]
+
+
+def parse_http_prefer_header_values(*header_values: str) -> Mapping[str, ParametrisedField]:
+    """
+    Parse one or several HTTP headers like the `Prefer` request header.
+
+    Input may be text like "foo=1; bar=baz, hello-world" which if parsed "breadth first" contains 2 elements `foo=1; bar=baz` and `hello-world`, each of these superficially resembling the syntax shared with the `Content-Type` header, with the former parsed further into `foo=1`, with `foo` being the principal key or name of the element and `1` being the value, and `bar=baz` and any other `;`-separated pair(s) called parameters, each being a key-value pair much like `foo=1`; `hello-world` not featuring a `=` followed by a value is equivalent to `hello-world=` where the value is the empty string, and no parameters (empty list).
+
+    Returns the set of parsed fields, as a dictionary, keyed by the field name (matching the value of the `name` attribute).
+    """
+    return {
+        pref.name: pref
+        for pref in (
+            parse_http_request_handling_preference(pref_text)
+            for pref_text in itertools.chain.from_iterable(
+                re.split(r"\s*,\s*", header_value) for header_value in header_values
+            )
+        )
+    }
+
+
+def parse_http_request_handling_preference(text: str) -> ParametrisedField:
+    """
+    Parse a single component (field) of a HTTP header like the `Prefer` request header.
+
+    E.g. `parse_http_request_handling_preference("foo=1; bar=baz")` produces a single so-called field, an element with a key, a value and one or multiple parameters.
+    """
+    first, *rest = (re.split(r"\s*=\s*", part) for part in re.split(r"\s*;\s*", text))
+    return ParametrisedField(
+        name=first[0], value=first[1] if len(first) > 1 else "", params=dict(rest)
+    )

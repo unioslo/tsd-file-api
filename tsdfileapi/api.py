@@ -82,6 +82,7 @@ from tsdfileapi.utils import check_filename
 from tsdfileapi.utils import choose_storage
 from tsdfileapi.utils import days_since_mod
 from tsdfileapi.utils import move_data_to_folder
+from tsdfileapi.utils import parse_http_prefer_header_values
 from tsdfileapi.utils import set_mtime
 from tsdfileapi.utils import sns_dir
 from tsdfileapi.utils import tenant_from_url
@@ -274,6 +275,14 @@ class RequestHandler(_RequestHandler):
         if self._request_context_var_token.old_value != contextvars.Token.MISSING:
             # Restore original value of the variable stored with the context -- Tornado is free to reuse tasks and thus contexts _between_ requests (crucially, one task cannot by nature process two requests at once though), which makes restoration mandatory so that logging done in context of the same task that finished processing this request, won't be "related" (through the context) to the "finished" request any longer -- it's just the right thing to do conceptually
             self._request_context_var.reset(self._request_context_var_token)
+
+    parse_http_prefer_header_values = staticmethod(parse_http_prefer_header_values)
+
+    @functools.cached_property
+    def prefs(self):
+        return self.parse_http_prefer_header_values(
+            *self.request.headers.get_list("Prefer")
+        )
 
     @staticmethod
     def enable_per_request_log_level_control(logger):
@@ -1142,6 +1151,11 @@ class FileRequestHandler(AuthRequestHandler):
 
     @gen.coroutine
     def prepare(self) -> Optional[Awaitable[None]]:
+        if __debug__ and self.get_query_argument("chunk_size", None) == "as-received":
+            assert (
+                "Content-Length" not in self.request.headers
+            )  # If the client sent the header, they can be assumed to know the chunk size and while we could count it for them on our end, why do that when they can be expected to know the value just as well? The "as-received" is solely reserved for clients that use chunked transfer coding (HTTP prohibits _both_ `Content-Length` and `Transfer-Encoding: chunked`)
+            self.received_data_length = 0
         self.error = None
         self.completed_resumable_file = False
         self.target_file = None
@@ -1415,6 +1429,8 @@ class FileRequestHandler(AuthRequestHandler):
     @gen.coroutine
     @with_logged_calls(level=logging.DEBUG)
     def data_received(self, chunk: bytes) -> Optional[Awaitable[None]]:
+        if __debug__ and hasattr(self, "received_data_length"):
+            self.received_data_length += len(chunk)
         try:
             if not self.custom_content_type:
                 if self.request.method == "PATCH":
@@ -1474,6 +1490,22 @@ class FileRequestHandler(AuthRequestHandler):
             )
             self.nacl_stream_buffer = b""
             self.res.add_chunk(self.target_file, decrypted)
+        merge_chunk_verify = {}
+        if __debug__:
+            query = {
+                name: values[0].decode()
+                for name, values in self.request.query_arguments.items()
+            }
+            if "offset" in query:
+                merge_chunk_verify["offset"] = int(query["offset"])
+            if "chunk_size" in query:
+                merge_chunk_verify["chunk_size"] = (
+                    self.received_data_length
+                    if query["chunk_size"] == "as-received"
+                    else int(query["chunk_size"])
+                )
+            if "md5sum" in query:
+                merge_chunk_verify["md5sum"] = query["md5sum"]
         if not self.completed_resumable_file:
             self.res.close_file(self.target_file)
             # if the path to which we want to rename the file exists
@@ -1483,11 +1515,12 @@ class FileRequestHandler(AuthRequestHandler):
                 os.rename(self.path, self.path_part)
                 filename = os.path.basename(self.path_part).split(".chunk")[0]
                 try:
-                    self.res.merge_chunk(
+                    _, state = self.res.merge_chunk(
                         self.tenant_dir,
                         os.path.basename(self.path_part),
                         self.upload_id,
                         self.requestor,
+                        verify=merge_chunk_verify,  # Ask for [extra] verification
                     )
                     self.set_status(HTTPStatus.CREATED.value)
                     self.write(
@@ -1496,6 +1529,7 @@ class FileRequestHandler(AuthRequestHandler):
                             "id": self.upload_id,
                             "max_chunk": self.chunk_num,
                             "key": self.res_key,
+                            **state,
                         }
                     )
                 except Exception as e:
@@ -1518,11 +1552,15 @@ class FileRequestHandler(AuthRequestHandler):
                 return
         else:
             try:
-                self.completed_resumable_filename = self.res.finalise(
+                self.completed_resumable_filename, state = self.res.finalise(
                     self.tenant_dir,
                     os.path.basename(self.path_part),
                     self.upload_id,
                     self.requestor,
+                    remove_from_database=not (
+                        __debug__ and self.prefs.get("retain-resumable-database")
+                    ),
+                    verify=merge_chunk_verify,  # Not used by `finalise` because the latter ignores chunk content so there's nothing to verify (should we do something about that last part?)
                 )
             except ResumableNotFoundError:
                 self.set_status(HTTPStatus.BAD_REQUEST.value)
@@ -1535,6 +1573,7 @@ class FileRequestHandler(AuthRequestHandler):
                     "id": self.upload_id,
                     "max_chunk": self.chunk_num,
                     "key": self.res_key,
+                    **state,
                 }
             )
 
