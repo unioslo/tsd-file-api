@@ -305,13 +305,18 @@ logged_object_repr.maxother = sys.maxsize
 
 
 def with_logged_calls(logger: logging.Logger, level: Union[int | str]) -> Callable:
+    """
+    A decorator that makes calling an object (normally a function) produce a log message.
+    """
     if not isinstance(level, int):
-        level = logging.getLevelNamesMapping()[level]
+        level = logging.getLevelNamesMapping()[level] # Not available on Python 3.10, so level names cannot be used before 3.11
 
     def decorator(callable):
         @functools.wraps(callable)
         def wrapper(*args, **kwargs):
-            logger.log(level, logged_object_repr.repr_call(callable, args, kwargs))
+            logger.log(
+                level, logged_object_repr.repr_call(callable, args, kwargs)
+            )  # TODO: This message uses utils.py as origin while it'd be preferable the call site of `decorator` was used instead
             return callable(*args, **kwargs)
 
         return wrapper
