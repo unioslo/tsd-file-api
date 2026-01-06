@@ -480,15 +480,18 @@ dev = ["build", "flake8", "mypy", "pytest", "twine"]
 
 [[package]]
 name = "pyresumable"
-version = "0.0.3"
+version = "0.0.4"
 description = "A library for creating files chunk-by-chunk"
 optional = false
 python-versions = "<4.0,>=3.10"
 groups = ["main"]
 files = [
-    {file = "pyresumable-0.0.3-py3-none-any.whl", hash = "sha256:b1ca72c57c374d7d7e4f51372131a944f4574961db08a93d0e90edabd4294748"},
-    {file = "pyresumable-0.0.3.tar.gz", hash = "sha256:b862bebd90b659e1bb98edf0140014c12f4e5a992470063fa2dd1ded0c2971c3"},
+    {file = "pyresumable-0.0.4-py3-none-any.whl", hash = "sha256:6d63f8b1a6248b7e9e6bc301990ceab4e0dc4f5b04b475bc69fc056bd156963d"},
+    {file = "pyresumable-0.0.4.tar.gz", hash = "sha256:c632c8dbca520415beb9547b52bfe4e98fb31f0877b946a602c1590894f142a3"},
 ]
+
+[package.dependencies]
+typing_extensions = ">=4.15.0,<5.0.0"
 
 [[package]]
 name = "pysquril"
@@ -709,14 +712,14 @@ rich = "*"
 
 [[package]]
 name = "typing-extensions"
-version = "4.12.2"
-description = "Backported and Experimental Type Hints for Python 3.8+"
+version = "4.15.0"
+description = "Backported and Experimental Type Hints for Python 3.9+"
 optional = false
-python-versions = ">=3.8"
+python-versions = ">=3.9"
 groups = ["main", "dev"]
 files = [
-    {file = "typing_extensions-4.12.2-py3-none-any.whl", hash = "sha256:04e5ca0351e0f3f85c6853954072df659d0d13fac324d0072316b67d7794700d"},
-    {file = "typing_extensions-4.12.2.tar.gz", hash = "sha256:1a7ead55c7e559dd4dee8856e3a88b41225abfe1ce8df57b7c13915fe121ffb8"},
+    {file = "typing_extensions-4.15.0-py3-none-any.whl", hash = "sha256:f0fa19c6845758ab08074a0cfa8b7aecb71c999ca73d62883bc25cc018c4e548"},
+    {file = "typing_extensions-4.15.0.tar.gz", hash = "sha256:0cea48d173cc12fa28ecabc3b837ea3cf6f38c6d1136f85cbaaf598984861466"},
 ]
 markers = {dev = "python_version == \"3.10\""}
 
@@ -741,4 +744,4 @@ zstd = ["backports-zstd (>=1.0.0) ; python_version < \"3.14\""]
 [metadata]
 lock-version = "2.1"
 python-versions = "^3.10"
-content-hash = "efcb40a80f49b1582f9ddedee59a82a571ee43c8a5c9bac65ac4a7db3ca1ac3b"
+content-hash = "8c06df572a5bb0b3e476ec3151191d95869aa6bc29a901dfb9468ee60be81733"
