@@ -300,7 +300,17 @@ class RequestHandler(_RequestHandler):
         )
 
     @staticmethod
-    def enable_per_request_log_level_control(logger):
+    def enable_per_request_log_level_control(
+        logger: logging.Logger | type[logging.Logger],
+    ) -> None:
+        """
+        Makes logging done by the specified logger be filtered depending on the request's level, if specified.
+
+        The request's level may be specified with the `Log-Level` request header, made available with the context. If not specified with the request or specified a `0`/`logging.NOTSET`, the filter works as pass-through (i.e. a no-op).
+
+        Instead of one single _logger_, Python's OOP inheritance model easily facilitates passing e.g. `logging.Logger` (the class) to implicitly enable the behaviour for _every_ logger (existing or not yet).
+        """
+
         def wrap(original):
             def isEnabledFor(self, level):
                 request = RequestHandler._request_context_var.get(None)
