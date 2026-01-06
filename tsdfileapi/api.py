@@ -29,6 +29,7 @@ from sys import argv
 from typing import Any
 from typing import Awaitable
 from typing import Dict
+from typing import Mapping
 from typing import Optional
 from typing import Union
 from uuid import uuid4
@@ -75,6 +76,7 @@ from tsdfileapi.rmq import PikaClient
 from tsdfileapi.tokens import gen_test_jwt_secrets
 from tsdfileapi.tokens import tkn
 from tsdfileapi.utils import VALID_UUID
+from tsdfileapi.utils import ParametrisedField
 from tsdfileapi.utils import _rwxrws___
 from tsdfileapi.utils import any_path_islink
 from tsdfileapi.utils import call_request_hook
@@ -285,7 +287,14 @@ class RequestHandler(_RequestHandler):
     parse_http_prefer_header_values = staticmethod(parse_http_prefer_header_values)
 
     @functools.cached_property
-    def prefs(self):
+    def prefs(self) -> Mapping[str, ParametrisedField]:
+        """
+        Return client preferences for handling the request.
+
+        The preferences would have been specified in the form of the well-known `Prefer` HTTP request header.
+
+        The set of preferences is cached, so only parsed once when first accessed, as a performance optimisation (the request is for practical purposes immutable so the memoisation arguably makes sense).
+        """
         return self.parse_http_prefer_header_values(
             *self.request.headers.get_list("Prefer")
         )
