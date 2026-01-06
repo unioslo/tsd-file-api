@@ -10,7 +10,6 @@ designed for the University of Oslo's Services for Sensitive Data (TSD).
 
 import base64
 import datetime
-import functools
 import hashlib
 import json
 import logging
@@ -85,15 +84,12 @@ from tsdfileapi.utils import set_mtime
 from tsdfileapi.utils import sns_dir
 from tsdfileapi.utils import tenant_from_url
 from tsdfileapi.utils import trusted_proxies_to_trusted_downstream
-from tsdfileapi.utils import with_logged_calls
 
 _RW______ = stat.S_IREAD | stat.S_IWRITE
 _RW_RW___ = _RW______ | stat.S_IRGRP | stat.S_IWGRP
 _50MB = 52428800
 
 logger = logging.getLogger(__name__)
-
-with_logged_calls = functools.partial(with_logged_calls, logger)
 
 
 def read_config(filename: str) -> dict:
@@ -1277,13 +1273,6 @@ class FileRequestHandler(AuthRequestHandler):
                     elif self.request.method == "PATCH":
                         if not self.completed_resumable_file:
                             self.target_file = self.res.open_file(self.path, filemode)
-                if self.target_file:
-                    self.target_file.write = with_logged_calls(level=logging.DEBUG)(
-                        self.target_file.write
-                    )
-                    self.target_file.close = with_logged_calls(level=logging.DEBUG)(
-                        self.target_file.close
-                    )
         except ResumableIncorrectChunkOrderError:
             self.set_status(HTTPStatus.BAD_REQUEST.value)
             self.finish({"message": "chunk_order_incorrect"})
