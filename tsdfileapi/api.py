@@ -1490,8 +1490,8 @@ class FileRequestHandler(AuthRequestHandler):
             )
             self.nacl_stream_buffer = b""
             self.res.add_chunk(self.target_file, decrypted)
-        merge_chunk_verify = {}
         if __debug__:
+            merge_chunk_verify = {}
             query = {
                 name: values[0].decode()
                 for name, values in self.request.query_arguments.items()
@@ -1520,7 +1520,9 @@ class FileRequestHandler(AuthRequestHandler):
                         os.path.basename(self.path_part),
                         self.upload_id,
                         self.requestor,
-                        verify=merge_chunk_verify,  # Ask for [extra] verification
+                        verify=merge_chunk_verify
+                        if __debug__
+                        else {},  # Ask for [extra] verification
                     )
                     self.set_status(HTTPStatus.CREATED.value)
                     self.write(
@@ -1557,10 +1559,16 @@ class FileRequestHandler(AuthRequestHandler):
                     os.path.basename(self.path_part),
                     self.upload_id,
                     self.requestor,
-                    remove_from_database=not (
-                        __debug__ and self.prefs.get("retain-resumable-database")
-                    ),
-                    verify=merge_chunk_verify,  # Not used by `finalise` because the latter ignores chunk content so there's nothing to verify (should we do something about that last part?)
+                    **(
+                        dict(
+                            remove_from_database=not self.prefs.get(
+                                "retain-resumable-database"
+                            ),
+                            verify=merge_chunk_verify,  # Not used by `finalise` because the latter ignores chunk content so there's nothing to verify (should we do something about that last part?)
+                        )
+                        if __debug__
+                        else {}
+                    ),  # Ask for [extra] verification
                 )
             except ResumableNotFoundError:
                 self.set_status(HTTPStatus.BAD_REQUEST.value)
