@@ -1427,7 +1427,6 @@ class FileRequestHandler(AuthRequestHandler):
 
     @RequestHandler.run_in_request_processing_context
     @gen.coroutine
-    @with_logged_calls(level=logging.DEBUG)
     def data_received(self, chunk: bytes) -> Optional[Awaitable[None]]:
         if __debug__ and hasattr(self, "received_data_length"):
             self.received_data_length += len(chunk)
