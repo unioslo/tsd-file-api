@@ -284,7 +284,22 @@ def trusted_proxies_to_trusted_downstream(
 
 
 class LoggedObjectRepr(reprlib.Repr):
-    def repr_call(self, callable, args, kwargs):
+    """
+    Formatters of objects for logging purposes.
+
+    For logging purposes, `repr` often doesn't cut it, so this convenience is offered to add information on logged objects that could be interesting / relevant for e.g. troubleshooting.
+
+    See `reprlib.Repr` which largely explains the entire framework and what problems it helps solve.
+    """
+
+    def repr_call(self, callable, args, kwargs) -> str:
+        """
+        Compile a representation of a _call_.
+
+        The representation is geared for being featured in logs for troubleshooting purposes.
+
+        E.g. compiles and returns "foo(1, 2, 3)" for a callable `foo` that takes `1`, `2` and `3` for positional arguments.
+        """
         return (
             self.repr(callable)
             + "("
@@ -304,12 +319,15 @@ class LoggedObjectRepr(reprlib.Repr):
         )
 
     @staticmethod
-    def repr_bytes(obj, *_):
+    def repr_bytes(obj: bytes, *_):
+        """
+        Compile representation of a `bytes`-type object (a read-only buffer).
+        """
         return f"<{len(obj)} byte(s)>"
 
 
 logged_object_repr = LoggedObjectRepr()
-logged_object_repr.maxother = sys.maxsize
+logged_object_repr.maxother = sys.maxsize  # No limit, it's bad enough for our purposes that data is otherwise cut off from the middle
 
 
 def with_logged_calls(logger: logging.Logger, level: Union[int | str]) -> Callable:
