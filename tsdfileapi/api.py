@@ -255,6 +255,12 @@ class RequestHandler(_RequestHandler):
 
     @staticmethod
     def run_in_request_processing_context(method):
+        """
+        Decorate a method to execute with the context associated with the request this handler was created to process.
+
+        Because request handler's methods may be invoked by Tornado (depending on the method, of course), Tornado determines the context, which for some methods was empirically discovered to differ from the prepared context, for reasons hidden in Tornado's architecture. This "helper" is offered for "correcting" these methods. This effectively enables logging of the request ID, also from within the Tornado (the critical difference to e.g. binding a logger of `structlog` which does nothing for log messages originating in Tornado).
+        """
+
         @functools.wraps(method)
         def wrapper(self: RequestHandler, *args, **kwargs):
             return self._request_processing_context.run(method, self, *args, **kwargs)
