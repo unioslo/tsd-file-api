@@ -45,7 +45,7 @@ COPY containers/rpm/Gemfile* ./
 RUN bundler install --system
 
 # Install virtualenv with Python 3
-RUN python3 -m pip install virtualenv virtualenv-tools3
+RUN python3 -m pip install "virtualenv==20.35.4" "virtualenv-tools3==3.1.1"
 
 # Install poetry
 RUN python3 -m venv /opt/poetry &&\
