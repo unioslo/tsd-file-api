@@ -32,6 +32,3 @@ PLATFORMS
 DEPENDENCIES
   dotenv (< 3)
   fpm (= 1.15.1)
-
-BUNDLED WITH
-   2.5.22

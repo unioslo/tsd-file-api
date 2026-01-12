@@ -3,6 +3,10 @@ FROM docker.io/rockylinux/rockylinux:${ROCKY_VERSION}
 
 # Install required packages
 RUN yum install -y epel-release
+RUN source /etc/os-release && \
+    if [[ $PLATFORM_ID == "platform:el8" || $PLATFORM_ID == "platform:el9" ]]; then \
+        dnf module enable -y ruby:3.3 ;\
+    fi
 RUN yum install -y \
     gcc \
     git \
@@ -38,14 +42,7 @@ RUN source /etc/os-release && \
 # Install the fpm packaging utility
 # https://fpm.readthedocs.io/en/latest/index.html
 COPY containers/rpm/Gemfile* ./
-RUN source /etc/os-release && \
-    if [[ $PLATFORM_ID == "platform:el8" || $PLATFORM_ID == "platform:el9" ]]; then \
-        mv Gemfile.lock.1.17.2 Gemfile.lock && \
-        gem install bundler -v 1.17.2 ;\
-    else \
-        gem install bundler ;\
-    fi
-RUN bundle install --system
+RUN bundler install --system
 
 # Install virtualenv with Python 3
 RUN python3 -m pip install virtualenv virtualenv-tools3
