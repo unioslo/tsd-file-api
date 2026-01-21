@@ -7,6 +7,7 @@ import pwd
 import random
 import shutil
 import string
+import subprocess
 import sys
 import tempfile
 import time
@@ -14,6 +15,7 @@ import unittest
 import uuid
 from datetime import datetime
 from datetime import timedelta
+from pathlib import Path
 from typing import Optional
 
 import backoff
@@ -1188,6 +1190,7 @@ class TestFileApi(unittest.TestCase):
         remote_resource_key: str = None,
         group: str = None,
         public_key: Optional[libnacl.public.PublicKey] = None,
+        **options,
     ) -> None:
         if not token:
             token = TEST_TOKENS["VALID"]
@@ -1209,6 +1212,7 @@ class TestFileApi(unittest.TestCase):
             dev_url=url,
             stop_at=stop_at,
             public_key=public_key,
+            **options,
         ).get("response")
         if stop_at:
             return resp["id"]
@@ -2826,6 +2830,73 @@ class TestFileApi(unittest.TestCase):
                 root=root,
             ).endswith("/projects01/p11/data/durable")
         )
+
+    class MockLargeFilesFuse:
+        """
+        [A context manager for] the mounting the mock-large-files FUSE application.
+
+        The file system is made available for the duration of execution of the `with` block. It's a convenience for making the mounting context explicit.
+        """
+
+        def __init__(self, *, file_name: str = "test", file_size: int):
+            self.file_name = file_name
+            self.file_size = file_size
+
+        def __enter__(self):
+            # Create a distinct mount point and mount the file system there (holding the file by name and size the manager was initialised with)
+            self.mount_point = tempfile.TemporaryDirectory(
+                suffix=("." + __name__ + ".mock-large-files-fuse")
+            )
+            self.process = subprocess.Popen(
+                (
+                    "mock-large-files-fuse",
+                    self.mount_point.name,
+                    "-f",
+                    f"--filename={self.file_name}",
+                    f"--size={self.file_size}",
+                )
+            )
+            # Creating the mounting process doesn't mean that the file system is functional -- the loop waits for the actual mount-point, as indication of readiness
+            while not os.path.ismount(self.mount_point.name):
+                time.sleep(0)  # Yield to other processes/threads
+            return self
+
+        def __exit__(self, *_):
+            # Unmount the file system and clean up
+            self.process.terminate()
+            self.process.wait()
+            del self.mount_point
+
+        @property
+        def file_path(self) -> Path:
+            return Path(self.mount_point.name) / self.file_name
+
+    def test_uploading_very_large_file_in_chunks(self) -> None:
+        with (
+            self.MockLargeFilesFuse(
+                file_name="test-in", file_size=3 * 10**12 + 13
+            ) as read_mount
+        ):  # 3TB; adding `13` for file size to be a prime number, to increase chances of dealing with residual small chunks that aren't divisible by 2**N for any natural number N; such size for a chunk is desirable in the testing
+            with self.MockLargeFilesFuse(
+                file_name="test-out", file_size=0
+            ) as write_mount:
+                upload_id = str(
+                    uuid.uuid4()
+                )  # We need to know the uploading ID in advance -- the linking below depends on it to redirect writing by the API correctly
+                os.symlink(
+                    write_mount.file_path,
+                    Path(self.uploads_folder)
+                    / f"{Path(read_mount.file_name).parts[-1]}.{upload_id}",
+                )  # Effectively redirect writing of the file that the API concatenates chunks in, to be done by our file-system; a _distinct_ mount is used because the file being uploaded _must be readable, while the file being written should have zero size if it exists (which it must since we redirect with a symbolic link)
+                self.start_new_resumable(
+                    str(read_mount.file_path),
+                    chunksize=100 * 10**6,  # 100MB
+                    large_file=True,  # Opt out of implied e.g. MD5 verification -- the file system does the verification in this case
+                    upload_id=upload_id,
+                )
+                self.assertEqual(
+                    write_mount.file_path.stat().st_size, read_mount.file_size
+                )  # Isn't strictly necessary for nor the subject of the test as such, but let it function as part of the belt-and-suspenders assurance for the test
 
 
 def main() -> None:
