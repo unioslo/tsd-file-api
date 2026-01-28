@@ -2851,7 +2851,7 @@ class TestFileApi(unittest.TestCase):
                 (
                     "mock-large-files-fuse",
                     self.mount_point.name,
-                    "-f",
+                    "-f",  # The process stays "in foreground" (no "daemonisation")
                     f"--filename={self.file_name}",
                     f"--size={self.file_size}",
                 )
