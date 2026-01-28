@@ -2892,8 +2892,7 @@ class TestFileApi(unittest.TestCase):
                 )  # We need to know the uploading ID in advance -- the linking below depends on it to redirect writing by the API correctly
                 os.symlink(
                     write_mount.file_path,
-                    Path(self.uploads_folder)
-                    / f"{Path(read_mount.file_name).parts[-1]}.{upload_id}",
+                    Path(self.uploads_folder) / f"{read_mount.file_name}.{upload_id}",
                 )  # Effectively redirect writing of the file that the API concatenates chunks in, to be done by our file-system; a _distinct_ mount is used because the file being uploaded _must be readable, while the file being written should have zero size if it exists (which it must since we redirect with a symbolic link)
                 self.start_new_resumable(
                     str(read_mount.file_path),
