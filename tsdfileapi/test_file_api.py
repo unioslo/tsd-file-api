@@ -2871,6 +2871,7 @@ class TestFileApi(unittest.TestCase):
             # Unmount the file system and clean up
             self.process.terminate()
             self.process.wait()
+            del self.process
             del self.mount_point
 
         @property
