@@ -2858,6 +2858,12 @@ class TestFileApi(unittest.TestCase):
             )
             # Creating the mounting process doesn't mean that the file system is functional -- the loop waits for the actual mount-point, as indication of readiness
             while not os.path.ismount(self.mount_point.name):
+                if (
+                    self.process.poll()
+                ):  # We have a return code already (process terminated)?
+                    raise Exception(
+                        "The mounting process terminated unexpectedly"
+                    )  # The process (started in foreground) is expected to persist, anything else is erroneous behaviour
                 time.sleep(0)  # Yield to other processes/threads
             return self
 
