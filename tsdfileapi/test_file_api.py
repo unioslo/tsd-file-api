@@ -2843,7 +2843,7 @@ class TestFileApi(unittest.TestCase):
             self.file_size = file_size
 
         def __enter__(self):
-            # Create a distinct mount point and mount the file system there (holding the file by name and size the manager was initialised with)
+            # Create a distinct mount point and mount the file system there (containing the file of specified name and [initial] size)
             self.mount_point = tempfile.TemporaryDirectory(
                 suffix=("." + __name__ + ".mock-large-files-fuse")
             )
