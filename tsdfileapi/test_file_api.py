@@ -2833,7 +2833,7 @@ class TestFileApi(unittest.TestCase):
 
     class MockLargeFilesFuse:
         """
-        [A context manager for] the mounting the mock-large-files FUSE application.
+        [A context manager for] mounting of the "mock large files" filesystem.
 
         The file system is made available for the duration of execution of the `with` block. It's a convenience for making the mounting context explicit.
         """
