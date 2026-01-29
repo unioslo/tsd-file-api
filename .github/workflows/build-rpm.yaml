@@ -60,3 +60,10 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           files: rpm/*.rpm
+      - name: Upload RPM to TSD Artifacts
+        if: github.ref_type == 'tag'
+        env:
+          RPM_USERNAME: ${{ vars.TSD_ARTIFACTS_USERNAME }}
+          RPM_PASSWORD: ${{ secrets.TSD_ARTIFACTS_PASSWORD }}
+        run:
+          python3 .github/scripts/rpm-upload.py rpm/*.rpm
