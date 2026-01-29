@@ -37,7 +37,7 @@ jobs:
     runs-on: ubuntu-latest
     needs: export-requirements
     steps:
-      - uses: actions/download-artifact@v3
+      - uses: actions/download-artifact@v4.1.7
         with:
           name: requirements.txt
           path: requirements.txt
