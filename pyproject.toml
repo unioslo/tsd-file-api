@@ -23,7 +23,7 @@ termcolor = ">=1.1.0"
 python-magic = ">=0.4.15"
 pika = ">=1.1.0"
 pyyaml = ">=5.4"
-pyresumable = ">=0.0.5"
+pyresumable = ">=0.0.6"
 
 [tool.poetry.group.dev.dependencies]
 backoff = ">=2.2.1"
