@@ -8,8 +8,11 @@ designed for the University of Oslo's Services for Sensitive Data (TSD).
 
 """
 
+import asyncio
 import base64
+import contextvars
 import datetime
+import functools
 import hashlib
 import json
 import logging
@@ -22,10 +25,12 @@ import sqlite3
 import stat
 import subprocess
 import time
+from concurrent.futures import ThreadPoolExecutor
 from http import HTTPStatus
 from sys import argv
 from typing import Any
 from typing import Awaitable
+from typing import Callable
 from typing import Dict
 from typing import Optional
 from typing import Union
@@ -167,9 +172,27 @@ def set_config() -> None:
     define("sns_migrations", _config.get("sns_migrations", []))
     define("parse_proxy_headers", _config.get("parse_proxy_headers", False))
     define("trusted_proxies", _config.get("trusted_proxies", None))
+    define("max_workers", _config.get("max_workers", 1))
 
 
 set_config()
+
+
+executor = ThreadPoolExecutor(
+    max_workers=options.max_workers
+)  # For general off-loading of work (calls) that blocks the event loop; the rule of thumb is if it's file I/O and CPU-bound procedures -- offload it (see `to_thread` below)
+
+
+def to_thread(callable: Callable, *args, **kwargs):
+    """
+    Execute a function call on a separate thread.
+
+    This is essentially a replica of `asyncio.to_thread` but using _our_ executor (which we own). And just as with the latter, we make sure the context is passed on as well.
+    """
+    return asyncio.get_running_loop().run_in_executor(
+        executor,
+        functools.partial(contextvars.copy_context().run, callable, *args, **kwargs),
+    )
 
 
 class FallbackHandler(RequestHandler):
@@ -1338,7 +1361,7 @@ class FileRequestHandler(AuthRequestHandler):
         self.set_status(HTTPStatus.CREATED.value)
         self.write({"message": "data streamed"})
 
-    def patch(self, tenant: str, uri_filename: str = None) -> None:
+    async def patch(self, tenant: str, uri_filename: str = None) -> None:
         if (
             self.custom_content_type == "application/octet-stream+nacl"
             and self.nacl_stream_buffer
@@ -1373,7 +1396,8 @@ class FileRequestHandler(AuthRequestHandler):
                 os.rename(self.path, self.path_part)
                 filename = os.path.basename(self.path_part).split(".chunk")[0]
                 try:
-                    _, state = self.res.merge_chunk(
+                    _, state = await to_thread(
+                        self.res.merge_chunk,
                         self.tenant_dir,
                         os.path.basename(self.path_part),
                         self.upload_id,
