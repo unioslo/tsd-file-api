@@ -8,7 +8,7 @@ import urllib.request
 
 
 def get_package_info(filename: str):
-    pattern = r"^(?P<name>.+)-(?P<version>[\d\.]+(\.(dev|a|b|rc|post)\d+(\+[0-9a-z]+)?)?)-(?P<release>[\d\.]+)\.(?P<os>[a-z0-9]+)\.(?P<arch>.+)\.rpm$"
+    pattern = r"^(?P<name>.+)-(?P<version>[\d\.]+((dev|a|b|rc|post)\d+(\+[0-9a-z]+)?)?)-(?P<release>[\d\.]+)\.(?P<os>[a-z0-9]+)\.(?P<arch>.+)\.rpm$"
     match = re.match(pattern, filename)
     if match:
         return match.groupdict()
