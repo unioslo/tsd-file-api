@@ -47,7 +47,7 @@ jobs:
       - name: Get version
         run: echo "PACKAGE_VERSION=$(poetry version --short --no-ansi)" >> $GITHUB_ENV
       - name: Log in to the container registry
-        uses: docker/login-action@v2
+        uses: docker/login-action@v4
         with:
           registry: ${{ env.REGISTRY }}
           username: ${{ github.actor }}
