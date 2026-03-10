@@ -71,7 +71,7 @@ def _find_ess_dir(
         if pnum in os.listdir(f"{root}/{projects_dir}"):
             sub_dir = projects_dir
             break
-    return None if not sub_dir else f"{root}/{sub_dir}/{pnum}/data/durable"
+    return None if not sub_dir else f"{root}/{sub_dir}/{pnum}"
 
 
 def find_tenant_storage_path(
@@ -108,16 +108,16 @@ def choose_storage(
     opts: tornado.options.OptionParser,
     directory: str,
 ) -> str:
+    """
+    Replace platform specific prefix with ESS storage path.
+    Only handles tsd for now.
+
+    """
     if not directory.startswith("/tsd"):
         return directory
-    split_on = "data/durable"
-    storage_path = find_tenant_storage_path(
-        tenant,
-        opts,
-    ).split(split_on)
-    in_dir = directory.split(split_on)
-    out_dir = "".join([storage_path[0], split_on, in_dir[-1]])
-    return out_dir
+    storage_path = find_tenant_storage_path(tenant, opts)
+    out_dir = "".join([storage_path, f"/{tenant}", directory.split(tenant)[-1]])
+    return os.path.normpath(out_dir)
 
 
 def call_request_hook(path: str, params: list, as_sudo: bool = True) -> None:
