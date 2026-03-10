@@ -35,6 +35,7 @@ from tsdfileapi.db import postgres_init
 from tsdfileapi.tokens import gen_test_token_for_user
 from tsdfileapi.tokens import gen_test_tokens
 from tsdfileapi.tokens import get_test_token_for_p12
+from tsdfileapi.utils import choose_storage
 from tsdfileapi.utils import find_tenant_storage_path
 from tsdfileapi.utils import md5sum
 from tsdfileapi.utils import set_mtime
@@ -2818,17 +2819,36 @@ class TestFileApi(unittest.TestCase):
 
         class Options:
             tenant_storage_cache = {}
-            prefer_ess = ["files_import", "files_export"]
 
         opts = Options()
         # choose ess
-        self.assertTrue(
+        self.assertEqual(
             find_tenant_storage_path(
                 "p11",
-                "files_import",
                 opts,
                 root=root,
-            ).endswith("/projects01/p11/data/durable")
+            ),
+            f"{root}/projects01/p11",
+        )
+
+    def test_choose_storage(self) -> None:
+        class Options:
+            tenant_storage_cache = {}
+
+        opts = Options()
+
+        not_tsd = "/eka/pada/koundinyasana"
+        self.assertEqual(
+            choose_storage(tenant="p11", opts=opts, directory=not_tsd),
+            not_tsd,
+        )
+
+        # finding a cached entry
+        opts.tenant_storage_cache["p11"] = {"storage_paths": {"ess": "/ess/projects01"}}
+        tsd_path = "/tsd/p11/data/durable/file-import"
+        self.assertEqual(
+            choose_storage(tenant="p11", opts=opts, directory=tsd_path),
+            "/ess/projects01/p11/data/durable/file-import",
         )
 
     class MockLargeFilesFuse:
@@ -3002,6 +3022,7 @@ def main() -> None:
     ]
     storage = [
         "test_find_tenant_storage_path",
+        "test_choose_storage",
     ]
     if len(sys.argv) == 1:
         sys.argv.append("all")
@@ -3065,6 +3086,7 @@ def main() -> None:
         tests.extend(mtime)
         tests.extend(logs)
         tests.extend(tables)
+        tests.extend(storage)
     tests.sort()
     suite = unittest.TestSuite()
     for test in tests:
