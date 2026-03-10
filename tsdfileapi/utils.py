@@ -76,14 +76,13 @@ def _find_ess_dir(
 
 def find_tenant_storage_path(
     tenant: str,
-    endpoint_backend: str,
     opts: tornado.options.OptionParser,
     root: str = "/ess",
 ) -> str:
     """
     Either one of these: /ess/projects0{1|2|3|...|n}/{pnum}/data/durable
     Results are cached in a dict stored on options.
-    Returns the base path which the endpoint_backend should use.
+    Returns the base path.
 
     """
     cache = opts.tenant_storage_cache.copy()
@@ -106,7 +105,6 @@ def find_tenant_storage_path(
 def choose_storage(
     *,
     tenant: str,
-    endpoint_backend: str,
     opts: tornado.options.OptionParser,
     directory: str,
 ) -> str:
@@ -115,7 +113,6 @@ def choose_storage(
     split_on = "data/durable"
     storage_path = find_tenant_storage_path(
         tenant,
-        endpoint_backend,
         opts,
     ).split(split_on)
     in_dir = directory.split(split_on)
@@ -178,7 +175,6 @@ def sns_dir(
         )
         sns_dir = choose_storage(
             tenant=tenant,
-            endpoint_backend="sns",
             opts=options,
             directory=directory,
         )

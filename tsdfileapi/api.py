@@ -595,7 +595,6 @@ class AuthRequestHandler(RequestHandler):
         path_pattern = options.request_log.get("db").get("path")
         return choose_storage(
             tenant=tenant,
-            endpoint_backend=backend,
             opts=options,
             directory=path_pattern.replace(options.tenant_string_pattern, tenant),
         )
@@ -917,7 +916,6 @@ class ResumablesHandler(AuthRequestHandler):
         try:
             self.tenant_dir = choose_storage(
                 tenant=self.tenant,
-                endpoint_backend=self.backend,
                 opts=options,
                 directory=self.import_dir_pattern.replace(
                     options.tenant_string_pattern, self.tenant
@@ -1063,7 +1061,6 @@ class FileRequestHandler(AuthRequestHandler):
 
             self.export_dir = choose_storage(
                 tenant=self.tenant,
-                endpoint_backend=self.backend,
                 opts=options,
                 directory=self.export_path_pattern.replace(
                     options.tenant_string_pattern, self.tenant
@@ -1071,7 +1068,6 @@ class FileRequestHandler(AuthRequestHandler):
             )
             self.import_dir = choose_storage(
                 tenant=self.tenant,
-                endpoint_backend=self.backend,
                 opts=options,
                 directory=self.import_dir_pattern.replace(
                     options.tenant_string_pattern, self.tenant
@@ -1079,7 +1075,6 @@ class FileRequestHandler(AuthRequestHandler):
             )
             self.tenant_dir = choose_storage(
                 tenant=self.tenant,
-                endpoint_backend=self.backend,
                 opts=options,
                 directory=self.import_dir_pattern.replace(
                     options.tenant_string_pattern, self.tenant
@@ -2316,7 +2311,6 @@ class GenericTableHandler(AuthRequestHandler):
                 self.import_dir_pattern = self.backend_config["db"]["path"]
                 self.tenant_dir = choose_storage(
                     tenant=self.tenant,
-                    endpoint_backend=self.backend,
                     opts=options,
                     directory=self.import_dir_pattern.replace(
                         options.tenant_string_pattern, self.tenant
