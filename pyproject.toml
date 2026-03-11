@@ -30,7 +30,12 @@ backoff = ">=2.2.1"
 requests = ">=2.27.1"
 tsd-api-client = "^3.9.5"
 ruff = ">=0.11.1"
+
+[tool.poetry.group.large-file-tests.dependencies]
 mock-large-files-fuse = "^1.0.0"
+
+[tool.poetry.group.large-file-tests]
+optional = true
 
 [tool.poetry-dynamic-versioning]
 enable = true
