@@ -439,7 +439,7 @@ version = "1.0.0.post4"
 description = "A filesystem-in-userspace (FUSE) offering reading/writing of arbitrarily large files"
 optional = false
 python-versions = "*"
-groups = ["dev"]
+groups = ["large-file-tests"]
 files = [
     {file = "mock_large_files_fuse-1.0.0.post4-py3-none-manylinux1_x86_64.manylinux_2_28_x86_64.manylinux_2_5_x86_64.whl", hash = "sha256:6dfb4830f73569b724e3f21e1c7ed1a8eb0e7aa3865dbc3dfa02bd540b827917"},
     {file = "mock_large_files_fuse-1.0.0.post4-py3-none-musllinux_1_2_x86_64.whl", hash = "sha256:073be785b3611991f7349b8ae165258a7bb8e64a998791b3d1320e9b5b1de19e"},
@@ -810,4 +810,4 @@ zstd = ["backports-zstd (>=1.0.0) ; python_version < \"3.14\""]
 [metadata]
 lock-version = "2.1"
 python-versions = "^3.10"
-content-hash = "9aff992bbdb4731c90467cc24d17a4a326935438e08522ad4ab4e6c8820d0656"
+content-hash = "18f09b8ff12f0de65d60fc103abb7ddc39edcf30e0f17c009764d8c8c2c0e9bb"
