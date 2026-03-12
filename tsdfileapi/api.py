@@ -914,13 +914,6 @@ class ResumablesHandler(AuthRequestHandler):
 
     def prepare(self) -> Optional[Awaitable[None]]:
         try:
-            self.tenant_dir = choose_storage(
-                tenant=self.tenant,
-                opts=options,
-                directory=self.import_dir_pattern.replace(
-                    options.tenant_string_pattern, self.tenant
-                ),
-            )
             if options.maintenance_mode_enabled:
                 raise ServerMaintenanceError
             self.authnz = self.process_token_and_extract_claims(
@@ -930,6 +923,15 @@ class ResumablesHandler(AuthRequestHandler):
                     else options.check_tenant
                 )
             )
+            self.tenant_dir = choose_storage(
+                tenant=self.tenant,
+                opts=options,
+                directory=self.import_dir_pattern.replace(
+                    options.tenant_string_pattern, self.tenant
+                ),
+                user=self.requestor if self.backend == "home" else None,
+            )
+
         except Exception as e:
             error = error_for_exception(e)
             logger.error(error.message)
@@ -1059,12 +1061,21 @@ class FileRequestHandler(AuthRequestHandler):
             if options.maintenance_mode_enabled:
                 raise ServerMaintenanceError
 
+            self.authnz = self.process_token_and_extract_claims(
+                check_tenant=(
+                    self.check_tenant
+                    if self.check_tenant is not None
+                    else options.check_tenant
+                )
+            )
+
             self.export_dir = choose_storage(
                 tenant=self.tenant,
                 opts=options,
                 directory=self.export_path_pattern.replace(
                     options.tenant_string_pattern, self.tenant
                 ),
+                user=self.requestor if self.backend == "home" else None,
             )
             self.import_dir = choose_storage(
                 tenant=self.tenant,
@@ -1072,6 +1083,7 @@ class FileRequestHandler(AuthRequestHandler):
                 directory=self.import_dir_pattern.replace(
                     options.tenant_string_pattern, self.tenant
                 ),
+                user=self.requestor if self.backend == "home" else None,
             )
             self.tenant_dir = choose_storage(
                 tenant=self.tenant,
@@ -1079,14 +1091,7 @@ class FileRequestHandler(AuthRequestHandler):
                 directory=self.import_dir_pattern.replace(
                     options.tenant_string_pattern, self.tenant
                 ),
-            )
-
-            self.authnz = self.process_token_and_extract_claims(
-                check_tenant=(
-                    self.check_tenant
-                    if self.check_tenant is not None
-                    else options.check_tenant
-                )
+                user=self.requestor if self.backend == "home" else None,
             )
 
             tenant = tenant_from_url(self.request.uri)
@@ -3062,6 +3067,23 @@ class Backends:
                 dict(backend="apps_tables"),
             ),
             ("/v1/(.*)/apps/crypto/key", NaclKeyHander),
+        ],
+        "home": [
+            (
+                "/v1/(.*)/home/(.+)/resumables",
+                ResumablesHandler,
+                dict(backend="home"),
+            ),
+            (
+                "/v1/(.*)/home/(.+)/resumables/(.*)",
+                ResumablesHandler,
+                dict(backend="home"),
+            ),
+            (
+                "/v1/(.*)/home/(.+/.*)",
+                FileRequestHandler,
+                dict(backend="home", namespace="home", endpoint="home"),
+            ),
         ],
     }
 
