@@ -107,9 +107,11 @@ def choose_storage(
     tenant: str,
     opts: tornado.options.OptionParser,
     directory: str,
+    user: str = None,
 ) -> str:
     """
     Replace platform specific prefix with ESS storage path.
+    Append user if provided, for handling home directories.
     Only handles tsd for now.
 
     """
@@ -117,6 +119,8 @@ def choose_storage(
         return directory
     storage_path = find_tenant_storage_path(tenant, opts)
     out_dir = "".join([storage_path, f"/{tenant}", directory.split(tenant)[-1]])
+    if user:
+        out_dir += f"/{user}"
     return os.path.normpath(out_dir)
 
 
