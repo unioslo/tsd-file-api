@@ -129,10 +129,6 @@ _config = {
                     "backup_days": 90,
                 },
             },
-            "form_data": {
-                "import_path": f"{TMP}/pXX/import",
-                "request_hook": {"path": False, "sudo": False, "enabled": False},
-            },
             "sns": {
                 "import_path": f"{TMP}/pXX/data/durable/nettskjema-submissions/KEYID/FORMID",
                 "subfolder_path": f"{TMP}/pXX/data/durable/nettskjema-submissions/.tsd/KEYID/FORMID",
@@ -177,6 +173,26 @@ _config = {
                 "group_logic": {
                     "default_url_group": None,
                     "default_memberships": ["pXX-member-group"],
+                    "enabled": False,
+                },
+                "request_hook": {
+                    "enabled": False,
+                },
+            },
+            "home": {
+                "has_posix_ownership": True,
+                "import_path": f"{TMP}/pXX/home",
+                "export_path": f"{TMP}/pXX/home",
+                "allow_export": True,
+                "allow_list": True,
+                "allow_info": True,
+                "allow_delete": True,
+                "export_policy": {
+                    "default": {"enabled": False},
+                },
+                "group_logic": {
+                    "default_url_group": None,
+                    "default_memberships": None,
                     "enabled": False,
                 },
                 "request_hook": {
