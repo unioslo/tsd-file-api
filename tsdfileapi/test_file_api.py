@@ -170,6 +170,7 @@ class TestFileApi(unittest.TestCase):
         cls.survey = cls.base_url + "/survey"
         cls.apps = cls.base_url + "/apps"
         cls.logs = cls.base_url + "/logs"
+        cls.home = cls.base_url + "/home"
         cls.test_project = cls.test_project
         cls.tenant_string_pattern = cls.config["tenant_string_pattern"]
 
@@ -2851,6 +2852,46 @@ class TestFileApi(unittest.TestCase):
             "/ess/projects01/p11/data/durable/file-import",
         )
 
+        home_path = "/tsd/p11/home"
+        self.assertEqual(
+            choose_storage(
+                tenant="p11", opts=opts, directory=home_path, user="p11-user"
+            ),
+            "/ess/projects01/p11/home/p11-user",
+        )
+
+    def test_home_backend(self) -> None:
+        # simple file upload/download
+
+        headers = {"Authorization": "Bearer " + TEST_TOKENS["ADMIN"]}
+        resp = requests.put(
+            f"{self.home}/{self.test_user}/file",
+            data=lazy_file_reader(self.so_sweet),
+            headers=headers,
+        )
+        self.assertEqual(resp.status_code, 201)
+
+        resp = requests.get(
+            f"{self.home}/{self.test_user}/file",
+            headers=headers,
+        )
+        self.assertEqual(resp.status_code, 200)
+
+        # into/from a directory
+
+        resp = requests.put(
+            f"{self.home}/{self.test_user}/dir/file",
+            data=lazy_file_reader(self.so_sweet),
+            headers=headers,
+        )
+        self.assertEqual(resp.status_code, 201)
+
+        resp = requests.get(
+            f"{self.home}/{self.test_user}/dir/file",
+            headers=headers,
+        )
+        self.assertEqual(resp.status_code, 200)
+
     class MockLargeFilesFuse:
         """
         [A context manager for] mounting of the "mock large files" filesystem.
@@ -3024,6 +3065,9 @@ def main() -> None:
         "test_find_tenant_storage_path",
         "test_choose_storage",
     ]
+    home = [
+        "test_home_backend",
+    ]
     if len(sys.argv) == 1:
         sys.argv.append("all")
     elif len(sys.argv) == 2:
@@ -3087,6 +3131,7 @@ def main() -> None:
         tests.extend(logs)
         tests.extend(tables)
         tests.extend(storage)
+        tests.extend(home)
     tests.sort()
     suite = unittest.TestSuite()
     for test in tests:
