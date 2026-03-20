@@ -122,9 +122,9 @@ backends:
       group_logic:
         default_memberships: null
         default_url_group: null
-        enabled: true
-        enforce_membership: true
-        ensure_tenant_in_group_name: true
+        enabled: false
+        enforce_membership: false
+        ensure_tenant_in_group_name: false
         valid_group_regex: null
       has_posix_ownership: true
       import_path: /tmp/pXX/home
