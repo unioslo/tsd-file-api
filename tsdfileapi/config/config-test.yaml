@@ -21,6 +21,28 @@ test_nacl_public: {'public': 'mZQEzkyi7bCvmDVfHGsU/7HX1+gT/R3PkSnyDU4OaiY=', 'pr
 log_level: info
 backends:
   disk:
+    home:
+      allow_delete: true
+      allow_export: true
+      allow_info: true
+      allow_list: true
+      export_path: /tmp/pXX/home
+      export_policy:
+        default:
+          enabled: false
+      group_logic:
+        default_memberships: null
+        default_url_group: null
+        enabled: true
+        enforce_membership: true
+        ensure_tenant_in_group_name: true
+        valid_group_regex: null
+      has_posix_ownership: true
+      import_path: /tmp/pXX/home
+      request_hook:
+        enabled: false
+        path: /usr/local/bin/chowner
+        sudo: false
     files_import:
       allow_list: true
       export_policy:
