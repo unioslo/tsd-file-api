@@ -1308,8 +1308,7 @@ class FileRequestHandler(AuthRequestHandler):
             self.finish()
 
     @RequestHandler.run_in_request_processing_context  # For reasons, Tornado evidently runs `data_received` in a _distinct_ context (different from the one we load in `prepare`), so we "force" ours (to retain request ID correlation, among other things)
-    @gen.coroutine
-    def data_received(self, chunk: bytes) -> Optional[Awaitable[None]]:
+    async def data_received(self, chunk: bytes) -> Optional[Awaitable[None]]:
         if __debug__ and hasattr(self, "received_data_length"):
             self.received_data_length += len(chunk)
         try:
@@ -1323,10 +1322,11 @@ class FileRequestHandler(AuthRequestHandler):
                     chunk = libnacl.crypto_stream_xor(
                         target_content, self.nacl_nonce, self.nacl_key
                     )
-            if self.request.method == "PATCH":
-                self.res.add_chunk(self.target_file, chunk)
-            else:
-                self.target_file.write(chunk)
+            await to_thread(
+                self.res.add_chunk, self.target_file, chunk
+            ) if self.request.method == "PATCH" else to_thread(
+                self.target_file.write, chunk
+            )
         except Exception:
             logger.exception(
                 "something went wrong with stream processing"
