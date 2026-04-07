@@ -1313,24 +1313,20 @@ class FileRequestHandler(AuthRequestHandler):
         if __debug__ and hasattr(self, "received_data_length"):
             self.received_data_length += len(chunk)
         try:
-            if not self.custom_content_type:
-                if self.request.method == "PATCH":
-                    self.res.add_chunk(self.target_file, chunk)
-                else:
-                    self.target_file.write(chunk)
-            elif self.custom_content_type == "application/octet-stream+nacl":
+            if self.custom_content_type == "application/octet-stream+nacl":
                 self.nacl_stream_buffer += chunk
+                del chunk
                 while len(self.nacl_stream_buffer) >= self.nacl_chunksize:
                     target_content = self.nacl_stream_buffer[: self.nacl_chunksize]
                     remainder = self.nacl_stream_buffer[self.nacl_chunksize :]
                     self.nacl_stream_buffer = remainder
-                    decrypted = libnacl.crypto_stream_xor(
+                    chunk = libnacl.crypto_stream_xor(
                         target_content, self.nacl_nonce, self.nacl_key
                     )
-                    if self.request.method == "PATCH":
-                        self.res.add_chunk(self.target_file, decrypted)
-                    else:
-                        self.target_file.write(decrypted)
+            if self.request.method == "PATCH":
+                self.res.add_chunk(self.target_file, chunk)
+            else:
+                self.target_file.write(chunk)
         except Exception:
             logger.exception(
                 "something went wrong with stream processing"
