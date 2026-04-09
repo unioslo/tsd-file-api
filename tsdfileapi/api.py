@@ -1309,17 +1309,17 @@ class FileRequestHandler(AuthRequestHandler):
 
     @RequestHandler.run_in_request_processing_context  # For reasons, Tornado evidently runs `data_received` in a _distinct_ context (different from the one we load in `prepare`), so we "force" ours (to retain request ID correlation, among other things)
     @gen.coroutine
-    def data_received(self, chunk: bytes) -> Optional[Awaitable[None]]:
+    def data_received(self, data: bytes) -> Optional[Awaitable[None]]:
         if __debug__ and hasattr(self, "received_data_length"):
-            self.received_data_length += len(chunk)
+            self.received_data_length += len(data)
         try:
             if not self.custom_content_type:
                 if self.request.method == "PATCH":
-                    self.res.add_chunk(self.target_file, chunk)
+                    self.res.add_chunk(self.target_file, data)
                 else:
-                    self.target_file.write(chunk)
+                    self.target_file.write(data)
             elif self.custom_content_type == "application/octet-stream+nacl":
-                self.nacl_stream_buffer += chunk
+                self.nacl_stream_buffer += data
                 while len(self.nacl_stream_buffer) >= self.nacl_chunksize:
                     target_content = self.nacl_stream_buffer[: self.nacl_chunksize]
                     remainder = self.nacl_stream_buffer[self.nacl_chunksize :]
