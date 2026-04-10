@@ -1321,13 +1321,12 @@ class FileRequestHandler(AuthRequestHandler):
             self.finish()
 
     @RequestHandler.run_in_request_processing_context  # For reasons, Tornado evidently runs `data_received` in a _distinct_ context (different from the one we load in `prepare`), so we "force" ours (to retain request ID correlation, among other things)
-    @gen.coroutine
-    def data_received(self, data: bytes) -> Optional[Awaitable[None]]:
+    async def data_received(self, data: bytes) -> Optional[Awaitable[None]]:
         if __debug__ and hasattr(self, "received_data_length"):
             self.received_data_length += len(data)
         try:
             for processed in self.data_buffer(data):
-                self.store_processed_data(processed)
+                await to_thread(self.store_processed_data, processed)
         except:
             if self.target_file:
                 self.target_file.close()
@@ -1384,22 +1383,22 @@ class FileRequestHandler(AuthRequestHandler):
                 )
                 self._buffer = self._buffer[self._threshold :]
 
-    def _process_remaining_received_data(self):
+    async def _process_remaining_received_data(self):
         """
         Process remaining data which may have been left in the buffer (e.g. not crossed the threshold).
         """
         self.data_buffer.close()
-        self.data_received(b"")
+        await self.data_received(b"")
 
-    def put(self, tenant: str, uri_filename: str = None) -> None:
-        self._process_remaining_received_data()
+    async def put(self, tenant: str, uri_filename: str = None) -> None:
+        await self._process_remaining_received_data()
         self.target_file.close()
         os.rename(self.path, self.path_part)
         self.set_status(HTTPStatus.CREATED.value)
         self.write({"message": "data streamed"})
 
     async def patch(self, tenant: str, uri_filename: str = None) -> None:
-        self._process_remaining_received_data()
+        await self._process_remaining_received_data()
         if __debug__:
             merge_chunk_verify = {}
             query = {
