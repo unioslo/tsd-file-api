@@ -173,6 +173,10 @@ def set_config() -> None:
     define("parse_proxy_headers", _config.get("parse_proxy_headers", False))
     define("trusted_proxies", _config.get("trusted_proxies", None))
     define("max_workers", _config.get("max_workers", 1))
+    define(
+        "tenant_storage_write_buffer_size",
+        _config.get("tenant_storage_write_buffer_size", 2**24),
+    )
 
 
 set_config()
@@ -999,8 +1003,6 @@ class ResumablesHandler(AuthRequestHandler):
 
 @stream_request_body
 class FileRequestHandler(AuthRequestHandler):
-    data_received_file_write_threshold = 2**24  # 16MiB
-
     def initialize(self, backend: str, namespace: str, endpoint: str) -> None:
         default_group_logic = {
             "enabled": False,
@@ -1295,7 +1297,7 @@ class FileRequestHandler(AuthRequestHandler):
                     os.chmod(self.path, _RW______)
                 else:
                     self.data_buffer = self.DataBuffer(
-                        self.data_received_file_write_threshold
+                        options.tenant_storage_write_buffer_size
                     )
                     if self.request.method != "PATCH":
                         self.target_file = open(self.path, filemode, buffering=0)
