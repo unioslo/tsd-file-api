@@ -1374,7 +1374,7 @@ class FileRequestHandler(AuthRequestHandler):
 
         def __call__(self, data: bytes):
             """
-            Add data to the buffer, iff there's enough data accumulated in the buffer to decrypt a block, remove one block worth of it from the buffer, decrypt the block and yield it.
+            Add data to the buffer and while there's enough data accumulated in the buffer to decrypt a block remove that much worth of data from the buffer, decrypt it and yield it.
             """
             self._buffer += data
             while len(self._buffer) >= self._threshold:
