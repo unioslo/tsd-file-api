@@ -1299,8 +1299,12 @@ class FileRequestHandler(AuthRequestHandler):
                     )
 
                 if self.request.method != "PATCH" or not self.completed_resumable_file:
-                    self.target_file = open(self.path, filemode, buffering=0)
-                    os.chmod(self.path, _RW______)
+                    self.target_file = open(
+                        self.path,
+                        filemode,
+                        buffering=0,
+                        opener=functools.partial(os.open, mode=_RW______),
+                    )
 
                 if self.request.method == "PATCH":
                     self.store_processed_data = self.store_processed_data_with_resumable
