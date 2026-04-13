@@ -1293,20 +1293,14 @@ class FileRequestHandler(AuthRequestHandler):
                     self.data_buffer = self.NaclDataBuffer(
                         self.nacl_chunksize, self.nacl_nonce, self.nacl_key
                     )
-                    self.target_file = open(self.path, filemode, buffering=0)
-                    os.chmod(self.path, _RW______)
                 else:
                     self.data_buffer = self.DataBuffer(
                         options.tenant_storage_write_buffer_size
                     )
-                    if self.request.method != "PATCH":
-                        self.target_file = open(self.path, filemode, buffering=0)
-                        os.chmod(self.path, _RW______)
-                    elif self.request.method == "PATCH":
-                        if not self.completed_resumable_file:
-                            self.target_file = self.res.open_file(
-                                self.path, mode=filemode, buffering=0
-                            )
+
+                if self.request.method != "PATCH" or not self.completed_resumable_file:
+                    self.target_file = open(self.path, filemode, buffering=0)
+                    os.chmod(self.path, _RW______)
 
                 if self.request.method == "PATCH":
                     self.store_processed_data = self.store_processed_data_with_resumable
