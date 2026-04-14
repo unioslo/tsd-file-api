@@ -173,6 +173,10 @@ def set_config() -> None:
     define("parse_proxy_headers", _config.get("parse_proxy_headers", False))
     define("trusted_proxies", _config.get("trusted_proxies", None))
     define("max_workers", _config.get("max_workers", 1))
+    define(
+        "tenant_storage_write_buffer_size",
+        _config.get("tenant_storage_write_buffer_size", 2**24),
+    )
 
 
 set_config()
@@ -706,7 +710,6 @@ class AuthRequestHandler(RequestHandler):
         if not headers.get("Nacl-Chunksize"):
             raise ClientError("Missing Nacl-Chunksize header - cannot decrypt data")
         self.custom_content_type = headers["Content-Type"]
-        self.nacl_stream_buffer = b""
         self.nacl_nonce = options.sealed_box.decrypt(
             base64.b64decode(headers["Nacl-Nonce"])
         )
@@ -1287,15 +1290,25 @@ class FileRequestHandler(AuthRequestHandler):
 
                 if content_type == "application/octet-stream+nacl":
                     self.decrypt_nacl_headers(self.request.headers)
-                    self.target_file = open(self.path, filemode)
-                    os.chmod(self.path, _RW______)
+                    self.data_buffer = self.NaclDataBuffer(
+                        self.nacl_chunksize, self.nacl_nonce, self.nacl_key
+                    )
                 else:
-                    if self.request.method != "PATCH":
-                        self.target_file = open(self.path, filemode)
-                        os.chmod(self.path, _RW______)
-                    elif self.request.method == "PATCH":
-                        if not self.completed_resumable_file:
-                            self.target_file = self.res.open_file(self.path, filemode)
+                    self.data_buffer = self.DataBuffer(
+                        options.tenant_storage_write_buffer_size
+                    )
+
+                if self.request.method != "PATCH" or not self.completed_resumable_file:
+                    self.target_file = open(
+                        self.path,
+                        filemode,
+                        buffering=0,
+                        opener=functools.partial(os.open, mode=_RW______),
+                    )
+
+                if self.request.method == "PATCH":
+                    self.store_processed_data = self.store_processed_data_with_resumable
+
         except ResumableIncorrectChunkOrderError:
             self.set_status(HTTPStatus.BAD_REQUEST.value)
             self.finish({"message": "chunk_order_incorrect"})
@@ -1308,69 +1321,84 @@ class FileRequestHandler(AuthRequestHandler):
             self.finish()
 
     @RequestHandler.run_in_request_processing_context  # For reasons, Tornado evidently runs `data_received` in a _distinct_ context (different from the one we load in `prepare`), so we "force" ours (to retain request ID correlation, among other things)
-    @gen.coroutine
-    def data_received(self, chunk: bytes) -> Optional[Awaitable[None]]:
+    async def data_received(self, data: bytes) -> Optional[Awaitable[None]]:
         if __debug__ and hasattr(self, "received_data_length"):
-            self.received_data_length += len(chunk)
+            self.received_data_length += len(data)
         try:
-            if not self.custom_content_type:
-                if self.request.method == "PATCH":
-                    self.res.add_chunk(self.target_file, chunk)
-                else:
-                    self.target_file.write(chunk)
-            elif self.custom_content_type == "application/octet-stream+nacl":
-                self.nacl_stream_buffer += chunk
-                while len(self.nacl_stream_buffer) >= self.nacl_chunksize:
-                    target_content = self.nacl_stream_buffer[: self.nacl_chunksize]
-                    remainder = self.nacl_stream_buffer[self.nacl_chunksize :]
-                    self.nacl_stream_buffer = remainder
-                    decrypted = libnacl.crypto_stream_xor(
-                        target_content, self.nacl_nonce, self.nacl_key
-                    )
-                    if self.request.method == "PATCH":
-                        self.res.add_chunk(self.target_file, decrypted)
-                    else:
-                        self.target_file.write(decrypted)
-        except Exception:
-            logger.exception(
-                "something went wrong with stream processing"
-                + (
-                    (" have to close file '%s'" % self.target_file.name)
-                    if self.target_file
-                    else ""
-                )
-            )
+            for processed in self.data_buffer(data):
+                await to_thread(self.store_processed_data, processed)
+        except:
             if self.target_file:
                 self.target_file.close()
             os.rename(self.path, self.path_part)
-            self.send_error("something went wrong")
+            raise
 
-    def put(self, tenant: str, uri_filename: str = None) -> None:
-        if not self.custom_content_type:
-            self.target_file.close()
-            os.rename(self.path, self.path_part)
-        elif self.custom_content_type == "application/octet-stream+nacl":
-            if self.nacl_stream_buffer:
-                decrypted = libnacl.crypto_stream_xor(
-                    self.nacl_stream_buffer, self.nacl_nonce, self.nacl_key
+    def store_processed_data(self, data: bytes):
+        self.target_file.write(data)
+
+    def store_processed_data_with_resumable(self, data: bytes):
+        self.res.add_chunk(self.target_file, data)
+
+    class DataBuffer:
+        """
+        Data buffers that when called accumulate received data but also immediately remove and yield it iff the volume crosses a threshold. This ensures the yielded data is always of sufficiently large volume but also that the volume never grows much past the threshold. Accumulation and removal are done on FIFO (first-in-first-out) basis -- data accumulated first are removed and yielded first.
+        """
+
+        def __init__(self, threshold: int):
+            self._buffer = b""
+            self._threshold = threshold
+
+        def __call__(self, data: bytes):
+            self._buffer += data
+            if len(self._buffer) >= self._threshold:
+                yield self._buffer
+                self._buffer = b""
+
+        def close(self):
+            """
+            Ensure that with the next calling of the buffer _all_ of the accumulated data is yielded (if there's any). This allows consumption of the last portion of data remaining in the buffer.
+            """
+            self._threshold = len(self._buffer) or 1
+
+    class NaclDataBuffer(DataBuffer):
+        """
+        Data buffers for requests with NaCl-encrypted data specifically.
+
+        These act the same way as `DataBuffer` except that a) accumulated data are yielded _decrypted_ and b) are always vended in chunks of size _matching_ the threshold.
+        """
+
+        def __init__(self, threshold: int, nonce, key):
+            super().__init__(threshold)
+            self._nonce = nonce
+            self._key = key
+
+        def __call__(self, data: bytes):
+            """
+            Add data to the buffer and while there's enough data accumulated in the buffer to decrypt a block remove that much worth of data from the buffer, decrypt it and yield it.
+            """
+            self._buffer += data
+            while len(self._buffer) >= self._threshold:
+                yield libnacl.crypto_stream_xor(
+                    self._buffer[: self._threshold], self._nonce, self._key
                 )
-                self.nacl_stream_buffer = b""
-                self.target_file.write(decrypted)
-            self.target_file.close()
-            os.rename(self.path, self.path_part)
+                self._buffer = self._buffer[self._threshold :]
+
+    async def _process_remaining_received_data(self):
+        """
+        Process remaining data which may have been left in the buffer (e.g. not crossed the threshold).
+        """
+        self.data_buffer.close()
+        await self.data_received(b"")
+
+    async def put(self, tenant: str, uri_filename: str = None) -> None:
+        await self._process_remaining_received_data()
+        self.target_file.close()
+        os.rename(self.path, self.path_part)
         self.set_status(HTTPStatus.CREATED.value)
         self.write({"message": "data streamed"})
 
     async def patch(self, tenant: str, uri_filename: str = None) -> None:
-        if (
-            self.custom_content_type == "application/octet-stream+nacl"
-            and self.nacl_stream_buffer
-        ):
-            decrypted = libnacl.crypto_stream_xor(
-                self.nacl_stream_buffer, self.nacl_nonce, self.nacl_key
-            )
-            self.nacl_stream_buffer = b""
-            self.res.add_chunk(self.target_file, decrypted)
+        await self._process_remaining_received_data()
         if __debug__:
             merge_chunk_verify = {}
             query = {
