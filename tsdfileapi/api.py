@@ -657,7 +657,9 @@ class AuthRequestHandler(RequestHandler):
         requestor_name: Optional[str] = None,
     ) -> None:
         """
-        Log request information - for audit purposes.
+        Log request information - for audit purposes. For the IP to
+        be correct, the proxy has to provide the client's IP in the
+        X-Real-Ip, or X-Forwarded-For header.
 
         """
         try:
@@ -683,6 +685,7 @@ class AuthRequestHandler(RequestHandler):
                 "requestor_name": requestor_name,
                 "method": method,
                 "uri": uri,
+                "ip": self.request.remote_ip,
             }
             added_claims = backends.get("claims")
             if added_claims:
