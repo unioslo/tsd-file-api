@@ -1864,6 +1864,37 @@ class FileRequestHandler(AuthRequestHandler):
         except Exception:
             return None
 
+    def serve_file(
+        self,
+        filepath: str,
+        chunk_size: int,
+        content_length: int,
+        encrypt_data: bool,
+        range_start: int = 0,
+    ) -> None:
+        """
+        Send Content-Length header, seek to start if range,
+        read requested amount of bytes, encrypt if requested to do so,
+        and write to the network.
+
+        """
+        self.set_header("Content-Length", content_length)
+        remaining = content_length
+        fd = open(filepath, "rb")
+        fd.seek(range_start)
+        if chunk_size > content_length:
+            chunk_size = content_length
+        data = fd.read(chunk_size)
+        while data:
+            if encrypt_data:
+                data = libnacl.crypto_stream_xor(data, self.nacl_nonce, self.nacl_key)
+            self.write(data)
+            remaining -= len(data)
+            if remaining < chunk_size:
+                chunk_size = remaining
+            data = fd.read(chunk_size)
+        fd.close()
+
     async def get(self, tenant: str, filename: str = None) -> None:
         """
         List the export dir, or serve a file, asynchronously.
@@ -1919,19 +1950,13 @@ class FileRequestHandler(AuthRequestHandler):
             self.set_header("Modified-Time", str(mtime))
             self.set_header("Accept-Ranges", "bytes")
             if "Range" not in self.request.headers:
-                self.set_header("Content-Length", size)
-                self.flush()
-                fd = open(self.filepath, "rb")
-                data = fd.read(self.CHUNK_SIZE)
-                while data:
-                    if encrypt_data:
-                        data = libnacl.crypto_stream_xor(
-                            data, self.nacl_nonce, self.nacl_key
-                        )
-                    self.write(data)
-                    self.flush()
-                    data = fd.read(self.CHUNK_SIZE)
-                fd.close()
+                await to_thread(
+                    self.serve_file,
+                    self.filepath,
+                    self.CHUNK_SIZE,
+                    size,
+                    encrypt_data,
+                )
             elif "Range" in self.request.headers:
                 if "If-Range" in self.request.headers:
                     provided_etag = self.request.headers["If-Range"]
@@ -1961,25 +1986,15 @@ class FileRequestHandler(AuthRequestHandler):
                     )
                 # because clients provide 0-based byte indices
                 # we must add 1 to calculate the desired amount to read
-                bytes_to_read = client_end - client_start + 1
-                self.set_header("Content-Length", bytes_to_read)
-                self.flush()
-                fd = open(self.filepath, "rb")
-                fd.seek(cursor_start)
-                sent = 0
-                if self.CHUNK_SIZE > bytes_to_read:
-                    self.CHUNK_SIZE = bytes_to_read
-                data = fd.read(self.CHUNK_SIZE)
-                if encrypt_data:
-                    data = libnacl.crypto_stream_xor(
-                        data, self.nacl_nonce, self.nacl_key
-                    )
-                while data and sent <= bytes_to_read:
-                    self.write(data)
-                    self.flush()
-                    data = fd.read(self.CHUNK_SIZE)
-                    sent = sent + self.CHUNK_SIZE
-                fd.close()
+                size = client_end - client_start + 1
+                await to_thread(
+                    self.serve_file,
+                    self.filepath,
+                    self.CHUNK_SIZE,
+                    size,
+                    encrypt_data,
+                    cursor_start,
+                )
             logger.info(
                 f"{self.requestor}, downloaded: {self.filepath}, MIME type: {mime_type}, size: {size}"
             )
@@ -1989,12 +2004,6 @@ class FileRequestHandler(AuthRequestHandler):
             for name, value in error.headers.items():
                 self.set_header(name, value)
             self.set_status(error.status, reason=error.reason)
-        finally:
-            try:
-                fd.close()
-            except (OSError, UnboundLocalError):
-                pass
-            self.finish()
 
     def head(self, tenant: str, filename: str) -> None:
         """
