@@ -1864,8 +1864,7 @@ class FileRequestHandler(AuthRequestHandler):
         except Exception:
             return None
 
-    @gen.coroutine
-    def get(self, tenant: str, filename: str = None) -> None:
+    async def get(self, tenant: str, filename: str = None) -> None:
         """
         List the export dir, or serve a file, asynchronously.
 
@@ -1897,7 +1896,7 @@ class FileRequestHandler(AuthRequestHandler):
                 if filename and os.path.isdir(f"{self.path}/{resource}"):
                     self.path += f"/{resource}"
                 root = True if self.resource == self.path else False
-                self.list_files(self.path, tenant, root)
+                await to_thread(self.list_files, self.path, tenant, root)
                 return
             if not self.allow_export:
                 raise ClientMethodNotAllowed
@@ -1930,7 +1929,7 @@ class FileRequestHandler(AuthRequestHandler):
                             data, self.nacl_nonce, self.nacl_key
                         )
                     self.write(data)
-                    yield self.flush()
+                    self.flush()
                     data = fd.read(self.CHUNK_SIZE)
                 fd.close()
             elif "Range" in self.request.headers:
@@ -1977,7 +1976,7 @@ class FileRequestHandler(AuthRequestHandler):
                     )
                 while data and sent <= bytes_to_read:
                     self.write(data)
-                    yield self.flush()
+                    self.flush()
                     data = fd.read(self.CHUNK_SIZE)
                     sent = sent + self.CHUNK_SIZE
                 fd.close()
