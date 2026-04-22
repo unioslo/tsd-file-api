@@ -1885,7 +1885,7 @@ class FileRequestHandler(AuthRequestHandler):
         if chunk_size > content_length:
             chunk_size = content_length
         data = fd.read(chunk_size)
-        while data:
+        while data and remaining:
             if encrypt_data:
                 data = libnacl.crypto_stream_xor(data, self.nacl_nonce, self.nacl_key)
             self.write(data)
