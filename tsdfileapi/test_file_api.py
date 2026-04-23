@@ -2845,7 +2845,9 @@ class TestFileApi(unittest.TestCase):
         )
 
         # finding a cached entry
-        opts.tenant_storage_cache["p11"] = {"storage_paths": {"ess": "/ess/projects01"}}
+        opts.tenant_storage_cache["p11"] = {
+            "storage_paths": {"ess": "/ess/projects01/p11"}
+        }
         tsd_path = "/tsd/p11/data/durable/file-import"
         self.assertEqual(
             choose_storage(tenant="p11", opts=opts, directory=tsd_path),
