@@ -118,7 +118,7 @@ def choose_storage(
     if not directory.startswith("/tsd"):
         return directory
     storage_path = find_tenant_storage_path(tenant, opts)
-    out_dir = "".join([storage_path, f"/{tenant}", directory.split(tenant)[-1]])
+    out_dir = "".join([storage_path, directory.split(tenant)[-1]])
     if user:
         out_dir += f"/{user}"
     return os.path.normpath(out_dir)
