@@ -8,9 +8,7 @@ designed for the University of Oslo's Services for Sensitive Data (TSD).
 
 """
 
-import asyncio
 import base64
-import contextvars
 import datetime
 import functools
 import hashlib
@@ -25,12 +23,12 @@ import sqlite3
 import stat
 import subprocess
 import time
+from asyncio import to_thread
 from concurrent.futures import ThreadPoolExecutor
 from http import HTTPStatus
 from sys import argv
 from typing import Any
 from typing import Awaitable
-from typing import Callable
 from typing import Dict
 from typing import Optional
 from typing import Union
@@ -184,19 +182,7 @@ set_config()
 
 executor = ThreadPoolExecutor(
     max_workers=options.max_workers
-)  # For general off-loading of work (calls) that blocks the event loop; the rule of thumb is if it's file I/O and CPU-bound procedures -- offload it (see `to_thread` below)
-
-
-def to_thread(callable: Callable, *args, **kwargs):
-    """
-    Execute a function call on a separate thread.
-
-    This is essentially a replica of `asyncio.to_thread` but using _our_ executor (which we own). And just as with the latter, we make sure the context is passed on as well.
-    """
-    return asyncio.get_running_loop().run_in_executor(
-        executor,
-        functools.partial(contextvars.copy_context().run, callable, *args, **kwargs),
-    )
+)  # Our own executor, set as default further down, allows control over maximum amount of worker threads the application may use -- through e.g. `asyncio.to_thread` and implicitly through `aiofiles`
 
 
 class FallbackHandler(RequestHandler):
@@ -3267,6 +3253,7 @@ def main() -> None:
         ),
     )
     ioloop = IOLoop.instance()
+    ioloop.set_default_executor(executor)
     if pika_client:
         ioloop.add_timeout(time.time() + 0.1, pika_client.connect)
     ioloop.start()
