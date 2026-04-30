@@ -34,6 +34,7 @@ from typing import Optional
 from typing import Union
 from uuid import uuid4
 
+import aiofiles
 import libnacl.public
 import libnacl.sealed
 import magic
@@ -1850,7 +1851,7 @@ class FileRequestHandler(AuthRequestHandler):
         except Exception:
             return None
 
-    def serve_file(
+    async def serve_file(
         self,
         filepath: str,
         chunk_size: int,
@@ -1866,20 +1867,23 @@ class FileRequestHandler(AuthRequestHandler):
         """
         self.set_header("Content-Length", content_length)
         remaining = content_length
-        fd = open(filepath, "rb")
-        fd.seek(range_start)
         if chunk_size > content_length:
             chunk_size = content_length
-        data = fd.read(chunk_size)
-        while data and remaining:
-            if encrypt_data:
-                data = libnacl.crypto_stream_xor(data, self.nacl_nonce, self.nacl_key)
-            self.write(data)
-            remaining -= len(data)
-            if remaining < chunk_size:
-                chunk_size = remaining
-            data = fd.read(chunk_size)
-        fd.close()
+        async with aiofiles.open(filepath, "rb") as fd:
+            await fd.seek(range_start)
+            while True:
+                data = await fd.read(chunk_size)
+                if not (data and remaining):
+                    break
+                if encrypt_data:
+                    data = await to_thread(
+                        libnacl.crypto_stream_xor, data, self.nacl_nonce, self.nacl_key
+                    )
+                self.write(data)
+                await self.flush()
+                remaining -= len(data)
+                if remaining < chunk_size:
+                    chunk_size = remaining
 
     async def get(self, tenant: str, filename: str = None) -> None:
         """
@@ -1936,8 +1940,7 @@ class FileRequestHandler(AuthRequestHandler):
             self.set_header("Modified-Time", str(mtime))
             self.set_header("Accept-Ranges", "bytes")
             if "Range" not in self.request.headers:
-                await to_thread(
-                    self.serve_file,
+                await self.serve_file(
                     self.filepath,
                     self.CHUNK_SIZE,
                     size,
@@ -1973,8 +1976,7 @@ class FileRequestHandler(AuthRequestHandler):
                 # because clients provide 0-based byte indices
                 # we must add 1 to calculate the desired amount to read
                 size = client_end - client_start + 1
-                await to_thread(
-                    self.serve_file,
+                await self.serve_file(
                     self.filepath,
                     self.CHUNK_SIZE,
                     size,
