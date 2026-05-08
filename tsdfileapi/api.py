@@ -23,6 +23,7 @@ import sqlite3
 import stat
 import subprocess
 import time
+from asyncio import create_task
 from asyncio import to_thread
 from concurrent.futures import ThreadPoolExecutor
 from http import HTTPStatus
@@ -35,6 +36,7 @@ from typing import Union
 from uuid import uuid4
 
 import aiofiles
+import aiofiles.os
 import libnacl.public
 import libnacl.sealed
 import magic
@@ -1031,8 +1033,7 @@ class FileRequestHandler(AuthRequestHandler):
         )
         self.restores = []
 
-    @gen.coroutine
-    def prepare(self) -> Optional[Awaitable[None]]:
+    async def prepare(self) -> Optional[Awaitable[None]]:
         if __debug__ and self.get_query_argument("chunk_size", None) == "as-received":
             assert (
                 "Content-Length" not in self.request.headers
@@ -1045,7 +1046,6 @@ class FileRequestHandler(AuthRequestHandler):
         self.path = None
         self.path_part = None
         self.chunk_order_correct = True
-        self.on_finish_called = False
         self.listing_dir = False
         self.filename = None
         self.chunk_num = None
@@ -1289,7 +1289,7 @@ class FileRequestHandler(AuthRequestHandler):
                     )
 
                 if self.request.method != "PATCH" or not self.completed_resumable_file:
-                    self.target_file = open(
+                    self.target_file = await aiofiles.open(
                         self.path,
                         filemode,
                         buffering=0,
@@ -1316,7 +1316,7 @@ class FileRequestHandler(AuthRequestHandler):
             self.received_data_length += len(data)
         try:
             for processed in self.data_buffer(data):
-                await to_thread(self.store_processed_data, processed)
+                await self.store_processed_data(processed)
         except:
             if self.target_file:
                 self.target_file.close()
@@ -1324,10 +1324,10 @@ class FileRequestHandler(AuthRequestHandler):
             raise
 
     def store_processed_data(self, data: bytes):
-        self.target_file.write(data)
+        return self.target_file.write(data)
 
     def store_processed_data_with_resumable(self, data: bytes):
-        self.res.add_chunk(self.target_file, data)
+        return to_thread(self.res.add_chunk, self.target_file._file, data)
 
     class DataBuffer:
         """
@@ -1382,8 +1382,8 @@ class FileRequestHandler(AuthRequestHandler):
 
     async def put(self, tenant: str, uri_filename: str = None) -> None:
         await self._process_remaining_received_data()
-        self.target_file.close()
-        os.rename(self.path, self.path_part)
+        await self.target_file.close()
+        await aiofiles.os.rename(self.path, self.path_part)
         self.set_status(HTTPStatus.CREATED.value)
         self.write({"message": "data streamed"})
 
@@ -1406,12 +1406,12 @@ class FileRequestHandler(AuthRequestHandler):
             if "md5sum" in query:
                 merge_chunk_verify["md5sum"] = query["md5sum"]
         if not self.completed_resumable_file:
-            self.res.close_file(self.target_file)
+            await self.target_file.close()
             # if the path to which we want to rename the file exists
             # then we have been writing the same chunk concurrently
             # from two different processes, so we should not do it
             if not os.path.lexists(self.path_part):
-                os.rename(self.path, self.path_part)
+                await aiofiles.os.rename(self.path, self.path_part)
                 filename = os.path.basename(self.path_part).split(".chunk")[0]
                 try:
                     _, state = await to_thread(
@@ -2156,6 +2156,11 @@ class FileRequestHandler(AuthRequestHandler):
             self.finish()
 
     def on_finish(self) -> None:
+        create_task(self._on_finish())
+
+    async def _on_finish(self) -> None:
+        if self.target_file:
+            await self.target_file.close()
         resource_created = self.request.method == "PUT" or (
             self.request.method == "PATCH" and self.chunk_num == "end"
         )
@@ -2235,65 +2240,12 @@ class FileRequestHandler(AuthRequestHandler):
                     )
             except Exception as e:
                 logger.error(e)
-            self.on_finish_called = True
 
     def on_connection_close(self) -> None:
         """
         Called when clients close the connection.
-
-        1. Close open file, move it to destination
-
         """
-        if self.on_finish_called:
-            return
-
-        if not self.target_file:
-            return
-
-        if not self.target_file.closed:
-            self.target_file.close()
-            path = self.path
-            resource_created = self.request.method == "PUT" or (
-                self.request.method == "PATCH" and self.chunk_num == "end"
-            )
-            if resource_created:
-                resource_path = move_data_to_folder(path, self.resource_dir)
-                client_mtime = self.request.headers.get("Modified-Time")
-                if client_mtime and client_mtime != "None":
-                    set_mtime(resource_path, float(client_mtime))
-                if self.request_hook["enabled"]:
-                    call_request_hook(
-                        self.request_hook["path"],
-                        [
-                            resource_path,
-                            self.requestor,
-                            options.api_user,
-                            self.group_name,
-                        ],
-                        as_sudo=self.request_hook["sudo"],
-                    )
-            # otherwise leave the partial upload in place, as is
-            # most likely a client that closed the connection
-            # while uploading a chunk, that was never finished
-            message_data = {
-                "path": resource_path if resource_created else None,
-                "requestor": self.requestor,
-                "group": self.group_name if resource_created else None,
-            }
-            self.handle_mq_publication(
-                mq_config=self.mq_config,
-                data=message_data,
-            )
-            self.update_request_log(
-                tenant=self.tenant,
-                backend=self.backend,
-                requestor=self.requestor,
-                requestor_name=self.requestor_name,
-                method=self.request.method,
-                uri=self.request.headers.get("Original-Uri"),
-                app=self.get_app_name(self.request.uri),
-                claims=self.claims,
-            )
+        assert not self.target_file or self.target_file.closed
 
 
 class GenericTableHandler(AuthRequestHandler):
