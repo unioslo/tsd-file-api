@@ -25,6 +25,7 @@ import subprocess
 import time
 from asyncio import create_task
 from asyncio import to_thread
+from collections.abc import Coroutine
 from concurrent.futures import ThreadPoolExecutor
 from http import HTTPStatus
 from sys import argv
@@ -186,6 +187,19 @@ set_config()
 executor = ThreadPoolExecutor(
     max_workers=options.max_workers
 )  # Our own executor, set as default further down, allows control over maximum amount of worker threads the application may use -- through e.g. `asyncio.to_thread` and implicitly through `aiofiles`
+
+_tasks = set()  # For tasks that require references, see the warning at https://docs.python.org/3/library/asyncio-task.html#asyncio.create_task
+
+
+def add_new_task(coro: Coroutine) -> None:
+    """
+    Create a task defined by the specified co-routine, schedule it to run [on the event loop].
+
+    A strong reference to the task is created to prevent the task from untimely garbage collection before the task terminates, at which point the reference is removed -- see the warning linked for `_tasks`.
+    """
+    task = create_task(coro)
+    _tasks.add(task)
+    task.add_done_callback(_tasks.discard)
 
 
 class FallbackHandler(RequestHandler):
@@ -2156,7 +2170,7 @@ class FileRequestHandler(AuthRequestHandler):
             self.finish()
 
     def on_finish(self) -> None:
-        create_task(self._on_finish())
+        add_new_task(self._on_finish())
 
     async def _on_finish(self) -> None:
         if self.target_file:
