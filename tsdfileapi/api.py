@@ -86,8 +86,6 @@ from tsdfileapi.utils import call_request_hook
 from tsdfileapi.utils import check_filename
 from tsdfileapi.utils import choose_storage
 from tsdfileapi.utils import days_since_mod
-from tsdfileapi.utils import move_data_to_folder
-from tsdfileapi.utils import set_mtime
 from tsdfileapi.utils import sns_dir
 from tsdfileapi.utils import tenant_from_url
 from tsdfileapi.utils import trusted_proxies_to_trusted_downstream
@@ -1398,6 +1396,7 @@ class FileRequestHandler(AuthRequestHandler):
         await self._process_remaining_received_data()
         await self.target_file.close()
         await aiofiles.os.rename(self.path, self.path_part)
+        await self._commit_imported_resource(self.path_part)
         self.set_status(HTTPStatus.CREATED.value)
         self.write({"message": "data streamed"})
 
@@ -1487,17 +1486,28 @@ class FileRequestHandler(AuthRequestHandler):
             except ResumableNotFoundError:
                 self.set_status(HTTPStatus.BAD_REQUEST.value)
                 return
-            filename = os.path.basename(self.completed_resumable_filename)
+            await self._commit_imported_resource(self.completed_resumable_filename)
             self.set_status(HTTPStatus.CREATED.value)
             self.write(
                 {
-                    "filename": filename,
+                    "filename": os.path.basename(self.resource_path),
                     "id": self.upload_id,
                     "max_chunk": self.chunk_num,
                     "key": self.res_key,
                     **state,
                 }
             )
+
+    async def _commit_imported_resource(self, path: str) -> None:
+        """
+        Move the file at specified path to a folder designated for imported resources, and annotate it in accordance with the request.
+        """
+        self.resource_path = self.resource_dir + "/" + os.path.basename(path)
+        await aiofiles.os.rename(path, self.resource_path)
+        client_mtime = self.request.headers.get("Modified-Time")
+        if client_mtime and client_mtime != "None":
+            client_mtime = float(client_mtime)
+            await to_thread(os.utime, self.resource_path, (client_mtime, client_mtime))
 
     def enforce_export_policy(
         self,
@@ -2191,24 +2201,11 @@ class FileRequestHandler(AuthRequestHandler):
             try:
                 if resource_created:
                     try:
-                        # switch path variables back
-                        if not self.completed_resumable_file:
-                            path = self.path_part
-                        else:
-                            path = self.completed_resumable_filename
-                        resource_path = move_data_to_folder(path, self.resource_dir)
-                        client_mtime = self.request.headers.get("Modified-Time")
-                        if client_mtime and client_mtime != "None":
-                            set_mtime(resource_path, float(client_mtime))
-                    except Exception as e:
-                        logger.info("could not move data to destination folder")
-                        logger.info(e)
-                    try:
                         if self.request_hook["enabled"]:
                             call_request_hook(
                                 self.request_hook["path"],
                                 [
-                                    resource_path,
+                                    self.resource_path,
                                     self.requestor,
                                     options.api_user,
                                     self.group_name,
@@ -2233,7 +2230,7 @@ class FileRequestHandler(AuthRequestHandler):
                         )
                 else:
                     message_data = {
-                        "path": resource_path if resource_created else None,
+                        "path": self.resource_path if resource_created else None,
                         "requestor": self.requestor,
                         "group": self.group_name if resource_created else None,
                     }
