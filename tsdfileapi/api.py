@@ -2185,7 +2185,7 @@ class FileRequestHandler(AuthRequestHandler):
         add_new_task(self._on_finish())
 
     async def _on_finish(self) -> None:
-        if self.target_file:
+        if self.target_file and not self.target_file.closed:
             await self.target_file.close()
         resource_created = self.request.method == "PUT" or (
             self.request.method == "PATCH" and self.chunk_num == "end"
