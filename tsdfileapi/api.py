@@ -1300,7 +1300,9 @@ class FileRequestHandler(AuthRequestHandler):
                         options.tenant_storage_write_buffer_size
                     )
 
-                if self.request.method != "PATCH" or not self.completed_resumable_file:
+                if (
+                    self.request.method == "PATCH" and not self.completed_resumable_file
+                ) or self.request.method == "PUT":
                     self.target_file = await aiofiles.open(
                         self.path,
                         filemode,
