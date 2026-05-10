@@ -1333,8 +1333,8 @@ class FileRequestHandler(AuthRequestHandler):
                 await self.store_processed_data(processed)
         except:
             if self.target_file:
-                self.target_file.close()
-            os.rename(self.path, self.path_part)
+                await self.target_file.close()
+            await aiofiles.os.rename(self.path, self.path_part)
             raise
 
     def store_processed_data(self, data: bytes):
