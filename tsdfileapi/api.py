@@ -1325,7 +1325,7 @@ class FileRequestHandler(AuthRequestHandler):
             self.finish()
 
     @RequestHandler.run_in_request_processing_context  # For reasons, Tornado evidently runs `data_received` in a _distinct_ context (different from the one we load in `prepare`), so we "force" ours (to retain request ID correlation, among other things)
-    async def data_received(self, data: bytes) -> Optional[Awaitable[None]]:
+    async def data_received(self, data: bytes) -> None:
         if __debug__ and hasattr(self, "received_data_length"):
             self.received_data_length += len(data)
         try:
