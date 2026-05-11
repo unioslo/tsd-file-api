@@ -1336,8 +1336,7 @@ class FileRequestHandler(AuthRequestHandler):
             for processed in self.data_buffer(data):
                 await self.store_processed_data(processed)
         except:
-            if self.target_file:
-                await self.target_file.close()
+            await self.target_file.close()
             await aiofiles.os.rename(self.path, self.path_part)
             raise
 
