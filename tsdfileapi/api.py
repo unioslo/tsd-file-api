@@ -8,6 +8,7 @@ designed for the University of Oslo's Services for Sensitive Data (TSD).
 
 """
 
+import asyncio
 import base64
 import datetime
 import functools
@@ -26,6 +27,7 @@ import time
 from asyncio import create_task
 from asyncio import to_thread
 from collections.abc import Coroutine
+from collections.abc import MutableSet
 from concurrent.futures import ThreadPoolExecutor
 from http import HTTPStatus
 from sys import argv
@@ -186,7 +188,9 @@ executor = ThreadPoolExecutor(
     max_workers=options.max_workers
 )  # Our own executor, set as default further down, allows control over maximum amount of worker threads the application may use -- through e.g. `asyncio.to_thread` and implicitly through `aiofiles`
 
-_tasks = set()  # For tasks that require references, see the warning at https://docs.python.org/3/library/asyncio-task.html#asyncio.create_task
+_tasks: MutableSet[asyncio.Task] = (
+    set()
+)  # For tasks that require references, see the warning at https://docs.python.org/3/library/asyncio-task.html#asyncio.create_task
 
 
 def add_new_task(coro: Coroutine) -> None:
