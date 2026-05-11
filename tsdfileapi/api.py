@@ -1049,7 +1049,7 @@ class FileRequestHandler(AuthRequestHandler):
         )
         self.restores = []
 
-    async def prepare(self) -> Optional[Awaitable[None]]:
+    async def prepare(self) -> None:
         if __debug__ and self.get_query_argument("chunk_size", None) == "as-received":
             assert (
                 "Content-Length" not in self.request.headers
