@@ -39,6 +39,7 @@ from uuid import uuid4
 import libnacl.public
 import libnacl.sealed
 import magic
+import psycopg.errors
 import psycopg2.errors
 import tornado.httputil
 import tornado.log
@@ -46,6 +47,10 @@ import yaml
 from pyresumable.resumables import ResumableIncorrectChunkOrderError
 from pyresumable.resumables import ResumableNotFoundError
 from pyresumable.resumables import SerialResumable
+from pysquril import AsyncPostgresBackend
+from pysquril import AsyncSqliteBackend
+from pysquril import async_postgres_init
+from pysquril import async_sqlite_init
 from pysquril.backends import PostgresBackend
 from pysquril.backends import SqliteBackend
 from termcolor import colored
@@ -2335,11 +2340,12 @@ class GenericTableHandler(AuthRequestHandler):
         self.mq_config = self.backend_config.get("mq")
         self.check_tenant = self.backend_config.get("check_tenant")
         self.restored = None
+        self.engine = None
         self.backup_days = self.backend_config.get("backup_deletes", {}).get(
             "backup_days"
         )
 
-    def prepare(self) -> Optional[Awaitable[None]]:
+    async def prepare(self) -> None:
         try:
             if options.maintenance_mode_enabled:
                 raise ServerMaintenanceError
@@ -2365,11 +2371,12 @@ class GenericTableHandler(AuthRequestHandler):
                     self.db_name = f".{self.backend}_{app_name}.db"
                 else:
                     self.db_name = f".{self.backend}.db"
-                self.engine = sqlite_init(
-                    self.tenant_dir, name=self.db_name, builtin=True
+
+                self.engine = await async_sqlite_init(
+                    f"{self.tenant_dir}/{self.db_name}"
                 )
-                self.db = SqliteBackend(
-                    self.engine,
+                self.db = AsyncSqliteBackend(
+                    engine=self.engine,
                     requestor=self.requestor,
                     requestor_name=self.requestor_name,
                     backup_days=self.backup_days,
@@ -2380,8 +2387,15 @@ class GenericTableHandler(AuthRequestHandler):
                     schema = f"{self.tenant}_{app_name}"
                 else:
                     schema = self.tenant
-                self.db = PostgresBackend(
-                    options.pgpools.get(self.backend),
+
+                pool = options.async_pgpools.get(self.backend)
+                if not pool:
+                    raise RuntimeError(
+                        f"Async PostgreSQL pool not initialized for backend: {self.backend}"
+                    )
+
+                self.db = AsyncPostgresBackend(
+                    engine=pool,
                     schema=schema,
                     requestor=self.requestor,
                     requestor_name=self.requestor_name,
@@ -2487,14 +2501,13 @@ class GenericTableHandler(AuthRequestHandler):
             rid_values = self.get_nested_data(keys, data)
             self.rid_info = {"key": rid_key, "values": rid_values}
 
-    @gen.coroutine
-    def get(self, tenant: str, table_name: str = None) -> None:
+    async def get(self, tenant: str, table_name: str = None) -> None:
         try:
             if not table_name:
                 excludes = ["/audit"]
                 if self.backend == "survey":
                     excludes.append("/metadata")
-                tables = self.db.tables_list(
+                tables = await self.db.tables_list(
                     exclude_endswith=excludes,
                     remove_pattern="_submissions",
                 )
@@ -2545,16 +2558,18 @@ class GenericTableHandler(AuthRequestHandler):
                             key=self.nacl_key,
                         )
                     )
-                    result = next(results, empty_result)
+                    result = await anext(results, None)
+
                     self.set_status(HTTPStatus.OK.value)
-                    if result == empty_result:
-                        self.write(result)
+                    if result is None:
+                        self.write(empty_result)
                         return
+
                     if encrypt_data:
                         # building whole payload before sending anything
                         # when we are using encryption
                         json_data = f"[{json.dumps(result)}"
-                        for row in results:
+                        async for row in results:
                             json_data += f",{json.dumps(row)}"
                         json_data += "]"
                         json_data = json_data.encode("utf-8")
@@ -2572,13 +2587,13 @@ class GenericTableHandler(AuthRequestHandler):
                     else:
                         self.write("[")
                         self.write(json.dumps(result))
-                        for row in results:
+                        async for row in results:
                             self.write(",")
                             self.write(json.dumps(row))
                             self.flush()
                         self.write("]")
                         self.flush()
-        except (psycopg2.errors.UndefinedTable, sqlite3.OperationalError) as e:
+        except (psycopg.errors.UndefinedTable, sqlite3.OperationalError) as e:
             if table_name.endswith("/audit"):
                 # Handle the audit table differently
                 # it is not created until the first change appears
@@ -2596,7 +2611,7 @@ class GenericTableHandler(AuthRequestHandler):
             self.set_status(error.status, reason=error.reason)
             self.write({"message": error.reason})
 
-    def put(self, tenant: str, table_name: str) -> None:
+    async def put(self, tenant: str, table_name: str) -> None:
         try:
             if self.request.headers.get("Content-Type") == "application/json+nacl":
                 new_data = self.decrypt_nacl_data(
@@ -2609,10 +2624,10 @@ class GenericTableHandler(AuthRequestHandler):
             table_name = self.create_table_name(table_name)
             if self.request.uri.endswith("/audit"):
                 raise ClientAuthorizationError("Not allowed to write to audit tables")
-            self.db.table_insert(table_name, data)
+            await self.db.table_insert(table_name, data)
             self.set_status(HTTPStatus.CREATED.value)
             self.write({"message": "data stored"})
-        except (psycopg2.errors.UndefinedTable, sqlite3.OperationalError) as e:
+        except (psycopg.errors.UndefinedTable, sqlite3.OperationalError) as e:
             logger.error(e)
             self.set_status(HTTPStatus.NOT_FOUND.value)
             self.write({"message": f"table {table_name} does not exist"})
@@ -2624,7 +2639,7 @@ class GenericTableHandler(AuthRequestHandler):
             self.set_status(error.status, reason=error.reason)
             self.write({"message": error.reason})
 
-    def patch(self, tenant: str, table_name: str) -> None:
+    async def patch(self, tenant: str, table_name: str) -> None:
         try:
             table_name = self.create_table_name(table_name)
             if self.request.uri.endswith("/audit"):
@@ -2638,10 +2653,10 @@ class GenericTableHandler(AuthRequestHandler):
             data = json_decode(new_data)
             self.set_resource_identifier_info(data)
             query = self.get_uri_query(self.request.uri)
-            self.db.table_update(table_name, query, data)
+            await self.db.table_update(table_name, query, data)
             self.set_status(HTTPStatus.CREATED.value)
             self.write({"data": "data updated"})
-        except (psycopg2.errors.UndefinedTable, sqlite3.OperationalError) as e:
+        except (psycopg.errors.UndefinedTable, sqlite3.OperationalError) as e:
             logger.error(e)
             self.set_status(HTTPStatus.NOT_FOUND.value)
             self.write({"message": f"table {table_name} does not exist"})
@@ -2653,7 +2668,7 @@ class GenericTableHandler(AuthRequestHandler):
             self.set_status(error.status, reason=error.reason)
             self.write({"message": error.reason})
 
-    def post(self, tenant: str, table_name: str) -> None:
+    async def post(self, tenant: str, table_name: str) -> None:
         try:
             table_name = self.create_table_name(table_name)
             query = self.get_uri_query(self.request.uri)
@@ -2662,7 +2677,7 @@ class GenericTableHandler(AuthRequestHandler):
                     raise ClientMethodNotAllowed(
                         "Restore is only supported on audit tables"
                     )
-                self.restored = self.db.table_restore(
+                self.restored = await self.db.table_restore(
                     table_name.replace("/audit", ""), query
                 )
                 out = self.restored
@@ -2671,7 +2686,7 @@ class GenericTableHandler(AuthRequestHandler):
                     raise ClientMethodNotAllowed(
                         "Renaming audit tables is not supported"
                     )
-                out = self.db.table_alter(table_name, query)
+                out = await self.db.table_alter(table_name, query)
             self.set_status(HTTPStatus.OK.value)
             self.write(out)
         except Exception as e:
@@ -2682,14 +2697,14 @@ class GenericTableHandler(AuthRequestHandler):
             self.set_status(error.status, reason=error.reason)
             self.write({"message": error.reason})
 
-    def delete(self, tenant: str, table_name: str) -> None:
+    async def delete(self, tenant: str, table_name: str) -> None:
         try:
             table_name = self.create_table_name(table_name)
             query = self.get_uri_query(self.request.uri)
-            data = self.db.table_delete(table_name, query)
+            data = await self.db.table_delete(table_name, query)
             self.set_status(HTTPStatus.OK.value)
             self.write({"data": data})
-        except (psycopg2.errors.UndefinedTable, sqlite3.OperationalError) as e:
+        except (psycopg.errors.UndefinedTable, sqlite3.OperationalError) as e:
             logger.error(e)
             self.set_status(HTTPStatus.NOT_FOUND.value)
             self.write({"message": f"table {table_name} does not exist"})
@@ -2702,6 +2717,9 @@ class GenericTableHandler(AuthRequestHandler):
             self.write({"message": error.reason})
 
     def on_finish(self) -> None:
+        if self.engine is not None:
+            IOLoop.current().spawn_callback(self.engine.close)
+            self.engine = None
         try:
             if not options.maintenance_mode_enabled and self._status_code < 300:
                 if self.restored:
@@ -3163,12 +3181,16 @@ class Backends:
         )
         if db_backends:
             define("pgpools", {})
+            define("async_pgpools", {})
             print(colored("Initialising database backends", "magenta"))
             for name, backend in db_backends:
                 db_backend = self.database_backends[backend["db"]["engine"]]
                 print(colored(f"DB backend: {backend['db']['engine']}, {name}", "cyan"))
                 if db_backend.generator_class.db_init_sql:
                     self.initdb(name, options)
+                    # Initialize async pool for postgres backends
+                    if backend["db"]["engine"] == "postgres":
+                        IOLoop.current().run_sync(lambda: self.initdb_async(name))
 
         if self.config.get("rabbitmq", {}).get("enabled"):
             print(colored("Finding rabbitmq exchanges", "magenta"))
@@ -3197,6 +3219,23 @@ class Backends:
             db.initialise()
         else:
             return
+
+    async def initdb_async(self, name: str) -> None:
+        """Initialize async PostgreSQL pool for backend."""
+        db_config = options.config["backends"]["dbs"][name]["db"]
+        engine_type = db_config["engine"]
+
+        if engine_type == "postgres":
+            pool = await async_postgres_init(
+                db_config["dbconfig"],
+                db_config.get("pool_min", 3),
+                db_config.get("pool_max", 5),
+            )
+            options.async_pgpools[name] = pool
+
+            # Initialize database schema
+            db = AsyncPostgresBackend(engine=pool)
+            await db.initialise()
 
     def initdb_request_log(self) -> None:
         if not options.request_log:
