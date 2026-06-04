@@ -25,6 +25,8 @@ pika = ">=1.1.0"
 pyyaml = ">=5.4"
 pyresumable = ">=0.0.7"
 aiofiles = "^25.1.0"
+asyncstdlib = "^3.14.0"
+aioshutil = "^1.6"
 
 [tool.poetry.group.dev.dependencies]
 backoff = ">=2.2.1"

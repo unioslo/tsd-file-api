@@ -38,8 +38,6 @@ from typing import Optional
 from typing import Union
 from uuid import uuid4
 
-import aiofiles
-import aiofiles.os
 import libnacl.public
 import libnacl.sealed
 import magic
@@ -91,6 +89,8 @@ from tsdfileapi.utils import days_since_mod
 from tsdfileapi.utils import sns_dir
 from tsdfileapi.utils import tenant_from_url
 from tsdfileapi.utils import trusted_proxies_to_trusted_downstream
+
+from . import aio
 
 _RW______ = stat.S_IREAD | stat.S_IWRITE
 _RW_RW___ = _RW______ | stat.S_IRGRP | stat.S_IWGRP
@@ -1307,7 +1307,7 @@ class FileRequestHandler(AuthRequestHandler):
                 if (
                     self.request.method == "PATCH" and not self.completed_resumable_file
                 ) or self.request.method == "PUT":
-                    self.target_file = await aiofiles.open(
+                    self.target_file = await aio.open(
                         self.path,
                         filemode,
                         buffering=0,
@@ -1337,7 +1337,7 @@ class FileRequestHandler(AuthRequestHandler):
                 await self.store_processed_data(processed)
         except:
             await self.target_file.close()
-            await aiofiles.os.rename(self.path, self.path_part)
+            await aio.os.rename(self.path, self.path_part)
             raise
 
     def store_processed_data(self, data: bytes):
@@ -1400,7 +1400,7 @@ class FileRequestHandler(AuthRequestHandler):
     async def put(self, tenant: str, uri_filename: str = None) -> None:
         await self._process_remaining_received_data()
         await self.target_file.close()
-        await aiofiles.os.rename(self.path, self.path_part)
+        await aio.os.rename(self.path, self.path_part)
         await self._commit_imported_resource(self.path_part)
         self.set_status(HTTPStatus.CREATED.value)
         self.write({"message": "data streamed"})
@@ -1429,7 +1429,7 @@ class FileRequestHandler(AuthRequestHandler):
             # then we have been writing the same chunk concurrently
             # from two different processes, so we should not do it
             if not os.path.lexists(self.path_part):
-                await aiofiles.os.rename(self.path, self.path_part)
+                await aio.os.rename(self.path, self.path_part)
                 filename = os.path.basename(self.path_part).split(".chunk")[0]
                 try:
                     _, state = await to_thread(
@@ -1508,7 +1508,7 @@ class FileRequestHandler(AuthRequestHandler):
         Move the file at specified path to a folder designated for imported resources, and annotate it in accordance with the request.
         """
         self.resource_path = self.resource_dir + "/" + os.path.basename(path)
-        await aiofiles.os.rename(path, self.resource_path)
+        await aio.os.rename(path, self.resource_path)
         client_mtime = self.request.headers.get("Modified-Time")
         if client_mtime and client_mtime != "None":
             client_mtime = float(client_mtime)
@@ -1898,7 +1898,7 @@ class FileRequestHandler(AuthRequestHandler):
         remaining = content_length
         if chunk_size > content_length:
             chunk_size = content_length
-        async with aiofiles.open(filepath, "rb") as fd:
+        async with aio.open(filepath, "rb") as fd:
             await fd.seek(range_start)
             while True:
                 data = await fd.read(chunk_size)
