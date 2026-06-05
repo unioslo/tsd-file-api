@@ -44,6 +44,13 @@ from tsdfileapi.utils import sns_dir
 logger = logging.getLogger(__name__)
 
 
+import pytest
+
+pytest_skip_for_compatibility_reasons = pytest.mark.skip(
+    reason='Was not included as part of the "all" (default) group in the `unittest`-based setup'
+)
+
+
 def project_import_dir(
     config: dict,
     tenant: str,
@@ -965,6 +972,7 @@ class TestFileApi(unittest.TestCase):
                 headers=headers,
             )
 
+    @pytest_skip_for_compatibility_reasons
     def test_XXX_load(self) -> None:
         numrows = 250000  # responses per survey
         numkeys = 1500  # questions per survey
@@ -1085,6 +1093,7 @@ class TestFileApi(unittest.TestCase):
             options=Options(),
         )
 
+    @pytest_skip_for_compatibility_reasons
     def test_ZC_setting_ownership_based_on_user_works(self) -> None:
         token = gen_test_token_for_user(self.config, self.test_user)
         headers = {
@@ -1622,6 +1631,7 @@ class TestFileApi(unittest.TestCase):
         resp = requests.get(url, headers=headers)
         self.assertEqual(resp.status_code, 416)
 
+    @pytest_skip_for_compatibility_reasons
     def test_ZZc_requesting_multiple_ranges_not_supported_error(self) -> None:
         url = self.export + "/file1"
         headers = {
@@ -2941,6 +2951,9 @@ class TestFileApi(unittest.TestCase):
         def file_path(self) -> Path:
             return Path(self.mount_point.name) / self.file_name
 
+    @pytest.mark.skip(
+        reason="Optional; requires the optional `large-file-tests` dependency (see `pyproject.toml`)"
+    )
     def test_uploading_very_large_file_in_chunks(self) -> None:
         with (
             self.MockLargeFilesFuse(
