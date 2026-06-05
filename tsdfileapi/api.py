@@ -19,7 +19,6 @@ import os
 import pwd
 import queue
 import re
-import shutil
 import sqlite3
 import stat
 import subprocess
@@ -38,8 +37,8 @@ from typing import Optional
 from typing import Union
 from uuid import uuid4
 
-import aiofiles
-import aiofiles.os
+import aio
+import aio.os
 import libnacl.public
 import libnacl.sealed
 import magic
@@ -392,7 +391,7 @@ class AuthRequestHandler(RequestHandler):
                     f"group: {group_name} not in memberships: {group_memberships}"
                 )
 
-    def is_reserved_resource(self, work_dir: str, resource: str) -> bool:
+    async def is_reserved_resource(self, work_dir: str, resource: str) -> bool:
         """
         Prevent access to API-owned resources.
 
@@ -426,8 +425,10 @@ class AuthRequestHandler(RequestHandler):
             return True
         elif VALID_UUID.match(resource_dir):
             potential_target = os.path.normpath(f"{work_dir}/{resource_dir}")
-            if os.path.lexists(potential_target) and os.path.isdir(potential_target):
-                content = os.listdir(potential_target)
+            if await aio.os.path.lexists(potential_target) and await aio.os.path.isdir(
+                potential_target
+            ):
+                content = await aio.os.listdir(potential_target)
                 for entry in content:
                     if re.match(r"(.+).chunk.[0-9]+$", entry):
                         logger.error(f"resumable directories not accessible {entry}")
@@ -639,14 +640,14 @@ class AuthRequestHandler(RequestHandler):
         parts = uri.split("apps")
         return parts[1].split("/")[1]
 
-    def get_log_apps(self, tenant: str, backend: str, engine_type: str) -> list:
+    async def get_log_apps(self, tenant: str, backend: str, engine_type: str) -> list:
         if engine_type == "postgres":
             db = PostgresBackend(options.pgpool_request_log, schema=tenant)
             tables = db.tables_list()
             return [table for table in tables if table.startswith("apps_")]
         elif engine_type == "sqlite":
             path = self._log_db_path(backend, tenant)
-            dbs = os.listdir(path)
+            dbs = await aio.os.listdir(path)
             return [db for db in dbs if db.endswith(".db")]
 
     def update_request_log(
@@ -791,7 +792,7 @@ class SnsFormDataHandler(AuthRequestHandler):
             self.set_status(error.status, reason=error.reason)
             self.finish()
 
-    def write_files(self, filemode: str, tenant: str) -> None:
+    async def write_files(self, filemode: str, tenant: str) -> None:
         for current_file in self.request.files["file"]:
             filename = check_filename(
                 current_file["filename"],
@@ -800,9 +801,9 @@ class SnsFormDataHandler(AuthRequestHandler):
             filebody = current_file["body"]
             if len(filebody) == 0:
                 raise ClientError("empty file body")
-            self.write_file(filemode, filename, filebody, tenant)
+            await self.write_file(filemode, filename, filebody, tenant)
 
-    def write_file(
+    async def write_file(
         self, filemode: str, filename: str, filebody: bytes, tenant: str
     ) -> None:
         # create form directories where needed
@@ -824,20 +825,20 @@ class SnsFormDataHandler(AuthRequestHandler):
         # ensure idempotent uploads
         self.path = os.path.normpath(f"{tenant_dir}/{filename}")
         self.path_part = f"{self.path}.{str(uuid4())}.part"
-        if os.path.lexists(self.path):
+        if await aio.os.path.lexists(self.path):
             logger.debug(f"{self.path} exists, renaming to {self.path_part}")
-            os.rename(self.path, self.path_part)
+            await aio.os.rename(self.path, self.path_part)
 
         # write to partial file, rename, set permissions
-        with open(self.path_part, filemode) as f:
-            f.write(filebody)
-            os.rename(self.path_part, self.path)
-            os.chmod(self.path, _RW_RW___)
+        async with aio.open(self.path_part, filemode) as f:
+            await f.write(filebody)
+            await aio.os.rename(self.path_part, self.path)
+            await aio.os.chmod(self.path, _RW_RW___)
 
         # now copy the origin file to the folder intended to data processing
         subfolder_path = os.path.normpath(tsd_hidden_folder + "/" + filename)
-        shutil.copy(self.path, subfolder_path)
-        os.chmod(subfolder_path, _RW_RW___)
+        await aio.shutil.copy(self.path, subfolder_path)
+        await aio.os.chmod(subfolder_path, _RW_RW___)
 
     def on_finish(self) -> None:
         if self.request.method in (
@@ -852,9 +853,9 @@ class SnsFormDataHandler(AuthRequestHandler):
                     as_sudo=self.request_hook["sudo"],
                 )
 
-    def handle_data(self, filemode: str, tenant: str) -> None:
+    async def handle_data(self, filemode: str, tenant: str) -> None:
         try:
-            self.write_files(filemode, tenant)
+            await self.write_files(filemode, tenant)
             self.set_status(HTTPStatus.CREATED.value)
             self.write({"message": "data uploaded"})
         except Exception as e:
@@ -865,8 +866,8 @@ class SnsFormDataHandler(AuthRequestHandler):
             self.set_status(error.status, reason=error.reason)
             self.write({"message": "could not upload data"})
 
-    def put(self, tenant: str, keyid: str, formid: str) -> None:
-        self.handle_data("wb+", tenant)
+    async def put(self, tenant: str, keyid: str, formid: str) -> None:
+        await self.handle_data("wb+", tenant)
 
 
 class ResumablesHandler(AuthRequestHandler):
@@ -1147,7 +1148,7 @@ class FileRequestHandler(AuthRequestHandler):
             if resource == uri:
                 pass  # cannot be reserved, no need to check
             else:
-                if resource and self.is_reserved_resource(
+                if resource and await self.is_reserved_resource(
                     work_dir, url_unescape(resource)
                 ):
                     raise ClientReservedResourceError(f"{resource} name not allowed")
@@ -1210,8 +1211,8 @@ class FileRequestHandler(AuthRequestHandler):
                 filename = self.filename
                 # optionally create dirs
                 if options.create_tenant_dir:
-                    if not os.path.lexists(self.tenant_dir):
-                        os.makedirs(self.tenant_dir)
+                    if not await aio.os.path.lexists(self.tenant_dir):
+                        await aio.os.makedirs(self.tenant_dir)
 
                 url_dirs = os.path.dirname(resource)
                 self.resource_dir = os.path.normpath(f"{self.tenant_dir}/{url_dirs}")
@@ -1219,15 +1220,15 @@ class FileRequestHandler(AuthRequestHandler):
                 # ensure no part of resource_dir is a symlink
                 any_path_islink(self.resource_dir, opts=options)
 
-                if not os.path.lexists(self.resource_dir):
+                if not await aio.os.path.lexists(self.resource_dir):
                     logger.info(f"creating resource dir: {self.resource_dir}")
-                    os.makedirs(self.resource_dir)
+                    await aio.os.makedirs(self.resource_dir)
                     target = self.tenant_dir
                     # optionally set permissions
                     if self.group_config["enabled"]:
                         for _dir in url_dirs.split("/"):
                             target += f"/{_dir}"
-                            os.chmod(target, _rwxrws___())
+                            await aio.os.chmod(target, _rwxrws___())
                             owner = (
                                 options.api_user
                             )  # so it can move the file into the dir
@@ -1277,20 +1278,20 @@ class FileRequestHandler(AuthRequestHandler):
                 any_path_islink(self.path, opts=options)
 
                 # ensure idempotency
-                if os.path.lexists(self.path):
-                    if os.path.isdir(self.path):
+                if await aio.os.path.lexists(self.path):
+                    if await aio.os.path.isdir(self.path):
                         logger.info(
                             "directory: %s already exists due to prior upload, removing",
                             self.path,
                         )
-                        shutil.rmtree(self.path)
+                        await aio.shutil.rmtree(self.path)
                     else:
                         logger.info(
                             "%s already exists, renaming to %s",
                             self.path,
                             self.path_part,
                         )
-                        os.rename(self.path, self.path_part)
+                        await aio.os.rename(self.path, self.path_part)
 
                 self.path, self.path_part = self.path_part, self.path
 
@@ -1307,7 +1308,7 @@ class FileRequestHandler(AuthRequestHandler):
                 if (
                     self.request.method == "PATCH" and not self.completed_resumable_file
                 ) or self.request.method == "PUT":
-                    self.target_file = await aiofiles.open(
+                    self.target_file = await aio.open(
                         self.path,
                         filemode,
                         buffering=0,
@@ -1337,7 +1338,7 @@ class FileRequestHandler(AuthRequestHandler):
                 await self.store_processed_data(processed)
         except:
             await self.target_file.close()
-            await aiofiles.os.rename(self.path, self.path_part)
+            await aio.os.rename(self.path, self.path_part)
             raise
 
     def store_processed_data(self, data: bytes):
@@ -1400,7 +1401,7 @@ class FileRequestHandler(AuthRequestHandler):
     async def put(self, tenant: str, uri_filename: str = None) -> None:
         await self._process_remaining_received_data()
         await self.target_file.close()
-        await aiofiles.os.rename(self.path, self.path_part)
+        await aio.os.rename(self.path, self.path_part)
         await self._commit_imported_resource(self.path_part)
         self.set_status(HTTPStatus.CREATED.value)
         self.write({"message": "data streamed"})
@@ -1428,8 +1429,8 @@ class FileRequestHandler(AuthRequestHandler):
             # if the path to which we want to rename the file exists
             # then we have been writing the same chunk concurrently
             # from two different processes, so we should not do it
-            if not os.path.lexists(self.path_part):
-                await aiofiles.os.rename(self.path, self.path_part)
+            if not await aio.os.path.lexists(self.path_part):
+                await aio.os.rename(self.path, self.path_part)
                 filename = os.path.basename(self.path_part).split(".chunk")[0]
                 try:
                     _, state = await to_thread(
@@ -1508,11 +1509,11 @@ class FileRequestHandler(AuthRequestHandler):
         Move the file at specified path to a folder designated for imported resources, and annotate it in accordance with the request.
         """
         self.resource_path = self.resource_dir + "/" + os.path.basename(path)
-        await aiofiles.os.rename(path, self.resource_path)
+        await aio.os.rename(path, self.resource_path)
         client_mtime = self.request.headers.get("Modified-Time")
         if client_mtime and client_mtime != "None":
             client_mtime = float(client_mtime)
-            await to_thread(os.utime, self.resource_path, (client_mtime, client_mtime))
+            await aio.os.utime(self.resource_path, (client_mtime, client_mtime))
 
     def enforce_export_policy(
         self,
@@ -1572,11 +1573,11 @@ class FileRequestHandler(AuthRequestHandler):
             status = False
         return status
 
-    def get_file_metadata(self, filename: str) -> tuple:
+    async def get_file_metadata(self, filename: str) -> tuple:
         filename_raw_utf8 = filename.encode("utf-8")
         mime_type = "unknown"
         try:
-            if os.path.islink(filename):
+            if await aio.os.path.islink(filename):
                 mime_type = "inode/symlink"
             else:
                 mime_type = magic.from_file(filename_raw_utf8, mime=True)
@@ -1584,15 +1585,14 @@ class FileRequestHandler(AuthRequestHandler):
             mime_type = "directory"
         except PermissionError:
             # so the API user can read, and delete files owned by others
-            if os.path.isdir(filename):
+            if await aio.os.path.isdir(filename):
                 subprocess.call(["sudo", "chmod", "-R", "g+r,o+rx", filename])
                 mime_type = "directory"
             else:
                 subprocess.call(["sudo", "chmod", "g+r,o+rx", filename])
                 mime_type = magic.from_file(filename_raw_utf8, mime=True)
-        size = os.lstat(filename).st_size
-        mtime = os.lstat(filename).st_mtime
-        return size, mime_type, mtime
+        stat = await aio.os.stat(filename)
+        return stat.st_size, mime_type, stat.st_mtime
 
     def _base_uri(self) -> str:
         """
@@ -1633,7 +1633,7 @@ class FileRequestHandler(AuthRequestHandler):
             uri = self.request.uri
         return uri.split("?")[0]
 
-    def enforce_restore_policy(self, path: str) -> bool:
+    async def enforce_restore_policy(self, path: str) -> bool:
         """
         Some backend have backup enabled. In that case, when
         resources (folders and/or files) are deleted, they are
@@ -1659,19 +1659,19 @@ class FileRequestHandler(AuthRequestHandler):
         backup_path = re.sub(self.backup_deletes, r"\1/backup/\2", path)
         if path != backup_path:
             return True  # only applies to backed up resources
-        if not os.path.isdir(path):
+        if not await aio.os.path.isdir(path):
             path_dir = os.path.dirname(path)
         else:
             path_dir = path
         backup_src_dir = path_dir.replace("/backup/", "/")
-        if os.path.lexists(backup_src_dir):
+        if await aio.os.path.lexists(backup_src_dir):
             return True  # can always restore when this exists
         if days_since_mod(path_dir) > self.backup_days:
             return False  # older than retention period
         else:
             return True  # younger then retention period
 
-    def list_files(self, path: str, tenant: str, root: str) -> None:
+    async def list_files(self, path: str, tenant: str, root: str) -> None:
         """
         List a directory.
 
@@ -1718,13 +1718,13 @@ class FileRequestHandler(AuthRequestHandler):
         # arbitrary order
         # if not returning what you want
         # then try next page
-        dir_map = os.scandir(path)
+        dir_map = await aio.os.scandir(path)
         paginate = False
         files = []
         start_at = (current_page * pagination_value) - 1
         stop_at = start_at + pagination_value
         # only materialise the necessary entries
-        for num, entry in enumerate(dir_map):
+        async for num, entry in aio.enumerate(dir_map):
             if num <= start_at:
                 continue
             elif num <= stop_at and num >= start_at:
@@ -1756,15 +1756,15 @@ class FileRequestHandler(AuthRequestHandler):
                 default_owner = options.default_file_owner.replace(
                     options.tenant_string_pattern, tenant
                 )
-                if not self.enforce_restore_policy(path):
+                if not await self.enforce_restore_policy(path):
                     raise ClientResourceNotFoundError(
                         f"backup for {path} no longer available"
                     )
                 for file in files:
                     filepath = file.path
-                    if not self.enforce_restore_policy(filepath):
+                    if not await self.enforce_restore_policy(filepath):
                         continue  # don't list it
-                    size, mime_type, latest = self.get_file_metadata(filepath)
+                    size, mime_type, latest = await self.get_file_metadata(filepath)
                     export_status = self.enforce_export_policy(
                         self.export_policy, filepath, tenant, size, mime_type
                     )
@@ -1779,7 +1779,9 @@ class FileRequestHandler(AuthRequestHandler):
                             try:
                                 default_owner_id = pwd.getpwnam(default_owner).pw_uid
                                 group_id = path_stat.st_gid
-                                os.chown(file.path, default_owner_id, group_id)
+                                await aio.os.chown(
+                                    file.path, default_owner_id, group_id
+                                )
                                 owner = default_owner
                             except Exception:
                                 logger.error(
@@ -1818,7 +1820,9 @@ class FileRequestHandler(AuthRequestHandler):
                             date_time = str(
                                 datetime.datetime.fromtimestamp(latest).isoformat()
                             )
-                            size, mime_type, mtime = self.get_file_metadata(file.path)
+                            size, mime_type, mtime = await self.get_file_metadata(
+                                file.path
+                            )
                         else:
                             date_time = None
                             etag = None
@@ -1898,7 +1902,7 @@ class FileRequestHandler(AuthRequestHandler):
         remaining = content_length
         if chunk_size > content_length:
             chunk_size = content_length
-        async with aiofiles.open(filepath, "rb") as fd:
+        async with aio.open(filepath, "rb") as fd:
             await fd.seek(range_start)
             while True:
                 data = await fd.read(chunk_size)
@@ -1940,25 +1944,26 @@ class FileRequestHandler(AuthRequestHandler):
             resource = url_unescape(self.resource)  # parsed from URI
             # ensure there are no symlinks in filepath
             any_path_islink(f"{self.path}/{resource}", opts=options)
-            if not filename or os.path.isdir(f"{self.path}/{resource}"):
+            is_dir = await aio.os.path.isdir(f"{self.path}/{resource}")
+            if not filename or is_dir:
                 if not self.allow_list:
                     raise ClientMethodNotAllowed
-                if filename and os.path.isdir(f"{self.path}/{resource}"):
+                if filename and is_dir:
                     self.path += f"/{resource}"
                 root = True if self.resource == self.path else False
-                await to_thread(self.list_files, self.path, tenant, root)
+                await self.list_files(self.path, tenant, root)
                 return
             if not self.allow_export:
                 raise ClientMethodNotAllowed
             self.filepath = f"{self.path}/{resource}"
-            if not os.path.lexists(f"{self.filepath}"):
+            if not await aio.os.path.lexists(f"{self.filepath}"):
                 raise ClientResourceNotFoundError(f"{self.filepath} not found")
-            size, mime_type, mtime = self.get_file_metadata(self.filepath)
+            size, mime_type, mtime = await self.get_file_metadata(self.filepath)
             if not self.enforce_export_policy(
                 self.export_policy, self.filepath, tenant, size, mime_type
             ):
                 raise ClientError("export policy violation")
-            if not self.enforce_restore_policy(self.filepath):
+            if not await self.enforce_restore_policy(self.filepath):
                 raise ClientResourceNotFoundError(f"{self.filepath} not found")
             encrypt_data = False
             if "Nacl-Nonce" in self.request.headers.keys():
@@ -1978,7 +1983,7 @@ class FileRequestHandler(AuthRequestHandler):
             elif "Range" in self.request.headers:
                 if "If-Range" in self.request.headers:
                     provided_etag = self.request.headers["If-Range"]
-                    computed_etag = self.compute_etag()
+                    computed_etag = await to_thread(self.compute_etag)
                     if provided_etag != computed_etag:
                         raise ClientError(
                             "The resource has changed, get everything from the start again"
@@ -1986,7 +1991,7 @@ class FileRequestHandler(AuthRequestHandler):
                 # clients specify the range in terms of 0-based index numbers
                 # with an inclusive interval: [start, end]
                 client_byte_index_range = self.request.headers["Range"]
-                full_file_size = os.lstat(self.filepath).st_size
+                full_file_size = (await aio.os.lstat(self.filepath)).st_size
                 start_and_end = client_byte_index_range.split("=")[-1].split("-")
                 if "," in start_and_end:
                     raise ClientMethodNotAllowed(
@@ -2017,12 +2022,12 @@ class FileRequestHandler(AuthRequestHandler):
             )
         except Exception as e:
             error = error_for_exception(e, details=self.additional_log_details())
-            logger.error(error.message)
+            logger.exception(error.message)
             for name, value in error.headers.items():
                 self.set_header(name, value)
             self.set_status(error.status, reason=error.reason)
 
-    def head(self, tenant: str, filename: str) -> None:
+    async def head(self, tenant: str, filename: str) -> None:
         """
         Return information about a specific file.
 
@@ -2036,9 +2041,9 @@ class FileRequestHandler(AuthRequestHandler):
             self.filepath = f"{self.path}/{url_unescape(self.resource)}"
             # ensure there are no symlinks in filepath
             any_path_islink(self.filepath, opts=options)
-            if not os.path.lexists(self.filepath):
+            if not await aio.os.path.lexists(self.filepath):
                 raise ClientResourceNotFoundError(f"{self.filepath} not found")
-            size, mime_type, mtime = self.get_file_metadata(self.filepath)
+            size, mime_type, mtime = await self.get_file_metadata(self.filepath)
             logger.info(
                 f"user: {self.requestor}, checked file: {self.filepath} , MIME type: {mime_type}"
             )
@@ -2055,7 +2060,7 @@ class FileRequestHandler(AuthRequestHandler):
             self.set_status(error.status, reason=error.reason)
             self.finish()
 
-    def delete(self, tenant: str, filename: str = "") -> None:
+    async def delete(self, tenant: str, filename: str = "") -> None:
         try:
             if not self.allow_delete:
                 raise ClientMethodNotAllowed
@@ -2065,32 +2070,34 @@ class FileRequestHandler(AuthRequestHandler):
             self.filepath = f"{self.path}/{url_unescape(self.resource)}"
             # ensure there are no symlinks in filepath
             any_path_islink(self.filepath, opts=options)
-            if not os.path.lexists(self.filepath):
+            if not await aio.os.path.lexists(self.filepath):
                 raise ClientResourceNotFoundError(f"{self.filepath} not found")
-            if os.path.isdir(self.filepath):
+            if await aio.os.path.isdir(self.filepath):
                 if self.backup_deletes:
                     backup_path = re.sub(
                         self.backup_deletes, r"\1/backup/\2", self.filepath
                     )
                     if backup_path != self.filepath:  # don't backup backups
                         # Ensure the backup directory exists
-                        os.makedirs(os.path.dirname(backup_path), exist_ok=True)
+                        await aio.os.makedirs(
+                            os.path.dirname(backup_path), exist_ok=True
+                        )
                         # Walk the source directory and move files one by one
-                        for root, dirs, files in os.walk(self.filepath):
+                        for root, dirs, files in await aio.os.walk(self.filepath):
                             # Compute relative path from source
                             rel_path = os.path.relpath(root, self.filepath)
                             # Build the full backup path for this directory
                             target_dir = os.path.join(backup_path, rel_path)
-                            os.makedirs(target_dir, exist_ok=True)
+                            await aio.os.makedirs(target_dir, exist_ok=True)
 
                             # Moving each individual file
                             for file in files:
                                 src_file = os.path.join(root, file)
                                 dst_file = os.path.join(target_dir, file)
-                                shutil.move(src_file, dst_file)
+                                await aio.shutil.move(src_file, dst_file)
                                 logger.info(f"backed up: {src_file} -> {dst_file}")
                         logger.info(f"backed up: {self.filepath} -> {backup_path}")
-                shutil.rmtree(self.filepath)
+                await aio.shutil.rmtree(self.filepath)
                 logger.info(
                     f"user: {self.requestor}, deleted directory: {self.filepath}"
                 )
@@ -2100,7 +2107,7 @@ class FileRequestHandler(AuthRequestHandler):
                     subprocess.call(
                         ["sudo", "chmod", "o+w", os.path.dirname(self.filepath)]
                     )
-                    os.remove(self.filepath)
+                    await aio.os.remove(self.filepath)
                     # Restoring the rights of the parent directory
                     subprocess.call(
                         ["sudo", "chmod", "o-w", os.path.dirname(self.filepath)]
@@ -2111,11 +2118,13 @@ class FileRequestHandler(AuthRequestHandler):
                             self.backup_deletes, r"\1/backup/\2\3", self.filepath
                         )
                         if backup_path != self.filepath:  # don't backup backups
-                            os.makedirs(os.path.dirname(backup_path), exist_ok=True)
-                            shutil.move(self.filepath, backup_path)
+                            await aio.os.makedirs(
+                                os.path.dirname(backup_path), exist_ok=True
+                            )
+                            await aio.shutil.move(self.filepath, backup_path)
                             logger.info(f"backed up: {self.filepath} -> {backup_path}")
                     try:
-                        os.remove(self.filepath)
+                        await aio.os.remove(self.filepath)
                     except FileNotFoundError:
                         if self.backup_deletes:
                             # the file was moved to the backup directory
@@ -2135,7 +2144,7 @@ class FileRequestHandler(AuthRequestHandler):
             self.set_status(error.status, reason=error.reason)
             self.finish()
 
-    def post(self, tenant: str, filename: str = "") -> None:
+    async def post(self, tenant: str, filename: str = "") -> None:
         try:
             if not self.allow_rpc:
                 raise ClientMethodNotAllowed(
@@ -2149,25 +2158,30 @@ class FileRequestHandler(AuthRequestHandler):
             if "backup" not in self.resource:
                 raise ClientMethodNotAllowed
 
-            if not self.enforce_restore_policy(self.filepath):
+            if not await self.enforce_restore_policy(self.filepath):
                 raise ClientResourceNotFoundError(
                     f"backup for {self.filepath} no longer available"
                 )
 
             restore_target = self.filepath.replace("/backup/", "/")
 
-            os.makedirs(os.path.dirname(restore_target), exist_ok=True)
-            if os.path.isdir(self.filepath):
-                restores = os.listdir(self.filepath)
-                shutil.copytree(self.filepath, restore_target, dirs_exist_ok=True)
+            await aio.os.makedirs(os.path.dirname(restore_target), exist_ok=True)
+            if await aio.os.path.isdir(self.filepath):
+                restores = await aio.os.listdir(self.filepath)
+                await aio.shutil.copytree(
+                    self.filepath, restore_target, dirs_exist_ok=True
+                )
                 self.restores = list(
-                    map(lambda x: f"{restore_target}/{x}", os.listdir(self.filepath))
+                    map(
+                        lambda x: f"{restore_target}/{x}",
+                        await aio.os.listdir(self.filepath),
+                    )
                 )
                 self.restore_uri = self.request.uri.split("?")[0].replace(
                     "/backup/", "/"
                 )
             else:
-                shutil.move(self.filepath, restore_target)
+                await aio.shutil.move(self.filepath, restore_target)
                 restores = [os.path.basename(filename)]
                 self.restores = [restore_target]
                 self.restore_uri = os.path.dirname(
@@ -2802,7 +2816,7 @@ class AuditLogViewerHandler(AuthRequestHandler):
         else:
             return ""
 
-    def get(self, tenant: str, backend: str = None) -> None:
+    async def get(self, tenant: str, backend: str = None) -> None:
         if not options.request_log:
             self.set_status(HTTPStatus.SERVICE_UNAVAILABLE.value)
             self.write({"message": "logging has not been configured"})
@@ -2820,7 +2834,7 @@ class AuditLogViewerHandler(AuthRequestHandler):
                 self.write({"logs": available})
             elif backend == "apps":
                 engine_type = options.request_log.get("db").get("engine")
-                log_apps = self.get_log_apps(tenant, backend, engine_type)
+                log_apps = await self.get_log_apps(tenant, backend, engine_type)
                 self.set_status(HTTPStatus.OK.value)
                 self.write({"apps": log_apps})
             else:
