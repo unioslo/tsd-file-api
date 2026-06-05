@@ -37,8 +37,6 @@ from typing import Optional
 from typing import Union
 from uuid import uuid4
 
-import aio
-import aio.os
 import libnacl.public
 import libnacl.sealed
 import magic
@@ -90,6 +88,8 @@ from tsdfileapi.utils import days_since_mod
 from tsdfileapi.utils import sns_dir
 from tsdfileapi.utils import tenant_from_url
 from tsdfileapi.utils import trusted_proxies_to_trusted_downstream
+
+from . import aio
 
 _RW______ = stat.S_IREAD | stat.S_IWRITE
 _RW_RW___ = _RW______ | stat.S_IRGRP | stat.S_IWGRP
