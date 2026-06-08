@@ -16,7 +16,6 @@ tsd-file-api = "tsdfileapi.api:main"
 python = ">=3.10,<4"
 jwcrypto = ">=1.4.2"
 tornado = ">=6.3.2"
-psycopg2 = ">=2.9.3"
 libnacl = ">=1.7.1"
 pysquril = { version = ">=1.2.0", extras = ["async"] }
 termcolor = ">=1.1.0"
