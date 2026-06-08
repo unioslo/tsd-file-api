@@ -208,8 +208,13 @@ request_log:
       - GET
       - DELETE
   db:
-    engine: sqlite
-    path: /tmp/p11
+    engine: postgres
+    path:
+    dbconfig:
+      dbname: 'tsd_file_api_db'
+      user: 'tsd_file_api_user'
+      pw: 'tsd_file_api_pass'
+      host: '172.17.0.1'
 requestor_claim_name: user
 tenant_claim_name: proj
 tenant_string_pattern: pXX
