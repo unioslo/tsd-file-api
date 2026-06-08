@@ -24,6 +24,8 @@ python-magic = ">=0.4.15"
 pika = ">=1.1.0"
 pyyaml = ">=5.4"
 pyresumable = ">=0.0.7"
+psycopg = ">=3.3.4"
+aiosqlite = ">=0.22.1"
 
 [tool.poetry.group.dev.dependencies]
 backoff = ">=2.2.1"
