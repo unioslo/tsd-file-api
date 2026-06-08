@@ -1,3 +1,4 @@
+import asyncio
 import base64
 import json
 import logging
@@ -24,14 +25,14 @@ import libnacl.sealed
 import libnacl.utils
 import requests
 from pyresumable.resumables import SerialResumable
-from pysquril.backends import PostgresBackend
+from pysquril import AsyncPostgresBackend
+from pysquril import async_postgres_init
 from tornado.escape import url_escape
 from tornado.httpclient import HTTPClient
 from tornado.httpclient import HTTPRequest
 from tsdapiclient import fileapi
 
 from tsdfileapi.auth import process_access_token
-from tsdfileapi.db import postgres_init
 from tsdfileapi.tokens import gen_test_token_for_user
 from tsdfileapi.tokens import gen_test_tokens
 from tsdfileapi.tokens import get_test_token_for_p12
@@ -978,21 +979,26 @@ class TestFileApi(unittest.TestCase):
         numkeys = 1500  # questions per survey
 
         print("generating test data")
-        pool = postgres_init(self.config["backends"]["postgres"]["dbconfig"])
-        db = PostgresBackend(pool, schema="p11")
-        for i in range(numrows):
-            row = {}
-            for j in range(numkeys):
-                key = f"k{j}"
-                row[key] = j
-            uid = str(uuid.uuid4())
-            row["id"] = uid
-            # insert row
-            db.table_insert("loadtest", row)
-            total = i
-            if i % (numrows / 10.0) == 0:
-                print(f"{total} rows generated")
-                total += total
+        dbconfig = self.config["backends"]["postgres"]["dbconfig"]
+
+        async def _load():
+            pool = await async_postgres_init(dbconfig)
+            db = AsyncPostgresBackend(pool, schema="p11")
+            for i in range(numrows):
+                row = {}
+                for j in range(numkeys):
+                    key = f"k{j}"
+                    row[key] = j
+                uid = str(uuid.uuid4())
+                row["id"] = uid
+                # insert row
+                await db.table_insert("loadtest", row)
+                total = i
+                if i % (numrows / 10.0) == 0:
+                    print(f"{total} rows generated")
+                    total += total
+
+        asyncio.run(_load())
 
         # sqlite findings:
         # ~ 10gb of data in sqlite
