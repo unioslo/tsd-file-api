@@ -36,11 +36,11 @@ from typing import Optional
 from typing import Union
 from uuid import uuid4
 
+import aiosqlite
 import libnacl.public
 import libnacl.sealed
 import magic
 import psycopg.errors
-import psycopg2.errors
 import tornado.httputil
 import tornado.log
 import yaml
@@ -51,8 +51,6 @@ from pysquril import AsyncPostgresBackend
 from pysquril import AsyncSqliteBackend
 from pysquril import async_postgres_init
 from pysquril import async_sqlite_init
-from pysquril.backends import PostgresBackend
-from pysquril.backends import SqliteBackend
 from termcolor import colored
 from tornado import gen
 from tornado.escape import json_decode
@@ -66,8 +64,6 @@ from tornado.web import HTTPError
 from tornado.web import stream_request_body
 
 from tsdfileapi.auth import process_access_token
-from tsdfileapi.db import postgres_init
-from tsdfileapi.db import sqlite_init
 from tsdfileapi.exc import ClientAuthorizationError
 from tsdfileapi.exc import ClientContentRangeError
 from tsdfileapi.exc import ClientError
@@ -608,30 +604,37 @@ class AuthRequestHandler(RequestHandler):
             directory=path_pattern.replace(options.tenant_string_pattern, tenant),
         )
 
-    def _sqlite_log_engine(
+    async def _sqlite_log_engine(
         self,
         tenant: str,
         backend: str,
         app: str,
-    ) -> sqlite3.Connection:
+    ) -> aiosqlite.Connection:
         db_path = self._log_db_path(backend, tenant)
         db_name = self._log_db_name(backend, app)
-        engine = sqlite_init(db_path, name=db_name, builtin=True)
-        return engine
+        return await async_sqlite_init(f"{db_path}/{db_name}")
 
-    def get_log_db(
+    async def get_log_db(
         self,
         tenant: str,
         backend: str,
         engine_type: str,
-        app: str = None,
-    ) -> Union[SqliteBackend, PostgresBackend]:
+        app: str | None = None,
+    ) -> tuple[AsyncPostgresBackend | AsyncSqliteBackend, aiosqlite.Connection | None]:
+        """
+        Build an async backend for the request log.
+
+        Returns (db, engine). For sqlite the caller must `await engine.close()`
+        after use; for postgres the engine is None (the pool is shared).
+        """
         if engine_type == "postgres":
-            db = PostgresBackend(options.pgpool_request_log, schema=tenant)
+            db = AsyncPostgresBackend(engine=options.pgpool_request_log, schema=tenant)
+            return db, None
         elif engine_type == "sqlite":
-            engine = self._sqlite_log_engine(tenant, backend, app)
-            db = SqliteBackend(engine)
-        return db
+            engine = await self._sqlite_log_engine(tenant, backend, app)
+            db = AsyncSqliteBackend(engine=engine)
+            return db, engine
+        raise ValueError(f"unsupported engine_type: {engine_type}")
 
     def get_app_name(self, uri: str) -> str:
         if "/apps/" not in uri:
@@ -639,15 +642,17 @@ class AuthRequestHandler(RequestHandler):
         parts = uri.split("apps")
         return parts[1].split("/")[1]
 
-    def get_log_apps(self, tenant: str, backend: str, engine_type: str) -> list:
+    async def get_log_apps(self, tenant: str, backend: str, engine_type: str) -> list:
         if engine_type == "postgres":
-            db = PostgresBackend(options.pgpool_request_log, schema=tenant)
-            tables = db.tables_list()
+            db = AsyncPostgresBackend(engine=options.pgpool_request_log, schema=tenant)
+            tables = await db.tables_list()
             return [table for table in tables if table.startswith("apps_")]
         elif engine_type == "sqlite":
             path = self._log_db_path(backend, tenant)
+            # TODO: switch to aiofiles when async file system operations land in master
             dbs = os.listdir(path)
             return [db for db in dbs if db.endswith(".db")]
+        raise ValueError(f"unsupported engine_type: {engine_type}")
 
     def update_request_log(
         self,
@@ -666,6 +671,8 @@ class AuthRequestHandler(RequestHandler):
         be correct, the proxy has to provide the client's IP in the
         X-Real-Ip, or X-Forwarded-For header.
 
+        Schedules an async insert via the IOLoop so callers (on_finish,
+        on_connection_close) don't block the response path.
         """
         try:
             backends = options.request_log.get("backends")
@@ -677,31 +684,49 @@ class AuthRequestHandler(RequestHandler):
                 return
         except (AttributeError, KeyError, AssertionError):
             return
+        data = {
+            "timestamp": datetime.datetime.utcnow().isoformat(),
+            "requestor": requestor,
+            "requestor_name": requestor_name,
+            "method": method,
+            "uri": uri,
+            "ip": self.request.remote_ip,
+        }
+        added_claims = backends.get("claims")
+        if added_claims:
+            info = {}
+            for claim in added_claims:
+                info[claim] = claims.get(claim)
+            data["claims"] = info
+        IOLoop.current().spawn_callback(
+            self._do_request_log, tenant, backend, app, data
+        )
+
+    async def _do_request_log(
+        self,
+        tenant: str,
+        backend: str,
+        app: Optional[str],
+        data: dict,
+    ) -> None:
+        engine = None
         try:
             engine_type = options.request_log.get("db").get("engine")
             assert engine_type in [
                 "postgres",
                 "sqlite",
             ], f"unsupported engine_type: {engine_type}"
-            db = self.get_log_db(tenant, backend, engine_type, app)
-            data = {
-                "timestamp": datetime.datetime.utcnow().isoformat(),
-                "requestor": requestor,
-                "requestor_name": requestor_name,
-                "method": method,
-                "uri": uri,
-                "ip": self.request.remote_ip,
-            }
-            added_claims = backends.get("claims")
-            if added_claims:
-                info = {}
-                for claim in added_claims:
-                    info[claim] = claims.get(claim)
-                data["claims"] = info
+            db, engine = await self.get_log_db(tenant, backend, engine_type, app)
             table_name = self._log_table_name(backend, app)
-            db.table_insert(table_name, data)
+            await db.table_insert(table_name, data)
         except Exception as e:
             logger.warning(f"could not update audit log: {e}")
+        finally:
+            if engine is not None:
+                try:
+                    await engine.close()
+                except Exception as e:
+                    logger.warning(f"could not close audit log engine: {e}")
 
     def additional_log_details(self) -> Dict[str, Any]:
         """Retrieve additional details for logging.
@@ -2388,7 +2413,7 @@ class GenericTableHandler(AuthRequestHandler):
                 else:
                     schema = self.tenant
 
-                pool = options.async_pgpools.get(self.backend)
+                pool = options.pgpools.get(self.backend)
                 if not pool:
                     raise RuntimeError(
                         f"Async PostgreSQL pool not initialized for backend: {self.backend}"
@@ -2864,10 +2889,11 @@ class AuditLogViewerHandler(AuthRequestHandler):
         else:
             return ""
 
-    def get(self, tenant: str, backend: str = None) -> None:
+    async def get(self, tenant: str, backend: str = None) -> None:
         if not options.request_log:
             self.set_status(HTTPStatus.SERVICE_UNAVAILABLE.value)
             self.write({"message": "logging has not been configured"})
+        engine = None
         try:
             if not backend:
                 backends = list(options.request_log.get("backends").keys())
@@ -2882,13 +2908,15 @@ class AuditLogViewerHandler(AuthRequestHandler):
                 self.write({"logs": available})
             elif backend == "apps":
                 engine_type = options.request_log.get("db").get("engine")
-                log_apps = self.get_log_apps(tenant, backend, engine_type)
+                log_apps = await self.get_log_apps(tenant, backend, engine_type)
                 self.set_status(HTTPStatus.OK.value)
                 self.write({"apps": log_apps})
             else:
                 app = self.get_app_name(self.request.uri)
                 engine_type = options.request_log.get("db").get("engine")
-                db = self.get_log_db(tenant, backend, engine_type, app=app)
+                db, engine = await self.get_log_db(
+                    tenant, backend, engine_type, app=app
+                )
                 self.set_status(HTTPStatus.OK.value)
                 self.set_header("Content-Type", "application/json")
                 self.write("[")
@@ -2896,7 +2924,7 @@ class AuditLogViewerHandler(AuthRequestHandler):
                 first = True
                 query = self.get_uri_query(self.request.uri)
                 table_name = self._log_table_name(backend, app)
-                for row in db.table_select(table_name, query):
+                async for row in db.table_select(table_name, query):
                     if not first:
                         self.write(",")
                     self.write(json.dumps(row))
@@ -2904,7 +2932,7 @@ class AuditLogViewerHandler(AuthRequestHandler):
                     first = False
                 self.write("]")
                 self.flush()
-        except (psycopg2.errors.UndefinedTable, sqlite3.OperationalError) as e:
+        except (psycopg.errors.UndefinedTable, sqlite3.OperationalError) as e:
             logger.error(e)
             self.set_status(HTTPStatus.NOT_FOUND.value)
             self.write({"message": "no logs available"})
@@ -2915,6 +2943,12 @@ class AuditLogViewerHandler(AuthRequestHandler):
                 self.set_header(name, value)
             self.set_status(error.status, reason=error.reason)
             self.write({"message": error.reason})
+        finally:
+            if engine is not None:
+                try:
+                    await engine.close()
+                except Exception as e:
+                    logger.warning(f"could not close audit log engine: {e}")
 
 
 class ConfigHandler(RequestHandler):
@@ -3145,8 +3179,8 @@ class Backends:
     }
 
     database_backends = {
-        "sqlite": SqliteBackend,
-        "postgres": PostgresBackend,
+        "sqlite": AsyncSqliteBackend,
+        "postgres": AsyncPostgresBackend,
     }
 
     def __init__(self, config: dict) -> None:
@@ -3181,16 +3215,13 @@ class Backends:
         )
         if db_backends:
             define("pgpools", {})
-            define("async_pgpools", {})
             print(colored("Initialising database backends", "magenta"))
             for name, backend in db_backends:
                 db_backend = self.database_backends[backend["db"]["engine"]]
                 print(colored(f"DB backend: {backend['db']['engine']}, {name}", "cyan"))
                 if db_backend.generator_class.db_init_sql:
-                    self.initdb(name, options)
-                    # Initialize async pool for postgres backends
                     if backend["db"]["engine"] == "postgres":
-                        IOLoop.current().run_sync(lambda: self.initdb_async(name))
+                        IOLoop.current().run_sync(lambda: self.initdb(name))
 
         if self.config.get("rabbitmq", {}).get("enabled"):
             print(colored("Finding rabbitmq exchanges", "magenta"))
@@ -3201,26 +3232,11 @@ class Backends:
         if self.config.get("request_log"):
             print(colored("Initialising request log db", "magenta"))
             try:
-                self.initdb_request_log()
+                IOLoop.current().run_sync(self.initdb_request_log)
             except Exception as e:
                 logger.warning(f"could not connect to request log db: {e}")
 
-    def initdb(self, name: str, opts: tornado.options.OptionParser) -> None:
-        db_config = options.config["backends"]["dbs"][name]["db"]
-        engine_type = db_config["engine"]
-        if engine_type == "postgres":
-            pool = postgres_init(
-                db_config["dbconfig"],
-                db_config.get("pool_min", 3),
-                db_config.get("pool_max", 5),
-            )
-            options.pgpools[name] = pool
-            db = PostgresBackend(pool)
-            db.initialise()
-        else:
-            return
-
-    async def initdb_async(self, name: str) -> None:
+    async def initdb(self, name: str) -> None:
         """Initialize async PostgreSQL pool for backend."""
         db_config = options.config["backends"]["dbs"][name]["db"]
         engine_type = db_config["engine"]
@@ -3231,19 +3247,19 @@ class Backends:
                 db_config.get("pool_min", 3),
                 db_config.get("pool_max", 5),
             )
-            options.async_pgpools[name] = pool
+            options.pgpools[name] = pool
 
             # Initialize database schema
             db = AsyncPostgresBackend(engine=pool)
             await db.initialise()
 
-    def initdb_request_log(self) -> None:
+    async def initdb_request_log(self) -> None:
         if not options.request_log:
             return
         db_config = options.request_log.get("db")
         engine_type = db_config.get("engine")
         if engine_type == "postgres":
-            pool = postgres_init(
+            pool = await async_postgres_init(
                 db_config.get("dbconfig"),
                 db_config.get("pool_min", 3),
                 db_config.get("pool_max", 5),
@@ -3252,8 +3268,8 @@ class Backends:
                 define("pgpool_request_log", pool)
             except tornado.options.Error:
                 pass  # already defined ^
-            logdb = PostgresBackend(pool)
-            logdb.initialise()
+            logdb = AsyncPostgresBackend(engine=pool)
+            await logdb.initialise()
         else:  # sqlite
             return
 
