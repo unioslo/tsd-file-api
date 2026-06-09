@@ -1,74 +1,49 @@
+import asyncio
 import json
 import logging
 import time
-import urllib
 import uuid
 
-import pika
-from pika.adapters.tornado_connection import TornadoConnection
+import aio_pika
 
 logger = logging.getLogger(__name__)
 
 
-class PikaClient:
+class AmqpClient:
     def __init__(self, config: dict, exchanges: dict) -> None:
-        self.connecting = False
-        self.connection = None
-        self.channel = None
         self.config = config
         self.exchanges = exchanges
+        self.connection: aio_pika.abc.AbstractRobustConnection | None = None
+        self.channel: aio_pika.abc.AbstractRobustChannel | None = None
+        self._exchanges: dict[str, aio_pika.abc.AbstractRobustExchange] = {}
+        self._connect_lock = asyncio.Lock()
 
-    def connect(self):
-        if self.connecting:
-            logger.info("connecting - so not re-connecting")
-            return
-        self.connecting = True
-        host = self.config.get("host")
-        port = 5671 if self.config.get("amqps") else 5672
-        scheme = "amqps" if self.config.get("amqps") else "amqp"
-        virtual_host = urllib.parse.quote(self.config.get("vhost"), safe="")
-        user = self.config.get("user")
-        pw = self.config.get("pw")
-        heartbeat = self.config.get("heartbeat") if self.config.get("heartbeat") else 0
-        params = pika.URLParameters(
-            f"{scheme}://{user}:{pw}@{host}:{port}/{virtual_host}?heartbeat={heartbeat}"
-        )
-        self.connection = TornadoConnection(params)
-        self.connection.add_on_open_callback(self.on_connect)
-        self.connection.add_on_close_callback(self.on_closed)
-        self.connection.add_on_open_error_callback(self.on_open_error_callback)
-        self.connecting = False
-        return
+    async def connect(self) -> None:
+        async with self._connect_lock:
+            if self.connection and not self.connection.is_closed:
+                return
+            amqps = bool(self.config.get("amqps"))
+            kwargs = {
+                "host": self.config.get("host"),
+                "port": 5671 if amqps else 5672,
+                "login": self.config.get("user"),
+                "password": self.config.get("pw"),
+                "virtualhost": self.config.get("vhost"),
+                "ssl": amqps,
+            }
+            if self.config.get("heartbeat") is not None:
+                kwargs["heartbeat"] = self.config["heartbeat"]
+            self.connection = await aio_pika.connect_robust(**kwargs)
+            self.channel = await self.connection.channel()
+            for backend, config in self.exchanges.items():
+                ex_name = config.get("exchange")
+                ex = await self.channel.declare_exchange(
+                    ex_name, aio_pika.ExchangeType.TOPIC, durable=True
+                )
+                self._exchanges[ex_name] = ex
+                logger.info(f"rabbitmq exchange: {ex_name} declared")
 
-    def on_open_error_callback(
-        self, connection: TornadoConnection, exception: Exception
-    ) -> None:
-        logger.error("could not connect")
-
-    def on_connect(self, connection: TornadoConnection) -> None:
-        self.connection = connection
-        self.channel = self.connection.channel(on_open_callback=self.on_channel_open)
-        return
-
-    def on_channel_open(self, channel: pika.channel.Channel) -> None:
-        for backend, config in self.exchanges.items():
-            ex_name = config.get("exchange")
-            channel.exchange_declare(
-                ex_name,
-                exchange_type="topic",
-                durable=True,
-            )
-            logger.info(f"rabbitmq exchange: {ex_name} declared")
-        return
-
-    def on_basic_cancel(self, frame: pika.frame.Frame) -> None:
-        self.connection.close()
-
-    def on_closed(self, connection: TornadoConnection, exception: Exception) -> None:
-        logger.info("rabbitmq connection closed")
-        logger.info(exception)
-
-    def publish_message(
+    async def publish_message(
         self,
         *,
         exchange: str,
@@ -78,10 +53,10 @@ class PikaClient:
         version: str,
         data: dict,
         persistent: bool = True,
-        timestamp: int = int(time.time()),
+        timestamp: int | None = None,
     ) -> None:
         """
-        Publilsh a message to an exchange.
+        Publish a message to an exchange.
 
         Parameters
         ----------
@@ -93,25 +68,27 @@ class PikaClient:
         data: dict
         persistent: bool, default True
             tell rabbitmq to persist messages to disk, or not
+        timestamp: int, defaults to current time
 
         """
-        data = {
-            "method": method,
-            "uri": uri,
-            "version": version,
-            "data": data,
-        }
-        message = json.dumps(data)
-        delivery_mode = 2 if persistent else 1
-        self.channel.basic_publish(
-            exchange=exchange,
-            routing_key=routing_key,
-            body=message,
-            properties=pika.BasicProperties(
-                content_type="application/json",
-                delivery_mode=delivery_mode,
-                timestamp=timestamp,
-                message_id=str(uuid.uuid4()),
-            ),
+        payload = json.dumps(
+            {"method": method, "uri": uri, "version": version, "data": data}
         )
-        return
+        message = aio_pika.Message(
+            body=payload.encode(),
+            content_type="application/json",
+            delivery_mode=(
+                aio_pika.DeliveryMode.PERSISTENT
+                if persistent
+                else aio_pika.DeliveryMode.NOT_PERSISTENT
+            ),
+            timestamp=timestamp if timestamp is not None else int(time.time()),
+            message_id=str(uuid.uuid4()),
+        )
+        ex = self._exchanges[exchange]
+        await ex.publish(message, routing_key=routing_key)
+
+    async def close(self) -> None:
+        if self.connection and not self.connection.is_closed:
+            await self.connection.close()
+            logger.info("rabbitmq connection closed")

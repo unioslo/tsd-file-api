@@ -18,7 +18,6 @@ import json
 import logging
 import os
 import pwd
-import queue
 import re
 import shutil
 import sqlite3
@@ -74,7 +73,7 @@ from tsdfileapi.exc import ClientReservedResourceError
 from tsdfileapi.exc import ClientResourceNotFoundError
 from tsdfileapi.exc import ServerMaintenanceError
 from tsdfileapi.exc import error_for_exception
-from tsdfileapi.rmq import PikaClient
+from tsdfileapi.rmq import AmqpClient
 from tsdfileapi.tokens import gen_test_jwt_secrets
 from tsdfileapi.tokens import tkn
 from tsdfileapi.utils import VALID_UUID
@@ -159,7 +158,7 @@ def set_config() -> None:
         ),
     )
     define("rabbitmq", _config.get("rabbitmq", {}))
-    define("rabbitmq_cache", queue.Queue())
+    define("rabbitmq_cache", asyncio.Queue())
     define("maintenance_mode_enabled", False)
     define("request_log", _config.get("request_log"))
     if "backlog" in _config:
@@ -198,6 +197,39 @@ def to_thread(callable: Callable, *args, **kwargs):
         executor,
         functools.partial(contextvars.copy_context().run, callable, *args, **kwargs),
     )
+
+
+async def _drain_cache(client: AmqpClient, cache: asyncio.Queue) -> None:
+    while not cache.empty():
+        try:
+            msg = cache.get_nowait()
+        except asyncio.QueueEmpty:
+            return
+        try:
+            await client.publish_message(
+                exchange=msg["ex"],
+                routing_key=msg["rkey"],
+                method=msg["method"],
+                uri=msg["uri"],
+                version=msg["version"],
+                data=msg["data"],
+                timestamp=msg["timestamp"],
+            )
+        except Exception as e:
+            logger.error(f"cache drain failed, re-queueing: {e}")
+            cache.put_nowait(msg)
+            return
+
+
+async def _drain_cache_periodically(
+    client: AmqpClient, cache: asyncio.Queue, interval: int = 30
+) -> None:
+    while True:
+        await asyncio.sleep(interval)
+        if cache.empty():
+            continue
+        logger.info(f"draining {cache.qsize()} cached messages")
+        await _drain_cache(client, cache)
 
 
 class FallbackHandler(RequestHandler):
@@ -430,7 +462,7 @@ class AuthRequestHandler(RequestHandler):
                         return True
         return False
 
-    def handle_mq_publication(
+    async def handle_mq_publication(
         self,
         mq_config: Optional[dict] = None,
         data: Optional[dict] = None,
@@ -482,100 +514,42 @@ class AuthRequestHandler(RequestHandler):
 
         Error handling
         --------------
-        If the broker is down, then the connection, and channel will be closed.
-        While it is down, messages that fail to be published will be placed in
-        an in-memory queue. When the broker is available again, the API will try
-        to reconnect, and get a new channel. Once available, the API will publish
-        all messages in the queue. Such messagess are published with the timestamp
-        at which they would have been published originally.
-
-        If either the connection or channel is closed for different reasons than
-        the broker being down, the same process will be followed.
-
-        Naturally, if the process restarts while the broker is unavailable, enqueued
-        messages will be lost.
+        Broker reconnection is managed by aio_pika.connect_robust().
+        Messages that fail to publish (e.g. because the broker is down during
+        the moment of publish) are placed in an in-memory queue and drained on
+        the next successful publish, or by _drain_cache_periodically() which is
+        registered during application startup. Messages enqueued at the time of
+        process restart are lost.
 
         """
-        if not self.application.settings.get("pika_client"):
-            logger.info("no pika_client found")
+        client = self.application.settings.get("amqp_client")
+        if not client:
             return
-        if not mq_config:
-            return
-        if not mq_config.get("enabled"):
+        if not mq_config or not mq_config.get("enabled"):
             return
         if not mq_config.get("methods").get(self.request.method):
             return
+        default_version = "v1"
+        default_rkey = f"k.{default_version}.{self.tenant}.{self.endpoint}"
+        ex = mq_config.get("exchange")
+        ver = mq_config.get("version") or default_version
+        rkey = mq_config.get("routing_key") or default_rkey
+        uri = self.request.headers.get("Original-Uri") or self.request.uri
         try:
-            default_version = "v1"
-            default_rkey = f"k.{default_version}.{self.tenant}.{self.endpoint}"
-            ex = mq_config.get("exchange")
-            ver = (
-                default_version
-                if not mq_config.get("version")
-                else mq_config.get("version")
-            )
-            rkey = (
-                default_rkey
-                if not mq_config.get("routing_key")
-                else mq_config.get("routing_key")
-            )
-            uri = (
-                self.request.headers.get("Original-Uri")
-                if self.request.headers.get("Original-Uri")
-                else self.request.uri
-            )
-            # try hard to be able to publish, if e.g. the broker restarted
-            connection_open = self.application.settings.get(
-                "pika_client"
-            ).connection.is_open
-            re_open_connection = False
-            if connection_open:
-                channel_open = self.application.settings.get(
-                    "pika_client"
-                ).channel.is_open
-                if not channel_open:
-                    logger.info("RabbitMQ channel is closed")
-                    re_open_connection = True
-            if not connection_open:
-                logger.info("RabbitMQ connection is closed")
-                re_open_connection = True
-            if re_open_connection:
-                logger.info("trying to re-open RabbitMQ connection")
-                self.application.settings.get("pika_client").connect()
-            self.pika_client = self.application.settings.get("pika_client")
-            self.pika_client.publish_message(
+            await client.publish_message(
                 exchange=ex,
                 routing_key=rkey,
-                method=self.request.method if not http_method else http_method,
-                uri=uri if not http_uri else http_uri,
+                method=http_method or self.request.method,
+                uri=http_uri or uri,
                 version=ver,
                 data=data,
             )
-            if not options.rabbitmq_cache.empty():  # if the broker was down
-                try:
-                    logger.info(
-                        f"publishing {options.rabbitmq_cache.qsize()} messages from cache"
-                    )
-                    message = options.rabbitmq_cache.get_nowait()
-                    while message:
-                        self.pika_client.publish_message(
-                            exchange=message.get("ex"),
-                            routing_key=message.get("rkey"),
-                            method=message.get("method"),
-                            uri=message.get("uri"),
-                            version=message.get("version"),
-                            data=message.get("data"),
-                            timestamp=message.get("timestamp"),
-                        )
-                        message = options.rabbitmq_cache.get_nowait()
-                except queue.Empty:
-                    pass  # nothing left
-        except (Exception, UnboundLocalError) as e:
-            summary = f"exchange: {ex}, routing_key: {rkey}, version: {ver}"
-            msg = f"problem publishing message, {summary}"
-            logger.error(msg)
-            logger.error(e)
-            options.rabbitmq_cache.put(
+            await _drain_cache(client, options.rabbitmq_cache)
+        except Exception as e:
+            logger.error(
+                f"problem publishing message: ex={ex} rkey={rkey} ver={ver}: {e}"
+            )
+            options.rabbitmq_cache.put_nowait(
                 {
                     "ex": ex,
                     "rkey": rkey,
@@ -2248,7 +2222,8 @@ class FileRequestHandler(AuthRequestHandler):
                             "requestor": self.requestor,
                             "group": None,
                         }
-                        self.handle_mq_publication(
+                        IOLoop.current().spawn_callback(
+                            self.handle_mq_publication,
                             mq_config=self.mq_config,
                             data=message_data,
                             http_method="PUT",
@@ -2260,7 +2235,8 @@ class FileRequestHandler(AuthRequestHandler):
                         "requestor": self.requestor,
                         "group": self.group_name if resource_created else None,
                     }
-                    self.handle_mq_publication(
+                    IOLoop.current().spawn_callback(
+                        self.handle_mq_publication,
                         mq_config=self.mq_config,
                         data=message_data,
                     )
@@ -2322,7 +2298,8 @@ class FileRequestHandler(AuthRequestHandler):
                 "requestor": self.requestor,
                 "group": self.group_name if resource_created else None,
             }
-            self.handle_mq_publication(
+            IOLoop.current().spawn_callback(
+                self.handle_mq_publication,
                 mq_config=self.mq_config,
                 data=message_data,
             )
@@ -2767,7 +2744,8 @@ class GenericTableHandler(AuthRequestHandler):
                             "group": None,
                             "resource_identifier": self.rid_info,
                         }
-                        self.handle_mq_publication(
+                        IOLoop.current().spawn_callback(
+                            self.handle_mq_publication,
                             mq_config=self.mq_config,
                             data=message_data,
                             http_method="PUT",
@@ -2791,7 +2769,8 @@ class GenericTableHandler(AuthRequestHandler):
                             "group": None,
                             "resource_identifier": self.rid_info,
                         }
-                        self.handle_mq_publication(
+                        IOLoop.current().spawn_callback(
+                            self.handle_mq_publication,
                             mq_config=self.mq_config,
                             data=message_data,
                             http_method="PATCH",
@@ -2804,8 +2783,10 @@ class GenericTableHandler(AuthRequestHandler):
                         "group": None,
                         "resource_identifier": self.rid_info,
                     }
-                    self.handle_mq_publication(
-                        mq_config=self.mq_config, data=message_data
+                    IOLoop.current().spawn_callback(
+                        self.handle_mq_publication,
+                        mq_config=self.mq_config,
+                        data=message_data,
                     )
                 self.update_request_log(
                     tenant=self.tenant,
@@ -3299,15 +3280,15 @@ def main() -> None:
         logging.Logger
     )  # Enable for _all_ loggers
     backends = Backends(options.config)
-    pika_client = (
-        PikaClient(options.rabbitmq, backends.exchanges)
+    amqp_client = (
+        AmqpClient(options.rabbitmq, backends.exchanges)
         if options.rabbitmq.get("enabled")
         else None
     )
     app = Application(
         backends.routes,
         **{
-            "pika_client": pika_client,
+            "amqp_client": amqp_client,
             "debug": options.debug,
             "default_handler_class": FallbackHandler,
             "default_handler_args": {"status_code": 404},
@@ -3322,9 +3303,19 @@ def main() -> None:
         ),
     )
     ioloop = IOLoop.instance()
-    if pika_client:
-        ioloop.add_timeout(time.time() + 0.1, pika_client.connect)
-    ioloop.start()
+    if amqp_client:
+        ioloop.add_callback(amqp_client.connect)
+        ioloop.spawn_callback(
+            _drain_cache_periodically, amqp_client, options.rabbitmq_cache
+        )
+    try:
+        ioloop.start()
+    finally:
+        if amqp_client:
+            try:
+                ioloop.run_sync(amqp_client.close)
+            except Exception as e:
+                logger.warning(f"clean rabbitmq shutdown failed: {e}")
 
 
 if __name__ == "__main__":
