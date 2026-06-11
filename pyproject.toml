@@ -22,7 +22,7 @@ termcolor = ">=1.1.0"
 python-magic = ">=0.4.15"
 pyyaml = ">=5.4"
 pyresumable = ">=0.0.7"
-psycopg = ">=3.3.4"
+psycopg = { version = ">=3.3.4", extras = ["c"] }
 aiosqlite = ">=0.22.1"
 aio-pika = ">=9.6.2"
 
