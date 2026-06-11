@@ -216,7 +216,7 @@ async def _drain_cache(client: AmqpClient, cache: asyncio.Queue) -> None:
                 timestamp=msg["timestamp"],
             )
         except Exception as e:
-            logger.error(f"cache drain failed, re-queueing: {e}")
+            logger.error(f"cache drain failed, re-queueing: {e!r}")
             cache.put_nowait(msg)
             return
 
@@ -547,7 +547,7 @@ class AuthRequestHandler(RequestHandler):
             await _drain_cache(client, options.rabbitmq_cache)
         except Exception as e:
             logger.error(
-                f"problem publishing message: ex={ex} rkey={rkey} ver={ver}: {e}"
+                f"problem publishing message: ex={ex} rkey={rkey} ver={ver}: {e!r}"
             )
             options.rabbitmq_cache.put_nowait(
                 {

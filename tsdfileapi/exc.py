@@ -208,3 +208,21 @@ def error_for_exception(exc: Exception, details: str = "") -> Error:
         message = generate_message([default.phrase, exc, details])
         headers = {}
     return Error(status, reason, message, headers)
+
+
+# AMQP errors
+# -----------
+
+
+class ExchangeNotDeclaredError(RuntimeError):
+    """Raised when publishing to an exchange that AmqpClient never declared."""
+
+    def __init__(self, exchange: str, known: list[str]) -> None:
+        self.exchange = exchange
+        self.known = known
+        known_repr = ", ".join(sorted(known)) if known else "<none>"
+        super().__init__(
+            f"exchange {exchange!r} was not declared at AmqpClient startup "
+            f"(declared exchanges: {known_repr}); check the backend's mq.exchange "
+            f"setting and that find_exchanges() picked it up"
+        )
