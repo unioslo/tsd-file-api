@@ -1,4 +1,6 @@
+import asyncio
 import base64
+import concurrent.futures
 import json
 import logging
 import math
@@ -24,14 +26,14 @@ import libnacl.sealed
 import libnacl.utils
 import requests
 from pyresumable.resumables import SerialResumable
-from pysquril.backends import PostgresBackend
+from pysquril import AsyncPostgresBackend
+from pysquril import async_postgres_init
 from tornado.escape import url_escape
 from tornado.httpclient import HTTPClient
 from tornado.httpclient import HTTPRequest
 from tsdapiclient import fileapi
 
 from tsdfileapi.auth import process_access_token
-from tsdfileapi.db import postgres_init
 from tsdfileapi.tokens import gen_test_token_for_user
 from tsdfileapi.tokens import gen_test_tokens
 from tsdfileapi.tokens import get_test_token_for_p12
@@ -42,6 +44,13 @@ from tsdfileapi.utils import set_mtime
 from tsdfileapi.utils import sns_dir
 
 logger = logging.getLogger(__name__)
+
+
+import pytest
+
+pytest_skip_for_compatibility_reasons = pytest.mark.skip(
+    reason='Was not included as part of the "all" (default) group in the `unittest`-based setup'
+)
 
 
 def project_import_dir(
@@ -965,26 +974,32 @@ class TestFileApi(unittest.TestCase):
                 headers=headers,
             )
 
+    @pytest_skip_for_compatibility_reasons
     def test_XXX_load(self) -> None:
         numrows = 250000  # responses per survey
         numkeys = 1500  # questions per survey
 
         print("generating test data")
-        pool = postgres_init(self.config["backends"]["postgres"]["dbconfig"])
-        db = PostgresBackend(pool, schema="p11")
-        for i in range(numrows):
-            row = {}
-            for j in range(numkeys):
-                key = f"k{j}"
-                row[key] = j
-            uid = str(uuid.uuid4())
-            row["id"] = uid
-            # insert row
-            db.table_insert("loadtest", row)
-            total = i
-            if i % (numrows / 10.0) == 0:
-                print(f"{total} rows generated")
-                total += total
+        dbconfig = self.config["backends"]["postgres"]["dbconfig"]
+
+        async def _load():
+            pool = await async_postgres_init(dbconfig)
+            db = AsyncPostgresBackend(pool, schema="p11")
+            for i in range(numrows):
+                row = {}
+                for j in range(numkeys):
+                    key = f"k{j}"
+                    row[key] = j
+                uid = str(uuid.uuid4())
+                row["id"] = uid
+                # insert row
+                await db.table_insert("loadtest", row)
+                total = i
+                if i % (numrows / 10.0) == 0:
+                    print(f"{total} rows generated")
+                    total += total
+
+        asyncio.run(_load())
 
         # sqlite findings:
         # ~ 10gb of data in sqlite
@@ -1085,6 +1100,7 @@ class TestFileApi(unittest.TestCase):
             options=Options(),
         )
 
+    @pytest_skip_for_compatibility_reasons
     def test_ZC_setting_ownership_based_on_user_works(self) -> None:
         token = gen_test_token_for_user(self.config, self.test_user)
         headers = {
@@ -1622,6 +1638,7 @@ class TestFileApi(unittest.TestCase):
         resp = requests.get(url, headers=headers)
         self.assertEqual(resp.status_code, 416)
 
+    @pytest_skip_for_compatibility_reasons
     def test_ZZc_requesting_multiple_ranges_not_supported_error(self) -> None:
         url = self.export + "/file1"
         headers = {
@@ -2812,6 +2829,149 @@ class TestFileApi(unittest.TestCase):
         )
         self.assertEqual(resp.status_code, 200)
 
+    def _get_log_count(self, backend: str, headers: dict) -> int:
+        resp = requests.get(f"{self.logs}/{backend}?select=count(1)", headers=headers)
+        self.assertEqual(
+            resp.status_code,
+            200,
+            msg=f"audit endpoint returned {resp.status_code}: {resp.text!r}",
+        )
+        try:
+            rows = json.loads(resp.text)
+        except json.JSONDecodeError:
+            # error caught in AuditLogViewerHandler while streaming JSON response
+            return 0
+        # pysquril count(1) yields a single row containing a single int
+        # column. the audit endpoint wraps it as [[N]]
+        self.assertEqual(
+            len(rows), 1, msg=f"expected one row for count(1), got: {rows!r}"
+        )
+        row = rows[0]
+        self.assertIsInstance(row, list, msg=f"expected list row, got: {row!r}")
+        self.assertEqual(len(row), 1, msg=f"expected single-column row, got: {row!r}")
+        self.assertIsInstance(row[0], int, msg=f"expected int count, got: {row[0]!r}")
+        return row[0]
+
+    def _wait_for_log_count(
+        self,
+        backend: str,
+        expected: int,
+        headers: dict,
+        timeout: float = 3.0,
+    ) -> int:
+        deadline = time.monotonic() + timeout
+        last = None
+        while time.monotonic() < deadline:
+            last = self._get_log_count(backend, headers)
+            if last >= expected:
+                return last
+            time.sleep(0.05)
+        self.fail(f"request log count for {backend} = {last}, expected >= {expected}")
+
+    def _assert_log_row_shape(
+        self,
+        row: dict,
+        *,
+        expected_method: str,
+        expected_uri: str,
+    ) -> None:
+        self.assertEqual(row.get("method"), expected_method)
+        self.assertEqual(row.get("uri"), expected_uri)
+        ts = row.get("timestamp")
+        self.assertIsInstance(ts, str)
+        # raises exception if timestamp malformed
+        datetime.fromisoformat(ts)
+        self.assertTrue(row.get("requestor"))
+        # requestor_name may be None depending on the token, but the key must be present
+        self.assertIn("requestor_name", row)
+        # tests hit the API over localhost
+        self.assertIn(row.get("ip"), ("::1", "127.0.0.1"))
+        # claims sub object: defaults.py configures ["name", "host", "pid"], verify keys present
+        claims = row.get("claims")
+        self.assertIsInstance(claims, dict)
+        for key in ("name", "host", "pid"):
+            self.assertIn(key, claims)
+
+    def test_request_log_records_get_request(self) -> None:
+        viewer_headers = {"Authorization": f"Bearer {TEST_TOKENS['VALID']}"}
+        export_headers = {"Authorization": f"Bearer {TEST_TOKENS['EXPORT']}"}
+
+        baseline = self._get_log_count("files_export", viewer_headers)
+
+        resp = requests.get(f"{self.export}/file1", headers=export_headers)
+        self.assertEqual(resp.status_code, 200)
+
+        self._wait_for_log_count("files_export", baseline + 1, viewer_headers)
+
+        resp = requests.get(
+            f"{self.logs}/files_export?order=timestamp.desc&range=0.1",
+            headers=viewer_headers,
+        )
+        self.assertEqual(resp.status_code, 200)
+        rows = json.loads(resp.text)
+        self.assertTrue(len(rows) >= 1)
+        self._assert_log_row_shape(
+            rows[0],
+            expected_method="GET",
+            expected_uri="/v1/p11/files/export/file1",
+        )
+
+    def test_request_log_skips_unconfigured_methods(self) -> None:
+        viewer_headers = {"Authorization": f"Bearer {TEST_TOKENS['VALID']}"}
+        export_headers = {"Authorization": f"Bearer {TEST_TOKENS['EXPORT']}"}
+
+        baseline = self._get_log_count("files_export", viewer_headers)
+
+        # HEAD reaches on_finish (status 200, allowed by the handler's method
+        # filter) but is *not* in the request_log config's method list for
+        # files_export. update_request_log()'s should skip it
+        resp = requests.head(f"{self.export}/file1", headers=export_headers)
+        self.assertEqual(resp.status_code, 200)
+
+        # if the check for configured methods in update_request_log() ever
+        # regresses and schedules an insert for an unconfigured method, that
+        # insert would land within this time window. without sleep(), the count
+        # check after could race with the bad insert and pass by accident
+        time.sleep(0.5)
+
+        after = self._get_log_count("files_export", viewer_headers)
+        self.assertEqual(after, baseline)
+
+    def test_request_log_records_concurrent_requests(self) -> None:
+        viewer_headers = {"Authorization": f"Bearer {TEST_TOKENS['VALID']}"}
+        export_headers = {"Authorization": f"Bearer {TEST_TOKENS['EXPORT']}"}
+        n = 10
+
+        baseline = self._get_log_count("files_export", viewer_headers)
+
+        def _hit() -> int:
+            resp = requests.get(f"{self.export}/file1", headers=export_headers)
+            return resp.status_code
+
+        with concurrent.futures.ThreadPoolExecutor(max_workers=n) as pool:
+            results = list(pool.map(lambda _: _hit(), range(n)))
+        self.assertTrue(all(s == 200 for s in results))
+
+        self._wait_for_log_count(
+            "files_export", baseline + n, viewer_headers, timeout=5.0
+        )
+
+        # validate that all N rows produced by the request logger codepaths are
+        # well-formed, not just that the count moved
+        resp = requests.get(
+            f"{self.logs}/files_export?order=timestamp.desc&range=0.{n}",
+            headers=viewer_headers,
+        )
+        self.assertEqual(resp.status_code, 200)
+        recent = json.loads(resp.text)
+        self.assertGreaterEqual(len(recent), n)
+        for row in recent[:n]:
+            self._assert_log_row_shape(
+                row,
+                expected_method="GET",
+                expected_uri="/v1/p11/files/export/file1",
+            )
+
     def test_find_tenant_storage_path(self) -> None:
         td = tempfile.TemporaryDirectory()
         root = td.name
@@ -2941,6 +3101,9 @@ class TestFileApi(unittest.TestCase):
         def file_path(self) -> Path:
             return Path(self.mount_point.name) / self.file_name
 
+    @pytest.mark.skip(
+        reason="Optional; requires the optional `large-file-tests` dependency (see `pyproject.toml`)"
+    )
     def test_uploading_very_large_file_in_chunks(self) -> None:
         with (
             self.MockLargeFilesFuse(
@@ -3062,6 +3225,9 @@ def main() -> None:
     ]
     logs = [
         "test_log_viewer",
+        "test_request_log_records_get_request",
+        "test_request_log_skips_unconfigured_methods",
+        "test_request_log_records_concurrent_requests",
     ]
     storage = [
         "test_find_tenant_storage_path",

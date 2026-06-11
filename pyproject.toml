@@ -13,26 +13,28 @@ authors = [
 tsd-file-api = "tsdfileapi.api:main"
 
 [tool.poetry.dependencies]
-python = "^3.10"
+python = ">=3.10,<4"
 jwcrypto = ">=1.4.2"
 tornado = ">=6.3.2"
-psycopg2 = ">=2.9.3"
 libnacl = ">=1.7.1"
-pysquril = ">=1.0.4"
+pysquril = { version = ">=1.2.0", extras = ["async"] }
 termcolor = ">=1.1.0"
 python-magic = ">=0.4.15"
-pika = ">=1.1.0"
 pyyaml = ">=5.4"
 pyresumable = ">=0.0.7"
 aiofiles = "^25.1.0"
 asyncstdlib = "^3.14.0"
 aioshutil = "^1.6"
+psycopg = ">=3.3.4"
+aiosqlite = ">=0.22.1"
+aio-pika = ">=9.6.2"
 
 [tool.poetry.group.dev.dependencies]
 backoff = ">=2.2.1"
 requests = ">=2.27.1"
 tsd-api-client = "^3.9.5"
 ruff = ">=0.11.1"
+pytest = "^9.0.3"
 
 [tool.poetry.group.large-file-tests.dependencies]
 mock-large-files-fuse = ">=1.0.0"
@@ -45,6 +47,9 @@ enable = true
 vcs = "git"
 style = "pep440"
 bump = true
+
+[tool.ruff]
+target-version = "py310"
 
 [tool.ruff.lint]
 select = ["F", "I"]

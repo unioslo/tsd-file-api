@@ -17,7 +17,6 @@ import json
 import logging
 import os
 import pwd
-import queue
 import re
 import sqlite3
 import stat
@@ -37,20 +36,22 @@ from typing import Optional
 from typing import Union
 from uuid import uuid4
 
+import aiosqlite
 import libnacl.public
 import libnacl.sealed
 import magic
-import psycopg2.errors
+import psycopg.errors
 import tornado.httputil
 import tornado.log
 import yaml
 from pyresumable.resumables import ResumableIncorrectChunkOrderError
 from pyresumable.resumables import ResumableNotFoundError
 from pyresumable.resumables import SerialResumable
-from pysquril.backends import PostgresBackend
-from pysquril.backends import SqliteBackend
+from pysquril import AsyncPostgresBackend
+from pysquril import AsyncSqliteBackend
+from pysquril import async_postgres_init
+from pysquril import async_sqlite_init
 from termcolor import colored
-from tornado import gen
 from tornado.escape import json_decode
 from tornado.escape import url_escape
 from tornado.escape import url_unescape
@@ -62,8 +63,6 @@ from tornado.web import HTTPError
 from tornado.web import stream_request_body
 
 from tsdfileapi.auth import process_access_token
-from tsdfileapi.db import postgres_init
-from tsdfileapi.db import sqlite_init
 from tsdfileapi.exc import ClientAuthorizationError
 from tsdfileapi.exc import ClientContentRangeError
 from tsdfileapi.exc import ClientError
@@ -74,7 +73,7 @@ from tsdfileapi.exc import ClientReservedResourceError
 from tsdfileapi.exc import ClientResourceNotFoundError
 from tsdfileapi.exc import ServerMaintenanceError
 from tsdfileapi.exc import error_for_exception
-from tsdfileapi.rmq import PikaClient
+from tsdfileapi.rmq import AmqpClient
 from tsdfileapi.tokens import gen_test_jwt_secrets
 from tsdfileapi.tokens import tkn
 from tsdfileapi.utils import VALID_UUID
@@ -159,7 +158,7 @@ def set_config() -> None:
         ),
     )
     define("rabbitmq", _config.get("rabbitmq", {}))
-    define("rabbitmq_cache", queue.Queue())
+    define("rabbitmq_cache", asyncio.Queue())
     define("maintenance_mode_enabled", False)
     define("request_log", _config.get("request_log"))
     if "backlog" in _config:
@@ -201,6 +200,39 @@ def add_new_task(coro: Coroutine) -> None:
     task = create_task(coro)
     _tasks.add(task)
     task.add_done_callback(_tasks.discard)
+
+
+async def _drain_cache(client: AmqpClient, cache: asyncio.Queue) -> None:
+    while not cache.empty():
+        try:
+            msg = cache.get_nowait()
+        except asyncio.QueueEmpty:
+            return
+        try:
+            await client.publish_message(
+                exchange=msg["ex"],
+                routing_key=msg["rkey"],
+                method=msg["method"],
+                uri=msg["uri"],
+                version=msg["version"],
+                data=msg["data"],
+                timestamp=msg["timestamp"],
+            )
+        except Exception as e:
+            logger.error(f"cache drain failed, re-queueing: {e}")
+            cache.put_nowait(msg)
+            return
+
+
+async def _drain_cache_periodically(
+    client: AmqpClient, cache: asyncio.Queue, interval: int = 30
+) -> None:
+    while True:
+        await asyncio.sleep(interval)
+        if cache.empty():
+            continue
+        logger.info(f"draining {cache.qsize()} cached messages")
+        await _drain_cache(client, cache)
 
 
 class FallbackHandler(RequestHandler):
@@ -435,7 +467,7 @@ class AuthRequestHandler(RequestHandler):
                         return True
         return False
 
-    def handle_mq_publication(
+    async def handle_mq_publication(
         self,
         mq_config: Optional[dict] = None,
         data: Optional[dict] = None,
@@ -487,100 +519,42 @@ class AuthRequestHandler(RequestHandler):
 
         Error handling
         --------------
-        If the broker is down, then the connection, and channel will be closed.
-        While it is down, messages that fail to be published will be placed in
-        an in-memory queue. When the broker is available again, the API will try
-        to reconnect, and get a new channel. Once available, the API will publish
-        all messages in the queue. Such messagess are published with the timestamp
-        at which they would have been published originally.
-
-        If either the connection or channel is closed for different reasons than
-        the broker being down, the same process will be followed.
-
-        Naturally, if the process restarts while the broker is unavailable, enqueued
-        messages will be lost.
+        Broker reconnection is managed by aio_pika.connect_robust().
+        Messages that fail to publish (e.g. because the broker is down during
+        the moment of publish) are placed in an in-memory queue and drained on
+        the next successful publish, or by _drain_cache_periodically() which is
+        registered during application startup. Messages enqueued at the time of
+        process restart are lost.
 
         """
-        if not self.application.settings.get("pika_client"):
-            logger.info("no pika_client found")
+        client = self.application.settings.get("amqp_client")
+        if not client:
             return
-        if not mq_config:
-            return
-        if not mq_config.get("enabled"):
+        if not mq_config or not mq_config.get("enabled"):
             return
         if not mq_config.get("methods").get(self.request.method):
             return
+        default_version = "v1"
+        default_rkey = f"k.{default_version}.{self.tenant}.{self.endpoint}"
+        ex = mq_config.get("exchange")
+        ver = mq_config.get("version") or default_version
+        rkey = mq_config.get("routing_key") or default_rkey
+        uri = self.request.headers.get("Original-Uri") or self.request.uri
         try:
-            default_version = "v1"
-            default_rkey = f"k.{default_version}.{self.tenant}.{self.endpoint}"
-            ex = mq_config.get("exchange")
-            ver = (
-                default_version
-                if not mq_config.get("version")
-                else mq_config.get("version")
-            )
-            rkey = (
-                default_rkey
-                if not mq_config.get("routing_key")
-                else mq_config.get("routing_key")
-            )
-            uri = (
-                self.request.headers.get("Original-Uri")
-                if self.request.headers.get("Original-Uri")
-                else self.request.uri
-            )
-            # try hard to be able to publish, if e.g. the broker restarted
-            connection_open = self.application.settings.get(
-                "pika_client"
-            ).connection.is_open
-            re_open_connection = False
-            if connection_open:
-                channel_open = self.application.settings.get(
-                    "pika_client"
-                ).channel.is_open
-                if not channel_open:
-                    logger.info("RabbitMQ channel is closed")
-                    re_open_connection = True
-            if not connection_open:
-                logger.info("RabbitMQ connection is closed")
-                re_open_connection = True
-            if re_open_connection:
-                logger.info("trying to re-open RabbitMQ connection")
-                self.application.settings.get("pika_client").connect()
-            self.pika_client = self.application.settings.get("pika_client")
-            self.pika_client.publish_message(
+            await client.publish_message(
                 exchange=ex,
                 routing_key=rkey,
-                method=self.request.method if not http_method else http_method,
-                uri=uri if not http_uri else http_uri,
+                method=http_method or self.request.method,
+                uri=http_uri or uri,
                 version=ver,
                 data=data,
             )
-            if not options.rabbitmq_cache.empty():  # if the broker was down
-                try:
-                    logger.info(
-                        f"publishing {options.rabbitmq_cache.qsize()} messages from cache"
-                    )
-                    message = options.rabbitmq_cache.get_nowait()
-                    while message:
-                        self.pika_client.publish_message(
-                            exchange=message.get("ex"),
-                            routing_key=message.get("rkey"),
-                            method=message.get("method"),
-                            uri=message.get("uri"),
-                            version=message.get("version"),
-                            data=message.get("data"),
-                            timestamp=message.get("timestamp"),
-                        )
-                        message = options.rabbitmq_cache.get_nowait()
-                except queue.Empty:
-                    pass  # nothing left
-        except (Exception, UnboundLocalError) as e:
-            summary = f"exchange: {ex}, routing_key: {rkey}, version: {ver}"
-            msg = f"problem publishing message, {summary}"
-            logger.error(msg)
-            logger.error(e)
-            options.rabbitmq_cache.put(
+            await _drain_cache(client, options.rabbitmq_cache)
+        except Exception as e:
+            logger.error(
+                f"problem publishing message: ex={ex} rkey={rkey} ver={ver}: {e}"
+            )
+            options.rabbitmq_cache.put_nowait(
                 {
                     "ex": ex,
                     "rkey": rkey,
@@ -609,30 +583,37 @@ class AuthRequestHandler(RequestHandler):
             directory=path_pattern.replace(options.tenant_string_pattern, tenant),
         )
 
-    def _sqlite_log_engine(
+    async def _sqlite_log_engine(
         self,
         tenant: str,
         backend: str,
         app: str,
-    ) -> sqlite3.Connection:
+    ) -> aiosqlite.Connection:
         db_path = self._log_db_path(backend, tenant)
         db_name = self._log_db_name(backend, app)
-        engine = sqlite_init(db_path, name=db_name, builtin=True)
-        return engine
+        return await async_sqlite_init(f"{db_path}/{db_name}")
 
-    def get_log_db(
+    async def get_log_db(
         self,
         tenant: str,
         backend: str,
         engine_type: str,
-        app: str = None,
-    ) -> Union[SqliteBackend, PostgresBackend]:
+        app: str | None = None,
+    ) -> tuple[AsyncPostgresBackend | AsyncSqliteBackend, aiosqlite.Connection | None]:
+        """
+        Build an async backend for the request log.
+
+        Returns (db, engine). For sqlite the caller must `await engine.close()`
+        after use; for postgres the engine is None (the pool is shared).
+        """
         if engine_type == "postgres":
-            db = PostgresBackend(options.pgpool_request_log, schema=tenant)
+            db = AsyncPostgresBackend(engine=options.pgpool_request_log, schema=tenant)
+            return db, None
         elif engine_type == "sqlite":
-            engine = self._sqlite_log_engine(tenant, backend, app)
-            db = SqliteBackend(engine)
-        return db
+            engine = await self._sqlite_log_engine(tenant, backend, app)
+            db = AsyncSqliteBackend(engine=engine)
+            return db, engine
+        raise ValueError(f"unsupported engine_type: {engine_type}")
 
     def get_app_name(self, uri: str) -> str:
         if "/apps/" not in uri:
@@ -642,13 +623,14 @@ class AuthRequestHandler(RequestHandler):
 
     async def get_log_apps(self, tenant: str, backend: str, engine_type: str) -> list:
         if engine_type == "postgres":
-            db = PostgresBackend(options.pgpool_request_log, schema=tenant)
-            tables = db.tables_list()
+            db = AsyncPostgresBackend(engine=options.pgpool_request_log, schema=tenant)
+            tables = await db.tables_list()
             return [table for table in tables if table.startswith("apps_")]
         elif engine_type == "sqlite":
             path = self._log_db_path(backend, tenant)
             dbs = await aio.os.listdir(path)
             return [db for db in dbs if db.endswith(".db")]
+        raise ValueError(f"unsupported engine_type: {engine_type}")
 
     def update_request_log(
         self,
@@ -667,6 +649,8 @@ class AuthRequestHandler(RequestHandler):
         be correct, the proxy has to provide the client's IP in the
         X-Real-Ip, or X-Forwarded-For header.
 
+        Schedules an async insert via the IOLoop so callers (on_finish,
+        on_connection_close) don't block the response path.
         """
         try:
             backends = options.request_log.get("backends")
@@ -678,31 +662,49 @@ class AuthRequestHandler(RequestHandler):
                 return
         except (AttributeError, KeyError, AssertionError):
             return
+        data = {
+            "timestamp": datetime.datetime.utcnow().isoformat(),
+            "requestor": requestor,
+            "requestor_name": requestor_name,
+            "method": method,
+            "uri": uri,
+            "ip": self.request.remote_ip,
+        }
+        added_claims = backends.get("claims")
+        if added_claims:
+            info = {}
+            for claim in added_claims:
+                info[claim] = claims.get(claim)
+            data["claims"] = info
+        IOLoop.current().spawn_callback(
+            self._do_request_log, tenant, backend, app, data
+        )
+
+    async def _do_request_log(
+        self,
+        tenant: str,
+        backend: str,
+        app: Optional[str],
+        data: dict,
+    ) -> None:
+        engine = None
         try:
             engine_type = options.request_log.get("db").get("engine")
             assert engine_type in [
                 "postgres",
                 "sqlite",
             ], f"unsupported engine_type: {engine_type}"
-            db = self.get_log_db(tenant, backend, engine_type, app)
-            data = {
-                "timestamp": datetime.datetime.utcnow().isoformat(),
-                "requestor": requestor,
-                "requestor_name": requestor_name,
-                "method": method,
-                "uri": uri,
-                "ip": self.request.remote_ip,
-            }
-            added_claims = backends.get("claims")
-            if added_claims:
-                info = {}
-                for claim in added_claims:
-                    info[claim] = claims.get(claim)
-                data["claims"] = info
+            db, engine = await self.get_log_db(tenant, backend, engine_type, app)
             table_name = self._log_table_name(backend, app)
-            db.table_insert(table_name, data)
+            await db.table_insert(table_name, data)
         except Exception as e:
             logger.warning(f"could not update audit log: {e}")
+        finally:
+            if engine is not None:
+                try:
+                    await engine.close()
+                except Exception as e:
+                    logger.warning(f"could not close audit log engine: {e}")
 
     def additional_log_details(self) -> Dict[str, Any]:
         """Retrieve additional details for logging.
@@ -2241,7 +2243,8 @@ class FileRequestHandler(AuthRequestHandler):
                             "requestor": self.requestor,
                             "group": None,
                         }
-                        self.handle_mq_publication(
+                        IOLoop.current().spawn_callback(
+                            self.handle_mq_publication,
                             mq_config=self.mq_config,
                             data=message_data,
                             http_method="PUT",
@@ -2253,7 +2256,8 @@ class FileRequestHandler(AuthRequestHandler):
                         "requestor": self.requestor,
                         "group": self.group_name if resource_created else None,
                     }
-                    self.handle_mq_publication(
+                    IOLoop.current().spawn_callback(
+                        self.handle_mq_publication,
                         mq_config=self.mq_config,
                         data=message_data,
                     )
@@ -2305,11 +2309,12 @@ class GenericTableHandler(AuthRequestHandler):
         self.mq_config = self.backend_config.get("mq")
         self.check_tenant = self.backend_config.get("check_tenant")
         self.restored = None
+        self.engine = None
         self.backup_days = self.backend_config.get("backup_deletes", {}).get(
             "backup_days"
         )
 
-    def prepare(self) -> Optional[Awaitable[None]]:
+    async def prepare(self) -> None:
         try:
             if options.maintenance_mode_enabled:
                 raise ServerMaintenanceError
@@ -2335,11 +2340,12 @@ class GenericTableHandler(AuthRequestHandler):
                     self.db_name = f".{self.backend}_{app_name}.db"
                 else:
                     self.db_name = f".{self.backend}.db"
-                self.engine = sqlite_init(
-                    self.tenant_dir, name=self.db_name, builtin=True
+
+                self.engine = await async_sqlite_init(
+                    f"{self.tenant_dir}/{self.db_name}"
                 )
-                self.db = SqliteBackend(
-                    self.engine,
+                self.db = AsyncSqliteBackend(
+                    engine=self.engine,
                     requestor=self.requestor,
                     requestor_name=self.requestor_name,
                     backup_days=self.backup_days,
@@ -2350,8 +2356,15 @@ class GenericTableHandler(AuthRequestHandler):
                     schema = f"{self.tenant}_{app_name}"
                 else:
                     schema = self.tenant
-                self.db = PostgresBackend(
-                    options.pgpools.get(self.backend),
+
+                pool = options.pgpools.get(self.backend)
+                if not pool:
+                    raise RuntimeError(
+                        f"Async PostgreSQL pool not initialized for backend: {self.backend}"
+                    )
+
+                self.db = AsyncPostgresBackend(
+                    engine=pool,
                     schema=schema,
                     requestor=self.requestor,
                     requestor_name=self.requestor_name,
@@ -2457,14 +2470,13 @@ class GenericTableHandler(AuthRequestHandler):
             rid_values = self.get_nested_data(keys, data)
             self.rid_info = {"key": rid_key, "values": rid_values}
 
-    @gen.coroutine
-    def get(self, tenant: str, table_name: str = None) -> None:
+    async def get(self, tenant: str, table_name: str = None) -> None:
         try:
             if not table_name:
                 excludes = ["/audit"]
                 if self.backend == "survey":
                     excludes.append("/metadata")
-                tables = self.db.tables_list(
+                tables = await self.db.tables_list(
                     exclude_endswith=excludes,
                     remove_pattern="_submissions",
                 )
@@ -2515,16 +2527,18 @@ class GenericTableHandler(AuthRequestHandler):
                             key=self.nacl_key,
                         )
                     )
-                    result = next(results, empty_result)
+                    result = await anext(results, None)
+
                     self.set_status(HTTPStatus.OK.value)
-                    if result == empty_result:
-                        self.write(result)
+                    if result is None:
+                        self.write(empty_result)
                         return
+
                     if encrypt_data:
                         # building whole payload before sending anything
                         # when we are using encryption
                         json_data = f"[{json.dumps(result)}"
-                        for row in results:
+                        async for row in results:
                             json_data += f",{json.dumps(row)}"
                         json_data += "]"
                         json_data = json_data.encode("utf-8")
@@ -2542,13 +2556,13 @@ class GenericTableHandler(AuthRequestHandler):
                     else:
                         self.write("[")
                         self.write(json.dumps(result))
-                        for row in results:
+                        async for row in results:
                             self.write(",")
                             self.write(json.dumps(row))
                             self.flush()
                         self.write("]")
                         self.flush()
-        except (psycopg2.errors.UndefinedTable, sqlite3.OperationalError) as e:
+        except (psycopg.errors.UndefinedTable, sqlite3.OperationalError) as e:
             if table_name.endswith("/audit"):
                 # Handle the audit table differently
                 # it is not created until the first change appears
@@ -2566,7 +2580,7 @@ class GenericTableHandler(AuthRequestHandler):
             self.set_status(error.status, reason=error.reason)
             self.write({"message": error.reason})
 
-    def put(self, tenant: str, table_name: str) -> None:
+    async def put(self, tenant: str, table_name: str) -> None:
         try:
             if self.request.headers.get("Content-Type") == "application/json+nacl":
                 new_data = self.decrypt_nacl_data(
@@ -2579,10 +2593,10 @@ class GenericTableHandler(AuthRequestHandler):
             table_name = self.create_table_name(table_name)
             if self.request.uri.endswith("/audit"):
                 raise ClientAuthorizationError("Not allowed to write to audit tables")
-            self.db.table_insert(table_name, data)
+            await self.db.table_insert(table_name, data)
             self.set_status(HTTPStatus.CREATED.value)
             self.write({"message": "data stored"})
-        except (psycopg2.errors.UndefinedTable, sqlite3.OperationalError) as e:
+        except (psycopg.errors.UndefinedTable, sqlite3.OperationalError) as e:
             logger.error(e)
             self.set_status(HTTPStatus.NOT_FOUND.value)
             self.write({"message": f"table {table_name} does not exist"})
@@ -2594,7 +2608,7 @@ class GenericTableHandler(AuthRequestHandler):
             self.set_status(error.status, reason=error.reason)
             self.write({"message": error.reason})
 
-    def patch(self, tenant: str, table_name: str) -> None:
+    async def patch(self, tenant: str, table_name: str) -> None:
         try:
             table_name = self.create_table_name(table_name)
             if self.request.uri.endswith("/audit"):
@@ -2608,10 +2622,10 @@ class GenericTableHandler(AuthRequestHandler):
             data = json_decode(new_data)
             self.set_resource_identifier_info(data)
             query = self.get_uri_query(self.request.uri)
-            self.db.table_update(table_name, query, data)
+            await self.db.table_update(table_name, query, data)
             self.set_status(HTTPStatus.CREATED.value)
             self.write({"data": "data updated"})
-        except (psycopg2.errors.UndefinedTable, sqlite3.OperationalError) as e:
+        except (psycopg.errors.UndefinedTable, sqlite3.OperationalError) as e:
             logger.error(e)
             self.set_status(HTTPStatus.NOT_FOUND.value)
             self.write({"message": f"table {table_name} does not exist"})
@@ -2623,7 +2637,7 @@ class GenericTableHandler(AuthRequestHandler):
             self.set_status(error.status, reason=error.reason)
             self.write({"message": error.reason})
 
-    def post(self, tenant: str, table_name: str) -> None:
+    async def post(self, tenant: str, table_name: str) -> None:
         try:
             table_name = self.create_table_name(table_name)
             query = self.get_uri_query(self.request.uri)
@@ -2632,7 +2646,7 @@ class GenericTableHandler(AuthRequestHandler):
                     raise ClientMethodNotAllowed(
                         "Restore is only supported on audit tables"
                     )
-                self.restored = self.db.table_restore(
+                self.restored = await self.db.table_restore(
                     table_name.replace("/audit", ""), query
                 )
                 out = self.restored
@@ -2641,7 +2655,7 @@ class GenericTableHandler(AuthRequestHandler):
                     raise ClientMethodNotAllowed(
                         "Renaming audit tables is not supported"
                     )
-                out = self.db.table_alter(table_name, query)
+                out = await self.db.table_alter(table_name, query)
             self.set_status(HTTPStatus.OK.value)
             self.write(out)
         except Exception as e:
@@ -2652,14 +2666,14 @@ class GenericTableHandler(AuthRequestHandler):
             self.set_status(error.status, reason=error.reason)
             self.write({"message": error.reason})
 
-    def delete(self, tenant: str, table_name: str) -> None:
+    async def delete(self, tenant: str, table_name: str) -> None:
         try:
             table_name = self.create_table_name(table_name)
             query = self.get_uri_query(self.request.uri)
-            data = self.db.table_delete(table_name, query)
+            data = await self.db.table_delete(table_name, query)
             self.set_status(HTTPStatus.OK.value)
             self.write({"data": data})
-        except (psycopg2.errors.UndefinedTable, sqlite3.OperationalError) as e:
+        except (psycopg.errors.UndefinedTable, sqlite3.OperationalError) as e:
             logger.error(e)
             self.set_status(HTTPStatus.NOT_FOUND.value)
             self.write({"message": f"table {table_name} does not exist"})
@@ -2672,6 +2686,9 @@ class GenericTableHandler(AuthRequestHandler):
             self.write({"message": error.reason})
 
     def on_finish(self) -> None:
+        if self.engine is not None:
+            IOLoop.current().spawn_callback(self.engine.close)
+            self.engine = None
         try:
             if not options.maintenance_mode_enabled and self._status_code < 300:
                 if self.restored:
@@ -2694,7 +2711,8 @@ class GenericTableHandler(AuthRequestHandler):
                             "group": None,
                             "resource_identifier": self.rid_info,
                         }
-                        self.handle_mq_publication(
+                        IOLoop.current().spawn_callback(
+                            self.handle_mq_publication,
                             mq_config=self.mq_config,
                             data=message_data,
                             http_method="PUT",
@@ -2718,7 +2736,8 @@ class GenericTableHandler(AuthRequestHandler):
                             "group": None,
                             "resource_identifier": self.rid_info,
                         }
-                        self.handle_mq_publication(
+                        IOLoop.current().spawn_callback(
+                            self.handle_mq_publication,
                             mq_config=self.mq_config,
                             data=message_data,
                             http_method="PATCH",
@@ -2731,8 +2750,10 @@ class GenericTableHandler(AuthRequestHandler):
                         "group": None,
                         "resource_identifier": self.rid_info,
                     }
-                    self.handle_mq_publication(
-                        mq_config=self.mq_config, data=message_data
+                    IOLoop.current().spawn_callback(
+                        self.handle_mq_publication,
+                        mq_config=self.mq_config,
+                        data=message_data,
                     )
                 self.update_request_log(
                     tenant=self.tenant,
@@ -2820,6 +2841,7 @@ class AuditLogViewerHandler(AuthRequestHandler):
         if not options.request_log:
             self.set_status(HTTPStatus.SERVICE_UNAVAILABLE.value)
             self.write({"message": "logging has not been configured"})
+        engine = None
         try:
             if not backend:
                 backends = list(options.request_log.get("backends").keys())
@@ -2840,7 +2862,9 @@ class AuditLogViewerHandler(AuthRequestHandler):
             else:
                 app = self.get_app_name(self.request.uri)
                 engine_type = options.request_log.get("db").get("engine")
-                db = self.get_log_db(tenant, backend, engine_type, app=app)
+                db, engine = await self.get_log_db(
+                    tenant, backend, engine_type, app=app
+                )
                 self.set_status(HTTPStatus.OK.value)
                 self.set_header("Content-Type", "application/json")
                 self.write("[")
@@ -2848,7 +2872,7 @@ class AuditLogViewerHandler(AuthRequestHandler):
                 first = True
                 query = self.get_uri_query(self.request.uri)
                 table_name = self._log_table_name(backend, app)
-                for row in db.table_select(table_name, query):
+                async for row in db.table_select(table_name, query):
                     if not first:
                         self.write(",")
                     self.write(json.dumps(row))
@@ -2856,7 +2880,7 @@ class AuditLogViewerHandler(AuthRequestHandler):
                     first = False
                 self.write("]")
                 self.flush()
-        except (psycopg2.errors.UndefinedTable, sqlite3.OperationalError) as e:
+        except (psycopg.errors.UndefinedTable, sqlite3.OperationalError) as e:
             logger.error(e)
             self.set_status(HTTPStatus.NOT_FOUND.value)
             self.write({"message": "no logs available"})
@@ -2867,6 +2891,12 @@ class AuditLogViewerHandler(AuthRequestHandler):
                 self.set_header(name, value)
             self.set_status(error.status, reason=error.reason)
             self.write({"message": error.reason})
+        finally:
+            if engine is not None:
+                try:
+                    await engine.close()
+                except Exception as e:
+                    logger.warning(f"could not close audit log engine: {e}")
 
 
 class ConfigHandler(RequestHandler):
@@ -3097,8 +3127,8 @@ class Backends:
     }
 
     database_backends = {
-        "sqlite": SqliteBackend,
-        "postgres": PostgresBackend,
+        "sqlite": AsyncSqliteBackend,
+        "postgres": AsyncPostgresBackend,
     }
 
     def __init__(self, config: dict) -> None:
@@ -3138,7 +3168,8 @@ class Backends:
                 db_backend = self.database_backends[backend["db"]["engine"]]
                 print(colored(f"DB backend: {backend['db']['engine']}, {name}", "cyan"))
                 if db_backend.generator_class.db_init_sql:
-                    self.initdb(name, options)
+                    if backend["db"]["engine"] == "postgres":
+                        IOLoop.current().run_sync(lambda: self.initdb(name))
 
         if self.config.get("rabbitmq", {}).get("enabled"):
             print(colored("Finding rabbitmq exchanges", "magenta"))
@@ -3149,32 +3180,34 @@ class Backends:
         if self.config.get("request_log"):
             print(colored("Initialising request log db", "magenta"))
             try:
-                self.initdb_request_log()
+                IOLoop.current().run_sync(self.initdb_request_log)
             except Exception as e:
                 logger.warning(f"could not connect to request log db: {e}")
 
-    def initdb(self, name: str, opts: tornado.options.OptionParser) -> None:
+    async def initdb(self, name: str) -> None:
+        """Initialize async PostgreSQL pool for backend."""
         db_config = options.config["backends"]["dbs"][name]["db"]
         engine_type = db_config["engine"]
+
         if engine_type == "postgres":
-            pool = postgres_init(
+            pool = await async_postgres_init(
                 db_config["dbconfig"],
                 db_config.get("pool_min", 3),
                 db_config.get("pool_max", 5),
             )
             options.pgpools[name] = pool
-            db = PostgresBackend(pool)
-            db.initialise()
-        else:
-            return
 
-    def initdb_request_log(self) -> None:
+            # Initialize database schema
+            db = AsyncPostgresBackend(engine=pool)
+            await db.initialise()
+
+    async def initdb_request_log(self) -> None:
         if not options.request_log:
             return
         db_config = options.request_log.get("db")
         engine_type = db_config.get("engine")
         if engine_type == "postgres":
-            pool = postgres_init(
+            pool = await async_postgres_init(
                 db_config.get("dbconfig"),
                 db_config.get("pool_min", 3),
                 db_config.get("pool_max", 5),
@@ -3183,8 +3216,8 @@ class Backends:
                 define("pgpool_request_log", pool)
             except tornado.options.Error:
                 pass  # already defined ^
-            logdb = PostgresBackend(pool)
-            logdb.initialise()
+            logdb = AsyncPostgresBackend(engine=pool)
+            await logdb.initialise()
         else:  # sqlite
             return
 
@@ -3214,15 +3247,15 @@ def main() -> None:
         logging.Logger
     )  # Enable for _all_ loggers
     backends = Backends(options.config)
-    pika_client = (
-        PikaClient(options.rabbitmq, backends.exchanges)
+    amqp_client = (
+        AmqpClient(options.rabbitmq, backends.exchanges)
         if options.rabbitmq.get("enabled")
         else None
     )
     app = Application(
         backends.routes,
         **{
-            "pika_client": pika_client,
+            "amqp_client": amqp_client,
             "debug": options.debug,
             "default_handler_class": FallbackHandler,
             "default_handler_args": {"status_code": 404},
@@ -3238,9 +3271,19 @@ def main() -> None:
     )
     ioloop = IOLoop.instance()
     ioloop.set_default_executor(executor)
-    if pika_client:
-        ioloop.add_timeout(time.time() + 0.1, pika_client.connect)
-    ioloop.start()
+    if amqp_client:
+        ioloop.add_callback(amqp_client.connect)
+        ioloop.spawn_callback(
+            _drain_cache_periodically, amqp_client, options.rabbitmq_cache
+        )
+    try:
+        ioloop.start()
+    finally:
+        if amqp_client:
+            try:
+                ioloop.run_sync(amqp_client.close)
+            except Exception as e:
+                logger.warning(f"clean rabbitmq shutdown failed: {e}")
 
 
 if __name__ == "__main__":
