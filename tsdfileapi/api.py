@@ -3262,11 +3262,9 @@ class Backends:
             colored(f"Backend: {name}, ", "cyan"),
             colored(f"rabbitmq settings: {mq_config}", "yellow"),
         )
-        existing_exchanges = []
-        for name, config in self.exchanges.items():
-            existing_exchanges.append(config.get("exchange"))
+        existing_exchanges = {cfg.get("exchange") for cfg in self.exchanges.values()}
         if (
-            not self.exchanges.get(name)
+            name not in self.exchanges
             and mq_config.get("exchange") not in existing_exchanges
         ):
             self.exchanges[name] = mq_config
