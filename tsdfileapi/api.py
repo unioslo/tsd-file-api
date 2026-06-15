@@ -20,7 +20,6 @@ import pwd
 import re
 import sqlite3
 import stat
-import subprocess
 import time
 from asyncio import create_task
 from asyncio import to_thread
@@ -80,6 +79,7 @@ from tsdfileapi.utils import VALID_UUID
 from tsdfileapi.utils import RequestHandler
 from tsdfileapi.utils import _rwxrws___
 from tsdfileapi.utils import any_path_islink
+from tsdfileapi.utils import asystem
 from tsdfileapi.utils import call_request_hook
 from tsdfileapi.utils import check_filename
 from tsdfileapi.utils import choose_storage
@@ -575,9 +575,9 @@ class AuthRequestHandler(RequestHandler):
     def _log_table_name(self, backend: str, app: str) -> str:
         return f"{backend}" if not app else f"apps_{app}"
 
-    def _log_db_path(self, backend: str, tenant: str) -> str:
+    async def _log_db_path(self, backend: str, tenant: str) -> str:
         path_pattern = options.request_log.get("db").get("path")
-        return choose_storage(
+        return await choose_storage(
             tenant=tenant,
             opts=options,
             directory=path_pattern.replace(options.tenant_string_pattern, tenant),
@@ -589,7 +589,7 @@ class AuthRequestHandler(RequestHandler):
         backend: str,
         app: str,
     ) -> aiosqlite.Connection:
-        db_path = self._log_db_path(backend, tenant)
+        db_path = await self._log_db_path(backend, tenant)
         db_name = self._log_db_name(backend, app)
         return await async_sqlite_init(f"{db_path}/{db_name}")
 
@@ -627,7 +627,7 @@ class AuthRequestHandler(RequestHandler):
             tables = await db.tables_list()
             return [table for table in tables if table.startswith("apps_")]
         elif engine_type == "sqlite":
-            path = self._log_db_path(backend, tenant)
+            path = await self._log_db_path(backend, tenant)
             dbs = await aio.os.listdir(path)
             return [db for db in dbs if db.endswith(".db")]
         raise ValueError(f"unsupported engine_type: {engine_type}")
@@ -809,14 +809,14 @@ class SnsFormDataHandler(AuthRequestHandler):
         self, filemode: str, filename: str, filebody: bytes, tenant: str
     ) -> None:
         # create form directories where needed
-        tsd_hidden_folder = sns_dir(
+        tsd_hidden_folder = await sns_dir(
             self.tsd_hidden_folder_pattern,
             tenant,
             self.request.uri,
             options.tenant_string_pattern,
             options=options,
         )
-        tenant_dir = sns_dir(
+        tenant_dir = await sns_dir(
             self.tenant_dir_pattern,
             tenant,
             self.request.uri,
@@ -843,13 +843,16 @@ class SnsFormDataHandler(AuthRequestHandler):
         await aio.os.chmod(subfolder_path, _RW_RW___)
 
     def on_finish(self) -> None:
+        add_new_task(self._on_finish())
+
+    async def _on_finish(self) -> None:
         if self.request.method in (
             "PUT",
             "POST",
             "PATCH",
         ) and self.request_hook.get("enabled"):
             for path in self.new_paths:
-                call_request_hook(
+                await call_request_hook(
                     self.request_hook["path"],
                     [path, self.requestor, options.api_user, self.group_name],
                     as_sudo=self.request_hook["sudo"],
@@ -926,7 +929,7 @@ class ResumablesHandler(AuthRequestHandler):
             "check_tenant"
         )
 
-    def prepare(self) -> Optional[Awaitable[None]]:
+    async def prepare(self) -> None:
         try:
             if options.maintenance_mode_enabled:
                 raise ServerMaintenanceError
@@ -937,7 +940,7 @@ class ResumablesHandler(AuthRequestHandler):
                     else options.check_tenant
                 )
             )
-            self.tenant_dir = choose_storage(
+            self.tenant_dir = await choose_storage(
                 tenant=self.tenant,
                 opts=options,
                 directory=self.import_dir_pattern.replace(
@@ -1081,7 +1084,7 @@ class FileRequestHandler(AuthRequestHandler):
                 )
             )
 
-            self.export_dir = choose_storage(
+            self.export_dir = await choose_storage(
                 tenant=self.tenant,
                 opts=options,
                 directory=self.export_path_pattern.replace(
@@ -1089,7 +1092,7 @@ class FileRequestHandler(AuthRequestHandler):
                 ),
                 user=self.requestor if self.backend == "home" else None,
             )
-            self.import_dir = choose_storage(
+            self.import_dir = await choose_storage(
                 tenant=self.tenant,
                 opts=options,
                 directory=self.import_dir_pattern.replace(
@@ -1097,7 +1100,7 @@ class FileRequestHandler(AuthRequestHandler):
                 ),
                 user=self.requestor if self.backend == "home" else None,
             )
-            self.tenant_dir = choose_storage(
+            self.tenant_dir = await choose_storage(
                 tenant=self.tenant,
                 opts=options,
                 directory=self.import_dir_pattern.replace(
@@ -1220,7 +1223,7 @@ class FileRequestHandler(AuthRequestHandler):
                 self.resource_dir = os.path.normpath(f"{self.tenant_dir}/{url_dirs}")
 
                 # ensure no part of resource_dir is a symlink
-                any_path_islink(self.resource_dir, opts=options)
+                await any_path_islink(self.resource_dir, opts=options)
 
                 if not await aio.os.path.lexists(self.resource_dir):
                     logger.info(f"creating resource dir: {self.resource_dir}")
@@ -1234,7 +1237,7 @@ class FileRequestHandler(AuthRequestHandler):
                             owner = (
                                 options.api_user
                             )  # so it can move the file into the dir
-                            subprocess.call(
+                            await asystem(
                                 ["sudo", "chown", f"{owner}:{self.group_name}", target]
                             )
 
@@ -1277,7 +1280,7 @@ class FileRequestHandler(AuthRequestHandler):
                 self.path_part = f"{self.path}.{str(uuid4())}.part"
 
                 # ensure there are no symlinks in path
-                any_path_islink(self.path, opts=options)
+                await any_path_islink(self.path, opts=options)
 
                 # ensure idempotency
                 if await aio.os.path.lexists(self.path):
@@ -1517,7 +1520,7 @@ class FileRequestHandler(AuthRequestHandler):
             client_mtime = float(client_mtime)
             await aio.os.utime(self.resource_path, (client_mtime, client_mtime))
 
-    def enforce_export_policy(
+    async def enforce_export_policy(
         self,
         policy_config: dict,
         filename: str,
@@ -1549,7 +1552,7 @@ class FileRequestHandler(AuthRequestHandler):
             logger.error(f"Illegal export filename: {file}")
             return status
         try:
-            any_path_islink(filename, opts=options)
+            await any_path_islink(filename, opts=options)
         except Exception as e:
             logger.error(
                 f"Symlink in part of path '{filename}' requested by {self.requestor}: {str(e)}"
@@ -1588,10 +1591,10 @@ class FileRequestHandler(AuthRequestHandler):
         except PermissionError:
             # so the API user can read, and delete files owned by others
             if await aio.os.path.isdir(filename):
-                subprocess.call(["sudo", "chmod", "-R", "g+r,o+rx", filename])
+                await asystem(["sudo", "chmod", "-R", "g+r,o+rx", filename])
                 mime_type = "directory"
             else:
-                subprocess.call(["sudo", "chmod", "g+r,o+rx", filename])
+                await asystem(["sudo", "chmod", "g+r,o+rx", filename])
                 mime_type = magic.from_file(filename_raw_utf8, mime=True)
         stat = await aio.os.stat(filename)
         return stat.st_size, mime_type, stat.st_mtime
@@ -1668,7 +1671,7 @@ class FileRequestHandler(AuthRequestHandler):
         backup_src_dir = path_dir.replace("/backup/", "/")
         if await aio.os.path.lexists(backup_src_dir):
             return True  # can always restore when this exists
-        if days_since_mod(path_dir) > self.backup_days:
+        if (await days_since_mod(path_dir)) > self.backup_days:
             return False  # older than retention period
         else:
             return True  # younger then retention period
@@ -1712,7 +1715,7 @@ class FileRequestHandler(AuthRequestHandler):
 
         # don't list symlinked directories
         try:
-            any_path_islink(path, opts=options)
+            await any_path_islink(path, opts=options)
         except Exception:
             self.write({"files": [], "page": None})
             return
@@ -1767,7 +1770,7 @@ class FileRequestHandler(AuthRequestHandler):
                     if not await self.enforce_restore_policy(filepath):
                         continue  # don't list it
                     size, mime_type, latest = await self.get_file_metadata(filepath)
-                    export_status = self.enforce_export_policy(
+                    export_status = await self.enforce_export_policy(
                         self.export_policy, filepath, tenant, size, mime_type
                     )
                     reason = None if export_status else "access not authorized"
@@ -1945,7 +1948,7 @@ class FileRequestHandler(AuthRequestHandler):
             self.path = self.export_dir
             resource = url_unescape(self.resource)  # parsed from URI
             # ensure there are no symlinks in filepath
-            any_path_islink(f"{self.path}/{resource}", opts=options)
+            await any_path_islink(f"{self.path}/{resource}", opts=options)
             is_dir = await aio.os.path.isdir(f"{self.path}/{resource}")
             if not filename or is_dir:
                 if not self.allow_list:
@@ -1961,7 +1964,7 @@ class FileRequestHandler(AuthRequestHandler):
             if not await aio.os.path.lexists(f"{self.filepath}"):
                 raise ClientResourceNotFoundError(f"{self.filepath} not found")
             size, mime_type, mtime = await self.get_file_metadata(self.filepath)
-            if not self.enforce_export_policy(
+            if not await self.enforce_export_policy(
                 self.export_policy, self.filepath, tenant, size, mime_type
             ):
                 raise ClientError("export policy violation")
@@ -2042,7 +2045,7 @@ class FileRequestHandler(AuthRequestHandler):
             self.path = self.export_dir
             self.filepath = f"{self.path}/{url_unescape(self.resource)}"
             # ensure there are no symlinks in filepath
-            any_path_islink(self.filepath, opts=options)
+            await any_path_islink(self.filepath, opts=options)
             if not await aio.os.path.lexists(self.filepath):
                 raise ClientResourceNotFoundError(f"{self.filepath} not found")
             size, mime_type, mtime = await self.get_file_metadata(self.filepath)
@@ -2071,7 +2074,7 @@ class FileRequestHandler(AuthRequestHandler):
             self.path = self.export_dir
             self.filepath = f"{self.path}/{url_unescape(self.resource)}"
             # ensure there are no symlinks in filepath
-            any_path_islink(self.filepath, opts=options)
+            await any_path_islink(self.filepath, opts=options)
             if not await aio.os.path.lexists(self.filepath):
                 raise ClientResourceNotFoundError(f"{self.filepath} not found")
             if await aio.os.path.isdir(self.filepath):
@@ -2106,12 +2109,12 @@ class FileRequestHandler(AuthRequestHandler):
             else:
                 if self.has_posix_ownership:
                     # Allow the file to be deleted by changing the rights temporary of the parent directory
-                    subprocess.call(
+                    await asystem(
                         ["sudo", "chmod", "o+w", os.path.dirname(self.filepath)]
                     )
                     await aio.os.remove(self.filepath)
                     # Restoring the rights of the parent directory
-                    subprocess.call(
+                    await asystem(
                         ["sudo", "chmod", "o-w", os.path.dirname(self.filepath)]
                     )
                 else:
@@ -2223,7 +2226,7 @@ class FileRequestHandler(AuthRequestHandler):
                 if resource_created:
                     try:
                         if self.request_hook["enabled"]:
-                            call_request_hook(
+                            await call_request_hook(
                                 self.request_hook["path"],
                                 [
                                     self.resource_path,
@@ -2328,7 +2331,7 @@ class GenericTableHandler(AuthRequestHandler):
             )
             if self.dbtype == "sqlite":
                 self.import_dir_pattern = self.backend_config["db"]["path"]
-                self.tenant_dir = choose_storage(
+                self.tenant_dir = await choose_storage(
                     tenant=self.tenant,
                     opts=options,
                     directory=self.import_dir_pattern.replace(

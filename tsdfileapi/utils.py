@@ -1,3 +1,4 @@
+import asyncio
 import contextvars
 import datetime
 import errno
@@ -12,7 +13,6 @@ import reprlib
 import shlex
 import shutil
 import stat
-import subprocess
 import sys
 from dataclasses import dataclass
 from ipaddress import ip_network
@@ -33,6 +33,8 @@ from tsdfileapi.exc import ClientSnsPathError
 from tsdfileapi.exc import ServerSnsError
 from tsdfileapi.exc import ServerStorageNotMountedError
 
+from . import aio
+
 VALID_FORMID = re.compile(r"^[0-9]+$")
 PGP_KEY_FINGERPRINT = re.compile(r"^[0-9A-Z]{16}$")
 VALID_UUID = re.compile(r"([a-f\d0-9-]{32,36})")
@@ -40,14 +42,14 @@ VALID_UUID = re.compile(r"([a-f\d0-9-]{32,36})")
 logger = logging.getLogger(__name__)
 
 
-def days_since_mod(path: str) -> int:
+async def days_since_mod(path: str) -> int:
     """
     Calculate the amount of days that have elapsed
     since the given path was modified.
 
     """
     current_moment = datetime.datetime.now()
-    mtime_moment = datetime.datetime.fromtimestamp(os.stat(path).st_mtime)
+    mtime_moment = datetime.datetime.fromtimestamp((await aio.os.stat(path)).st_mtime)
     days_since = (current_moment - mtime_moment).days
     return days_since
 
@@ -62,19 +64,19 @@ def _rwxrws___() -> int:
     return _rwxrwx___() | stat.S_ISGID
 
 
-def _find_ess_dir(
+async def _find_ess_dir(
     pnum: str,
     root: str = "/ess",
 ) -> Optional[str]:
     sub_dir = None
-    for projects_dir in os.listdir(root):
-        if pnum in os.listdir(f"{root}/{projects_dir}"):
+    for projects_dir in await aio.os.listdir(root):
+        if pnum in await aio.os.listdir(f"{root}/{projects_dir}"):
             sub_dir = projects_dir
             break
     return None if not sub_dir else f"{root}/{sub_dir}/{pnum}"
 
 
-def find_tenant_storage_path(
+async def find_tenant_storage_path(
     tenant: str,
     opts: tornado.options.OptionParser,
     root: str = "/ess",
@@ -87,7 +89,7 @@ def find_tenant_storage_path(
     """
     cache = opts.tenant_storage_cache.copy()
     if not cache.get(tenant):
-        storage_path_ess = _find_ess_dir(tenant, root=root)
+        storage_path_ess = await _find_ess_dir(tenant, root=root)
         if not storage_path_ess:
             return None
 
@@ -102,7 +104,7 @@ def find_tenant_storage_path(
     return out
 
 
-def choose_storage(
+async def choose_storage(
     *,
     tenant: str,
     opts: tornado.options.OptionParser,
@@ -117,21 +119,21 @@ def choose_storage(
     """
     if not directory.startswith("/tsd"):
         return directory
-    storage_path = find_tenant_storage_path(tenant, opts)
+    storage_path = await find_tenant_storage_path(tenant, opts)
     out_dir = "".join([storage_path, directory.split(tenant)[-1]])
     if user:
         out_dir += f"/{user}"
     return os.path.normpath(out_dir)
 
 
-def call_request_hook(path: str, params: list, as_sudo: bool = True) -> None:
+async def call_request_hook(path: str, params: list, as_sudo: bool = True) -> None:
     if as_sudo:
         cmd = ["sudo"]
     else:
         cmd = []
     cmd.append(shlex.quote(path))
     cmd.extend(params)
-    subprocess.call(cmd)
+    await asystem(cmd)
 
 
 def tenant_from_url(url: str) -> list:
@@ -152,7 +154,7 @@ def check_filename(filename: str, disallowed_start_chars: list = []) -> str:
     return filename
 
 
-def sns_dir(
+async def sns_dir(
     base_pattern: str,
     tenant: str,
     uri: str,
@@ -177,15 +179,15 @@ def sns_dir(
             .replace("KEYID", keyid)
             .replace("FORMID", formid)
         )
-        sns_dir = choose_storage(
+        sns_dir = await choose_storage(
             tenant=tenant,
             opts=options,
             directory=directory,
         )
         try:
-            if not os.path.lexists(sns_dir):
-                os.makedirs(sns_dir)
-                subprocess.call(["sudo", "chmod", "2770", sns_dir])
+            if not await aio.os.path.lexists(sns_dir):
+                await aio.os.makedirs(sns_dir)
+                await asystem(["sudo", "chmod", "2770", sns_dir])
                 logger.info(f"Created: {sns_dir}")
         except OSError as e:
             if e.errno == errno.ENOENT:
@@ -238,7 +240,7 @@ def set_mtime(path: str, mtime: int) -> None:
     os.utime(path, (mtime, atime))
 
 
-def any_path_islink(
+async def any_path_islink(
     path: Union[str, pathlib.Path],
     opts: tornado.options.OptionParser,
 ) -> bool:
@@ -254,7 +256,7 @@ def any_path_islink(
     if isinstance(path, str):
         path = pathlib.Path(path)
     while path != path.parent:
-        if path.is_symlink() and path not in allowed_symlinks:
+        if await aio.os.path.islink(path) and path not in allowed_symlinks:
             raise ClientIllegalFiletypeError(
                 f"Path '{path}' is a symlink to '{os.readlink(path)}'."
             )
@@ -547,3 +549,13 @@ class RequestHandler(tornado.web.RequestHandler):
             return isEnabledFor
 
         logger.isEnabledFor = wrap(logger.isEnabledFor)  # type: ignore[method-assign]
+
+
+async def asystem(cmd, **options) -> int:
+    """
+    Execute a sub-process and wait for its termination.
+
+    This is essentially a co-routine equivalent of `subprocess.call`. It is named `asystem` because it also mimicks the semantics of `os.system`, the `a` is a Python convention adding co-routine API equivalents (see `aclose`, `aiter` etc).
+    """
+    process = await asyncio.create_subprocess_exec(*cmd, **options)
+    return await process.wait()
