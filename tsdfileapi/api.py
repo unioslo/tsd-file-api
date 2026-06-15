@@ -2875,6 +2875,7 @@ class AuditLogViewerHandler(AuthRequestHandler):
             self.set_status(HTTPStatus.SERVICE_UNAVAILABLE.value)
             self.write({"message": "logging has not been configured"})
         engine = None
+        streaming = False  # marker for when we have started streaming response
         try:
             if not backend:
                 backends = list(options.request_log.get("backends").keys())
@@ -2898,33 +2899,43 @@ class AuditLogViewerHandler(AuthRequestHandler):
                 db, engine = await self.get_log_db(
                     tenant, backend, engine_type, app=app
                 )
-                self.set_status(HTTPStatus.OK.value)
                 self.set_header("Content-Type", "application/json")
-                self.write("[")
-                self.flush()
-                first = True
                 query = self.get_uri_query(self.request.uri)
                 table_name = self._log_table_name(backend, app)
-                async for row in db.table_select(table_name, query):
-                    if not first:
-                        self.write(",")
+                results = db.table_select(table_name, query)
+                try:
+                    first_row = await anext(results, None)
+                except (psycopg.errors.UndefinedTable, sqlite3.OperationalError):
+                    first_row = None
+                self.set_status(HTTPStatus.OK.value)
+                if first_row is None:
+                    self.write("[]")
+                    return
+                self.write("[")
+                streaming = True
+                self.write(json.dumps(first_row))
+                self.flush()
+                async for row in results:
+                    self.write(",")
                     self.write(json.dumps(row))
                     self.flush()
-                    first = False
-                self.write("]")
-                self.flush()
-        except (psycopg.errors.UndefinedTable, sqlite3.OperationalError) as e:
-            logger.error(e)
-            self.set_status(HTTPStatus.NOT_FOUND.value)
-            self.write({"message": "no logs available"})
         except Exception as e:
-            error = error_for_exception(e, details=self.additional_log_details())
-            logger.error(error.message)
-            for name, value in error.headers.items():
-                self.set_header(name, value)
-            self.set_status(error.status, reason=error.reason)
-            self.write({"message": error.reason})
+            if streaming:
+                logger.exception(f"error mid-stream from audit log: {e!r}")
+            else:
+                error = error_for_exception(e, details=self.additional_log_details())
+                logger.error(error.message)
+                for name, value in error.headers.items():
+                    self.set_header(name, value)
+                self.set_status(error.status, reason=error.reason)
+                self.write({"message": error.reason})
         finally:
+            if streaming:
+                try:
+                    self.write("]")
+                    self.flush()
+                except Exception as e:
+                    logger.warning(f"could not close audit log JSON array: {e!r}")
             if engine is not None:
                 try:
                     await engine.close()
