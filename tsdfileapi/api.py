@@ -1346,11 +1346,11 @@ class FileRequestHandler(AuthRequestHandler):
             await aio.os.rename(self.path, self.path_part)
             raise
 
-    def store_processed_data(self, data: bytes):
-        return self.target_file.write(data)
+    async def store_processed_data(self, data: bytes):
+        await self.target_file.write(data)
 
-    def store_processed_data_with_resumable(self, data: bytes):
-        return to_thread(self.res.add_chunk, self.target_file._file, data)
+    async def store_processed_data_with_resumable(self, data: bytes):
+        await to_thread(self.res.add_chunk, self.target_file, data)
 
     class DataBuffer:
         """
