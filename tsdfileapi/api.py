@@ -632,7 +632,7 @@ class AuthRequestHandler(RequestHandler):
             return [db for db in dbs if db.endswith(".db")]
         raise ValueError(f"unsupported engine_type: {engine_type}")
 
-    def update_request_log(
+    async def update_request_log(
         self,
         *,
         tenant: str,
@@ -648,9 +648,6 @@ class AuthRequestHandler(RequestHandler):
         Log request information - for audit purposes. For the IP to
         be correct, the proxy has to provide the client's IP in the
         X-Real-Ip, or X-Forwarded-For header.
-
-        Schedules an async insert via the IOLoop so callers (on_finish,
-        on_connection_close) don't block the response path.
         """
         try:
             backends = options.request_log.get("backends")
@@ -676,9 +673,7 @@ class AuthRequestHandler(RequestHandler):
             for claim in added_claims:
                 info[claim] = claims.get(claim)
             data["claims"] = info
-        IOLoop.current().spawn_callback(
-            self._do_request_log, tenant, backend, app, data
-        )
+        await self._do_request_log(tenant, backend, app, data)
 
     async def _do_request_log(
         self,
@@ -957,21 +952,21 @@ class ResumablesHandler(AuthRequestHandler):
             self.set_status(error.status, reason=error.reason)
             self.finish()
 
-    def get(self, tenant: str, filename: str = None) -> None:
+    async def get(self, tenant: str, filename: str = None) -> None:
         try:
             upload_id = url_unescape(self.get_query_argument("id", ""))
             key = url_unescape(self.get_query_argument("key", ""))
-            res = SerialResumable(self.tenant_dir, self.requestor)
-            if not filename:
-                info = res.list_all(self.tenant_dir, self.requestor, key=key)
-            else:
-                info = res.info(
-                    self.tenant_dir,
-                    filename,
-                    upload_id,
-                    self.requestor,
-                    key=key,
-                )
+            async with SerialResumable(self.tenant_dir, self.requestor) as res:
+                if not filename:
+                    info = await res.list_all(self.tenant_dir, self.requestor, key=key)
+                else:
+                    info = await res.info(
+                        self.tenant_dir,
+                        filename,
+                        upload_id,
+                        self.requestor,
+                        key=key,
+                    )
             self.set_status(HTTPStatus.OK.value)
             self.write(info)
         except ResumableNotFoundError:
@@ -998,13 +993,15 @@ class ResumablesHandler(AuthRequestHandler):
                 }
             )
 
-    def delete(self, tenant: str, filename: str) -> None:
+    async def delete(self, tenant: str, filename: str) -> None:
         try:
             upload_id = url_unescape(self.get_query_argument("id"))
-            res = SerialResumable(self.tenant_dir, self.requestor)
-            if not res.delete(self.tenant_dir, filename, upload_id, self.requestor):
-                # TODO: raise from ^
-                raise ClientAuthorizationError("resumable access denied")
+            async with SerialResumable(self.tenant_dir, self.requestor) as res:
+                if not await res.delete(
+                    self.tenant_dir, filename, upload_id, self.requestor
+                ):
+                    # TODO: raise from ^
+                    raise ClientAuthorizationError("resumable access denied")
             self.set_status(HTTPStatus.OK.value)
             self.write({"message": "resumable deleted"})
         except Exception as e:
@@ -1263,7 +1260,7 @@ class FileRequestHandler(AuthRequestHandler):
                         self.completed_resumable_file,
                         self.chunk_order_correct,
                         filename,
-                    ) = self.res.prepare(
+                    ) = await self.res.prepare(
                         self.tenant_dir,
                         filename,
                         url_chunk_num,
@@ -1350,7 +1347,7 @@ class FileRequestHandler(AuthRequestHandler):
         await self.target_file.write(data)
 
     async def store_processed_data_with_resumable(self, data: bytes):
-        await to_thread(self.res.add_chunk, self.target_file, data)
+        await self.res.add_chunk(self.target_file, data)
 
     class DataBuffer:
         """
@@ -1438,8 +1435,7 @@ class FileRequestHandler(AuthRequestHandler):
                 await aio.os.rename(self.path, self.path_part)
                 filename = os.path.basename(self.path_part).split(".chunk")[0]
                 try:
-                    _, state = await to_thread(
-                        self.res.merge_chunk,
+                    _, state = await self.res.merge_chunk(
                         self.tenant_dir,
                         os.path.basename(self.path_part),
                         self.upload_id,
@@ -1478,7 +1474,7 @@ class FileRequestHandler(AuthRequestHandler):
                 return
         else:
             try:
-                self.completed_resumable_filename, state = self.res.finalise(
+                self.completed_resumable_filename, state = await self.res.finalise(
                     self.tenant_dir,
                     os.path.basename(self.path_part),
                     self.upload_id,
@@ -1585,7 +1581,9 @@ class FileRequestHandler(AuthRequestHandler):
             if await aio.os.path.islink(filename):
                 mime_type = "inode/symlink"
             else:
-                mime_type = magic.from_file(filename_raw_utf8, mime=True)
+                mime_type = await to_thread(
+                    magic.from_file, filename_raw_utf8, mime=True
+                )
         except IsADirectoryError:
             mime_type = "directory"
         except PermissionError:
@@ -1595,7 +1593,9 @@ class FileRequestHandler(AuthRequestHandler):
                 mime_type = "directory"
             else:
                 await asystem(["sudo", "chmod", "g+r,o+rx", filename])
-                mime_type = magic.from_file(filename_raw_utf8, mime=True)
+                mime_type = await to_thread(
+                    magic.from_file, filename_raw_utf8, mime=True
+                )
         stat = await aio.os.stat(filename)
         return stat.st_size, mime_type, stat.st_mtime
 
@@ -1774,15 +1774,19 @@ class FileRequestHandler(AuthRequestHandler):
                         self.export_policy, filepath, tenant, size, mime_type
                     )
                     reason = None if export_status else "access not authorized"
-                    path_stat = file.stat(follow_symlinks=False)
+                    path_stat = await file.stat(follow_symlinks=False)
                     etag = self.mtime_to_digest(latest)
                     date_time = str(datetime.datetime.fromtimestamp(latest).isoformat())
                     if self.has_posix_ownership:
                         try:
-                            owner = pwd.getpwuid(path_stat.st_uid).pw_name
+                            owner = (
+                                await to_thread(pwd.getpwuid, path_stat.st_uid)
+                            ).pw_name
                         except KeyError:
                             try:
-                                default_owner_id = pwd.getpwnam(default_owner).pw_uid
+                                default_owner_id = (
+                                    await to_thread(pwd.getpwnam, default_owner)
+                                ).pw_uid
                                 group_id = path_stat.st_gid
                                 await aio.os.chown(
                                     file.path, default_owner_id, group_id
@@ -1819,7 +1823,7 @@ class FileRequestHandler(AuthRequestHandler):
                 else:
                     for file in files:
                         if not disable_metadata:
-                            path_stat = file.stat()
+                            path_stat = await file.stat()
                             latest = path_stat.st_mtime
                             etag = self.mtime_to_digest(latest)
                             date_time = str(
@@ -2088,7 +2092,7 @@ class FileRequestHandler(AuthRequestHandler):
                             os.path.dirname(backup_path), exist_ok=True
                         )
                         # Walk the source directory and move files one by one
-                        for root, dirs, files in await aio.os.walk(self.filepath):
+                        async for root, dirs, files in aio.os.walk(self.filepath):
                             # Compute relative path from source
                             rel_path = os.path.relpath(root, self.filepath)
                             # Build the full backup path for this directory
@@ -2209,6 +2213,8 @@ class FileRequestHandler(AuthRequestHandler):
     async def _on_finish(self) -> None:
         if self.target_file and not self.target_file.closed:
             await self.target_file.close()
+        if hasattr(self, "res"):
+            await self.res.aclose()
         resource_created = self.request.method == "PUT" or (
             self.request.method == "PATCH" and self.chunk_num == "end"
         )
@@ -2246,8 +2252,7 @@ class FileRequestHandler(AuthRequestHandler):
                             "requestor": self.requestor,
                             "group": None,
                         }
-                        IOLoop.current().spawn_callback(
-                            self.handle_mq_publication,
+                        await self.handle_mq_publication(
                             mq_config=self.mq_config,
                             data=message_data,
                             http_method="PUT",
@@ -2259,13 +2264,12 @@ class FileRequestHandler(AuthRequestHandler):
                         "requestor": self.requestor,
                         "group": self.group_name if resource_created else None,
                     }
-                    IOLoop.current().spawn_callback(
-                        self.handle_mq_publication,
+                    await self.handle_mq_publication(
                         mq_config=self.mq_config,
                         data=message_data,
                     )
                 if not self.listing_dir:
-                    self.update_request_log(
+                    await self.update_request_log(
                         tenant=self.tenant,
                         backend=self.backend,
                         requestor=self.requestor,
@@ -2689,8 +2693,11 @@ class GenericTableHandler(AuthRequestHandler):
             self.write({"message": error.reason})
 
     def on_finish(self) -> None:
+        add_new_task(self._on_finish())
+
+    async def _on_finish(self) -> None:
         if self.engine is not None:
-            IOLoop.current().spawn_callback(self.engine.close)
+            await self.engine.close()
             self.engine = None
         try:
             if not options.maintenance_mode_enabled and self._status_code < 300:
@@ -2714,8 +2721,7 @@ class GenericTableHandler(AuthRequestHandler):
                             "group": None,
                             "resource_identifier": self.rid_info,
                         }
-                        IOLoop.current().spawn_callback(
-                            self.handle_mq_publication,
+                        await self.handle_mq_publication(
                             mq_config=self.mq_config,
                             data=message_data,
                             http_method="PUT",
@@ -2739,8 +2745,7 @@ class GenericTableHandler(AuthRequestHandler):
                             "group": None,
                             "resource_identifier": self.rid_info,
                         }
-                        IOLoop.current().spawn_callback(
-                            self.handle_mq_publication,
+                        await self.handle_mq_publication(
                             mq_config=self.mq_config,
                             data=message_data,
                             http_method="PATCH",
@@ -2753,12 +2758,11 @@ class GenericTableHandler(AuthRequestHandler):
                         "group": None,
                         "resource_identifier": self.rid_info,
                     }
-                    IOLoop.current().spawn_callback(
-                        self.handle_mq_publication,
+                    await self.handle_mq_publication(
                         mq_config=self.mq_config,
                         data=message_data,
                     )
-                self.update_request_log(
+                await self.update_request_log(
                     tenant=self.tenant,
                     backend=self.backend,
                     requestor=self.requestor,
