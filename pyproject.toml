@@ -21,7 +21,7 @@ pysquril = { version = ">=1.2.0", extras = ["async"] }
 termcolor = ">=1.1.0"
 python-magic = ">=0.4.15"
 pyyaml = ">=5.4"
-pyresumable = ">=0.0.7"
+pyresumable = ">=1.0.0.dev0"
 aiofiles = "^25.1.0"
 asyncstdlib = "^3.14.0"
 aioshutil = "^1.6"

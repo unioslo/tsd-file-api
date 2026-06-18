@@ -27,13 +27,13 @@ import tornado.options
 import tornado.web
 from tornado.httputil import HTTPServerRequest as Request
 
+import tsdfileapi.aio.os  # noqa: F401
+from tsdfileapi import aio
 from tsdfileapi.exc import ClientIllegalFilenameError
 from tsdfileapi.exc import ClientIllegalFiletypeError
 from tsdfileapi.exc import ClientSnsPathError
 from tsdfileapi.exc import ServerSnsError
 from tsdfileapi.exc import ServerStorageNotMountedError
-
-from . import aio
 
 VALID_FORMID = re.compile(r"^[0-9]+$")
 PGP_KEY_FINGERPRINT = re.compile(r"^[0-9A-Z]{16}$")

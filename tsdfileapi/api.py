@@ -61,6 +61,11 @@ from tornado.web import Application
 from tornado.web import HTTPError
 from tornado.web import stream_request_body
 
+import tsdfileapi.aio.os  # noqa: F401
+import tsdfileapi.aio.shutil  # noqa: F401
+from tsdfileapi import aio
+from tsdfileapi.aio.builtins import enumerate as aenumerate
+from tsdfileapi.aio.builtins import open as aopen
 from tsdfileapi.auth import process_access_token
 from tsdfileapi.exc import ClientAuthorizationError
 from tsdfileapi.exc import ClientContentRangeError
@@ -87,8 +92,6 @@ from tsdfileapi.utils import days_since_mod
 from tsdfileapi.utils import sns_dir
 from tsdfileapi.utils import tenant_from_url
 from tsdfileapi.utils import trusted_proxies_to_trusted_downstream
-
-from . import aio
 
 _RW______ = stat.S_IREAD | stat.S_IWRITE
 _RW_RW___ = _RW______ | stat.S_IRGRP | stat.S_IWGRP
@@ -827,7 +830,7 @@ class SnsFormDataHandler(AuthRequestHandler):
             await aio.os.rename(self.path, self.path_part)
 
         # write to partial file, rename, set permissions
-        async with aio.open(self.path_part, filemode) as f:
+        async with aopen(self.path_part, filemode) as f:
             await f.write(filebody)
             await aio.os.rename(self.path_part, self.path)
             await aio.os.chmod(self.path, _RW_RW___)
@@ -1310,7 +1313,7 @@ class FileRequestHandler(AuthRequestHandler):
                 if (
                     self.request.method == "PATCH" and not self.completed_resumable_file
                 ) or self.request.method == "PUT":
-                    self.target_file = await aio.open(
+                    self.target_file = await aopen(
                         self.path,
                         filemode,
                         buffering=0,
@@ -1729,7 +1732,7 @@ class FileRequestHandler(AuthRequestHandler):
         start_at = (current_page * pagination_value) - 1
         stop_at = start_at + pagination_value
         # only materialise the necessary entries
-        async for num, entry in aio.enumerate(dir_map):
+        async for num, entry in aenumerate(dir_map):
             if num <= start_at:
                 continue
             elif num <= stop_at and num >= start_at:
@@ -1911,7 +1914,7 @@ class FileRequestHandler(AuthRequestHandler):
         remaining = content_length
         if chunk_size > content_length:
             chunk_size = content_length
-        async with aio.open(filepath, "rb") as fd:
+        async with aopen(filepath, "rb") as fd:
             await fd.seek(range_start)
             while True:
                 data = await fd.read(chunk_size)

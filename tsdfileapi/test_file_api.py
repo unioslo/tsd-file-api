@@ -1353,7 +1353,7 @@ class TestFileApi(unittest.IsolatedAsyncioTestCase):
         self.assertTrue(resp["id"] is not None)
         self.assertEqual(resp["filename"], filename)
 
-    def test_ZP_resume_do_not_upload_if_md5_mismatch(self) -> None:
+    async def test_ZP_resume_do_not_upload_if_md5_mismatch(self) -> None:
         cs = 5
         proj = ""
         filepath = self.resume_file2
@@ -1384,8 +1384,8 @@ class TestFileApi(unittest.IsolatedAsyncioTestCase):
             upload_id=upload_id,
             dev_url=url,
         )
-        res = SerialResumable(self.uploads_folder, "p11-import_user")
-        res._db_remove_completed_for_owner(upload_id)
+        async with SerialResumable(self.uploads_folder, "p11-import_user") as res:
+            await res._db_remove_completed_for_owner(upload_id)
 
     def test_ZR_cancel_resumable(self) -> None:
         cs = 5
@@ -1436,7 +1436,7 @@ class TestFileApi(unittest.IsolatedAsyncioTestCase):
         self.assertTrue(resp["id"] is not None)
         self.assertEqual(resp["filename"], filename)
 
-    def test_ZT_list_all_resumables(self) -> None:
+    async def test_ZT_list_all_resumables(self) -> None:
         filepath = self.resume_file2
         filename = os.path.basename(filepath)
         cs = 5
@@ -1456,13 +1456,13 @@ class TestFileApi(unittest.IsolatedAsyncioTestCase):
             shutil.rmtree(uploaded_folder2)
             os.remove(merged_file1)
             os.remove(merged_file2)
-            res = SerialResumable(self.uploads_folder, "p11-import_user")
-            res._db_remove_completed_for_owner(upload_id1)
-            res._db_remove_completed_for_owner(upload_id2)
+            async with SerialResumable(self.uploads_folder, "p11-import_user") as res:
+                await res._db_remove_completed_for_owner(upload_id1)
+                await res._db_remove_completed_for_owner(upload_id2)
         except OSError:
             pass
 
-    def test_ZU_sending_uneven_chunks_resume_works(self) -> None:
+    async def test_ZU_sending_uneven_chunks_resume_works(self) -> None:
         filepath = self.resume_file2
         filename = os.path.basename(filepath)
         upload_id1 = self.start_new_resumable(filepath, chunksize=3, stop_at=1)
@@ -1492,12 +1492,12 @@ class TestFileApi(unittest.IsolatedAsyncioTestCase):
         try:
             shutil.rmtree(uploaded_folder1)
             os.remove(merged_file1)
-            res = SerialResumable(self.uploads_folder, "p11-import_user")
-            res._db_remove_completed_for_owner(upload_id1)
+            async with SerialResumable(self.uploads_folder, "p11-import_user") as res:
+                await res._db_remove_completed_for_owner(upload_id1)
         except OSError:
             pass
 
-    def test_ZV_resume_chunk_order_enforced(self) -> None:
+    async def test_ZV_resume_chunk_order_enforced(self) -> None:
         filepath = self.resume_file2
         filename = os.path.basename(filepath)
         upload_id = self.start_new_resumable(filepath, chunksize=3, stop_at=2)
@@ -1517,12 +1517,12 @@ class TestFileApi(unittest.IsolatedAsyncioTestCase):
         try:
             shutil.rmtree(uploaded_folder)
             os.remove(merged_file)
-            res = SerialResumable(self.uploads_folder, "p11-import_user")
-            res._db_remove_completed_for_owner(upload_id)
+            async with SerialResumable(self.uploads_folder, "p11-import_user") as res:
+                await res._db_remove_completed_for_owner(upload_id)
         except OSError:
             pass
 
-    def test_ZW_resumables_access_control(self) -> None:
+    async def test_ZW_resumables_access_control(self) -> None:
         filepath = self.resume_file2
         filename = os.path.basename(filepath)
         old_user_token = TEST_TOKENS["VALID"]
@@ -1551,10 +1551,10 @@ class TestFileApi(unittest.IsolatedAsyncioTestCase):
         try:
             shutil.rmtree(uploaded_folder1)
             os.remove(merged_file2)
-            res = SerialResumable(self.uploads_folder, "p11-import_user")
-            res._db_remove_completed_for_owner(upload_id1)
-            res = SerialResumable(self.uploads_folder, "p11-tommy")
-            res._db_remove_completed_for_owner(upload_id2)
+            async with SerialResumable(self.uploads_folder, "p11-import_user") as res:
+                await res._db_remove_completed_for_owner(upload_id1)
+            async with SerialResumable(self.uploads_folder, "p11-tommy") as res:
+                await res._db_remove_completed_for_owner(upload_id2)
         except OSError:
             pass
 
