@@ -1023,17 +1023,18 @@ dev = ["build", "flake8", "mypy", "pytest", "twine"]
 
 [[package]]
 name = "pyresumable"
-version = "0.0.7"
+version = "1.0.0rc1"
 description = "A library for creating files chunk-by-chunk"
 optional = false
 python-versions = "<4.0,>=3.10"
 groups = ["main"]
 files = [
-    {file = "pyresumable-0.0.7-py3-none-any.whl", hash = "sha256:50b441dd6aff0b3108b39d3544eb4552457da01793547a1822a48172ce1c737b"},
-    {file = "pyresumable-0.0.7.tar.gz", hash = "sha256:1e5255077f584138eaa34909b8dfb9465af788e2352a37e27c7cdf753b3962fa"},
+    {file = "pyresumable-1.0.0rc1-py3-none-any.whl", hash = "sha256:f26f92ebcc081a597382e6833cbb02ff47b90833411632ff46b890e11eda1698"},
+    {file = "pyresumable-1.0.0rc1.tar.gz", hash = "sha256:f31e0c842fbee27f1006e9d78bbba33177d0188a0b301edbf1cb3538a8caa873"},
 ]
 
 [package.dependencies]
+aiosqlite = ">=0.22.1,<0.23.0"
 typing_extensions = ">=4.15.0,<5.0.0"
 
 [[package]]
@@ -1523,4 +1524,4 @@ propcache = ">=0.2.1"
 [metadata]
 lock-version = "2.1"
 python-versions = ">=3.10,<4"
-content-hash = "3eca773ce5492bb7fff4ebbc31fbe59f007752eef6d1f17e79aff82f6eae990d"
+content-hash = "9b8a545598a3d5acc89ad7b978620337c13a1498dcac657bfb2e8dcb30fb4620"
