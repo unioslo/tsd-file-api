@@ -1599,8 +1599,9 @@ class FileRequestHandler(AuthRequestHandler):
                 mime_type = await to_thread(
                     magic.from_file, filename_raw_utf8, mime=True
                 )
-        stat = await aio.os.stat(filename)
-        return stat.st_size, mime_type, stat.st_mtime
+        size = (await aio.os.lstat(filename)).st_size
+        mtime = (await aio.os.lstat(filename)).st_mtime
+        return size, mime_type, mtime
 
     def _base_uri(self) -> str:
         """
