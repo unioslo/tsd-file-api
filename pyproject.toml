@@ -25,7 +25,7 @@ pyresumable = ">=1.0.0.dev0"
 aiofiles = "^25.1.0"
 asyncstdlib = "^3.14.0"
 aioshutil = "^1.6"
-psycopg = ">=3.3.4"
+psycopg = { version = ">=3.3.4", extras = ["c"] }
 aiosqlite = ">=0.22.1"
 aio-pika = ">=9.6.2"
 

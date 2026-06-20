@@ -6,6 +6,8 @@ import uuid
 
 import aio_pika
 
+from tsdfileapi.exc import ExchangeNotDeclaredError
+
 logger = logging.getLogger(__name__)
 
 
@@ -85,7 +87,10 @@ class AmqpClient:
             timestamp=timestamp if timestamp is not None else int(time.time()),
             message_id=str(uuid.uuid4()),
         )
-        ex = self._exchanges[exchange]
+        try:
+            ex = self._exchanges[exchange]
+        except KeyError:
+            raise ExchangeNotDeclaredError(exchange, list(self._exchanges))
         await ex.publish(message, routing_key=routing_key)
 
     async def close(self) -> None:
