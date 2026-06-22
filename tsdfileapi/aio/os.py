@@ -111,7 +111,8 @@ async def walk(top, topdown=True, onerror=None, followlinks=False):
                             try:
                                 is_symlink = entry.is_symlink()
                             except OSError as error:
-                                onerror(error)
+                                if onerror is not None:
+                                    onerror(error)
                                 is_symlink = False
                         if followlinks or not is_symlink:
                             walk_dirs.append(entry.path)
