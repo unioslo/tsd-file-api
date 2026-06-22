@@ -85,7 +85,7 @@ def await_file(filename: str) -> bool:
     return os.stat(filename) is not None
 
 
-class TestFileApi(unittest.TestCase):
+class TestFileApi(unittest.IsolatedAsyncioTestCase):
     @classmethod
     def setUpClass(cls):
         try:
@@ -141,14 +141,17 @@ class TestFileApi(unittest.TestCase):
         class Options:
             tenant_storage_cache = {}
 
-        cls.sns_uploads_folder = sns_dir(
-            cls.test_sns_dir,
-            cls.config["test_project"],
-            cls.test_sns_url,
-            cls.config["tenant_string_pattern"],
-            test=True,
-            options=Options(),
+        cls.sns_uploads_folder = asyncio.run(
+            sns_dir(
+                cls.test_sns_dir,
+                cls.config["test_project"],
+                cls.test_sns_url,
+                cls.config["tenant_string_pattern"],
+                test=True,
+                options=Options(),
+            )
         )
+
         cls.publication_import_folder = cls.config["backends"]["disk"]["publication"][
             "import_path"
         ].replace("pXX", cls.config["test_project"])
@@ -1064,41 +1067,38 @@ class TestFileApi(unittest.TestCase):
         self.assertTrue(await_file(uploaded_file2))
         self.assertEqual(md5sum(self.example_csv), md5sum(uploaded_file2))
 
-    def test_ZB_sns_folder_logic_is_correct(self) -> None:
+    async def test_ZB_sns_folder_logic_is_correct(self) -> None:
         class Options:
             tenant_storage_cache = {}
 
         # lowercase in key id
-        self.assertRaises(
-            Exception,
-            sns_dir,
-            self.test_sns_dir,
-            "p11",
-            "/v1/p11/sns/255cE5ED50A7558B/98765",
-            self.tenant_string_pattern,
-            options=Options(),
-        )
+        with self.assertRaises(Exception):
+            await sns_dir(
+                self.test_sns_dir,
+                "p11",
+                "/v1/p11/sns/255cE5ED50A7558B/98765",
+                self.tenant_string_pattern,
+                options=Options(),
+            )
         # too long but still valid key id
-        self.assertRaises(
-            Exception,
-            sns_dir,
-            self.test_sns_dir,
-            "p11",
-            "/v1/p11/sns/255CE5ED50A7558BXIJIJ87878/98765",
-            self.tenant_string_pattern,
-            options=Options(),
-        )
+        with self.assertRaises(Exception):
+            await sns_dir(
+                self.test_sns_dir,
+                "p11",
+                "/v1/p11/sns/255CE5ED50A7558BXIJIJ87878/98765",
+                self.tenant_string_pattern,
+                options=Options(),
+            )
         # non-numeric formid
-        self.assertRaises(
-            Exception,
-            sns_dir,
-            self.test_sns_dir,
-            "p11",
-            "255CE5ED50A7558B",
-            "99999-%$%&*",
-            self.tenant_string_pattern,
-            options=Options(),
-        )
+        with self.assertRaises(Exception):
+            await sns_dir(
+                self.test_sns_dir,
+                "p11",
+                "255CE5ED50A7558B",
+                "99999-%$%&*",
+                self.tenant_string_pattern,
+                options=Options(),
+            )
 
     @pytest_skip_for_compatibility_reasons
     def test_ZC_setting_ownership_based_on_user_works(self) -> None:
@@ -1353,7 +1353,7 @@ class TestFileApi(unittest.TestCase):
         self.assertTrue(resp["id"] is not None)
         self.assertEqual(resp["filename"], filename)
 
-    def test_ZP_resume_do_not_upload_if_md5_mismatch(self) -> None:
+    async def test_ZP_resume_do_not_upload_if_md5_mismatch(self) -> None:
         cs = 5
         proj = ""
         filepath = self.resume_file2
@@ -1384,8 +1384,8 @@ class TestFileApi(unittest.TestCase):
             upload_id=upload_id,
             dev_url=url,
         )
-        res = SerialResumable(self.uploads_folder, "p11-import_user")
-        res._db_remove_completed_for_owner(upload_id)
+        async with SerialResumable(self.uploads_folder, "p11-import_user") as res:
+            await res._db_remove_completed_for_owner(upload_id)
 
     def test_ZR_cancel_resumable(self) -> None:
         cs = 5
@@ -1436,7 +1436,7 @@ class TestFileApi(unittest.TestCase):
         self.assertTrue(resp["id"] is not None)
         self.assertEqual(resp["filename"], filename)
 
-    def test_ZT_list_all_resumables(self) -> None:
+    async def test_ZT_list_all_resumables(self) -> None:
         filepath = self.resume_file2
         filename = os.path.basename(filepath)
         cs = 5
@@ -1456,13 +1456,13 @@ class TestFileApi(unittest.TestCase):
             shutil.rmtree(uploaded_folder2)
             os.remove(merged_file1)
             os.remove(merged_file2)
-            res = SerialResumable(self.uploads_folder, "p11-import_user")
-            res._db_remove_completed_for_owner(upload_id1)
-            res._db_remove_completed_for_owner(upload_id2)
+            async with SerialResumable(self.uploads_folder, "p11-import_user") as res:
+                await res._db_remove_completed_for_owner(upload_id1)
+                await res._db_remove_completed_for_owner(upload_id2)
         except OSError:
             pass
 
-    def test_ZU_sending_uneven_chunks_resume_works(self) -> None:
+    async def test_ZU_sending_uneven_chunks_resume_works(self) -> None:
         filepath = self.resume_file2
         filename = os.path.basename(filepath)
         upload_id1 = self.start_new_resumable(filepath, chunksize=3, stop_at=1)
@@ -1492,12 +1492,12 @@ class TestFileApi(unittest.TestCase):
         try:
             shutil.rmtree(uploaded_folder1)
             os.remove(merged_file1)
-            res = SerialResumable(self.uploads_folder, "p11-import_user")
-            res._db_remove_completed_for_owner(upload_id1)
+            async with SerialResumable(self.uploads_folder, "p11-import_user") as res:
+                await res._db_remove_completed_for_owner(upload_id1)
         except OSError:
             pass
 
-    def test_ZV_resume_chunk_order_enforced(self) -> None:
+    async def test_ZV_resume_chunk_order_enforced(self) -> None:
         filepath = self.resume_file2
         filename = os.path.basename(filepath)
         upload_id = self.start_new_resumable(filepath, chunksize=3, stop_at=2)
@@ -1517,12 +1517,12 @@ class TestFileApi(unittest.TestCase):
         try:
             shutil.rmtree(uploaded_folder)
             os.remove(merged_file)
-            res = SerialResumable(self.uploads_folder, "p11-import_user")
-            res._db_remove_completed_for_owner(upload_id)
+            async with SerialResumable(self.uploads_folder, "p11-import_user") as res:
+                await res._db_remove_completed_for_owner(upload_id)
         except OSError:
             pass
 
-    def test_ZW_resumables_access_control(self) -> None:
+    async def test_ZW_resumables_access_control(self) -> None:
         filepath = self.resume_file2
         filename = os.path.basename(filepath)
         old_user_token = TEST_TOKENS["VALID"]
@@ -1551,10 +1551,10 @@ class TestFileApi(unittest.TestCase):
         try:
             shutil.rmtree(uploaded_folder1)
             os.remove(merged_file2)
-            res = SerialResumable(self.uploads_folder, "p11-import_user")
-            res._db_remove_completed_for_owner(upload_id1)
-            res = SerialResumable(self.uploads_folder, "p11-tommy")
-            res._db_remove_completed_for_owner(upload_id2)
+            async with SerialResumable(self.uploads_folder, "p11-import_user") as res:
+                await res._db_remove_completed_for_owner(upload_id1)
+            async with SerialResumable(self.uploads_folder, "p11-tommy") as res:
+                await res._db_remove_completed_for_owner(upload_id2)
         except OSError:
             pass
 
@@ -2972,7 +2972,7 @@ class TestFileApi(unittest.TestCase):
                 expected_uri="/v1/p11/files/export/file1",
             )
 
-    def test_find_tenant_storage_path(self) -> None:
+    async def test_find_tenant_storage_path(self) -> None:
         td = tempfile.TemporaryDirectory()
         root = td.name
         os.makedirs(f"{root}/projects01/p11/data/durable")
@@ -2984,7 +2984,7 @@ class TestFileApi(unittest.TestCase):
         opts = Options()
         # choose ess
         self.assertEqual(
-            find_tenant_storage_path(
+            await find_tenant_storage_path(
                 "p11",
                 opts,
                 root=root,
@@ -2992,7 +2992,7 @@ class TestFileApi(unittest.TestCase):
             f"{root}/projects01/p11",
         )
 
-    def test_choose_storage(self) -> None:
+    async def test_choose_storage(self) -> None:
         class Options:
             tenant_storage_cache = {}
 
@@ -3000,7 +3000,7 @@ class TestFileApi(unittest.TestCase):
 
         not_tsd = "/eka/pada/koundinyasana"
         self.assertEqual(
-            choose_storage(tenant="p11", opts=opts, directory=not_tsd),
+            await choose_storage(tenant="p11", opts=opts, directory=not_tsd),
             not_tsd,
         )
 
@@ -3010,13 +3010,13 @@ class TestFileApi(unittest.TestCase):
         }
         tsd_path = "/tsd/p11/data/durable/file-import"
         self.assertEqual(
-            choose_storage(tenant="p11", opts=opts, directory=tsd_path),
+            await choose_storage(tenant="p11", opts=opts, directory=tsd_path),
             "/ess/projects01/p11/data/durable/file-import",
         )
 
         home_path = "/tsd/p11/home"
         self.assertEqual(
-            choose_storage(
+            await choose_storage(
                 tenant="p11", opts=opts, directory=home_path, user="p11-user"
             ),
             "/ess/projects01/p11/home/p11-user",
