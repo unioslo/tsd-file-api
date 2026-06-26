@@ -57,7 +57,7 @@ jobs:
           if-no-files-found: error
       - name: Attach RPM to GitHub release
         if: github.ref_type == 'tag'
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v3
         with:
           files: rpm/*.rpm
       - name: Upload RPM to TSD Artifacts
