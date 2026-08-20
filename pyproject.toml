@@ -16,7 +16,7 @@ tsd-file-api = "tsdfileapi.api:main"
 python = ">=3.10,<4"
 jwcrypto = ">=1.4.2"
 tornado = ">=6.3.2"
-libnacl = ">=1.7.1"
+pynacl = { url = "https://github.com/haatveit/pynacl/archive/8a1121b9381a91e081c00936ca3a77ecf431bd23.zip" }
 pysquril = { version = ">=1.2.0", extras = ["async"] }
 termcolor = ">=1.1.0"
 python-magic = ">=0.4.15"
