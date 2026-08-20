@@ -21,9 +21,8 @@ from pathlib import Path
 from typing import Optional
 
 import backoff
-import libnacl.public
-import libnacl.sealed
-import libnacl.utils
+import nacl.bindings
+import nacl.public
 import requests
 from pyresumable.resumables import SerialResumable
 from pysquril import AsyncPostgresBackend
@@ -44,6 +43,14 @@ from tsdfileapi.utils import set_mtime
 from tsdfileapi.utils import sns_dir
 
 logger = logging.getLogger(__name__)
+
+
+def salsa_key() -> bytes:
+    return nacl.bindings.crypto_stream_keygen()
+
+
+def rand_nonce() -> bytes:
+    return nacl.bindings.randombytes(nacl.bindings.crypto_stream_NONCEBYTES)
 
 
 import pytest
@@ -1207,7 +1214,7 @@ class TestFileApi(unittest.IsolatedAsyncioTestCase):
         is_dir: bool = None,
         remote_resource_key: str = None,
         group: str = None,
-        public_key: Optional[libnacl.public.PublicKey] = None,
+        public_key: Optional[bytes] = None,
         **options,
     ) -> None:
         if not token:
@@ -2362,7 +2369,7 @@ class TestFileApi(unittest.IsolatedAsyncioTestCase):
             """Decrypt the response in chunks specified by chunk_size."""
             decrypted_response = b""
             for chunk in range(math.ceil(len(response) / chunk_size)):
-                decrypted_response += libnacl.crypto_stream_xor(
+                decrypted_response += nacl.bindings.crypto_stream_xor(
                     response[chunk * chunk_size : (chunk + 1) * chunk_size],
                     nonce,
                     key,
@@ -2404,12 +2411,12 @@ class TestFileApi(unittest.IsolatedAsyncioTestCase):
         # sealed box setup for server pubkey
         response = requests.get(f"{self.apps}/crypto/key")
         encoded_public_key = response.json().get("public_key")
-        public_key = libnacl.public.PublicKey(base64.b64decode(encoded_public_key))
-        client_sealed_box = libnacl.sealed.SealedBox(public_key)
+        public_key = nacl.public.PublicKey(base64.b64decode(encoded_public_key))
+        client_sealed_box = nacl.public.SealedBox(public_key)
 
         # client secrets
-        key = libnacl.utils.salsa_key()
-        nonce = libnacl.utils.rand_nonce()
+        key = salsa_key()
+        nonce = rand_nonce()
         cipher_text_key = client_sealed_box.encrypt(key)
         cipher_text_nonce = client_sealed_box.encrypt(nonce)
 
@@ -2503,7 +2510,7 @@ class TestFileApi(unittest.IsolatedAsyncioTestCase):
         self.assertTrue(len(json.loads(resp.text)) > 0)
 
     def test_nacl_crypto(self) -> None:
-        # https://libnacl.readthedocs.io/en/latest/index.html
+        # https://pynacl.readthedocs.io/en/latest/
 
         # server key pair
         server_public_key = base64.b64decode(self.config["test_nacl_public"]["public"])
@@ -2516,24 +2523,26 @@ class TestFileApi(unittest.IsolatedAsyncioTestCase):
         # https://github.com/bcomnes/nacl-blob and https://nacl-blob.netlify.app/
         # https://github.com/tonyg/js-nacl#secret-key-encryption-crypto_stream
         # 1. generate a client secret key and nonce
-        nonce = libnacl.utils.rand_nonce()
-        key = libnacl.utils.salsa_key()
+        nonce = rand_nonce()
+        key = salsa_key()
 
         # 2. use it to encrypt payload
         payload = "hi there"
-        encrypted_payload = libnacl.crypto_stream_xor(payload.encode(), nonce, key)
+        encrypted_payload = nacl.bindings.crypto_stream_xor(
+            payload.encode(), nonce, key
+        )
 
         # 3. use server public key encrypt client secret key, and nonce
-        client_sealed_box = libnacl.sealed.SealedBox(
-            libnacl.public.PublicKey(server_public_key)
+        client_sealed_box = nacl.public.SealedBox(
+            nacl.public.PublicKey(server_public_key)
         )
         cipher_text_key = client_sealed_box.encrypt(key)
         cipher_text_nonce = client_sealed_box.encrypt(nonce)
 
         # server
         # 1. decrypt the client secret key
-        server_sealed_box = libnacl.sealed.SealedBox(
-            libnacl.public.SecretKey(server_private_key)
+        server_sealed_box = nacl.public.SealedBox(
+            nacl.public.PrivateKey(server_private_key)
         )
         decrypted_client_key = server_sealed_box.decrypt(cipher_text_key)
         decrypted_client_nonce = server_sealed_box.decrypt(cipher_text_nonce)
@@ -2541,7 +2550,7 @@ class TestFileApi(unittest.IsolatedAsyncioTestCase):
         assert nonce == decrypted_client_nonce
 
         # 2. decrypt the encrypted payload
-        decrypted_payload = libnacl.crypto_stream_xor(
+        decrypted_payload = nacl.bindings.crypto_stream_xor(
             encrypted_payload, decrypted_client_nonce, decrypted_client_key
         )
         assert decrypted_payload.decode() == payload
@@ -2561,7 +2570,7 @@ class TestFileApi(unittest.IsolatedAsyncioTestCase):
                     data = fplain.read(chunk_size)
                     if not data:
                         break
-                    enc = libnacl.crypto_stream_xor(data, nonce, key)
+                    enc = nacl.bindings.crypto_stream_xor(data, nonce, key)
                     fcipher.write(enc)
 
         # Simulate getting chunks of different sizes form the network
@@ -2586,13 +2595,13 @@ class TestFileApi(unittest.IsolatedAsyncioTestCase):
                     for byte in chunk:
                         _buffer += bytes([byte])
                         if len(_buffer) % chunk_size == 0:
-                            decr = libnacl.crypto_stream_xor(_buffer, nonce, key)
+                            decr = nacl.bindings.crypto_stream_xor(_buffer, nonce, key)
                             fdecrypted.write(decr)
                             _buffer = b""
                     if not chunk:
                         break
                 if len(_buffer) > 0:
-                    decr = libnacl.crypto_stream_xor(_buffer, nonce, key)
+                    decr = nacl.bindings.crypto_stream_xor(_buffer, nonce, key)
                     fdecrypted.write(decr)
 
         self.assertTrue(await_file(dec_test_file))
@@ -2602,10 +2611,10 @@ class TestFileApi(unittest.IsolatedAsyncioTestCase):
         # client setup steps
         resp = requests.get(f"{self.base_url}/survey/crypto/key")
         encoded_public_key = json.loads(resp.text).get("public_key")
-        public_key = libnacl.public.PublicKey(base64.b64decode(encoded_public_key))
-        sbox = libnacl.sealed.SealedBox(public_key)
-        nonce = libnacl.utils.rand_nonce()
-        key = libnacl.utils.salsa_key()
+        public_key = nacl.public.PublicKey(base64.b64decode(encoded_public_key))
+        sbox = nacl.public.SealedBox(public_key)
+        nonce = rand_nonce()
+        key = salsa_key()
         chunk_size = 5
         # save a new encrypted stream to a file, with new nonce, and key
         # this could be generated on the fly while reading the file
@@ -2617,7 +2626,7 @@ class TestFileApi(unittest.IsolatedAsyncioTestCase):
                     data = fin.read(chunk_size)
                     if not data:
                         break
-                    enc = libnacl.crypto_stream_xor(data, nonce, key)
+                    enc = nacl.bindings.crypto_stream_xor(data, nonce, key)
                     fout.write(enc)
 
         # prepare request params
@@ -2661,7 +2670,9 @@ class TestFileApi(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(md5sum(test_file), md5sum(upload))
 
         # send as a resumable
-        self.start_new_resumable(self.resume_file1, chunksize=5, public_key=public_key)
+        self.start_new_resumable(
+            self.resume_file1, chunksize=5, public_key=public_key.encode()
+        )
 
         # test refuse too large chunk size
         resp = requests.put(
@@ -2693,7 +2704,7 @@ class TestFileApi(unittest.IsolatedAsyncioTestCase):
             # return encrypted payload
             # and length of serialised, byte encoded json
             serialised = json.dumps(data).encode()
-            enc = libnacl.crypto_stream_xor(serialised, nonce, key)
+            enc = nacl.bindings.crypto_stream_xor(serialised, nonce, key)
             return enc, len(serialised)
 
         target = "444222/submissions"
@@ -2745,7 +2756,7 @@ class TestFileApi(unittest.IsolatedAsyncioTestCase):
             TEST_TOKENS["VALID"],
             2,  # chunksize
             dev_url=f"{self.export}/file1",
-            public_key=public_key,
+            public_key=public_key.encode(),
             target_dir="/tmp",
         )
         self.assertEqual(open("/tmp/file1").read(), "some data\n")

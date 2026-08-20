@@ -36,9 +36,9 @@ from typing import Union
 from uuid import uuid4
 
 import aiosqlite
-import libnacl.public
-import libnacl.sealed
 import magic
+import nacl.bindings
+import nacl.public
 import psycopg.errors
 import tornado.httputil
 import tornado.log
@@ -154,10 +154,8 @@ def set_config() -> None:
     define("max_nacl_chunksize", _config.get("max_nacl_chunksize", _50MB))
     define(
         "sealed_box",
-        libnacl.sealed.SealedBox(
-            libnacl.public.SecretKey(
-                base64.b64decode(_config["nacl_public"]["private"])
-            )
+        nacl.public.SealedBox(
+            nacl.public.PrivateKey(base64.b64decode(_config["nacl_public"]["private"]))
         ),
     )
     define("rabbitmq", _config.get("rabbitmq", {}))
@@ -1391,7 +1389,7 @@ class FileRequestHandler(AuthRequestHandler):
             """
             self._buffer += data
             while len(self._buffer) >= self._threshold:
-                yield libnacl.crypto_stream_xor(
+                yield nacl.bindings.crypto_stream_xor(
                     self._buffer[: self._threshold], self._nonce, self._key
                 )
                 self._buffer = self._buffer[self._threshold :]
@@ -1923,7 +1921,10 @@ class FileRequestHandler(AuthRequestHandler):
                     break
                 if encrypt_data:
                     data = await to_thread(
-                        libnacl.crypto_stream_xor, data, self.nacl_nonce, self.nacl_key
+                        nacl.bindings.crypto_stream_xor,
+                        data,
+                        self.nacl_nonce,
+                        self.nacl_key,
                     )
                 self.write(data)
                 await self.flush()
@@ -2407,11 +2408,13 @@ class GenericTableHandler(AuthRequestHandler):
         while len(nacl_stream_buffer) >= nacl_chunksize:
             target_content = nacl_stream_buffer[:nacl_chunksize]
             remainder = nacl_stream_buffer[nacl_chunksize:]
-            decrypted = libnacl.crypto_stream_xor(target_content, nacl_nonce, nacl_key)
+            decrypted = nacl.bindings.crypto_stream_xor(
+                target_content, nacl_nonce, nacl_key
+            )
             out += decrypted
             nacl_stream_buffer = remainder
         if nacl_stream_buffer:
-            decrypted = libnacl.crypto_stream_xor(
+            decrypted = nacl.bindings.crypto_stream_xor(
                 nacl_stream_buffer, nacl_nonce, nacl_key
             )
             out += decrypted
@@ -2532,8 +2535,8 @@ class GenericTableHandler(AuthRequestHandler):
                     empty_result: Union[str, bytes] = (
                         "[]"
                         if not encrypt_data
-                        else libnacl.crypto_stream_xor(
-                            msg=b"[]",
+                        else nacl.bindings.crypto_stream_xor(
+                            message=b"[]",
                             nonce=self.nacl_nonce,
                             key=self.nacl_key,
                         )
@@ -2556,8 +2559,8 @@ class GenericTableHandler(AuthRequestHandler):
                         sent = 0
                         while sent < len(json_data):
                             self.write(
-                                libnacl.crypto_stream_xor(
-                                    msg=json_data[sent : sent + self.CHUNK_SIZE],
+                                nacl.bindings.crypto_stream_xor(
+                                    message=json_data[sent : sent + self.CHUNK_SIZE],
                                     nonce=self.nacl_nonce,
                                     key=self.nacl_key,
                                 )
