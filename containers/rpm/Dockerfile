@@ -28,7 +28,8 @@ RUN source /etc/os-release && \
         yum install -y \
             python3.12 \
             python3.12-pip \
-            python3.12-devel && \
+            python3.12-devel \
+            'expat >= 2.5.0' && \
             alternatives --install /usr/bin/python3 python3 /usr/bin/python3.12 99 && \
             echo "--depends python3.12 " >> /build-options && \
             echo "export VIRTUALENV_PYTHON=/usr/bin/python3.12" >> /build-env ;\
