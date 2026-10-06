@@ -1350,14 +1350,14 @@ files = [
 
 [[package]]
 name = "tsd-api-client"
-version = "3.9.5"
+version = "3.9.6"
 description = "A client for the TSD REST API"
 optional = false
 python-versions = "<4.0,>=3.8"
 groups = ["dev"]
 files = [
-    {file = "tsd_api_client-3.9.5-py3-none-any.whl", hash = "sha256:ce9cfa65d7711f517d6fa2abfb613c2032d97cdfc95e01f7984965bf777301d9"},
-    {file = "tsd_api_client-3.9.5.tar.gz", hash = "sha256:2c3bac0b4b737a5b4f7d9a089104ddc3ee233415c25bb0867ae2780f594ae21b"},
+    {file = "tsd_api_client-3.9.6-py3-none-any.whl", hash = "sha256:e501bff840e953e1bd3acb98d7bd0d2fb0a2df9bf142f7c2397975d7039b8bcd"},
+    {file = "tsd_api_client-3.9.6.tar.gz", hash = "sha256:44d3f57608c1fb55f2616bc91cd4cd9427af1294696840377a24131e939eea07"},
 ]
 
 [package.dependencies]
