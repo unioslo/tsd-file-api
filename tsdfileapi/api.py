@@ -1892,7 +1892,7 @@ class FileRequestHandler(AuthRequestHandler):
             etag = None
             if self.filepath:
                 mtime = os.lstat(self.filepath).st_mtime
-                etag = self.mtime_to_digest(mtime)
+                etag = f'"{self.mtime_to_digest(mtime)}"'
             return etag
         except Exception:
             return None
