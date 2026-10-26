@@ -2016,7 +2016,7 @@ class FileRequestHandler(AuthRequestHandler):
                     client_end = int(start_and_end[1])
                 except Exception:
                     client_end = full_file_size - 1
-                if client_end > full_file_size:
+                if client_end >= full_file_size:
                     raise ClientContentRangeError(
                         "Range request exceeds byte range of resource"
                     )
