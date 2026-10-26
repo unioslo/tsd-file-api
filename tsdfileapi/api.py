@@ -2020,6 +2020,11 @@ class FileRequestHandler(AuthRequestHandler):
                     raise ClientContentRangeError(
                         "Range request exceeds byte range of resource"
                     )
+                self.set_status(206)
+                self.set_header(
+                    "Content-Range",
+                    f"bytes {client_start}-{client_end}/{full_file_size}",
+                )
                 # because clients provide 0-based byte indices
                 # we must add 1 to calculate the desired amount to read
                 size = client_end - client_start + 1
