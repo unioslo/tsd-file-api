@@ -2027,6 +2027,7 @@ class FileRequestHandler(AuthRequestHandler):
                 encrypt_data,
                 cursor_start,
             )
+            self.finish()
             logger.info(
                 f"{self.requestor}, downloaded: {self.filepath}, MIME type: {mime_type}, size: {size}"
             )
