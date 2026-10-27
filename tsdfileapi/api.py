@@ -1984,6 +1984,10 @@ class FileRequestHandler(AuthRequestHandler):
                 self.CHUNK_SIZE = self.nacl_chunksize
                 encrypt_data = True
             self.set_header("Content-Type", mime_type)
+            self.set_header(
+                "Last-Modified",
+                last_modified := tornado.httputil.format_timestamp(mtime),
+            )
             self.set_header("Modified-Time", str(mtime))
             self.set_header("Accept-Ranges", "bytes")
             if "Range" not in self.request.headers:
@@ -1995,9 +1999,13 @@ class FileRequestHandler(AuthRequestHandler):
                 )
             elif "Range" in self.request.headers:
                 if "If-Range" in self.request.headers:
-                    provided_etag = self.request.headers["If-Range"]
-                    computed_etag = await to_thread(self.compute_etag)
-                    if provided_etag != computed_etag:
+                    if_range = self.request.headers["If-Range"]
+                    computed_etag = (
+                        (await to_thread(self.compute_etag))
+                        if if_range[0] == '"'  # Entity tag proper
+                        else last_modified
+                    )
+                    if if_range != computed_etag:
                         raise ClientError(
                             "The resource has changed, get everything from the start again"
                         )
