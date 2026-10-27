@@ -2000,6 +2000,10 @@ class FileRequestHandler(AuthRequestHandler):
             elif "Range" in self.request.headers:
                 if "If-Range" in self.request.headers:
                     if_range = self.request.headers["If-Range"]
+                    if if_range[:2].lower() == "w/":
+                        raise ClientError(
+                            "Protocol violation: weak entity tag"
+                        )  # "A client MUST NOT generate an If-Range header field containing an entity tag that is marked as weak." [RFC9110]
                     computed_etag = (
                         (await to_thread(self.compute_etag))
                         if if_range[0] == '"'  # Entity tag proper
