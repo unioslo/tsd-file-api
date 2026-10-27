@@ -1984,35 +1984,13 @@ class FileRequestHandler(AuthRequestHandler):
                 self.CHUNK_SIZE = self.nacl_chunksize
                 encrypt_data = True
             self.set_header("Content-Type", mime_type)
-            self.set_header(
-                "Last-Modified",
-                last_modified := tornado.httputil.format_timestamp(mtime),
-            )
+            self.last_modified = tornado.httputil.format_timestamp(mtime)
+            self.set_header("Last-Modified", self.last_modified)
             self.set_header("Modified-Time", str(mtime))
             self.set_header("Accept-Ranges", "bytes")
-            if "Range" not in self.request.headers:
-                await self.serve_file(
-                    self.filepath,
-                    self.CHUNK_SIZE,
-                    size,
-                    encrypt_data,
-                )
-            elif "Range" in self.request.headers:
-                if "If-Range" in self.request.headers:
-                    if_range = self.request.headers["If-Range"]
-                    if if_range[:2].lower() == "w/":
-                        raise ClientError(
-                            "Protocol violation: weak entity tag"
-                        )  # "A client MUST NOT generate an If-Range header field containing an entity tag that is marked as weak." [RFC9110]
-                    computed_etag = (
-                        (await to_thread(self.compute_etag))
-                        if if_range[0] == '"'  # Entity tag proper
-                        else last_modified
-                    )
-                    if if_range != computed_etag:
-                        raise ClientError(
-                            "The resource has changed, get everything from the start again"
-                        )
+            if "Range" in self.request.headers and (
+                ("If-Range" not in self.request.headers) or self.if_range_matches()
+            ):
                 # clients specify the range in terms of 0-based index numbers
                 # with an inclusive interval: [start, end]
                 client_byte_index_range = self.request.headers["Range"]
@@ -2040,13 +2018,15 @@ class FileRequestHandler(AuthRequestHandler):
                 # because clients provide 0-based byte indices
                 # we must add 1 to calculate the desired amount to read
                 size = client_end - client_start + 1
-                await self.serve_file(
-                    self.filepath,
-                    self.CHUNK_SIZE,
-                    size,
-                    encrypt_data,
-                    cursor_start,
-                )
+            else:
+                cursor_start = 0
+            await self.serve_file(
+                self.filepath,
+                self.CHUNK_SIZE,
+                size,
+                encrypt_data,
+                cursor_start,
+            )
             logger.info(
                 f"{self.requestor}, downloaded: {self.filepath}, MIME type: {mime_type}, size: {size}"
             )
@@ -2056,6 +2036,22 @@ class FileRequestHandler(AuthRequestHandler):
             for name, value in error.headers.items():
                 self.set_header(name, value)
             self.set_status(error.status, reason=error.reason)
+
+    def if_range_matches(self) -> bool:
+        """Determine if condition expressed with the `If-Range` request header, applies.
+
+        Note that although clients are explicitly prohibited by the RFC to send _weak_ entity tag values in `If-Range`, evaluation of the condition _is defined_ for these values, i.e. is no cause for aborting (the procedure returns `False`).
+        """
+        assert (
+            "Range" in self.request.headers
+        )  # Assert since use of `If-Range` is conditional on presence of `Range`
+        if_range = self.request.headers["If-Range"]
+        if if_range[:2].lower() == "w/":
+            logger.debug("Client used a weak entity tag in `If-Range`")
+            return False
+        return if_range == (
+            self.compute_etag() if if_range[0] == '"' else self.last_modified
+        )
 
     async def head(self, tenant: str, filename: str) -> None:
         """
