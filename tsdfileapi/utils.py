@@ -14,12 +14,10 @@ import shlex
 import shutil
 import stat
 import sys
+from collections.abc import Callable
+from collections.abc import Mapping
 from dataclasses import dataclass
 from ipaddress import ip_network
-from typing import Callable
-from typing import Mapping
-from typing import Optional
-from typing import Union
 from uuid import uuid4
 
 import tornado.log
@@ -67,7 +65,7 @@ def _rwxrws___() -> int:
 async def _find_ess_dir(
     pnum: str,
     root: str = "/ess",
-) -> Optional[str]:
+) -> str | None:
     sub_dir = None
     for projects_dir in await aio.os.listdir(root):
         if pnum in await aio.os.listdir(f"{root}/{projects_dir}"):
@@ -210,7 +208,7 @@ def md5sum(filename: str, blocksize: int = 65536) -> str:
     return _hash.hexdigest()
 
 
-def move_data_to_folder(path: str, dest: str) -> Union[str, bool]:
+def move_data_to_folder(path: str, dest: str) -> str | bool:
     """
     Move file/dir at path into and folder at dest.
 
@@ -241,7 +239,7 @@ def set_mtime(path: str, mtime: int) -> None:
 
 
 async def any_path_islink(
-    path: Union[str, pathlib.Path],
+    path: str | pathlib.Path,
     opts: tornado.options.OptionParser,
 ) -> bool:
     """Check if any part of a given path is a symlink.
@@ -271,7 +269,7 @@ def cidr_to_set(ip: str) -> set:
 
 def trusted_proxies_to_trusted_downstream(
     trusted_proxies: list = None,
-) -> Optional[list]:
+) -> list | None:
     """Convert our trusted_proxies (CIDR supported) format to a list of IP addresses.
 
     Tornado expects a list of IP addresses, so we must expand CIDR network
@@ -332,7 +330,7 @@ logged_object_repr = LoggedObjectRepr()
 logged_object_repr.maxother = sys.maxsize  # No limit, it's bad enough for our purposes that data is otherwise cut off from the middle
 
 
-def with_logged_calls(logger: logging.Logger, level: Union[int | str]) -> Callable:
+def with_logged_calls(logger: logging.Logger, level: int | str) -> Callable:
     """
     A decorator that makes calling an object (normally a function) produce a log message.
     """

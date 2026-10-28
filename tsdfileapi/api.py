@@ -23,16 +23,13 @@ import stat
 import time
 from asyncio import create_task
 from asyncio import to_thread
+from collections.abc import Awaitable
 from collections.abc import Coroutine
 from collections.abc import MutableSet
 from concurrent.futures import ThreadPoolExecutor
 from http import HTTPStatus
 from sys import argv
 from typing import Any
-from typing import Awaitable
-from typing import Dict
-from typing import Optional
-from typing import Union
 from uuid import uuid4
 
 import aiosqlite
@@ -472,10 +469,10 @@ class AuthRequestHandler(RequestHandler):
 
     async def handle_mq_publication(
         self,
-        mq_config: Optional[dict] = None,
-        data: Optional[dict] = None,
-        http_method: Optional[str] = None,
-        http_uri: Optional[str] = None,
+        mq_config: dict | None = None,
+        data: dict | None = None,
+        http_method: str | None = None,
+        http_uri: str | None = None,
     ) -> None:
         """
         Publish a message to RabbitMQ, as the result of a HTTP request.
@@ -645,7 +642,7 @@ class AuthRequestHandler(RequestHandler):
         uri: str,
         app: str = None,
         claims: dict = {},
-        requestor_name: Optional[str] = None,
+        requestor_name: str | None = None,
     ) -> None:
         """
         Log request information - for audit purposes. For the IP to
@@ -682,7 +679,7 @@ class AuthRequestHandler(RequestHandler):
         self,
         tenant: str,
         backend: str,
-        app: Optional[str],
+        app: str | None,
         data: dict,
     ) -> None:
         engine = None
@@ -704,7 +701,7 @@ class AuthRequestHandler(RequestHandler):
                 except Exception as e:
                     logger.warning(f"could not close audit log engine: {e}")
 
-    def additional_log_details(self) -> Dict[str, Any]:
+    def additional_log_details(self) -> dict[str, Any]:
         """Retrieve additional details for logging.
 
         Returns:
@@ -756,7 +753,7 @@ class SnsFormDataHandler(AuthRequestHandler):
             },
         )
 
-    def prepare(self) -> Optional[Awaitable[None]]:
+    def prepare(self) -> Awaitable[None] | None:
         try:
             if not options.valid_tenant.match(self.tenant):
                 raise ClientError(f"malformed tenant: {self.tenant}")
@@ -1874,7 +1871,7 @@ class FileRequestHandler(AuthRequestHandler):
     def mtime_to_digest(self, mtime: int) -> str:
         return hashlib.md5(str(mtime).encode("utf-8")).hexdigest()
 
-    def compute_etag(self) -> Optional[str]:
+    def compute_etag(self) -> str | None:
         """
         If there is a file resource, compute the Etag header.
         Custom values: md5sum of string value of last modified
@@ -2417,7 +2414,7 @@ class GenericTableHandler(AuthRequestHandler):
             out += decrypted
         return out.decode()
 
-    def get_nested_data(self, keys: list, data: Union[list, dict]) -> list:
+    def get_nested_data(self, keys: list, data: list | dict) -> list:
         values = []
         if isinstance(data, dict):
             target = data
@@ -2434,9 +2431,9 @@ class GenericTableHandler(AuthRequestHandler):
 
     def set_resource_identifier_info(
         self,
-        data: Union[list, dict],
-        primary_key: Optional[str] = None,
-        pk_value: Optional[Any] = None,
+        data: list | dict,
+        primary_key: str | None = None,
+        pk_value: Any | None = None,
     ) -> None:
         """
         When publising messages to rabbitmq, it is useful
@@ -2529,7 +2526,7 @@ class GenericTableHandler(AuthRequestHandler):
                         self.decrypt_nacl_headers(self.request.headers)
                         self.CHUNK_SIZE = self.nacl_chunksize
                         encrypt_data = True
-                    empty_result: Union[str, bytes] = (
+                    empty_result: str | bytes = (
                         "[]"
                         if not encrypt_data
                         else libnacl.crypto_stream_xor(
