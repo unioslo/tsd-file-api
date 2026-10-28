@@ -23,7 +23,7 @@ def rand_gen() -> str:
 def gen_test_jwt_secrets(config: dict) -> dict:
     secrets = {}
     for proj in range(1, 2000):
-        tenant = "p%02d" % proj
+        tenant = f"p{proj:02d}"
         secrets[tenant] = rand_gen()
     return secrets
 
