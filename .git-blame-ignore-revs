@@ -1,2 +1,5 @@
 # Initial pre-commit run over whole repo
 53344f77e9e7ec7771ba260aaca47ce91979162c
+
+# Upgrade codebase for Python 3.10+ with ruff
+dd3889fc0ee5808967ba729617972baa9e2fa92c

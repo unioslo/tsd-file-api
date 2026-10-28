@@ -12,8 +12,6 @@ import errno
 from collections import namedtuple
 from http import HTTPStatus
 from http import client
-from typing import List
-from typing import Union
 
 from pysquril.exc import PySqurilError
 from tornado.web import HTTPError
@@ -163,9 +161,7 @@ def error_for_exception(exc: Exception, details: str = "") -> Error:
 
     """
 
-    def generate_message(
-        components: List[Union[str, dict]], separator: str = ". "
-    ) -> str:
+    def generate_message(components: list[str | dict], separator: str = ". ") -> str:
         """Generate an error message from a list of components."""
 
         def format_component(component: str) -> str:

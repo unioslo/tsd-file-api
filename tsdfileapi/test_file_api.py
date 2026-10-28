@@ -18,7 +18,6 @@ import uuid
 from datetime import datetime
 from datetime import timedelta
 from pathlib import Path
-from typing import Optional
 
 import backoff
 import libnacl.public
@@ -1207,16 +1206,14 @@ class TestFileApi(unittest.IsolatedAsyncioTestCase):
         is_dir: bool = None,
         remote_resource_key: str = None,
         group: str = None,
-        public_key: Optional[libnacl.public.PublicKey] = None,
+        public_key: libnacl.public.PublicKey | None = None,
         **options,
     ) -> None:
         if not token:
             token = TEST_TOKENS["VALID"]
         if not endpoint:
             endpoint = self.stream
-        url = "{}/{}".format(
-            endpoint, self.resource_name(filepath, is_dir, remote_resource_key, group)
-        )
+        url = f"{endpoint}/{self.resource_name(filepath, is_dir, remote_resource_key, group)}"
         env = ""
         resp = fileapi.initiate_resumable(
             env,
