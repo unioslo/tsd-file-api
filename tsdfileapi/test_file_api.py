@@ -1655,15 +1655,23 @@ class TestFileApi(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(resp3.headers["Content-Length"], "10")
 
     def test_ZZb_get_range_out_of_bounds_returns_correct_error(self) -> None:
+        """
+        Test whether the API handles range with end value beyond length of requested resource.
+
+        Assumes the range is truncated to the end of the resource (as per the RFC _if_ considered usable).
+
+        Otherwise behaves like `test_ZY_get_specific_range_for_export`.
+        """
         url = self.export + "/file1"
         headers = {
             "Authorization": "Bearer " + TEST_TOKENS["EXPORT"],
             "Range": "bytes=5-100",
         }
         resp = requests.get(url, headers=headers)
-        self.assertEqual(resp.status_code, 416)
+        self.assertEqual(resp.status_code, 206)
+        self.assertEqual(resp.headers["Content-Length"], "5")
+        self.assertEqual(resp.headers["Content-Range"], "bytes 5-9/10")
 
-    @pytest_skip_for_compatibility_reasons
     def test_ZZc_requesting_multiple_ranges_not_supported_error(self) -> None:
         url = self.export + "/file1"
         headers = {
@@ -1671,7 +1679,7 @@ class TestFileApi(unittest.IsolatedAsyncioTestCase):
             "Range": "bytes=1-4, 5-10",
         }
         resp = requests.get(url, headers=headers)
-        self.assertEqual(resp.status_code, 405)
+        self.assertEqual(resp.status_code, 200)
 
     def test_ZZe_filename_rules_with_uploads(self) -> None:
         headers = {"Authorization": "Bearer " + TEST_TOKENS["VALID"]}
