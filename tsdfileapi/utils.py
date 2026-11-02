@@ -29,10 +29,10 @@ import tornado.log
 import tornado.options
 import tornado.web
 from tornado.httputil import HTTPServerRequest as Request
-from tornado.web import HTTPError
 
 import tsdfileapi.aio.os  # noqa: F401
 from tsdfileapi import aio
+from tsdfileapi.exc import ClientContentRangeError
 from tsdfileapi.exc import ClientIllegalFilenameError
 from tsdfileapi.exc import ClientIllegalFiletypeError
 from tsdfileapi.exc import ClientSnsPathError
@@ -406,17 +406,19 @@ def parse_http_prefer_header_values(
 class ContentRangeResolver:
     """Resolve `Range` header values in requests, for computing `Content-Range` header values in responses."""
 
-    def __call__(self, range_header_value: str, **kwargs) -> Range | None:
+    def __call__(
+        self, range_header_value: str, *, repr_length: int, **kwargs
+    ) -> Range | None:
         range_header_match_groups = self.range_header_pattern_match(range_header_value)
         if not range_header_match_groups:
             logger.debug("Error parsing `Range` header value")
             return None
         unit, *range_spec_match_groups = range_header_match_groups
-        if unit.lower() != "bytes":
-            logger.debug("Invalid range unit")
-            raise HTTPError(416)
         return self.resolve(
-            self.range_from_match_groups(range_spec_match_groups), unit=unit, **kwargs
+            self.range_from_match_groups(range_spec_match_groups),
+            repr_length=repr_length,
+            unit=unit,
+            **kwargs,
         )
 
     def is_invalid_range(self, range: Range) -> bool | None:
@@ -500,6 +502,8 @@ class ContentRangeResolver:
 
         Content ranges computed by this function, always feature an _exclusive_ end position -- one that marks "true" end of the range, meaning that its value is always exactly one more than the last position.
         """
+        if unit.lower() != "bytes":
+            raise ClientContentRangeError("Invalid range unit", repr_length=repr_length)
         if (
             repr_length == 0
         ):  # Specifically zero-length representation cannot produce results usable with `Content-Range`
@@ -512,7 +516,7 @@ class ContentRangeResolver:
         if not self.is_satisfiable_range(
             range, unit=unit, method=method, repr_length=repr_length
         ):
-            raise HTTPError(416)
+            raise ClientContentRangeError(repr_length=repr_length)
         if TYPE_CHECKING:
             assert (range[1] != 0) and (range[0] is not None)
         abs_start = start if (start := range[0]) >= 0 else max(0, repr_length + start)

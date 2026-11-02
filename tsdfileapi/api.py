@@ -2027,7 +2027,7 @@ class FileRequestHandler(AuthRequestHandler):
 
         Uses representation length (aka "resource length" or "full file size") to resolve the requested values as normalised (counted from first byte as `0`) and applicable specifically to the representation.
 
-        Keep in mind that while `Range` uses 0-based numbers with an inclusive interval: [start, end] (if using the so-called `int-range` syntax), this procedure will always return "true" end values -- in accordance with how ranges work in Python (see `range` and `slice` among built-ins).
+        This procedure returns _half-open_ ranges (index matching the "end" value is not part of the range) -- in accordance and for consistency with semantics of Python's own `slice` and `range`.
         """
         return resolve_content_range(
             self.request.headers["Range"],
