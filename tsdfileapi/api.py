@@ -1983,6 +1983,8 @@ class FileRequestHandler(AuthRequestHandler):
                 self.CHUNK_SIZE = self.nacl_chunksize
                 encrypt_data = True
             self.set_header("Content-Type", mime_type)
+            if etag := self.compute_etag():
+                self.set_header("ETag", etag)
             self.last_modified = tornado.httputil.format_timestamp(mtime)
             self.set_header("Last-Modified", self.last_modified)
             self.set_header("Modified-Time", str(mtime))
