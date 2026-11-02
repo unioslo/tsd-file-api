@@ -1574,6 +1574,21 @@ class TestFileApi(unittest.IsolatedAsyncioTestCase):
         etag2 = resp1.headers["Etag"]
         self.assertEqual(etag1, etag2)
 
+    def test_ZXa_get_for_export_resume_works(self) -> None:
+        url = self.export + "/file1"
+        headers = {"Authorization": "Bearer " + TEST_TOKENS["EXPORT"]}
+        resp1 = requests.get(url, headers=headers)
+        self.assertEqual(resp1.status_code, 200)
+        self.assertEqual(resp1.headers["Accept-Ranges"], "bytes")
+        self.assertEqual(resp1.headers["Content-Length"], "10")
+        self.assertTrue(resp1.headers.get("ETag"))
+        self.assertTrue(resp1.headers.get("Last-Modified"))
+        etag1 = resp1.headers["Etag"]
+        resp2 = requests.get(url, headers=headers)
+        self.assertEqual(resp2.status_code, 200)
+        etag2 = resp1.headers["Etag"]
+        self.assertEqual(etag1, etag2)
+
     def test_ZY_get_specific_range_for_export(self) -> None:
         """
         Test that the API satisfies [valid and bound] range requests.
@@ -1680,6 +1695,16 @@ class TestFileApi(unittest.IsolatedAsyncioTestCase):
         }
         resp = requests.get(url, headers=headers)
         self.assertEqual(resp.status_code, 200)
+
+    def test_ZZd_requesting_unsatisfiable_ranges_error(self) -> None:
+        url = self.export + "/file1"
+        headers = {
+            "Authorization": "Bearer " + TEST_TOKENS["EXPORT"],
+            "Range": "words=1-4",
+        }
+        resp = requests.get(url, headers=headers)
+        self.assertEqual(resp.status_code, 416)
+        self.assertEqual(resp.headers["Content-Range"], "bytes */10")
 
     def test_ZZe_filename_rules_with_uploads(self) -> None:
         headers = {"Authorization": "Bearer " + TEST_TOKENS["VALID"]}
