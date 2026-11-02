@@ -1911,7 +1911,6 @@ class FileRequestHandler(AuthRequestHandler):
         and write to the network.
 
         """
-        self.set_header("Content-Length", content_length)
         remaining = content_length
         if chunk_size > content_length:
             chunk_size = content_length
@@ -2003,17 +2002,19 @@ class FileRequestHandler(AuthRequestHandler):
                 )
             else:
                 read_start, read_end = 0, size
-            await self.serve_file(
-                self.filepath,
-                self.CHUNK_SIZE,
-                read_end - read_start,
-                encrypt_data,
-                read_start,
-            )
-            self.finish()
-            logger.info(
-                f"{self.requestor}, downloaded: {self.filepath}, MIME type: {mime_type}, range: [{read_start}-{read_end})"
-            )
+            self.set_header("Content-Length", content_length := (read_end - read_start))
+            if self.request.method == "GET":
+                await self.serve_file(
+                    self.filepath,
+                    self.CHUNK_SIZE,
+                    content_length,
+                    encrypt_data,
+                    read_start,
+                )
+                self.finish()
+                logger.info(
+                    f"{self.requestor}, downloaded: {self.filepath}, MIME type: {mime_type}, range: [{read_start}-{read_end})"
+                )
         except Exception as e:
             error = error_for_exception(e, details=self.additional_log_details())
             logger.exception(error.message)
@@ -2051,38 +2052,7 @@ class FileRequestHandler(AuthRequestHandler):
             self.compute_etag() if if_range[0] == '"' else self.last_modified
         )
 
-    async def head(self, tenant: str, filename: str) -> None:
-        """
-        Return information about a specific file.
-
-        """
-        try:
-            if not self.allow_info:
-                raise ClientMethodNotAllowed
-            if not filename:
-                raise ClientError("No resource specified")
-            self.path = self.export_dir
-            self.filepath = f"{self.path}/{url_unescape(self.resource)}"
-            # ensure there are no symlinks in filepath
-            await any_path_islink(self.filepath, opts=options)
-            if not await aio.os.path.lexists(self.filepath):
-                raise ClientResourceNotFoundError(f"{self.filepath} not found")
-            size, mime_type, mtime = await self.get_file_metadata(self.filepath)
-            logger.info(
-                f"user: {self.requestor}, checked file: {self.filepath} , MIME type: {mime_type}"
-            )
-            self.set_header("Content-Length", size)
-            self.set_header("Accept-Ranges", "bytes")
-            self.set_header("Content-Type", mime_type)
-            self.set_header("Modified-Time", str(mtime))
-            self.set_status(HTTPStatus.OK.value)
-        except Exception as e:
-            error = error_for_exception(e, details=self.additional_log_details())
-            logger.error(error.message)
-            for name, value in error.headers.items():
-                self.set_header(name, value)
-            self.set_status(error.status, reason=error.reason)
-            self.finish()
+    head = get
 
     async def delete(self, tenant: str, filename: str = "") -> None:
         try:
