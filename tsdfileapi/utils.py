@@ -16,9 +16,12 @@ import stat
 import sys
 from dataclasses import dataclass
 from ipaddress import ip_network
+from typing import TYPE_CHECKING
 from typing import Callable
 from typing import Mapping
 from typing import Optional
+from typing import Sequence
+from typing import TypeAlias
 from typing import Union
 from uuid import uuid4
 
@@ -26,6 +29,7 @@ import tornado.log
 import tornado.options
 import tornado.web
 from tornado.httputil import HTTPServerRequest as Request
+from tornado.web import HTTPError
 
 import tsdfileapi.aio.os  # noqa: F401
 from tsdfileapi import aio
@@ -38,6 +42,17 @@ from tsdfileapi.exc import ServerStorageNotMountedError
 VALID_FORMID = re.compile(r"^[0-9]+$")
 PGP_KEY_FINGERPRINT = re.compile(r"^[0-9A-Z]{16}$")
 VALID_UUID = re.compile(r"([a-f\d0-9-]{32,36})")
+
+http_range_spec_re = re.compile(
+    r"(\d+)-(\d+)?|-(\d+)", flags=re.ASCII
+)  # The `range-spec` HTTP grammar element
+http_token_re = re.compile(
+    r"[\w\x21\x23-\x27\x2a-\x2b\x2d-\x2e\x5e-\x60\x7c\x7e]+", flags=re.ASCII
+)  # The well-known `token` HTTP grammar element
+
+Range: TypeAlias = tuple[
+    int | None, int | None
+]  # A 2-tuple of start and end (_exclusive_) positions defining a [strictly continous] range; note how this is compatible with Python's own `slice` and `range` (assuming [the default] step of 1); note also that unlike the "last position" semantics employed by HTTP, an _exclusive_ end position is implied unless specified otherwise (i.e. a `Range` value of `(0, 1)` has the length of 1, starting at 0 and ending at 1 where the latter index is _not_ included in the range)
 
 logger = logging.getLogger(__name__)
 
@@ -386,6 +401,129 @@ def parse_http_prefer_header_values(
             )
         )
     }
+
+
+class ContentRangeResolver:
+    """Resolve `Range` header values in requests, for computing `Content-Range` header values in responses."""
+
+    def __call__(self, range_header_value: str, **kwargs) -> Range | None:
+        range_header_match_groups = self.range_header_pattern_match(range_header_value)
+        if not range_header_match_groups:
+            logger.debug("Error parsing `Range` header value")
+            return None
+        unit, *range_spec_match_groups = range_header_match_groups
+        if unit.lower() != "bytes":
+            logger.debug("Invalid range unit")
+            raise HTTPError(416)
+        return self.resolve(
+            self.range_from_match_groups(range_spec_match_groups), unit=unit, **kwargs
+        )
+
+    def is_invalid_range(self, range: Range) -> bool | None:
+        """
+        Determine whether a range is invalid.
+
+        Assumes `range` was parsed from the `Range` header -- this module concerns itself with HTTP which by grammar necessarily leaves out subset(s) of otherwise possible `Range` values (e.g. `(-1, -2)` or `(None, -1)`), which we don't need to support.
+
+        Returns `True` if the range is invalid, `False` if it is valid, and `None` if it is neither because no criteria that would classify it as either, apply. This follows in the same vein as "satisfiability" (see `is_satisfiable_range`).
+        """
+        start, end = range
+        if (
+            (start is not None) and (end is not None)
+        ):  # "An `int-range` is invalid if the `last-pos` is present ..."; with our `Range` semantics, an `int-range` is effectively one where the first element of the 2-tuple is a natural number (incl. zero) and end is not `None` or `0`; the `(None, 0)` tuple (parsed only from `-0`) is explicitly excluded because although permissible through the grammar, validity isn't defined for it
+            assert start >= 0
+            assert end >= 0
+            return end <= start  # "... and less than the `first-pos`"
+        assert (start is not None) or (end == 0)
+        return None
+
+    def is_satisfiable_range(
+        self, range: Range, *, unit: str, method: str, repr_length: int
+    ) -> bool | None:
+        """Determine whether a range is satisfiable (per the RFC).
+
+        Assumes the range is not invalid.
+
+        Returns `True` if the range is satisfiable, `False` if it is unsatisfiable, and `None` if it is neither because no criteria that would classify it as either, apply.
+        """
+        if (method == "GET") and (unit.lower() == "bytes"):
+            assert not self.is_invalid_range(
+                range
+            )  # Satisfiability only defined for valid range specifiers ("... a valid bytes range-spec is satisfiable if ..."), and instead of returning `None` we choose to be strict and demand invalid ranges aren't attempted checked for satisfiability (implying we want the caller to have checked validity [explicitly] _before_ checking satisfiability)
+            start, end = range
+            if TYPE_CHECKING:
+                assert (range[1] != 0) and (range[0] is not None)
+            return (
+                (range[0] < repr_length)
+                if (range[1] != 0) and (range[0] >= 0)
+                else bool(range[0])
+            )
+        return None
+
+    def range_header_pattern_match(self, value: str) -> Sequence[str | None]:
+        """Parse a `Range` header value by pattern-matching it."""
+        unit_match = http_token_re.match(value)
+        if not unit_match:
+            return None
+        if not value.startswith("=", pos := unit_match.end()):
+            return None
+        pos += 1
+        range_spec_match = http_range_spec_re.match(value, pos)
+        if not range_spec_match:
+            return None
+        if value.startswith(",", pos := range_spec_match.end()):
+            logger.debug("Ignoring due to additional range(s)")
+            return None  # We can't tell if the header is malformed since we don't parse _all_ of it
+        if len(value) != pos:
+            return None
+        return unit_match.group(), *range_spec_match.groups()
+
+    def range_from_match_groups(self, groups: Sequence[str | None]) -> Range:
+        """Parse a sequence of groups of a `re.Match` object (presumably obtained from `range_spec_re`)."""
+        a, b, c = groups
+        assert (
+            (a and not c) or (c and not b)
+        )  # To ensure we're interpreting the groups in accordance with the regular expression
+        return (
+            (int(a), (int(b) + 1) if b else None)
+            if a
+            else ((-x, None) if (x := int(c)) else (None, 0))
+        )  # type: ignore[arg-type]
+
+    def resolve(
+        self, range: Range, *, repr_length: int, unit: str, method: str
+    ) -> tuple[int, int] | None:
+        """
+        Compute range (first and last positions) for use as `range-resp` in the `Content-Range` header.
+
+        Assumes `repr_length` is not zero (because `Content-Range` cannot represent an empty range), and that `range_spec` is a _satisfiable_ range specifier (`is_satisfiable_range` can be used to assert that).
+
+        Content ranges computed by this function, always feature an _exclusive_ end position -- one that marks "true" end of the range, meaning that its value is always exactly one more than the last position.
+        """
+        if (
+            repr_length == 0
+        ):  # Specifically zero-length representation cannot produce results usable with `Content-Range`
+            return None
+        if self.is_invalid_range(
+            range
+        ):  # HTTP does not define validity for `suffix-range` specifiers at all so `is_invalid_range` always returns `None` (indeterminate) for these, while satisfiability is defined for "valid" range specifiers _including_ `suffix-range` specifiers (mentioned explicitly), which seems confusing/contradictory; to be able to implement determination of satisfiability for the latter we must necessarily permit indeterminate validity (`None`)
+            logger.debug("Invalid range specifier")
+            return None
+        if not self.is_satisfiable_range(
+            range, unit=unit, method=method, repr_length=repr_length
+        ):
+            raise HTTPError(416)
+        if TYPE_CHECKING:
+            assert (range[1] != 0) and (range[0] is not None)
+        abs_start = start if (start := range[0]) >= 0 else max(0, repr_length + start)
+        abs_end = (
+            min(end, repr_length) if (end := range[1]) is not None else repr_length
+        )
+        assert abs_end > abs_start
+        return abs_start, abs_end
+
+
+resolve_content_range = ContentRangeResolver()
 
 
 def parse_http_request_handling_preference(text: str) -> ParametrisedField:

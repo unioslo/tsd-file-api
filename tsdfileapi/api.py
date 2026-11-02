@@ -68,7 +68,6 @@ from tsdfileapi.aio.builtins import enumerate as aenumerate
 from tsdfileapi.aio.builtins import open as aopen
 from tsdfileapi.auth import process_access_token
 from tsdfileapi.exc import ClientAuthorizationError
-from tsdfileapi.exc import ClientContentRangeError
 from tsdfileapi.exc import ClientError
 from tsdfileapi.exc import ClientGroupAccessError
 from tsdfileapi.exc import ClientMethodNotAllowed
@@ -89,6 +88,7 @@ from tsdfileapi.utils import call_request_hook
 from tsdfileapi.utils import check_filename
 from tsdfileapi.utils import choose_storage
 from tsdfileapi.utils import days_since_mod
+from tsdfileapi.utils import resolve_content_range
 from tsdfileapi.utils import sns_dir
 from tsdfileapi.utils import tenant_from_url
 from tsdfileapi.utils import trusted_proxies_to_trusted_downstream
@@ -1892,7 +1892,7 @@ class FileRequestHandler(AuthRequestHandler):
             etag = None
             if self.filepath:
                 mtime = os.lstat(self.filepath).st_mtime
-                etag = self.mtime_to_digest(mtime)
+                etag = f'"{self.mtime_to_digest(mtime)}"'
             return etag
         except Exception:
             return None
@@ -1984,54 +1984,35 @@ class FileRequestHandler(AuthRequestHandler):
                 self.CHUNK_SIZE = self.nacl_chunksize
                 encrypt_data = True
             self.set_header("Content-Type", mime_type)
+            self.last_modified = tornado.httputil.format_timestamp(mtime)
+            self.set_header("Last-Modified", self.last_modified)
             self.set_header("Modified-Time", str(mtime))
             self.set_header("Accept-Ranges", "bytes")
-            if "Range" not in self.request.headers:
-                await self.serve_file(
-                    self.filepath,
-                    self.CHUNK_SIZE,
-                    size,
-                    encrypt_data,
+            if (
+                "Range" in self.request.headers
+                and (
+                    ("If-Range" not in self.request.headers) or self.if_range_matches()
                 )
-            elif "Range" in self.request.headers:
-                if "If-Range" in self.request.headers:
-                    provided_etag = self.request.headers["If-Range"]
-                    computed_etag = await to_thread(self.compute_etag)
-                    if provided_etag != computed_etag:
-                        raise ClientError(
-                            "The resource has changed, get everything from the start again"
-                        )
-                # clients specify the range in terms of 0-based index numbers
-                # with an inclusive interval: [start, end]
-                client_byte_index_range = self.request.headers["Range"]
-                full_file_size = (await aio.os.lstat(self.filepath)).st_size
-                start_and_end = client_byte_index_range.split("=")[-1].split("-")
-                if "," in start_and_end:
-                    raise ClientMethodNotAllowed(
-                        "Multipart byte range requests not supported"
-                    )
-                client_start = int(start_and_end[0])
-                cursor_start = client_start
-                try:
-                    client_end = int(start_and_end[1])
-                except Exception:
-                    client_end = full_file_size - 1
-                if client_end > full_file_size:
-                    raise ClientContentRangeError(
-                        "Range request exceeds byte range of resource"
-                    )
-                # because clients provide 0-based byte indices
-                # we must add 1 to calculate the desired amount to read
-                size = client_end - client_start + 1
-                await self.serve_file(
-                    self.filepath,
-                    self.CHUNK_SIZE,
-                    size,
-                    encrypt_data,
-                    cursor_start,
+                and (read_range := self.resolve_requested_range(size))
+            ):
+                read_start, read_end = read_range
+                self.set_status(206)
+                self.set_header(
+                    "Content-Range",
+                    f"bytes {read_start}-{read_end - 1}/{size}",
                 )
+            else:
+                read_start, read_end = 0, size
+            await self.serve_file(
+                self.filepath,
+                self.CHUNK_SIZE,
+                read_end - read_start,
+                encrypt_data,
+                read_start,
+            )
+            self.finish()
             logger.info(
-                f"{self.requestor}, downloaded: {self.filepath}, MIME type: {mime_type}, size: {size}"
+                f"{self.requestor}, downloaded: {self.filepath}, MIME type: {mime_type}, range: [{read_start}-{read_end})"
             )
         except Exception as e:
             error = error_for_exception(e, details=self.additional_log_details())
@@ -2039,6 +2020,36 @@ class FileRequestHandler(AuthRequestHandler):
             for name, value in error.headers.items():
                 self.set_header(name, value)
             self.set_status(error.status, reason=error.reason)
+
+    def resolve_requested_range(self, repr_length: int) -> tuple[int, int] | None:
+        """
+        Determine normalised serve range corresponding to [satisfiable] requested range.
+
+        Uses representation length (aka "resource length" or "full file size") to resolve the requested values as normalised (counted from first byte as `0`) and applicable specifically to the representation.
+
+        Keep in mind that while `Range` uses 0-based numbers with an inclusive interval: [start, end] (if using the so-called `int-range` syntax), this procedure will always return "true" end values -- in accordance with how ranges work in Python (see `range` and `slice` among built-ins).
+        """
+        return resolve_content_range(
+            self.request.headers["Range"],
+            repr_length=repr_length,
+            method=self.request.method,
+        )
+
+    def if_range_matches(self) -> bool:
+        """Determine if condition expressed with the `If-Range` request header, applies.
+
+        Note that although clients are explicitly prohibited by the RFC to send _weak_ entity tag values in `If-Range`, evaluation of the condition _is defined_ for these values, i.e. is no cause for aborting (the procedure returns `False`).
+        """
+        assert (
+            "Range" in self.request.headers
+        )  # Assert since use of `If-Range` is conditional on presence of `Range`
+        if_range = self.request.headers["If-Range"]
+        if if_range[:2].lower() == "w/":
+            logger.debug("Client used a weak entity tag in `If-Range`")
+            return False
+        return if_range == (
+            self.compute_etag() if if_range[0] == '"' else self.last_modified
+        )
 
     async def head(self, tenant: str, filename: str) -> None:
         """
