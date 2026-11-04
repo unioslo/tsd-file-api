@@ -2004,7 +2004,7 @@ class FileRequestHandler(AuthRequestHandler):
                 )
                 self.finish()
                 logger.info(
-                    f"{self.requestor}, downloaded: {self.filepath}, MIME type: {mime_type}, range: [{read_start}-{read_end})"
+                    f"{self.requestor}, downloaded: {self.filepath}, MIME type: {mime_type}, range: [{read_start}-{read_end}), size: {content_length}"
                 )
         except Exception as e:
             error = error_for_exception(e, details=self.additional_log_details())
