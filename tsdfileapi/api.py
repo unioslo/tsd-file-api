@@ -88,7 +88,6 @@ from tsdfileapi.utils import call_request_hook
 from tsdfileapi.utils import check_filename
 from tsdfileapi.utils import choose_storage
 from tsdfileapi.utils import days_since_mod
-from tsdfileapi.utils import resolve_content_range
 from tsdfileapi.utils import sns_dir
 from tsdfileapi.utils import tenant_from_url
 from tsdfileapi.utils import trusted_proxies_to_trusted_downstream
@@ -1989,21 +1988,11 @@ class FileRequestHandler(AuthRequestHandler):
             self.set_header("Last-Modified", self.last_modified)
             self.set_header("Modified-Time", str(mtime))
             self.set_header("Accept-Ranges", "bytes")
-            if (
-                "Range" in self.request.headers
-                and (
-                    ("If-Range" not in self.request.headers) or self.if_range_matches()
-                )
-                and (read_range := self.resolve_requested_range(size))
-            ):
-                read_start, read_end = read_range
-                self.set_status(206)
-                self.set_header(
-                    "Content-Range",
-                    f"bytes {read_start}-{read_end - 1}/{size}",
-                )
-            else:
-                read_start, read_end = 0, size
+            read_start, read_end = (
+                self.apply_requested_range(repr_length=size)
+                if self.is_range_request()
+                else None
+            ) or (0, size)
             self.set_header("Content-Length", content_length := (read_end - read_start))
             if self.request.method == "GET":
                 await self.serve_file(
@@ -2023,20 +2012,6 @@ class FileRequestHandler(AuthRequestHandler):
             for name, value in error.headers.items():
                 self.set_header(name, value)
             self.set_status(error.status, reason=error.reason)
-
-    def resolve_requested_range(self, repr_length: int) -> tuple[int, int] | None:
-        """
-        Determine normalised serve range corresponding to [satisfiable] requested range.
-
-        Uses representation length (aka "resource length" or "full file size") to resolve the requested values as normalised (counted from first byte as `0`) and applicable specifically to the representation.
-
-        This procedure returns _half-open_ ranges (index matching the "end" value is not part of the range) -- in accordance and for consistency with semantics of Python's own `slice` and `range`.
-        """
-        return resolve_content_range(
-            self.request.headers["Range"],
-            repr_length=repr_length,
-            method=self.request.method,
-        )
 
     def if_range_matches(self) -> bool:
         """Determine if condition expressed with the `If-Range` request header, applies.

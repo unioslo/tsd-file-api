@@ -1,0 +1,204 @@
+"""All things HTTP in general, following relevant RFCs.
+
+Is destined to be a stand-alone package but hasn't moved out of the parents' house yet.
+"""
+
+import re
+import sys
+from typing import TYPE_CHECKING
+from typing import Iterable
+from typing import Protocol
+from typing import Sequence
+from typing import TypeAlias
+
+Range: TypeAlias = tuple[
+    int | None, int | None
+]  # A 2-tuple of start and end (_exclusive_) positions defining a [strictly continous] range; note how this is compatible with Python's own `slice` and `range` (assuming [the default] step of 1), where in contrast to the "last position" semantics employed by HTTP, an _exclusive_ end position is used (i.e. a `Range` value of `(0, 1)` has the length of 1, starting at 0 and ending at 1 where the latter index is _not_ included in the range)
+
+comma_list_sep_re = re.compile(
+    r"[\x20\x09]*,[\x20\x09]*"
+)  # The well-known "comma surrounded by optional white-space" HTTP grammar element (see the `#` addition to ABNF in HTTP)
+eq_re = re.compile(
+    "="
+)  # For consistency to provide `re.Match` even for simplest of patterns matched (otherwise we'd need to have our own `Match` implementation)
+range_spec_re = re.compile(
+    r"(\d+)-(\d+)?|-(\d+)", flags=re.ASCII
+)  # The `range-spec` HTTP grammar element
+token_re = re.compile(
+    r"[\w\x21\x23-\x27\x2a-\x2b\x2d-\x2e\x5e-\x60\x7c\x7e]+", flags=re.ASCII
+)  # The well-known `token` HTTP grammar element
+
+
+class Match(Protocol):
+    """Result of pattern matching, a sub-set of `re.Match` (for consistency)."""
+
+    def end(self) -> int: ...
+
+
+class CompoundMatch(Match):
+    """Composite (compound) match results.
+
+    Offered as ergonomy for our matchers specifically.
+    """
+
+    def __init__(self, matches: Sequence["Match"]):
+        self.matches = matches
+
+    def __getitem__(self, index: int):
+        return self.matches[index]
+
+    def __iter__(self):
+        yield from self.matches
+
+    def end(self):
+        return self.matches[-1].end()
+
+
+class Matcher(Protocol):
+    """Objects that offer methods much like `re.Pattern`, for API compatibility."""
+
+    def match(
+        self, value: str, pos: int = 0, endpos: int = sys.maxsize
+    ) -> Match | None: ...
+
+    def fullmatch(
+        self, value: str, pos: int = 0, endpos: int = sys.maxsize
+    ) -> Match | None: ...
+
+
+class FullMatcherMixin:
+    """Adds a `fullmatch` method compatible with `re.Pattern.fullmatch`."""
+
+    def fullmatch(
+        self, value: str, pos: int = 0, endpos: int = sys.maxsize
+    ) -> Match | None:
+        match = self.match(value, pos, endpos)
+        return match if (match and (match.end() == min(len(value), endpos))) else None
+
+
+class RangeSetMatcher(FullMatcherMixin, Matcher):
+    """Matches the `range-set` production (a list of `range-spec` separated with comma surrounded by optional white-space)."""
+
+    def match(self, value: str, *args) -> Match | None:
+        elements = tuple(self.match_iter(value, *args))
+        return CompoundMatch(elements) if elements else None
+
+    def match_iter(self, value: str, pos=0, *args) -> Iterable[Match]:
+        while True:
+            match = range_spec_re.match(value, pos, *args)
+            if match:
+                yield match
+                pos = match.end()
+            match = comma_list_sep_re.match(value, pos, *args)
+            if not match:
+                return None
+            yield match
+            pos = match.end()
+
+
+range_set_matcher = RangeSetMatcher()  # The `range-set` HTTP grammar element
+
+
+class ByteRangesSpecMatcher(FullMatcherMixin, Matcher):
+    """The `ranges` HTTP grammar production matcher.
+
+    This is really a regular "concatenation" matcher (A followed by B followed by C etc), but general parsing construct utilities go beyond the scope of this module so we just cut it short and straight to defining specifically the `ranges` production with a dedicated class.
+    """
+
+    def match(self, value: str, pos=0, endpos: int = sys.maxsize) -> Match | None:
+        unit_match = token_re.match(value, pos, endpos)
+        if not unit_match:
+            return None
+        eq_match = eq_re.match(value, pos := unit_match.end(), endpos)
+        if not eq_match:
+            return None
+        range_set_match = range_set_matcher.match(value, pos := eq_match.end(), endpos)
+        if not range_set_match:
+            return None
+        return CompoundMatch((unit_match, eq_match, range_set_match))
+
+
+range_header_matcher = ranges_spec_matcher = ByteRangesSpecMatcher()
+
+
+def content_range(
+    range: Range, repr_length: int, *, unit: str, method: str
+) -> tuple[int, int]:
+    """
+    Compute range (first and last positions) for use as `range-resp` in the `Content-Range` header.
+
+    Assumes `repr_length` is not zero (because `Content-Range` cannot represent an empty range), and that `range_spec` is a _satisfiable_ range specifier (`is_satisfiable_range` can be used to assert that).
+
+    Content ranges computed by this function, always feature an _exclusive_ end position -- one that marks "true" end of the range, meaning that its value is always exactly one more than the last position.
+    """
+    assert (
+        repr_length > 0
+    )  # Specifically zero-length representation cannot produce results usable with `Content-Range`
+    assert not is_invalid_range(
+        range
+    )  # HTTP does not define validity for `suffix-range` specifiers at all so `is_invalid_range` always returns `None` (indeterminate) for these, while satisfiability is defined for "valid" range specifiers _including_ `suffix-range` specifiers (mentioned explicitly), which seems confusing/contradictory; to be able to implement determination of satisfiability for the latter we must necessarily permit indeterminate validity (`None`)
+    assert is_satisfiable_range(
+        range, unit=unit, method=method, repr_length=repr_length
+    )
+    if TYPE_CHECKING:
+        assert (range[1] != 0) and (range[0] is not None)
+    abs_start = start if (start := range[0]) >= 0 else max(0, repr_length + start)
+    abs_end = min(end, repr_length) if (end := range[1]) is not None else repr_length
+    assert abs_end > abs_start
+    return abs_start, abs_end
+
+
+def is_invalid_range(range: Range) -> bool | None:
+    """
+    Determine whether a range is invalid.
+
+    Assumes `range` was parsed from the `Range` header -- this module concerns itself with HTTP which by grammar necessarily leaves out subset(s) of otherwise possible `Range` values (e.g. `(-1, -2)` or `(None, -1)`), which we don't need to support.
+
+    Returns `True` if the range is invalid, `False` if it is valid, and `None` if it is neither because no criteria that would classify it as either, apply. This follows in the same vein as "satisfiability" (see `is_satisfiable_range`).
+    """
+    start, end = range
+    if (
+        (start is not None) and (end is not None)
+    ):  # "An `int-range` is invalid if the `last-pos` is present ..."; with our `Range` semantics, an `int-range` is effectively one where the first element of the 2-tuple is a natural number (incl. zero) and end is not `None` or `0`; the `(None, 0)` tuple (parsed only from `-0`) is explicitly excluded because although permissible through the grammar, validity isn't defined for it
+        assert start >= 0
+        assert end >= 0
+        return end <= start  # "... and less than the `first-pos`"
+    assert (start is not None) or (end == 0)
+    return None
+
+
+def is_satisfiable_range(
+    range: Range, *, unit: str, method: str, repr_length: int
+) -> bool | None:
+    """Determine whether a range is satisfiable (per the RFC).
+
+    Assumes the range is not invalid.
+
+    Returns `True` if the range is satisfiable, `False` if it is unsatisfiable, and `None` if it is neither because no criteria that would classify it as either, apply.
+    """
+    if (method == "GET") and (unit.lower() == "bytes"):
+        assert not is_invalid_range(
+            range
+        )  # Satisfiability only defined for valid range specifiers ("... a valid bytes range-spec is satisfiable if ..."), and instead of returning `None` we choose to be strict and demand invalid ranges aren't attempted checked for satisfiability (implying we want the caller to have checked validity [explicitly] _before_ checking satisfiability)
+        start, end = range
+        if TYPE_CHECKING:
+            assert (range[1] != 0) and (range[0] is not None)
+        return (
+            (range[0] < repr_length)
+            if (range[1] != 0) and (range[0] >= 0)
+            else bool(range[0])
+        )
+    return None
+
+
+def range_from_match_groups(groups: Sequence[str | None]) -> Range:
+    """Parse a sequence of groups of a `Match` object (presumably obtained with calling `range_spec_re.match`)."""
+    a, b, c = groups
+    assert (
+        (a and not c) or (c and not b)
+    )  # To ensure we're interpreting the groups in accordange with the regular expression
+    return (
+        (int(a), (int(b) + 1) if b else None)
+        if a
+        else ((-x, None) if (x := int(c)) else (None, 0))
+    )  # type: ignore[arg-type]
