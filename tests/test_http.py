@@ -27,6 +27,7 @@ ContentRangeTestResult: TypeAlias = tuple[
             ("-1,0", None, (None, None, None, None)),
             ("0,-1", None, (None, None, None, None)),
             ("0,-1", None, (None, None, None, None)),
+            ("5-4", None, ((5, 5), True, None, None)),
         )
     ),
 )
@@ -80,6 +81,7 @@ def test_content_range_resolution(
         ("bytes=", None),
         ("bytes=0", None),
         ("bytes=0-1", ("bytes", ((0, 2),))),
+        ("bytes=5-4", ("bytes", ((5, 5),))),
         *(
             (text, ("bytes", ((0, 2), (2, 1))))
             for text in (
