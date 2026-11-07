@@ -531,7 +531,7 @@ class RequestHandler(tornado.web.RequestHandler):
 
         This procedure returns _half-open_ ranges (index matching the "end" value is not part of the range) -- in accordance and for consistency with semantics of Python's own `slice` and `range`. The value returned otherwise matches the range applied -- so that the caller doesn't need to parse `Content-Range` (although that would be a legitimate way to obtain the applied range, since it's technically the [single source of] truth).
 
-        Returns applied range or `None` if requested range was ignored.
+        Returns applied range or `None` if requested range was ignored, otherwise raise `ClientContentRangeError` because the requested range is unsatisfiable.
         """
         assert self.is_range_request()
         if not http.is_range_handling_defined(method := self.request.method):
