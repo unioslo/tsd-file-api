@@ -30,6 +30,7 @@ from tornado.httputil import HTTPServerRequest as Request
 import tsdfileapi.aio.os  # noqa: F401
 from tsdfileapi import aio
 from tsdfileapi import http
+from tsdfileapi.exc import ClientContentRangeError
 from tsdfileapi.exc import ClientIllegalFilenameError
 from tsdfileapi.exc import ClientIllegalFiletypeError
 from tsdfileapi.exc import ClientSnsPathError
@@ -560,16 +561,27 @@ class RequestHandler(tornado.web.RequestHandler):
             for match in range_set_match
             if match.re == http.range_spec_re
         )
-        first_range = next(ranges)
+        range = next(ranges)
         if next(ranges, None):
             logger.debug("Multiple ranges are not supported")
             return None
+        if http.is_invalid_range(range):
+            logger.debug("Invalid range")
+            return None
+        if not http.is_satisfiable_range(
+            range,
+            **(
+                apply_range_kwargs := dict(
+                    unit=unit, method=method, repr_length=repr_length, **kwargs
+                )
+            ),
+        ):
+            raise ClientContentRangeError(
+                "Range not satisfiable", repr_length=repr_length
+            )
         content_range = http.content_range(
-            first_range,
-            repr_length=repr_length,
-            unit=unit,
-            method=method,
-            **kwargs,
+            range,
+            **apply_range_kwargs,
         )
         if content_range:
             content_start, content_end = content_range
