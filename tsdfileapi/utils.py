@@ -534,6 +534,9 @@ class RequestHandler(tornado.web.RequestHandler):
         Returns applied range or `None` if requested range was ignored.
         """
         assert self.is_range_request()
+        if not http.is_range_handling_defined(method := self.request.method):
+            logger.debug("Range handling not defined")
+            return None
         if not (
             range_header_match := http.range_header_matcher.fullmatch(
                 self.request.headers["Range"]
@@ -562,7 +565,7 @@ class RequestHandler(tornado.web.RequestHandler):
             first_range,
             repr_length=repr_length,
             unit=unit,
-            method=self.request.method,
+            method=method,
             **kwargs,
         )
         if content_range:

@@ -167,6 +167,10 @@ def is_invalid_range(range: Range) -> bool | None:
     return None
 
 
+def is_range_handling_defined(method: str) -> bool | None:
+    return method == "GET"
+
+
 def is_satisfiable_range(
     range: Range, *, unit: str, method: str, repr_length: int
 ) -> bool | None:
