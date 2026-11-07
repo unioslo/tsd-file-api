@@ -537,6 +537,11 @@ class RequestHandler(tornado.web.RequestHandler):
         if not http.is_range_handling_defined(method := self.request.method):
             logger.debug("Range handling not defined")
             return None
+        if repr_length == 0:
+            logger.debug(
+                "Empty representation (cannot be represented with `Content-Range`)"
+            )
+            return None
         if not (
             range_header_match := http.range_header_matcher.fullmatch(
                 self.request.headers["Range"]
