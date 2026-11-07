@@ -30,7 +30,6 @@ from tornado.httputil import HTTPServerRequest as Request
 import tsdfileapi.aio.os  # noqa: F401
 from tsdfileapi import aio
 from tsdfileapi import http
-from tsdfileapi.exc import ClientContentRangeError
 from tsdfileapi.exc import ClientIllegalFilenameError
 from tsdfileapi.exc import ClientIllegalFiletypeError
 from tsdfileapi.exc import ClientSnsPathError
@@ -554,9 +553,8 @@ class RequestHandler(tornado.web.RequestHandler):
         )
         unit = unit_match.group()
         if unit.lower() != "bytes":
-            raise ClientContentRangeError(
-                "Unsupported range unit", repr_length=repr_length
-            )
+            logger.debug("Unsupported range unit")
+            return
         ranges = (
             http.range_from_match_groups(match.groups())
             for match in range_set_match
