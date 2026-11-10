@@ -552,8 +552,8 @@ class RequestHandler(tornado.web.RequestHandler):
         unit_match, _, range_set_match = (
             range_header_match  # NOTE: `range_header_match` is a `http.Match`, not a `re.Match` object -- the former implements only a sub-set of the latter's interface; methods like `groups`, for example, are omitted in large part because they don't apply as well to matches obtained through `Matcher` objects (e.g. `range_header_matcher`) which implement relatively _opaque_ "patterns" compared to `re.Pattern` that they partially model (for consistency and to leverage familiarity with `re`)
         )
-        unit = unit_match.group()
-        if unit.lower() != "bytes":
+        unit = unit_match.group().lower()
+        if unit != "bytes":
             logger.debug("Unsupported range unit")
             return
         ranges = (
