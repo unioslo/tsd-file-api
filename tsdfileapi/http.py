@@ -3,6 +3,9 @@
 Is destined to be a stand-alone package but hasn't moved out of the parents' house yet.
 """
 
+if __debug__:
+    import logging
+
 import re
 import sys
 from datetime import datetime
@@ -13,6 +16,9 @@ from typing import Iterable
 from typing import Protocol
 from typing import Sequence
 from typing import TypeAlias
+
+if __debug__:
+    logger = logging.getLogger(__name__)
 
 Range: TypeAlias = tuple[
     int | None, int | None
@@ -170,10 +176,6 @@ def is_invalid_range(range: Range) -> bool | None:
     return None
 
 
-def is_range_handling_defined(method: str) -> bool | None:
-    return method == "GET"
-
-
 def is_satisfiable_range(
     range: Range, *, unit: str, method: str, repr_length: int
 ) -> bool | None:
@@ -226,3 +228,115 @@ def range_from_match_groups(groups: Sequence[str | None]) -> Range:
         if a
         else ((-x, None) if (x := int(c)) else (None, 0))
     )  # type: ignore[arg-type]
+
+
+class RequestHandler:
+    """Implement HTTP (RFC) as a "request handler" (de-facto compatible with `tornado.web.RequestHandler` _as a mix-in / super-class_)."""
+
+    def apply_requested_range(
+        self,
+        *,
+        repr_length: int,
+    ) -> tuple[int, int] | None:
+        """
+        Handle the range specified in the request [being handled], by applying it to the response.
+
+        Uses representation length (aka "resource length" or "full file size") to resolve the requested values as normalised (counted from first byte as `0`) and applicable specifically to the representation.
+
+        Applies resolved range by setting appropriate status code and header(s) like `Content-Range`, returning the former for convenience (so that `Content-Range` doesn't have to be parsed by caller to determine the applied range). If the range cannot be applied, `None` is returned, ether because the range was ignored or because it was rejected as unsatisfiable, with appropriate status code and header(s) set on the response.
+
+        This procedure returns _half-open_ ranges (index matching the "end" value is not part of the range) -- in accordance and for consistency with semantics of Python's own `slice` and `range`.
+        """
+        assert self.is_range_request()
+        if not self.is_range_handling_defined():
+            if __debug__:
+                logger.debug("Range handling not defined")
+            return None
+        if repr_length == 0:
+            if __debug__:
+                logger.debug(
+                    "Empty representation (cannot be represented with `Content-Range`)"
+                )
+            return None
+        if not (
+            range_header_match := range_header_matcher.fullmatch(
+                self.request.headers["Range"]
+            )
+        ):
+            if __debug__:
+                logger.debug("Does not conform to the grammar")
+            return None
+        unit_match, _, range_set_match = (
+            range_header_match  # NOTE: `range_header_match` is a `[http.]Match`, not a `re.Match` object -- the former implements only a sub-set of the latter's interface; methods like `groups`, for example, are omitted in large part because they don't apply as well to matches obtained through `Matcher` objects (e.g. `range_header_matcher`) which implement relatively _opaque_ "patterns" compared to `re.Pattern` that they partially model (for consistency and to leverage familiarity with `re`)
+        )
+        unit = unit_match.group().lower()
+        if unit != "bytes":
+            if __debug__:
+                logger.debug("Unsupported range unit")
+            return None
+        ranges = (
+            range_from_match_groups(match.groups())
+            for match in range_set_match
+            if match.re == range_spec_re
+        )
+        range = next(ranges)
+        if next(ranges, None):
+            if __debug__:
+                logger.debug("Multiple ranges are not supported")
+            return None
+        if is_invalid_range(range):
+            if __debug__:
+                logger.debug("Invalid range")
+            return None
+        method = self.request.method
+        if not is_satisfiable_range(
+            range,
+            unit=unit,
+            method=method,
+            repr_length=repr_length,
+        ):
+            self.set_status(416)
+            self.set_header("Content-Range", f"{unit} */{repr_length}")
+            return None
+        content_start, content_end = content_range(
+            range,
+            repr_length,
+            unit=unit,
+            method=method,
+        )
+        self.set_status(206)
+        self.set_header(
+            "Content-Range", f"{unit} {content_start}-{content_end - 1}/{repr_length}"
+        )
+        return content_start, content_end
+
+    def if_range_matches(self) -> bool:
+        """Determine if condition expressed with the `If-Range` request header, applies.
+
+        Note that although clients are explicitly prohibited by the RFC to send _weak_ entity tag values in `If-Range`, evaluation of the condition _is defined_ for these values, i.e. is no cause for aborting (the procedure returns `False`).
+        """
+        assert (
+            "Range" in self.request.headers
+        )  # Assert since use of `If-Range` is conditional on presence of `Range`
+        if_range = self.request.headers["If-Range"]
+        if if_range[:2].lower() == "w/":
+            if __debug__:
+                logger.debug("Client used a weak entity tag in `If-Range`")
+            return False
+        return (
+            (if_range == self._headers.get("ETag"))
+            if '"' in if_range[0:3]
+            else (
+                parse_datetime(if_range)
+                == parse_datetime(self._headers.get("Last-Modified"))
+            )
+        )
+
+    def is_range_handling_defined(self) -> bool | None:
+        return self.request.method == "GET"
+
+    def is_range_request(self) -> bool:
+        """Determine if the request being handled is a so-called HTTP range request, i.e. warrants resolving of requested (partial) content range."""
+        return self.request.headers.get("Range") and (
+            (not self.request.headers.get("If-Range")) or self.if_range_matches()
+        )

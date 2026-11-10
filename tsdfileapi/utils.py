@@ -30,7 +30,6 @@ from tornado.httputil import HTTPServerRequest as Request
 import tsdfileapi.aio.os  # noqa: F401
 from tsdfileapi import aio
 from tsdfileapi import http
-from tsdfileapi.exc import ClientContentRangeError
 from tsdfileapi.exc import ClientIllegalFilenameError
 from tsdfileapi.exc import ClientIllegalFiletypeError
 from tsdfileapi.exc import ClientSnsPathError
@@ -402,7 +401,7 @@ def parse_http_request_handling_preference(text: str) -> ParametrisedField:
     )
 
 
-class RequestHandler(tornado.web.RequestHandler):
+class RequestHandler(http.RequestHandler, tornado.web.RequestHandler):
     """
     A base (abstract) request handler class gathering utilities and useful features common to all API request handler sub-classes.
 
@@ -519,104 +518,6 @@ class RequestHandler(tornado.web.RequestHandler):
         """
         return self.parse_http_prefer_header_values(
             *self.request.headers.get_list("Prefer")
-        )
-
-    def apply_requested_range(
-        self, *, repr_length: int, **kwargs
-    ) -> tuple[int, int] | None:
-        """
-        Handle the range specified in the request by applying it to the response.
-
-        Uses representation length (aka "resource length" or "full file size") to resolve the requested values as normalised (counted from first byte as `0`) and applicable specifically to the representation.
-
-        This procedure returns _half-open_ ranges (index matching the "end" value is not part of the range) -- in accordance and for consistency with semantics of Python's own `slice` and `range`. The value returned otherwise matches the range applied -- so that the caller doesn't need to parse `Content-Range` (although that would be a legitimate way to obtain the applied range, since it's technically the [single source of] truth).
-
-        Returns applied range or `None` if requested range was ignored, otherwise raise `ClientContentRangeError` because the requested range is unsatisfiable.
-        """
-        assert self.is_range_request()
-        if not http.is_range_handling_defined(method := self.request.method):
-            logger.debug("Range handling not defined")
-            return None
-        if repr_length == 0:
-            logger.debug(
-                "Empty representation (cannot be represented with `Content-Range`)"
-            )
-            return None
-        if not (
-            range_header_match := http.range_header_matcher.fullmatch(
-                self.request.headers["Range"]
-            )
-        ):
-            logger.debug("Does not conform to the grammar")
-            return None
-        unit_match, _, range_set_match = (
-            range_header_match  # NOTE: `range_header_match` is a `http.Match`, not a `re.Match` object -- the former implements only a sub-set of the latter's interface; methods like `groups`, for example, are omitted in large part because they don't apply as well to matches obtained through `Matcher` objects (e.g. `range_header_matcher`) which implement relatively _opaque_ "patterns" compared to `re.Pattern` that they partially model (for consistency and to leverage familiarity with `re`)
-        )
-        unit = unit_match.group().lower()
-        if unit != "bytes":
-            logger.debug("Unsupported range unit")
-            return None
-        ranges = (
-            http.range_from_match_groups(match.groups())
-            for match in range_set_match
-            if match.re == http.range_spec_re
-        )
-        range = next(ranges)
-        if next(ranges, None):
-            logger.debug("Multiple ranges are not supported")
-            return None
-        if http.is_invalid_range(range):
-            logger.debug("Invalid range")
-            return None
-        if not http.is_satisfiable_range(
-            range,
-            **(
-                apply_range_kwargs := dict(
-                    unit=unit, method=method, repr_length=repr_length, **kwargs
-                )
-            ),
-        ):
-            raise ClientContentRangeError(
-                "Range not satisfiable", repr_length=repr_length
-            )
-        content_range = http.content_range(
-            range,
-            **apply_range_kwargs,
-        )
-        if content_range:
-            content_start, content_end = content_range
-            self.set_status(206)
-            self.set_header(
-                "Content-Range",
-                f"{unit} {content_start}-{content_end - 1}/{repr_length}",
-            )
-        return content_range
-
-    def if_range_matches(self) -> bool:
-        """Determine if condition expressed with the `If-Range` request header, applies.
-
-        Note that although clients are explicitly prohibited by the RFC to send _weak_ entity tag values in `If-Range`, evaluation of the condition _is defined_ for these values, i.e. is no cause for aborting (the procedure returns `False`).
-        """
-        assert (
-            "Range" in self.request.headers
-        )  # Assert since use of `If-Range` is conditional on presence of `Range`
-        if_range = self.request.headers["If-Range"]
-        if if_range[:2].lower() == "w/":
-            logger.debug("Client used a weak entity tag in `If-Range`")
-            return False
-        return (
-            (if_range == self._headers.get("ETag"))
-            if '"' in if_range[0:3]
-            else (
-                http.parse_datetime(if_range)
-                == http.parse_datetime(self._headers.get("Last-Modified"))
-            )
-        )
-
-    def is_range_request(self) -> bool:
-        """Determine if the request being handled is a so-called HTTP range request, i.e. warrants resolving of requested (partial) content range."""
-        return self.request.headers.get("Range") and (
-            (not self.request.headers.get("If-Range")) or self.if_range_matches()
         )
 
     @staticmethod
