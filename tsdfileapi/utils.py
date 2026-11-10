@@ -555,7 +555,7 @@ class RequestHandler(tornado.web.RequestHandler):
         unit = unit_match.group().lower()
         if unit != "bytes":
             logger.debug("Unsupported range unit")
-            return
+            return None
         ranges = (
             http.range_from_match_groups(match.groups())
             for match in range_set_match
