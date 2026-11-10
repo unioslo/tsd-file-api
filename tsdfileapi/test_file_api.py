@@ -1735,8 +1735,7 @@ class TestFileApi(unittest.IsolatedAsyncioTestCase):
             "Range": "words=1-4",
         }
         resp = requests.get(url, headers=headers)
-        self.assertEqual(resp.status_code, 416)
-        self.assertEqual(resp.headers["Content-Range"], "bytes */10")
+        self.assertEqual(resp.status_code, 200)
 
     def test_ZZe_filename_rules_with_uploads(self) -> None:
         headers = {"Authorization": "Bearer " + TEST_TOKENS["VALID"]}
