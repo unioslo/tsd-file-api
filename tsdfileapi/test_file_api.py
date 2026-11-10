@@ -31,9 +31,11 @@ from pysquril import async_postgres_init
 from tornado.escape import url_escape
 from tornado.httpclient import HTTPClient
 from tornado.httpclient import HTTPRequest
+from tornado.httputil import format_timestamp as unparse_http_datetime
 from tsdapiclient import fileapi
 
 from tsdfileapi.auth import process_access_token
+from tsdfileapi.http import parse_datetime as parse_http_datetime
 from tsdfileapi.tokens import gen_test_token_for_user
 from tsdfileapi.tokens import gen_test_tokens
 from tsdfileapi.tokens import get_test_token_for_p12
@@ -1668,6 +1670,36 @@ class TestFileApi(unittest.IsolatedAsyncioTestCase):
         resp3 = requests.get(url, headers=headers)
         self.assertEqual(resp3.status_code, 200)
         self.assertEqual(resp3.headers["Content-Length"], "10")
+
+    def test_ZZa_get_specific_range_conditional_on_last_modified(self) -> None:
+        """
+        Test that the API correctly handles conditional range requests.
+
+        Otherwise behaves like `test_ZY_get_specific_range_for_export`.
+        """
+        url = self.export + "/file1"
+        headers = {"Authorization": "Bearer " + TEST_TOKENS["EXPORT"]}
+        resp1 = requests.head(url, headers=headers)
+        headers = {
+            "Authorization": "Bearer " + TEST_TOKENS["EXPORT"],
+            "Range": "bytes=5-",
+            "If-Range": resp1.headers["Last-Modified"],
+        }
+        resp2 = requests.get(url, headers=headers)
+        self.assertEqual(resp2.status_code, 206)
+        self.assertEqual(resp2.headers["Content-Length"], "5")
+        self.assertEqual(resp2.headers["Content-Range"], "bytes 5-9/10")
+        headers = {
+            "Authorization": "Bearer " + TEST_TOKENS["EXPORT"],
+            "Range": "bytes=5-",
+            "If-Range": unparse_http_datetime(
+                parse_http_datetime(resp1.headers["Last-Modified"])
+                + timedelta(seconds=1)
+            ),
+        }
+        resp2 = requests.get(url, headers=headers)
+        self.assertEqual(resp2.status_code, 200)
+        self.assertEqual(resp2.headers["Content-Length"], "10")
 
     def test_ZZb_get_range_out_of_bounds_returns_correct_error(self) -> None:
         """

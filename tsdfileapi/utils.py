@@ -592,6 +592,27 @@ class RequestHandler(tornado.web.RequestHandler):
             )
         return content_range
 
+    def if_range_matches(self) -> bool:
+        """Determine if condition expressed with the `If-Range` request header, applies.
+
+        Note that although clients are explicitly prohibited by the RFC to send _weak_ entity tag values in `If-Range`, evaluation of the condition _is defined_ for these values, i.e. is no cause for aborting (the procedure returns `False`).
+        """
+        assert (
+            "Range" in self.request.headers
+        )  # Assert since use of `If-Range` is conditional on presence of `Range`
+        if_range = self.request.headers["If-Range"]
+        if if_range[:2].lower() == "w/":
+            logger.debug("Client used a weak entity tag in `If-Range`")
+            return False
+        return (
+            (if_range == self._headers.get("ETag"))
+            if '"' in if_range[0:3]
+            else (
+                http.parse_datetime(if_range)
+                == http.parse_datetime(self._headers.get("Last-Modified"))
+            )
+        )
+
     def is_range_request(self) -> bool:
         """Determine if the request being handled is a so-called HTTP range request, i.e. warrants resolving of requested (partial) content range."""
         return self.request.headers.get("Range") and (

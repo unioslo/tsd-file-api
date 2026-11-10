@@ -5,6 +5,9 @@ Is destined to be a stand-alone package but hasn't moved out of the parents' hou
 
 import re
 import sys
+from datetime import datetime
+from datetime import timezone
+from email.utils import parsedate_to_datetime
 from typing import TYPE_CHECKING
 from typing import Iterable
 from typing import Protocol
@@ -193,6 +196,23 @@ def is_satisfiable_range(
             else bool(range[0])
         )
     return None
+
+
+def parse_datetime(value: str) -> datetime | None:
+    """
+    Parse an `HTTP-date` value (RFC 9110 §5.6.7).
+
+    Returns an aware UTC `datetime`, or `None` if the value is not an `HTTP-date`.
+
+    Senders are required to generate the `IMF-fixdate` format, while recipients are required to accept the two obsolete formats (RFC 850 and ANSI C's asctime) as well. When no zone is indicated (the asctime format carries none, and an explicit `-0000` means UTC but with an unknown source zone), the value is still defined as UTC, so the result is always made UTC-aware.
+    """
+    try:
+        parsed = parsedate_to_datetime(value)
+    except ValueError:
+        return None
+    return (
+        parsed if parsed.tzinfo else parsed.replace(tzinfo=timezone.utc)
+    )  # No zone ("asctime") or an explicit `-0000` both yield a so-called "naive" `datetime`, so must "normalise" because `HTTP-date` implies UTC
 
 
 def range_from_match_groups(groups: Sequence[str | None]) -> Range:

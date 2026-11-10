@@ -1984,8 +1984,7 @@ class FileRequestHandler(AuthRequestHandler):
             self.set_header("Content-Type", mime_type)
             if etag := self.compute_etag():
                 self.set_header("ETag", etag)
-            self.last_modified = tornado.httputil.format_timestamp(mtime)
-            self.set_header("Last-Modified", self.last_modified)
+            self.set_header("Last-Modified", tornado.httputil.format_timestamp(mtime))
             self.set_header("Modified-Time", str(mtime))
             self.set_header("Accept-Ranges", "bytes")
             read_start, read_end = (
@@ -2012,22 +2011,6 @@ class FileRequestHandler(AuthRequestHandler):
             for name, value in error.headers.items():
                 self.set_header(name, value)
             self.set_status(error.status, reason=error.reason)
-
-    def if_range_matches(self) -> bool:
-        """Determine if condition expressed with the `If-Range` request header, applies.
-
-        Note that although clients are explicitly prohibited by the RFC to send _weak_ entity tag values in `If-Range`, evaluation of the condition _is defined_ for these values, i.e. is no cause for aborting (the procedure returns `False`).
-        """
-        assert (
-            "Range" in self.request.headers
-        )  # Assert since use of `If-Range` is conditional on presence of `Range`
-        if_range = self.request.headers["If-Range"]
-        if if_range[:2].lower() == "w/":
-            logger.debug("Client used a weak entity tag in `If-Range`")
-            return False
-        return if_range == (
-            self.compute_etag() if if_range[0] == '"' else self.last_modified
-        )
 
     head = get
 
