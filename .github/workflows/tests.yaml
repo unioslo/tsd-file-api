@@ -78,7 +78,7 @@ jobs:
             else
               sleep 0.1
             fi; done &&
-          docker exec tsd-file-api-sqlite python tsdfileapi/test_file_api.py
+          docker exec tsd-file-api-sqlite pytest
       - name: Log tsd-file-api (SQLite backend) container output on failure
         if: ${{ failure() }}
         run: docker logs tsd-file-api-sqlite
@@ -98,7 +98,7 @@ jobs:
             else
               sleep 0.1
             fi; done &&
-          docker exec tsd-file-api-postgres python tsdfileapi/test_file_api.py
+          docker exec tsd-file-api-postgres pytest
       - name: Log tsd-file-api (PostgreSQL backend) container output on failure
         if: ${{ failure() }}
         run: docker logs tsd-file-api-postgres
