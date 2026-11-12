@@ -1987,11 +1987,12 @@ class FileRequestHandler(AuthRequestHandler):
             self.set_header("Last-Modified", tornado.httputil.format_timestamp(mtime))
             self.set_header("Modified-Time", str(mtime))
             self.set_header("Accept-Ranges", "bytes")
-            read_start, read_end = (
+            unit, read_start, read_end = (
                 self.apply_requested_range(repr_length=size)
                 if self.is_range_request()
                 else None
-            ) or (0, size)
+            ) or ("bytes", 0, size)
+            assert unit == "bytes"
             self.set_header("Content-Length", content_length := (read_end - read_start))
             if self.request.method == "GET":
                 await self.serve_file(

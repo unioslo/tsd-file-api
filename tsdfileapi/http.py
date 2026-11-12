@@ -8,17 +8,29 @@ if __debug__:
 
 import re
 import sys
+from abc import ABC
+from abc import abstractmethod
 from datetime import datetime
 from datetime import timezone
 from email.utils import parsedate_to_datetime
 from typing import TYPE_CHECKING
-from typing import Iterable
+from typing import Any
+from typing import Generic
+from typing import Iterator
+from typing import Mapping
 from typing import Protocol
 from typing import Sequence
 from typing import TypeAlias
+from typing import TypeVar
+from typing import cast
+from typing import override
 
 if __debug__:
     logger = logging.getLogger(__name__)
+
+ContentRange: TypeAlias = tuple[
+    str, int, int
+]  # A 3-tuple of the range's unit (always lower-case) and start and end positions (half-open range -- end is exclusive to the range) resolved "against" some representation length (not included because it's assumed supplied and thus already known by the importer of the module); i.e. the positions are "absolute" (as with Python's own `os.SEEK_SET`)
 
 Range: TypeAlias = tuple[
     int | None, int | None
@@ -39,95 +51,134 @@ token_re = re.compile(
 
 
 class Match(Protocol):
-    """Result of pattern matching, a sub-set of `re.Match` (for consistency)."""
+    """Result of pattern matching, interface-wise a sub-set of `re.Match` (for consistency).
+
+    Note how `Match` is a _super-type_ of `re.Match` -- it implements only a sub-set of the latter's interface; methods like `groups`, for example, are omitted in large part because they aren't necessarily meaningful with parse results obtained through `Matcher` objects (e.g. `range_header_matcher`) which implement relatively _opaque_ "patterns" compared to `re.Pattern` that they partially model (for consistency and to leverage familiarity with `re`).
+    """
 
     def end(self) -> int: ...
 
 
-class CompoundMatch(Match):
+MatchesT_co = TypeVar("MatchesT_co", bound=tuple[Match, ...], covariant=True)
+
+
+class CompoundMatch(Generic[MatchesT_co]):
     """Composite (compound) match results.
+
+    Immutable hence co-variant in the `MatchesT_co` type.
 
     Offered as ergonomy for our matchers specifically.
     """
 
-    def __init__(self, matches: Sequence["Match"]):
-        self.matches = matches
+    _elements: MatchesT_co
 
-    def __getitem__(self, index: int):
-        return self.matches[index]
+    def __init__(self, elements: MatchesT_co) -> None:
+        self._elements = elements
 
-    def __iter__(self):
-        yield from self.matches
+    @property
+    def elements(self) -> MatchesT_co:
+        return self._elements
 
-    def end(self):
-        return self.matches[-1].end()
+    def end(self) -> int:
+        return self._elements[-1].end()
 
 
-class Matcher(Protocol):
-    """Objects that offer methods much like `re.Pattern`, for API compatibility."""
+MatchT_co = TypeVar("MatchT_co", bound=Match, covariant=True)
+
+
+class Matcher(Protocol[MatchT_co]):
+    """Parser interface "partially compatible" with `re.Pattern` -- `re.Pattern` may be used wherever `Matcher` is expected, but not vice-versa (because `re.Pattern` is a sub-type of `Matcher`). The partial shared interface is for leveraging familiarity with the well-known API of `re.Pattern`, being part of Python's standard library. See therefore the latter for documentation on the slice of `re.Pattern` interface defined with this class.
+
+    The `MatchT_co` type parameter denotes the type of match values `Matcher` produces, necessarily of a sub-type of `Match`. Because match values are only _returned_ (produced), `Matcher` is co-variant in `MatchT_co`.
+    """
 
     def match(
         self, value: str, pos: int = 0, endpos: int = sys.maxsize
-    ) -> Match | None: ...
+    ) -> MatchT_co | None: ...
 
     def fullmatch(
         self, value: str, pos: int = 0, endpos: int = sys.maxsize
-    ) -> Match | None: ...
+    ) -> MatchT_co | None: ...
 
 
-class FullMatcherMixin:
-    """Adds a `fullmatch` method compatible with `re.Pattern.fullmatch`."""
+class FullMatcherMixin(ABC, Generic[MatchT_co]):
+    """Adds a `fullmatch` method, also compatible with `re.Pattern.fullmatch`."""
+
+    @abstractmethod
+    def match(
+        self, value: str, pos: int = 0, endpos: int = sys.maxsize
+    ) -> MatchT_co | None: ...
 
     def fullmatch(
         self, value: str, pos: int = 0, endpos: int = sys.maxsize
-    ) -> Match | None:
+    ) -> MatchT_co | None:
         match = self.match(value, pos, endpos)
         return match if (match and (match.end() == min(len(value), endpos))) else None
 
 
-class RangeSetMatcher(FullMatcherMixin, Matcher):
+RangeSetMatch: TypeAlias = CompoundMatch[
+    tuple[re.Match[str], ...]
+]  # The `range-set` HTTP grammar production type
+
+
+class RangeSetMatcher(FullMatcherMixin[RangeSetMatch]):
     """Matches the `range-set` production (a list of `range-spec` separated with comma surrounded by optional white-space)."""
 
-    def match(self, value: str, *args) -> Match | None:
-        elements = tuple(self.match_iter(value, *args))
+    @override
+    def match(
+        self, value: str, pos: int = 0, endpos: int = sys.maxsize
+    ) -> RangeSetMatch | None:
+        elements = tuple(self.match_iter(value, pos, endpos))
         return CompoundMatch(elements) if elements else None
 
-    def match_iter(self, value: str, pos=0, *args) -> Iterable[Match]:
+    def match_iter(
+        self, value: str, pos: int = 0, endpos: int = sys.maxsize
+    ) -> Iterator[re.Match[str]]:
         while True:
-            match = range_spec_re.match(value, pos, *args)
+            match = range_spec_re.match(value, pos, endpos)
             if match:
                 yield match
                 pos = match.end()
-            match = comma_list_sep_re.match(value, pos, *args)
-            if not match:
-                return None
+            match = comma_list_sep_re.match(value, pos, endpos)
+            if match is None:
+                return
             yield match
             pos = match.end()
 
 
-range_set_matcher = RangeSetMatcher()  # The `range-set` HTTP grammar element
+range_set_matcher = RangeSetMatcher()  # Parses the `range-set` HTTP grammar element
 
 
-class ByteRangesSpecMatcher(FullMatcherMixin, Matcher):
-    """The `ranges` HTTP grammar production matcher.
+RangesSpecMatch: TypeAlias = CompoundMatch[
+    tuple[re.Match[str], re.Match[str], RangeSetMatch]
+]  # The `ranges-specifier` HTTP grammar production type
+
+
+class RangesSpecMatcher(FullMatcherMixin[RangesSpecMatch]):
+    """The `ranges-specifier` HTTP grammar production parser (aka "matcher").
 
     This is really a regular "concatenation" matcher (A followed by B followed by C etc), but general parsing construct utilities go beyond the scope of this module so we just cut it short and straight to defining specifically the `ranges` production with a dedicated class.
     """
 
-    def match(self, value: str, pos=0, endpos: int = sys.maxsize) -> Match | None:
+    @override
+    def match(
+        self, value: str, pos: int = 0, endpos: int = sys.maxsize
+    ) -> RangesSpecMatch | None:
         unit_match = token_re.match(value, pos, endpos)
-        if not unit_match:
+        if unit_match is None:
             return None
         eq_match = eq_re.match(value, pos := unit_match.end(), endpos)
-        if not eq_match:
+        if eq_match is None:
             return None
         range_set_match = range_set_matcher.match(value, pos := eq_match.end(), endpos)
-        if not range_set_match:
+        if range_set_match is None:
             return None
         return CompoundMatch((unit_match, eq_match, range_set_match))
 
 
-range_header_matcher = ranges_spec_matcher = ByteRangesSpecMatcher()
+range_header_matcher = ranges_spec_matcher = (
+    RangesSpecMatcher()
+)  # Parses the `ranges-specifier` HTTP grammar element, aliased with `range_header_matcher` (for convenience, because `Range` header value is grammatically a `ranges-specifier`)
 
 
 def content_range(
@@ -223,21 +274,44 @@ def range_from_match_groups(groups: Sequence[str | None]) -> Range:
     assert (
         (a and not c) or (c and not b)
     )  # To ensure we're interpreting the groups in accordange with the regular expression
+    if TYPE_CHECKING:
+        c = cast(str, c)
     return (
         (int(a), (int(b) + 1) if b else None)
         if a
         else ((-x, None) if (x := int(c)) else (None, 0))
-    )  # type: ignore[arg-type]
+    )
 
 
-class RequestHandler:
+class Request(Protocol):
+    """Request interface as implemented by e.g. `tornado.httputil.HTTPServerRequest` (which we don't want to explicitly depend upon, for dependencies isolation)."""
+
+    @property
+    def method(self) -> str | None: ...
+
+    @property
+    def headers(self) -> Mapping[str, str]: ...
+
+
+RequestT = TypeVar("RequestT", bound=Request)
+HeadersT = TypeVar("HeadersT", bound=Mapping[str, str])
+
+
+class RequestHandler(ABC, Generic[RequestT, HeadersT]):
     """Implement HTTP (RFC) as a "request handler" (de-facto compatible with `tornado.web.RequestHandler` _as a mix-in / super-class_)."""
+
+    if TYPE_CHECKING:
+        _headers: HeadersT
+        request: RequestT
+
+        def set_header(self, name: str, value: Any) -> None: ...
+        def set_status(self, code: int, reason: str | None = None) -> None: ...
 
     def apply_requested_range(
         self,
         *,
         repr_length: int,
-    ) -> tuple[int, int] | None:
+    ) -> ContentRange | None:
         """
         Handle the range specified in the request [being handled], by applying it to the response.
 
@@ -258,48 +332,52 @@ class RequestHandler:
                     "Empty representation (cannot be represented with `Content-Range`)"
                 )
             return None
-        if not (
-            range_header_match := range_header_matcher.fullmatch(
-                self.request.headers["Range"]
-            )
-        ):
+        range_header_match = range_header_matcher.fullmatch(
+            self.request.headers["Range"]
+        )
+        if range_header_match is None:
             if __debug__:
                 logger.debug("Does not conform to the grammar")
             return None
-        unit_match, _, range_set_match = (
-            range_header_match  # NOTE: `range_header_match` is a `[http.]Match`, not a `re.Match` object -- the former implements only a sub-set of the latter's interface; methods like `groups`, for example, are omitted in large part because they don't apply as well to matches obtained through `Matcher` objects (e.g. `range_header_matcher`) which implement relatively _opaque_ "patterns" compared to `re.Pattern` that they partially model (for consistency and to leverage familiarity with `re`)
-        )
+        unit_match, _, range_set_match = range_header_match.elements
         unit = unit_match.group().lower()
-        if unit != "bytes":
+        if not self.is_supported_range_unit(unit):
             if __debug__:
                 logger.debug("Unsupported range unit")
             return None
-        ranges = (
+        requested_ranges = tuple(
             range_from_match_groups(match.groups())
-            for match in range_set_match
+            for match in range_set_match.elements
             if match.re == range_spec_re
         )
-        range = next(ranges)
-        if next(ranges, None):
+        if any(is_invalid_range(range) for range in requested_ranges):
             if __debug__:
-                logger.debug("Multiple ranges are not supported")
-            return None
-        if is_invalid_range(range):
-            if __debug__:
-                logger.debug("Invalid range")
+                logger.debug("Invalid range(s) present")
             return None
         method = self.request.method
-        if not is_satisfiable_range(
-            range,
-            unit=unit,
-            method=method,
-            repr_length=repr_length,
-        ):
+        assert method
+        satisfiable_ranges = tuple(
+            range
+            for range in requested_ranges
+            if is_satisfiable_range(
+                range, unit=unit, method=method, repr_length=repr_length
+            )
+        )
+        if not satisfiable_ranges:
             self.set_status(416)
             self.set_header("Content-Range", f"{unit} */{repr_length}")
             return None
+        applicable_ranges = self.applicable_ranges(satisfiable_ranges)
+        if not applicable_ranges:
+            if __debug__:
+                logger.debug("No applicable ranges")
+            return None
+        if len(applicable_ranges) != 1:
+            raise NotImplementedError(
+                "Multiple applicable ranges require multipart responses"
+            )
         content_start, content_end = content_range(
-            range,
+            applicable_ranges[0],
             repr_length,
             unit=unit,
             method=method,
@@ -308,7 +386,7 @@ class RequestHandler:
         self.set_header(
             "Content-Range", f"{unit} {content_start}-{content_end - 1}/{repr_length}"
         )
-        return content_start, content_end
+        return unit, content_start, content_end
 
     def if_range_matches(self) -> bool:
         """Determine if condition expressed with the `If-Range` request header, applies.
@@ -325,18 +403,30 @@ class RequestHandler:
             return False
         return (
             (if_range == self._headers.get("ETag"))
-            if '"' in if_range[0:3]
+            if '"' in if_range[:3]
             else (
-                parse_datetime(if_range)
-                == parse_datetime(self._headers.get("Last-Modified"))
+                (parse_datetime(if_range) == parse_datetime(last_modified_header_value))
+                if (last_modified_header_value := self._headers.get("Last-Modified"))
+                else False
             )
         )
 
     def is_range_handling_defined(self) -> bool | None:
+        """Determine whether the request defines range handling (per the RFC)."""
         return self.request.method == "GET"
 
     def is_range_request(self) -> bool:
         """Determine if the request being handled is a so-called HTTP range request, i.e. warrants resolving of requested (partial) content range."""
-        return self.request.headers.get("Range") and (
+        return bool(self.request.headers.get("Range")) and (
             (not self.request.headers.get("If-Range")) or self.if_range_matches()
         )
+
+    @abstractmethod
+    def applicable_ranges(self, ranges: Sequence[Range]) -> Sequence[Range]:
+        """Return the sub-set of [satisfiable] ranges that the handler prefers to use."""
+        ...
+
+    @abstractmethod
+    def is_supported_range_unit(self, unit: str) -> bool:
+        """Determine whether a given range unit is supported by this handler."""
+        ...
