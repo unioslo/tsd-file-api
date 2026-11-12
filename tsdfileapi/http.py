@@ -23,7 +23,6 @@ from typing import Sequence
 from typing import TypeAlias
 from typing import TypeVar
 from typing import cast
-from typing import override
 
 if __debug__:
     logger = logging.getLogger(__name__)
@@ -124,7 +123,6 @@ RangeSetMatch: TypeAlias = CompoundMatch[
 class RangeSetMatcher(FullMatcherMixin[RangeSetMatch]):
     """Matches the `range-set` production (a list of `range-spec` separated with comma surrounded by optional white-space)."""
 
-    @override
     def match(
         self, value: str, pos: int = 0, endpos: int = sys.maxsize
     ) -> RangeSetMatch | None:
@@ -160,7 +158,6 @@ class RangesSpecMatcher(FullMatcherMixin[RangesSpecMatch]):
     This is really a regular "concatenation" matcher (A followed by B followed by C etc), but general parsing construct utilities go beyond the scope of this module so we just cut it short and straight to defining specifically the `ranges` production with a dedicated class.
     """
 
-    @override
     def match(
         self, value: str, pos: int = 0, endpos: int = sys.maxsize
     ) -> RangesSpecMatch | None:

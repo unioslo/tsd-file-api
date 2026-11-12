@@ -21,7 +21,6 @@ from typing import Mapping
 from typing import Optional
 from typing import Sequence
 from typing import Union
-from typing import override
 from uuid import uuid4
 
 import tornado.log
@@ -557,11 +556,9 @@ class RequestHandler(http.RequestHandler[Request, Headers], tornado.web.RequestH
 
         logger.isEnabledFor = wrap(logger.isEnabledFor)  # type: ignore[method-assign]
 
-    @override
     def is_supported_range_unit(self, unit: str) -> bool:
         return unit == "bytes"
 
-    @override
     def applicable_ranges(self, ranges: Sequence[Range]) -> Sequence[Range]:
         return (
             ranges if len(ranges) == 1 else ()

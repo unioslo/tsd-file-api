@@ -11,7 +11,6 @@ from typing import Mapping
 from typing import MutableMapping
 from typing import Sequence
 from typing import cast
-from typing import override
 
 import pytest
 
@@ -49,11 +48,9 @@ class RequestHandler(http.RequestHandler[Request, MutableMapping[str, str]]):
     def get_status(self) -> int:
         return self._status_code
 
-    @override
     def is_supported_range_unit(self, unit: str) -> bool:
         return bool(bytes_unit_re.fullmatch(unit))
 
-    @override
     def applicable_ranges(self, ranges: Sequence[Range]) -> Sequence[Range]:
         return (
             ranges if len(ranges) == 1 else ()
