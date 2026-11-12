@@ -557,9 +557,11 @@ class RequestHandler(http.RequestHandler[Request, Headers], tornado.web.RequestH
         logger.isEnabledFor = wrap(logger.isEnabledFor)  # type: ignore[method-assign]
 
     def is_supported_range_unit(self, unit: str) -> bool:
+        """Overrides (implements) corresponding method stub in `http.RequestHandler`."""
         return unit == "bytes"
 
     def applicable_ranges(self, ranges: Sequence[Range]) -> Sequence[Range]:
+        """Overrides (implements) corresponding method stub in `http.RequestHandler`."""
         return (
             ranges if len(ranges) == 1 else ()
         )  # Refuse to apply any range if _multiple_ ranges were requested
