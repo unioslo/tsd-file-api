@@ -22,7 +22,18 @@ poetry run tsd-file-api
 While the file API is running on your machine, run this in a separate terminal:
 
 ```console
-poetry run python tsdfileapi/test_file_api.py
+poetry run pytest
+```
+
+### Type checking
+
+> [!NOTE]
+> Work on validating type soundness across the project's [Python] code base, through a _type checker_ (e.g. [MyPy](https://mypy.org)), is in its infancy -- only select few modules, known to validate, have so far been configured for sweeping by default.
+
+MyPy is preliminarily added to the project and can be invoked for sweeping with:
+
+```console
+poetry run mypy
 ```
 
 ## Alternative container based development setup

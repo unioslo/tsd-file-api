@@ -68,7 +68,6 @@ from tsdfileapi.aio.builtins import enumerate as aenumerate
 from tsdfileapi.aio.builtins import open as aopen
 from tsdfileapi.auth import process_access_token
 from tsdfileapi.exc import ClientAuthorizationError
-from tsdfileapi.exc import ClientContentRangeError
 from tsdfileapi.exc import ClientError
 from tsdfileapi.exc import ClientGroupAccessError
 from tsdfileapi.exc import ClientMethodNotAllowed
@@ -1892,7 +1891,7 @@ class FileRequestHandler(AuthRequestHandler):
             etag = None
             if self.filepath:
                 mtime = os.lstat(self.filepath).st_mtime
-                etag = self.mtime_to_digest(mtime)
+                etag = f'"{self.mtime_to_digest(mtime)}"'
             return etag
         except Exception:
             return None
@@ -1911,7 +1910,6 @@ class FileRequestHandler(AuthRequestHandler):
         and write to the network.
 
         """
-        self.set_header("Content-Length", content_length)
         remaining = content_length
         if chunk_size > content_length:
             chunk_size = content_length
@@ -1984,55 +1982,30 @@ class FileRequestHandler(AuthRequestHandler):
                 self.CHUNK_SIZE = self.nacl_chunksize
                 encrypt_data = True
             self.set_header("Content-Type", mime_type)
+            if etag := self.compute_etag():
+                self.set_header("ETag", etag)
+            self.set_header("Last-Modified", tornado.httputil.format_timestamp(mtime))
             self.set_header("Modified-Time", str(mtime))
             self.set_header("Accept-Ranges", "bytes")
-            if "Range" not in self.request.headers:
+            unit, read_start, read_end = (
+                self.apply_requested_range(repr_length=size)
+                if self.is_range_request()
+                else None
+            ) or ("bytes", 0, size)
+            assert unit == "bytes"
+            self.set_header("Content-Length", content_length := (read_end - read_start))
+            if self.request.method == "GET":
                 await self.serve_file(
                     self.filepath,
                     self.CHUNK_SIZE,
-                    size,
+                    content_length,
                     encrypt_data,
+                    read_start,
                 )
-            elif "Range" in self.request.headers:
-                if "If-Range" in self.request.headers:
-                    provided_etag = self.request.headers["If-Range"]
-                    computed_etag = await to_thread(self.compute_etag)
-                    if provided_etag != computed_etag:
-                        raise ClientError(
-                            "The resource has changed, get everything from the start again"
-                        )
-                # clients specify the range in terms of 0-based index numbers
-                # with an inclusive interval: [start, end]
-                client_byte_index_range = self.request.headers["Range"]
-                full_file_size = (await aio.os.lstat(self.filepath)).st_size
-                start_and_end = client_byte_index_range.split("=")[-1].split("-")
-                if "," in start_and_end:
-                    raise ClientMethodNotAllowed(
-                        "Multipart byte range requests not supported"
-                    )
-                client_start = int(start_and_end[0])
-                cursor_start = client_start
-                try:
-                    client_end = int(start_and_end[1])
-                except Exception:
-                    client_end = full_file_size - 1
-                if client_end > full_file_size:
-                    raise ClientContentRangeError(
-                        "Range request exceeds byte range of resource"
-                    )
-                # because clients provide 0-based byte indices
-                # we must add 1 to calculate the desired amount to read
-                size = client_end - client_start + 1
-                await self.serve_file(
-                    self.filepath,
-                    self.CHUNK_SIZE,
-                    size,
-                    encrypt_data,
-                    cursor_start,
+                self.finish()
+                logger.info(
+                    f"{self.requestor}, downloaded: {self.filepath}, MIME type: {mime_type}, range: [{read_start}-{read_end}), size: {content_length}"
                 )
-            logger.info(
-                f"{self.requestor}, downloaded: {self.filepath}, MIME type: {mime_type}, size: {size}"
-            )
         except Exception as e:
             error = error_for_exception(e, details=self.additional_log_details())
             logger.exception(error.message)
@@ -2040,38 +2013,7 @@ class FileRequestHandler(AuthRequestHandler):
                 self.set_header(name, value)
             self.set_status(error.status, reason=error.reason)
 
-    async def head(self, tenant: str, filename: str) -> None:
-        """
-        Return information about a specific file.
-
-        """
-        try:
-            if not self.allow_info:
-                raise ClientMethodNotAllowed
-            if not filename:
-                raise ClientError("No resource specified")
-            self.path = self.export_dir
-            self.filepath = f"{self.path}/{url_unescape(self.resource)}"
-            # ensure there are no symlinks in filepath
-            await any_path_islink(self.filepath, opts=options)
-            if not await aio.os.path.lexists(self.filepath):
-                raise ClientResourceNotFoundError(f"{self.filepath} not found")
-            size, mime_type, mtime = await self.get_file_metadata(self.filepath)
-            logger.info(
-                f"user: {self.requestor}, checked file: {self.filepath} , MIME type: {mime_type}"
-            )
-            self.set_header("Content-Length", size)
-            self.set_header("Accept-Ranges", "bytes")
-            self.set_header("Content-Type", mime_type)
-            self.set_header("Modified-Time", str(mtime))
-            self.set_status(HTTPStatus.OK.value)
-        except Exception as e:
-            error = error_for_exception(e, details=self.additional_log_details())
-            logger.error(error.message)
-            for name, value in error.headers.items():
-                self.set_header(name, value)
-            self.set_status(error.status, reason=error.reason)
-            self.finish()
+    head = get
 
     async def delete(self, tenant: str, filename: str = "") -> None:
         try:

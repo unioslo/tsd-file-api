@@ -31,9 +31,11 @@ from pysquril import async_postgres_init
 from tornado.escape import url_escape
 from tornado.httpclient import HTTPClient
 from tornado.httpclient import HTTPRequest
+from tornado.httputil import format_timestamp as unparse_http_datetime
 from tsdapiclient import fileapi
 
 from tsdfileapi.auth import process_access_token
+from tsdfileapi.http import parse_datetime as parse_http_datetime
 from tsdfileapi.tokens import gen_test_token_for_user
 from tsdfileapi.tokens import gen_test_tokens
 from tsdfileapi.tokens import get_test_token_for_p12
@@ -1574,7 +1576,27 @@ class TestFileApi(unittest.IsolatedAsyncioTestCase):
         etag2 = resp1.headers["Etag"]
         self.assertEqual(etag1, etag2)
 
+    def test_ZXa_get_for_export_resume_works(self) -> None:
+        url = self.export + "/file1"
+        headers = {"Authorization": "Bearer " + TEST_TOKENS["EXPORT"]}
+        resp1 = requests.get(url, headers=headers)
+        self.assertEqual(resp1.status_code, 200)
+        self.assertEqual(resp1.headers["Accept-Ranges"], "bytes")
+        self.assertEqual(resp1.headers["Content-Length"], "10")
+        self.assertTrue(resp1.headers.get("ETag"))
+        self.assertTrue(resp1.headers.get("Last-Modified"))
+        etag1 = resp1.headers["Etag"]
+        resp2 = requests.get(url, headers=headers)
+        self.assertEqual(resp2.status_code, 200)
+        etag2 = resp1.headers["Etag"]
+        self.assertEqual(etag1, etag2)
+
     def test_ZY_get_specific_range_for_export(self) -> None:
+        """
+        Test that the API satisfies [valid and bound] range requests.
+
+        The test assumes that the server does NOT ignore the specified ranges -- generally it is permitted to do so at its own discretion (save for some explicit prohibitions by the RFC), but for the test to be practically useful and applicable we demand our specified ranges are satisfied (and thus expect HTTP 206 and not 200, etc). We also assume known resource length, so `*` is not accepted in `Content-Range` and `Content-Length` is expected with corresponding value (i.e. the test doesn't support chunked transfer coding, which is generally permissible to use with range request responses).
+        """
         url = self.export + "/file1"
         # 10-byte file, with index range: 0,1,2,3,4,5,6,7,8,9
         headers = {
@@ -1582,35 +1604,52 @@ class TestFileApi(unittest.IsolatedAsyncioTestCase):
             "Range": "bytes=0-3",
         }  # the first 4 bytes in the file
         resp = requests.get(url, headers=headers)
+        self.assertEqual(resp.status_code, 206)
         self.assertEqual(resp.headers["Content-Length"], "4")
-        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(resp.headers["Content-Range"], "bytes 0-3/10")
         self.assertEqual(resp.text, "some")
         headers = {
             "Authorization": "Bearer " + TEST_TOKENS["EXPORT"],
             "Range": "bytes=4-7",
         }  # the next 4 bytes in the file
         resp = requests.get(url, headers=headers)
-        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(resp.status_code, 206)
+        self.assertEqual(resp.headers["Content-Length"], "4")
+        self.assertEqual(resp.headers["Content-Range"], "bytes 4-7/10")
         self.assertEqual(resp.text, " dat")
         headers = {
             "Authorization": "Bearer " + TEST_TOKENS["EXPORT"],
             "Range": "bytes=8-9",
         }  # the last 2 bytes in the file
         resp = requests.get(url, headers=headers)
-        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(resp.status_code, 206)
+        self.assertEqual(resp.headers["Content-Length"], "2")
+        self.assertEqual(resp.headers["Content-Range"], "bytes 8-9/10")
         self.assertEqual(resp.text, "a\n")
 
     def test_ZZ_get_range_until_end_for_export(self) -> None:
+        """
+        Test that the API satisfies a [valid bound] range request, with a range until the end of requested resource.
+
+        Otherwise behaves like `test_ZY_get_specific_range_for_export`.
+        """
         url = self.export + "/file1"
         headers = {
             "Authorization": "Bearer " + TEST_TOKENS["EXPORT"],
             "Range": "bytes=5-9",
         }  # 0-indexed, so byte 6 to the end
         resp = requests.get(url, headers=headers)
-        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(resp.status_code, 206)
+        self.assertEqual(resp.headers["Content-Length"], "5")
+        self.assertEqual(resp.headers["Content-Range"], "bytes 5-9/10")
         self.assertEqual(resp.text, "data\n")
 
     def test_ZZa_get_specific_range_conditional_on_etag(self) -> None:
+        """
+        Test that the API correctly handles conditional range requests.
+
+        Otherwise behaves like `test_ZY_get_specific_range_for_export`.
+        """
         url = self.export + "/file1"
         headers = {"Authorization": "Bearer " + TEST_TOKENS["EXPORT"]}
         resp1 = requests.head(url, headers=headers)
@@ -1620,25 +1659,66 @@ class TestFileApi(unittest.IsolatedAsyncioTestCase):
             "If-Range": resp1.headers["Etag"],
         }
         resp2 = requests.get(url, headers=headers)
-        self.assertEqual(resp2.status_code, 200)
+        self.assertEqual(resp2.status_code, 206)
+        self.assertEqual(resp2.headers["Content-Length"], "5")
+        self.assertEqual(resp2.headers["Content-Range"], "bytes 5-9/10")
         headers = {
             "Authorization": "Bearer " + TEST_TOKENS["EXPORT"],
             "Range": "bytes=5-",
             "If-Range": "0g04d6de2ecd9d1d1895e2086c8785f1",
         }
         resp3 = requests.get(url, headers=headers)
-        self.assertEqual(resp3.status_code, 400)
+        self.assertEqual(resp3.status_code, 200)
+        self.assertEqual(resp3.headers["Content-Length"], "10")
+
+    def test_ZZa_get_specific_range_conditional_on_last_modified(self) -> None:
+        """
+        Test that the API correctly handles conditional range requests.
+
+        Otherwise behaves like `test_ZY_get_specific_range_for_export`.
+        """
+        url = self.export + "/file1"
+        headers = {"Authorization": "Bearer " + TEST_TOKENS["EXPORT"]}
+        resp1 = requests.head(url, headers=headers)
+        headers = {
+            "Authorization": "Bearer " + TEST_TOKENS["EXPORT"],
+            "Range": "bytes=5-",
+            "If-Range": resp1.headers["Last-Modified"],
+        }
+        resp2 = requests.get(url, headers=headers)
+        self.assertEqual(resp2.status_code, 206)
+        self.assertEqual(resp2.headers["Content-Length"], "5")
+        self.assertEqual(resp2.headers["Content-Range"], "bytes 5-9/10")
+        headers = {
+            "Authorization": "Bearer " + TEST_TOKENS["EXPORT"],
+            "Range": "bytes=5-",
+            "If-Range": unparse_http_datetime(
+                parse_http_datetime(resp1.headers["Last-Modified"])
+                + timedelta(seconds=1)
+            ),
+        }
+        resp2 = requests.get(url, headers=headers)
+        self.assertEqual(resp2.status_code, 200)
+        self.assertEqual(resp2.headers["Content-Length"], "10")
 
     def test_ZZb_get_range_out_of_bounds_returns_correct_error(self) -> None:
+        """
+        Test whether the API handles range with end value beyond length of requested resource.
+
+        Assumes the range is truncated to the end of the resource (as per the RFC _if_ considered usable).
+
+        Otherwise behaves like `test_ZY_get_specific_range_for_export`.
+        """
         url = self.export + "/file1"
         headers = {
             "Authorization": "Bearer " + TEST_TOKENS["EXPORT"],
             "Range": "bytes=5-100",
         }
         resp = requests.get(url, headers=headers)
-        self.assertEqual(resp.status_code, 416)
+        self.assertEqual(resp.status_code, 206)
+        self.assertEqual(resp.headers["Content-Length"], "5")
+        self.assertEqual(resp.headers["Content-Range"], "bytes 5-9/10")
 
-    @pytest_skip_for_compatibility_reasons
     def test_ZZc_requesting_multiple_ranges_not_supported_error(self) -> None:
         url = self.export + "/file1"
         headers = {
@@ -1646,7 +1726,16 @@ class TestFileApi(unittest.IsolatedAsyncioTestCase):
             "Range": "bytes=1-4, 5-10",
         }
         resp = requests.get(url, headers=headers)
-        self.assertEqual(resp.status_code, 405)
+        self.assertEqual(resp.status_code, 200)
+
+    def test_ZZd_requesting_unsatisfiable_ranges_error(self) -> None:
+        url = self.export + "/file1"
+        headers = {
+            "Authorization": "Bearer " + TEST_TOKENS["EXPORT"],
+            "Range": "words=1-4",
+        }
+        resp = requests.get(url, headers=headers)
+        self.assertEqual(resp.status_code, 200)
 
     def test_ZZe_filename_rules_with_uploads(self) -> None:
         headers = {"Authorization": "Bearer " + TEST_TOKENS["VALID"]}

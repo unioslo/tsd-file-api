@@ -35,6 +35,8 @@ requests = ">=2.27.1"
 tsd-api-client = "^3.9.5"
 ruff = ">=0.11.1"
 pytest = "^9.0.3"
+pre-commit = "<4.7.0"
+mypy = "^2.4.1"
 
 [tool.poetry.group.large-file-tests.dependencies]
 mock-large-files-fuse = ">=1.0.0"
@@ -47,6 +49,14 @@ enable = true
 vcs = "git"
 style = "pep440"
 bump = true
+
+[tool.mypy]
+files = [
+	"tsdfileapi/http.py",
+	"tests/test_http.py",
+]
+python_version = "3.10"
+strict = true
 
 [tool.ruff]
 target-version = "py310"
