@@ -355,8 +355,9 @@ class RequestHandler(ABC, Generic[RequestT, HeadersT]):
             )
         )
         if not satisfiable_ranges:
-            self.set_status(416)
-            self.set_header("Content-Range", f"{unit} */{repr_length}")
+            if requested_ranges:
+                self.set_status(416)
+                self.set_header("Content-Range", f"{unit} */{repr_length}")
             return None
         applicable_ranges = self.applicable_ranges(satisfiable_ranges)
         if not applicable_ranges:
