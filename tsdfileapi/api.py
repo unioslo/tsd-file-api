@@ -1992,6 +1992,9 @@ class FileRequestHandler(AuthRequestHandler):
                 if self.is_range_request()
                 else None
             ) or ("bytes", 0, size)
+            if self.get_status() not in (200, 206):
+                # The rest of this handler is all about transferring the representation (in full or partially) and assumes appropriate status code(s) -- otherwise we assume handling is finished
+                return
             assert unit == "bytes"
             self.set_header("Content-Length", content_length := (read_end - read_start))
             if self.request.method == "GET":
