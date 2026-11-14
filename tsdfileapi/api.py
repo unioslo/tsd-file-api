@@ -1984,7 +1984,12 @@ class FileRequestHandler(AuthRequestHandler):
             self.set_header("Content-Type", mime_type)
             if etag := self.compute_etag():
                 self.set_header("ETag", etag)
-            self.set_header("Last-Modified", tornado.httputil.format_timestamp(mtime))
+            self.set_header(
+                "Last-Modified",
+                self.compute_last_modified(
+                    datetime.datetime.fromtimestamp(mtime, datetime.timezone.utc)
+                ),
+            )
             self.set_header("Modified-Time", str(mtime))
             self.set_header("Accept-Ranges", "bytes")
             unit, read_start, read_end = (

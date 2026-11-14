@@ -6,13 +6,13 @@ Is destined to be a stand-alone package but hasn't moved out of the parents' hou
 if __debug__:
     import logging
 
+import email.utils
 import re
 import sys
 from abc import ABC
 from abc import abstractmethod
 from datetime import datetime
 from datetime import timezone
-from email.utils import parsedate_to_datetime
 from typing import TYPE_CHECKING
 from typing import Any
 from typing import Generic
@@ -248,21 +248,16 @@ def is_satisfiable_range(
     return None
 
 
-def parse_datetime(value: str) -> datetime | None:
+def parse_datetime(value: str) -> datetime:
     """
-    Parse an `HTTP-date` value (RFC 9110 §5.6.7).
+    Parse a date-time per the `HTTP-date` grammar.
 
-    Returns an aware UTC `datetime`, or `None` if the value is not an `HTTP-date`.
-
-    Senders are required to generate the `IMF-fixdate` format, while recipients are required to accept the two obsolete formats (RFC 850 and ANSI C's asctime) as well. When no zone is indicated (the asctime format carries none, and an explicit `-0000` means UTC but with an unknown source zone), the value is still defined as UTC, so the result is always made UTC-aware.
+    Permits the `IMF-fixdate` syntax required supported by clients and additionally two obsolete syntaxes (one defined by RFC 850 and ANSI C's "asctime") required supported for servers. For the latter two, no time zone is indicated (the "asctime" format carries none, and an explicit `-0000` means UTC but with an unknown source zone) while the value is implied to be UTC, so the result is tagged UTC. Thus, in any case this procedure returns a UTC date-time.
     """
-    try:
-        parsed = parsedate_to_datetime(value)
-    except ValueError:
-        return None
+    parsed = email.utils.parsedate_to_datetime(value)
     return (
         parsed if parsed.tzinfo else parsed.replace(tzinfo=timezone.utc)
-    )  # No zone ("asctime") or an explicit `-0000` both yield a so-called "naive" `datetime`, so must "normalise" because `HTTP-date` implies UTC
+    )  # No zone ("asctime") or an explicit `-0000` both yield a so-called "naive" `datetime`, so must simply attach the implied time zone (UTC)
 
 
 def range_from_match_groups(groups: Sequence[str | None]) -> Range:
@@ -385,6 +380,14 @@ class RequestHandler(ABC, Generic[RequestT, HeadersT]):
         )
         return unit, content_start, content_end
 
+    def compute_last_modified(self, value: datetime) -> str:
+        """Compute and return a `Last-Modified` value given a date-time.
+
+        This procedure encapsulates behaviour mandated by the RFC for e.g. when the would-be `Last-Modified` date-time value is later than that of `Date`. Therefore, using this procedure when setting the value of the header, e.g. `self.set_header("Last-Modified", self.compute_last_modified(...))`, is generally recommended. With the procedure, control of the header's value is made explicit but compliance is only enforced in debug mode.
+        """
+        date = parse_datetime(date_header_value := self._headers["Date"])
+        return date_header_value if value > date else unparse_datetime(value)
+
     def if_range_matches(self) -> bool:
         """Determine if condition expressed with the `If-Range` request header, applies.
 
@@ -418,6 +421,22 @@ class RequestHandler(ABC, Generic[RequestT, HeadersT]):
             (not self.request.headers.get("If-Range")) or self.if_range_matches()
         )
 
+    if __debug__:
+
+        def set_header(self, name: str, value: Any) -> None:
+            """A strict(er) implementation to validate compliance."""
+            if name in ("Date", "Last-Modified"):
+                if not isinstance(value, datetime):
+                    assert isinstance(value, str)
+                    value = parse_datetime(value)
+                if name == "Last-Modified":
+                    assert unparse_datetime(value) == self.compute_last_modified(
+                        value
+                    ), (
+                        "Resource modification date-time is later than response generation date-time"
+                    )
+            super().set_header(name, value)  # type: ignore
+
     @abstractmethod
     def applicable_ranges(self, ranges: Sequence[Range]) -> Sequence[Range]:
         """Return the sub-set of [satisfiable] ranges that the handler prefers to use."""
@@ -427,3 +446,14 @@ class RequestHandler(ABC, Generic[RequestT, HeadersT]):
     def is_supported_range_unit(self, unit: str) -> bool:
         """Determine whether a given range unit is supported by this handler."""
         ...
+
+
+def unparse_datetime(dt: datetime) -> str:
+    """Compile a `HTTP-date` given a date-time.
+
+    Assumes that the date-time is so-called "aware" (not "naive") and will assert so. Since `HTTP-date` expresses the date-time with "GMT" as a time zone, conversion from unknown time zone to the former is obviously not well defined, so instead of assuming e.g. local time zone (and attaching it explicitly to the otherwise "naive" `dt`) we are strict to eliminate risk of errors (which are generally abound with date and time calculation). The caller is thus expected to resolve time zone ambiguities for us, passing in any case an "aware" `dt`.
+    """
+    assert dt.utcoffset() is not None  # Require [timezone] "aware" `datetime` objects
+    return email.utils.format_datetime(
+        dt.astimezone(timezone.utc), usegmt=True
+    )  # `email.utils.format_datetime` _demands_ a `datetime` explicitly marked as UTC, we do the conversion as convenience; is a no-op if `value` is already marked as UTC
