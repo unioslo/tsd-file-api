@@ -239,8 +239,14 @@ def is_satisfiable_range(
             range
         )  # Satisfiability only defined for valid range specifiers ("[For a GET request], a valid bytes range-spec is satisfiable if ..."), and we choose to be strict and demand invalid ranges aren't attempted checked for satisfiability (implying we want the caller to have checked validity [explicitly] _before_ checking satisfiability)
         start, end = range
-        assert (start is not None) or (end == 0) # Assert the range is `(None, 0)` if `None` is the start position value, because otherwise the following expression needs to be amended for more variations
-        return (start < repr_length) if (start is not None) and (start >= 0) else bool(start)
+        assert (
+            (start is not None) or (end == 0)
+        )  # Assert the range is `(None, 0)` if `None` is the start position value, because otherwise the following expression needs to be amended for more variations
+        return (
+            (start < repr_length)
+            if (start is not None) and (start >= 0)
+            else bool(start)
+        )
     return None
 
 
