@@ -1882,16 +1882,17 @@ class FileRequestHandler(AuthRequestHandler):
         reason, check that the resource has not changed in
         the meantime. It is also cheap to compute.
 
-        Note, since this is a strong validator/Etag, nginx will
+        Note that if a strong validator, nginx will
         strip it from the headers if it has been configured with
-        gzip compression for HTTP responses.
+        gzip compression for HTTP responses (can be requested
+        disabled with `Accept-Encoding: identity`).
 
         """
         try:
             etag = None
             if self.filepath:
                 mtime = os.lstat(self.filepath).st_mtime
-                etag = f'"{self.mtime_to_digest(mtime)}"'
+                etag = f'W/"{self.mtime_to_digest(mtime)}"'  # Weak validator because doesn't satisfy criteria set by the RFC, quoting 8.8.1: "A "strong validator" is representation metadata that changes value whenever a change occurs to the representation data that would be observable in the content of a 200 (OK) response to GET." -- [hashing] `st_mtime` does not [always] produce distinct (changed) value whenever the file being served, changes; "usually", unfortunately for us, is exactly why the RFC introduced "weak" validators; the 1ns resolution is a "best case" value, ignoring for the moment that it's _possible_ to have two different versions of a file with the same `st_mtime`, the actual resolution approaches 1ms; additionally, this goes beyond just the resolution as a factor -- we'd need to guarantee the entity tag value maps corresponding representation uniquely -- with just a single file at path inferred through the request URL, if two clients modify the same resource within the resolution, there's no telling which of the versions a client desires given an `If-Range` with this kind of entity-tag
             return etag
         except Exception:
             return None

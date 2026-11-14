@@ -1644,6 +1644,9 @@ class TestFileApi(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(resp.headers["Content-Range"], "bytes 5-9/10")
         self.assertEqual(resp.text, "data\n")
 
+    @pytest.mark.xfail(
+        reason="[RFC violation:] Sends a _weak_ validator in `If-Range` and expects HTTP 206"
+    )
     def test_ZZa_get_specific_range_conditional_on_etag(self) -> None:
         """
         Test that the API correctly handles conditional range requests.
