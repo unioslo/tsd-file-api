@@ -401,15 +401,24 @@ class RequestHandler(ABC, Generic[RequestT, HeadersT]):
             if __debug__:
                 logger.debug("Client used a weak entity tag in `If-Range`")
             return False
-        return (
-            (if_range == self._headers.get("ETag"))
-            if '"' in if_range[:3]
-            else (
-                (parse_datetime(if_range) == parse_datetime(last_modified_header_value))
-                if (last_modified_header_value := self._headers.get("Last-Modified"))
-                else False
-            )
-        )
+        if '"' in if_range[:3]:
+            return if_range == self._headers.get("ETag")
+        if not (last_modified_header_value := self._headers.get("Last-Modified")):
+            return False
+        last_modified = parse_datetime(last_modified_header_value)
+        if parse_datetime(if_range) != last_modified:
+            return False
+        return self.is_strong_last_modified_validator(last_modified)
+
+    def is_strong_last_modified_validator(self, dt: datetime) -> bool:
+        """Determine if the specified date-time is a so-called strong validator.
+
+        Quoting the RFC, 8.8.8.2:
+
+        > A validator is implicitly weak unless it fulfills certain criteria.
+        """
+        # Because the following necessary criteria for a validator to be considered strong, do not apply, we must be honest and return `False`: "... origin server reliably knows that the associated representation did not change twice during the second covered by the presented validator;" (we use sub-second modification timestamp which absolutely does not preclude the possibility of the [file-backed] representation being changed more than once during the second)
+        return False
 
     def is_range_handling_defined(self) -> bool | None:
         """Determine whether the request defines range handling (per the RFC)."""
