@@ -217,7 +217,7 @@ def is_invalid_range(range: Range) -> bool | None:
     start, end = range
     if (
         (start is not None) and (end is not None)
-    ):  # "An `int-range` is invalid if the `last-pos` is present ..."; with our `Range` semantics, an `int-range` is effectively one where the first element of the 2-tuple is a natural number (incl. zero) and end is not `None` or `0`; the `(None, 0)` tuple (parsed only from `-0`) is explicitly excluded because although permissible through the grammar, validity isn't defined for it
+    ):  # "An `int-range` is invalid if the `last-pos` is present and ..."; with our `Range` semantics, an `int-range` is effectively one where the first element of the 2-tuple is a natural number (incl. zero) and end is not `None` or `0`; the `(None, 0)` tuple (parsed only from `-0`) is explicitly excluded because although permissible through the grammar, validity isn't defined for it
         assert start >= 0
         assert end >= 0
         return end <= start  # "... and less than the `first-pos`"
