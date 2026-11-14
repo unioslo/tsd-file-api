@@ -22,7 +22,6 @@ from typing import Protocol
 from typing import Sequence
 from typing import TypeAlias
 from typing import TypeVar
-from typing import cast
 
 if __debug__:
     logger = logging.getLogger(__name__)
@@ -198,7 +197,9 @@ def content_range(
         range, unit=unit, method=method, repr_length=repr_length
     )
     if TYPE_CHECKING:
-        assert (range[1] != 0) and (range[0] is not None)
+        assert (
+            range[0] is not None
+        )  # Asserted by `is_satisfiable_range` above but the type-checker doesn't understand that and needs it explicitly here again
     abs_start = start if (start := range[0]) >= 0 else max(0, repr_length + start)
     abs_end = min(end, repr_length) if (end := range[1]) is not None else repr_length
     assert abs_end > abs_start
@@ -236,15 +237,10 @@ def is_satisfiable_range(
     if (method == "GET") and (unit.lower() == "bytes"):
         assert not is_invalid_range(
             range
-        )  # Satisfiability only defined for valid range specifiers ("... a valid bytes range-spec is satisfiable if ..."), and instead of returning `None` we choose to be strict and demand invalid ranges aren't attempted checked for satisfiability (implying we want the caller to have checked validity [explicitly] _before_ checking satisfiability)
+        )  # Satisfiability only defined for valid range specifiers ("[For a GET request], a valid bytes range-spec is satisfiable if ..."), and we choose to be strict and demand invalid ranges aren't attempted checked for satisfiability (implying we want the caller to have checked validity [explicitly] _before_ checking satisfiability)
         start, end = range
-        if TYPE_CHECKING:
-            assert (range[1] != 0) and (range[0] is not None)
-        return (
-            (range[0] < repr_length)
-            if (range[1] != 0) and (range[0] >= 0)
-            else bool(range[0])
-        )
+        assert (start is not None) or (end == 0) # Assert the range is `(None, 0)` if `None` is the start position value, because otherwise the following expression needs to be amended for more variations
+        return (start < repr_length) if (start is not None) and (start >= 0) else bool(start)
     return None
 
 
@@ -263,16 +259,13 @@ def parse_datetime(value: str) -> datetime:
 def range_from_match_groups(groups: Sequence[str | None]) -> Range:
     """Parse a sequence of groups of a `Match` object (presumably obtained with calling `range_spec_re.match`)."""
     a, b, c = groups
-    assert (
-        (a and not c) or (c and not b)
-    )  # To ensure we're interpreting the groups in accordange with the regular expression
-    if TYPE_CHECKING:
-        c = cast(str, c)
-    return (
-        (int(a), (int(b) + 1) if b else None)
-        if a
-        else ((-x, None) if (x := int(c)) else (None, 0))
-    )
+    if a:
+        assert not c
+        return int(a), ((int(b) + 1) if b else None)
+    else:
+        assert not b
+        assert c
+        return (-x, None) if (x := int(c)) else (None, 0)
 
 
 class Request(Protocol):
