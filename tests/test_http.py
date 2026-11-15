@@ -3,7 +3,9 @@
 Targets RFC 9110 compliance.
 """
 
+import logging
 import re
+import sys
 from functools import partial
 from typing import Any
 from typing import Callable
@@ -16,7 +18,13 @@ import pytest
 
 from tsdfileapi import http
 from tsdfileapi.http import ContentRange
+from tsdfileapi.http import InputTooLargeError
 from tsdfileapi.http import Range
+
+if __name__ == "__main__":
+    if __debug__:
+        logging.basicConfig(level=logging.DEBUG)
+logger = logging.getLogger(__name__)
 
 bytes_unit_re = re.compile(r"bytes")
 
@@ -151,6 +159,19 @@ def requested_range_unsatisfiable(
                 expected_content_range_header_value="bytes */10",
             ),
         ),
+        (
+            dict(method="GET", headers={"Range": "bytes=,"}),
+            10,
+            requested_range_ignored,
+        ),
+        (
+            dict(
+                method="GET",
+                headers={"Range": f"bytes={'5' * (sys.get_int_max_str_digits() + 1)}-"},
+            ),
+            10,
+            requested_range_ignored,
+        ),
     ),
 )
 def test_apply_range(
@@ -196,7 +217,11 @@ def test_content_range_resolution(
 ) -> None:
     """Assert that parsing, validation, satisfiability and applying of a single range specifier (`range-spec`), are correct."""
     match = http.range_spec_re.fullmatch(range_spec)
-    range = http.range_from_match_groups(match.groups()) if match else None
+    try:
+        range = http.range_from_match_groups(match.groups()) if match else None
+    except InputTooLargeError:
+        logger.debug("Range parsing aborted", exc_info=True)
+        range = None
     is_range_invalid = http.is_invalid_range(range) if range else None
     is_range_satisfiable = (
         http.is_satisfiable_range(
@@ -240,6 +265,7 @@ def test_content_range_resolution(
         ),
         ("bytes=0-", ("bytes", ((0, None),))),
         ("foo=0-1", ("foo", ((0, 2),))),
+        (f"bytes={'5' * (sys.get_int_max_str_digits() + 1)}-", ("bytes", None)),
     ),
 )
 def test_ranges_spec_fullmatch(
@@ -252,13 +278,15 @@ def test_ranges_spec_fullmatch(
     match = http.ranges_spec_matcher.fullmatch(ranges_spec)
     if match is not None:
         unit_match, _, range_set_match = match.elements
-        assert (
-            unit_match.group(),
-            tuple(
+        try:
+            ranges = tuple(
                 http.range_from_match_groups(match.groups())
                 for match in range_set_match.elements
                 if match.re == http.range_spec_re
-            ),
-        ) == (expected_result or ((None,) * 2))
+            )
+        except InputTooLargeError:
+            logger.debug("Range parsing aborted", exc_info=True)
+            ranges = None
+        assert (unit_match.group(), ranges) == (expected_result or ((None,) * 2))
     else:
         assert expected_result is None

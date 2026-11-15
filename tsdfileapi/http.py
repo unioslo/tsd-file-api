@@ -48,6 +48,12 @@ token_re = re.compile(
 )  # The well-known `token` HTTP grammar element
 
 
+class InputTooLargeError(ValueError):
+    """Exceptions expressing conditions where the input, while valid, is so large it risks causing denial of service due e.g. the algorithm scaling poorly with input length etc."""
+
+    pass
+
+
 class Match(Protocol):
     """Result of pattern matching, interface-wise a sub-set of `re.Match` (for consistency).
 
@@ -263,15 +269,25 @@ def parse_datetime(value: str) -> datetime:
 
 
 def range_from_match_groups(groups: Sequence[str | None]) -> Range:
-    """Parse a sequence of groups of a `Match` object (presumably obtained with calling `range_spec_re.match`)."""
+    """Parse a sequence of groups of a `Match` object (presumably obtained with calling `range_spec_re.match`).
+
+    Raises a `InputTooLargeError` for syntactically correct input that is too large, e.g. when there's too many digits to parse with `int` (see `sys.get_int_max_str_digits`). Note that per the RFC ignoring the exception may make the caller non-compliant:
+
+    > Recipients MUST anticipate potentially large decimal numerals and prevent parsing errors due to integer conversion overflows.
+    """
     a, b, c = groups
-    if a:
-        assert not c
-        return int(a), ((int(b) + 1) if b else None)
-    else:
-        assert not b
-        assert c
-        return (-x, None) if (x := int(c)) else (None, 0)
+    try:
+        if a:
+            assert not c
+            return int(a), ((int(b) + 1) if b else None)
+        else:
+            assert not b
+            assert c
+            return (-x, None) if (x := int(c)) else (None, 0)
+    except ValueError as error:
+        raise InputTooLargeError(*error.args).with_traceback(
+            error.__traceback__
+        ) from None  # Re-raise as a more specific kind of error so callers don't have to cast a wide net catching `ValueError`
 
 
 class Request(Protocol):
@@ -336,11 +352,16 @@ class RequestHandler(ABC, Generic[RequestT, HeadersT]):
             if __debug__:
                 logger.debug("Unsupported range unit")
             return None
-        requested_ranges = tuple(
-            range_from_match_groups(match.groups())
-            for match in range_set_match.elements
-            if match.re == range_spec_re
-        )
+        try:
+            requested_ranges = tuple(
+                range_from_match_groups(match.groups())
+                for match in range_set_match.elements
+                if match.re == range_spec_re
+            )
+        except InputTooLargeError as error:
+            if __debug__:
+                logger.debug(error)
+            return None
         if any(is_invalid_range(range) for range in requested_ranges):
             if __debug__:
                 logger.debug("Invalid range(s) present")
