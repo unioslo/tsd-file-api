@@ -556,6 +556,16 @@ class RequestHandler(http.RequestHandler[Request, Headers], tornado.web.RequestH
 
         logger.isEnabledFor = wrap(logger.isEnabledFor)  # type: ignore[method-assign]
 
+    def is_strong_last_modified_validator(self, dt: datetime) -> bool:
+        """Determine if the specified date-time is a so-called strong validator.
+
+        Quoting the RFC, 8.8.8.2:
+
+        > A validator is implicitly weak unless it fulfills certain criteria.
+        """
+        # Because the following necessary criteria for a validator to be considered strong, do not apply, we must be honest and return `False`: "... origin server reliably knows that the associated representation did not change twice during the second covered by the presented validator;" (we use sub-second modification timestamp which absolutely does not preclude the possibility of the [file-backed] representation being changed more than once during the second)
+        return False
+
     def is_supported_range_unit(self, unit: str) -> bool:
         """Overrides (implements) corresponding method stub in `http.RequestHandler`."""
         return unit == "bytes"
