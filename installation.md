@@ -49,6 +49,10 @@ setpriv --reuid=file-api --regid=file-api --init-groups \
   -- /app/bin/tsd-file-api
 ```
 
+To make the API fail instead of falling back to `sudo`, set
+`sudo_fallback: false` in the configuration file. This is recommended when
+the capabilities above are granted and `sudo` should not be used at all.
+
 Verify the effective capabilities of a running process with:
 
 ```console
