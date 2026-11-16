@@ -27,6 +27,12 @@ from collections.abc import Coroutine
 from collections.abc import MutableSet
 from concurrent.futures import ThreadPoolExecutor
 from http import HTTPStatus
+
+try:
+    from mimetypes import guess_file_type
+except ImportError:  # Python < 3.13
+    from mimetypes import guess_type as guess_file_type
+
 from sys import argv
 from typing import Any
 from typing import Awaitable
@@ -1599,6 +1605,11 @@ class FileRequestHandler(AuthRequestHandler):
                 mime_type = await to_thread(
                     magic.from_file, filename_raw_utf8, mime=True
                 )
+
+        if mime_type == "text/plain":
+            guessed, _ = guess_file_type(filename, strict=False)
+            if guessed:
+                mime_type = guessed
         size = (await aio.os.lstat(filename)).st_size
         mtime = (await aio.os.lstat(filename)).st_mtime
         return size, mime_type, mtime
