@@ -10,7 +10,6 @@ import os
 import pathlib
 import re
 import reprlib
-import shlex
 import shutil
 import stat
 import sys
@@ -131,7 +130,7 @@ async def call_request_hook(path: str, params: list, as_sudo: bool = True) -> No
         cmd = ["sudo"]
     else:
         cmd = []
-    cmd.append(shlex.quote(path))
+    cmd.append(path)
     cmd.extend(params)
     await asystem(cmd)
 
