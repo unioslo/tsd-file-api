@@ -27,6 +27,7 @@ from asyncio import to_thread
 from collections.abc import Coroutine
 from collections.abc import MutableSet
 from concurrent.futures import ThreadPoolExecutor
+from contextlib import AsyncExitStack
 from http import HTTPStatus
 
 try:
@@ -850,7 +851,10 @@ class SnsFormDataHandler(AuthRequestHandler):
         # now copy the origin file to the folder intended to data processing
         subfolder_path = os.path.normpath(tsd_hidden_folder + "/" + filename)
         await file_access.ensure_parent_access(
-            subfolder_path, os.W_OK | os.X_OK, root=tsd_hidden_folder, sudo=options.sudo_fallback
+            subfolder_path,
+            os.W_OK | os.X_OK,
+            root=tsd_hidden_folder,
+            sudo=options.sudo_fallback,
         )
         await aio.shutil.copy(self.path, subfolder_path)
         await file_access.chmod(subfolder_path, _RW_RW___)
@@ -1262,7 +1266,10 @@ class FileRequestHandler(AuthRequestHandler):
                             if owner_id is not None and group_id is not None:
                                 try:
                                     await file_access.chown(
-                                        target, owner_id, group_id, sudo=options.sudo_fallback
+                                        target,
+                                        owner_id,
+                                        group_id,
+                                        sudo=options.sudo_fallback,
                                     )
                                 except Exception as e:
                                     logger.error(f"could not chown {target}: {e}")
@@ -1309,7 +1316,10 @@ class FileRequestHandler(AuthRequestHandler):
                 await any_path_islink(self.path, opts=options)
 
                 await file_access.ensure_parent_access(
-                    self.path, os.W_OK | os.X_OK, root=self.tenant_dir, sudo=options.sudo_fallback
+                    self.path,
+                    os.W_OK | os.X_OK,
+                    root=self.tenant_dir,
+                    sudo=options.sudo_fallback,
                 )
 
                 # ensure idempotency
@@ -1849,7 +1859,10 @@ class FileRequestHandler(AuthRequestHandler):
                                 ).pw_uid
                                 group_id = path_stat.st_gid
                                 await file_access.chown(
-                                    file.path, default_owner_id, group_id, sudo=options.sudo_fallback
+                                    file.path,
+                                    default_owner_id,
+                                    group_id,
+                                    sudo=options.sudo_fallback,
                                 )
                                 owner = default_owner
                             except Exception:
@@ -1967,15 +1980,24 @@ class FileRequestHandler(AuthRequestHandler):
         and write to the network.
 
         """
-        await file_access.ensure_parent_access(
-            filepath, os.X_OK, root=self.export_dir, sudo=options.sudo_fallback
-        )
-        await file_access.ensure_access(filepath, os.R_OK, sudo=options.sudo_fallback)
         self.set_header("Content-Length", content_length)
         remaining = content_length
         if chunk_size > content_length:
             chunk_size = content_length
-        async with aopen(filepath, "rb") as fd:
+        async with AsyncExitStack() as stack:
+            try:
+                fd = await stack.enter_async_context(aopen(filepath, "rb"))
+            except PermissionError:
+                await file_access.ensure_parent_access(
+                    filepath,
+                    os.X_OK,
+                    root=self.export_dir,
+                    sudo=options.sudo_fallback,
+                )
+                await file_access.ensure_access(
+                    filepath, os.R_OK, sudo=options.sudo_fallback
+                )
+                fd = await stack.enter_async_context(aopen(filepath, "rb"))
             await fd.seek(range_start)
             while True:
                 data = await fd.read(chunk_size)
