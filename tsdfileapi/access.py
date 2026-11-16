@@ -27,16 +27,23 @@ def _permission_bits(mode: int) -> int:
 
 
 def _with_read_access(mode: int) -> int:
-    mode |= stat.S_IRGRP | stat.S_IROTH
+    mode |= stat.S_IRUSR | stat.S_IRGRP | stat.S_IROTH
     if stat.S_ISDIR(mode) or mode & 0o111:
-        mode |= stat.S_IXGRP | stat.S_IXOTH
+        mode |= stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH
     return mode
 
 
 def _with_write_access(mode: int) -> int:
-    mode |= stat.S_IWGRP | stat.S_IWOTH
+    mode |= stat.S_IWUSR | stat.S_IWGRP | stat.S_IWOTH
     if stat.S_ISDIR(mode):
-        mode |= stat.S_IRGRP | stat.S_IROTH | stat.S_IXGRP | stat.S_IXOTH
+        mode |= (
+            stat.S_IRUSR
+            | stat.S_IRGRP
+            | stat.S_IROTH
+            | stat.S_IXUSR
+            | stat.S_IXGRP
+            | stat.S_IXOTH
+        )
     return mode
 
 
@@ -135,7 +142,7 @@ async def ensure_access(
     if mode & os.W_OK:
         new_mode = _with_write_access(new_mode)
     if mode & os.X_OK:
-        new_mode |= stat.S_IXGRP | stat.S_IXOTH
+        new_mode |= stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH
     if _permission_bits(new_mode) != _permission_bits(st.st_mode):
         await chmod(path, new_mode, sudo=sudo, recursive=recursive)
 
