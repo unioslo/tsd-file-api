@@ -17,4 +17,5 @@ run: build_test_container # Run development server
 	$(CONTAINER_ENGINE) run --rm --replace --name tsd-file-api-test --publish 127.0.0.1:3003:3003 --volume $(PROJECT_DIR):/file-api:$(MOUNTFLAGS) tsd-file-api-test
 
 tests: # Run tests against the development server
+	$(CONTAINER_ENGINE) exec tsd-file-api-test python -m unittest tsdfileapi.test_access
 	$(CONTAINER_ENGINE) exec tsd-file-api-test python tsdfileapi/test_file_api.py

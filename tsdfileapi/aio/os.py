@@ -11,7 +11,7 @@ from aiofiles.os import *  # noqa: F403
 from . import ospath as path  # noqa: F401
 
 # Complement missing procedures
-for _name in ("chmod", "lstat", "utime"):
+for _name in ("chmod", "chown", "lstat", "utime"):
     if not _name in globals():
         globals()[_name] = _wrap(getattr(_os, _name))
 
