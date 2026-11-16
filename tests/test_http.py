@@ -6,6 +6,7 @@ Targets RFC 9110 compliance.
 import logging
 import re
 import sys
+from datetime import datetime
 from functools import partial
 from typing import Any
 from typing import Callable
@@ -55,6 +56,9 @@ class RequestHandler(http.RequestHandler[Request, MutableMapping[str, str]]):
 
     def get_status(self) -> int:
         return self._status_code
+
+    def is_strong_last_modified_validator(self, dt: datetime) -> bool:
+        return False  # For now emulate the API (weak validator in `Last-Modified`)
 
     def is_supported_range_unit(self, unit: str) -> bool:
         return bool(bytes_unit_re.fullmatch(unit))
