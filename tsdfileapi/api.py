@@ -12,6 +12,7 @@ import asyncio
 import base64
 import datetime
 import functools
+import grp
 import hashlib
 import json
 import logging
@@ -92,7 +93,6 @@ from tsdfileapi.utils import VALID_UUID
 from tsdfileapi.utils import RequestHandler
 from tsdfileapi.utils import _rwxrws___
 from tsdfileapi.utils import any_path_islink
-from tsdfileapi.utils import asystem
 from tsdfileapi.utils import call_request_hook
 from tsdfileapi.utils import check_filename
 from tsdfileapi.utils import choose_storage
@@ -833,6 +833,9 @@ class SnsFormDataHandler(AuthRequestHandler):
         # ensure idempotent uploads
         self.path = os.path.normpath(f"{tenant_dir}/{filename}")
         self.path_part = f"{self.path}.{str(uuid4())}.part"
+        await file_access.ensure_parent_access(
+            self.path, os.W_OK | os.X_OK, root=tenant_dir, sudo=True
+        )
         if await aio.os.path.lexists(self.path):
             logger.debug(f"{self.path} exists, renaming to {self.path_part}")
             await aio.os.rename(self.path, self.path_part)
@@ -841,12 +844,15 @@ class SnsFormDataHandler(AuthRequestHandler):
         async with aopen(self.path_part, filemode) as f:
             await f.write(filebody)
             await aio.os.rename(self.path_part, self.path)
-            await aio.os.chmod(self.path, _RW_RW___)
+            await file_access.chmod(self.path, _RW_RW___)
 
         # now copy the origin file to the folder intended to data processing
         subfolder_path = os.path.normpath(tsd_hidden_folder + "/" + filename)
+        await file_access.ensure_parent_access(
+            subfolder_path, os.W_OK | os.X_OK, root=tsd_hidden_folder, sudo=True
+        )
         await aio.shutil.copy(self.path, subfolder_path)
-        await aio.os.chmod(subfolder_path, _RW_RW___)
+        await file_access.chmod(subfolder_path, _RW_RW___)
 
     def on_finish(self) -> None:
         add_new_task(self._on_finish())
@@ -1239,15 +1245,26 @@ class FileRequestHandler(AuthRequestHandler):
                     target = self.tenant_dir
                     # optionally set permissions
                     if self.group_config["enabled"]:
+                        owner = options.api_user  # so it can move the file into the dir
+                        try:
+                            owner_id = (await to_thread(pwd.getpwnam, owner)).pw_uid
+                            group_id = (
+                                await to_thread(grp.getgrnam, self.group_name)
+                            ).gr_gid
+                        except KeyError as e:
+                            logger.error(f"could not resolve ownership: {e}")
+                            owner_id = None
+                            group_id = None
                         for _dir in url_dirs.split("/"):
                             target += f"/{_dir}"
                             await aio.os.chmod(target, _rwxrws___())
-                            owner = (
-                                options.api_user
-                            )  # so it can move the file into the dir
-                            await asystem(
-                                ["sudo", "chown", f"{owner}:{self.group_name}", target]
-                            )
+                            if owner_id is not None and group_id is not None:
+                                try:
+                                    await file_access.chown(
+                                        target, owner_id, group_id, sudo=True
+                                    )
+                                except Exception as e:
+                                    logger.error(f"could not chown {target}: {e}")
 
                 # handle resumable
                 if self.request.method == "PATCH":
@@ -1289,6 +1306,10 @@ class FileRequestHandler(AuthRequestHandler):
 
                 # ensure there are no symlinks in path
                 await any_path_islink(self.path, opts=options)
+
+                await file_access.ensure_parent_access(
+                    self.path, os.W_OK | os.X_OK, root=self.tenant_dir, sudo=True
+                )
 
                 # ensure idempotency
                 if await aio.os.path.lexists(self.path):
@@ -1803,8 +1824,8 @@ class FileRequestHandler(AuthRequestHandler):
                                     await to_thread(pwd.getpwnam, default_owner)
                                 ).pw_uid
                                 group_id = path_stat.st_gid
-                                await aio.os.chown(
-                                    file.path, default_owner_id, group_id
+                                await file_access.chown(
+                                    file.path, default_owner_id, group_id, sudo=True
                                 )
                                 owner = default_owner
                             except Exception:
@@ -2135,15 +2156,12 @@ class FileRequestHandler(AuthRequestHandler):
                 )
             else:
                 if self.has_posix_ownership:
-                    # Allow the file to be deleted by changing the rights temporary of the parent directory
-                    await asystem(
-                        ["sudo", "chmod", "o+w", os.path.dirname(self.filepath)]
-                    )
-                    await aio.os.remove(self.filepath)
-                    # Restoring the rights of the parent directory
-                    await asystem(
-                        ["sudo", "chmod", "o-w", os.path.dirname(self.filepath)]
-                    )
+                    # Allow the file to be deleted by temporarily granting
+                    # write access on the parent directory.
+                    async with file_access.temporary_write_access(
+                        os.path.dirname(self.filepath), sudo=True
+                    ):
+                        await aio.os.remove(self.filepath)
                 else:
                     if self.backup_deletes:
                         backup_path = re.sub(
