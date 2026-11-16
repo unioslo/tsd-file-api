@@ -151,6 +151,7 @@ def set_config() -> None:
     define("tenant_string_pattern", _config["tenant_string_pattern"])
     define("allowed_symlinks", _config.get("allowed_symlinks", ["/tsd"]))
     define("export_chunk_size", _config["export_chunk_size"])
+    define("sudo_fallback", _config.get("sudo_fallback", True))
     define("valid_tenant", re.compile(r"{}".format(_config["valid_tenant_regex"])))
     define("max_body_size", _config["max_body_size"])
     define("default_file_owner", _config["default_file_owner"])
@@ -831,7 +832,7 @@ class SnsFormDataHandler(AuthRequestHandler):
         self.path = os.path.normpath(f"{tenant_dir}/{filename}")
         self.path_part = f"{self.path}.{str(uuid4())}.part"
         await file_access.ensure_parent_access(
-            self.path, os.W_OK | os.X_OK, root=tenant_dir, sudo=True
+            self.path, os.W_OK | os.X_OK, root=tenant_dir, sudo=options.sudo_fallback
         )
         if await aio.os.path.lexists(self.path):
             logger.debug(f"{self.path} exists, renaming to {self.path_part}")
@@ -846,7 +847,7 @@ class SnsFormDataHandler(AuthRequestHandler):
         # now copy the origin file to the folder intended to data processing
         subfolder_path = os.path.normpath(tsd_hidden_folder + "/" + filename)
         await file_access.ensure_parent_access(
-            subfolder_path, os.W_OK | os.X_OK, root=tsd_hidden_folder, sudo=True
+            subfolder_path, os.W_OK | os.X_OK, root=tsd_hidden_folder, sudo=options.sudo_fallback
         )
         await aio.shutil.copy(self.path, subfolder_path)
         await file_access.chmod(subfolder_path, _RW_RW___)
@@ -1258,7 +1259,7 @@ class FileRequestHandler(AuthRequestHandler):
                             if owner_id is not None and group_id is not None:
                                 try:
                                     await file_access.chown(
-                                        target, owner_id, group_id, sudo=True
+                                        target, owner_id, group_id, sudo=options.sudo_fallback
                                     )
                                 except Exception as e:
                                     logger.error(f"could not chown {target}: {e}")
@@ -1305,7 +1306,7 @@ class FileRequestHandler(AuthRequestHandler):
                 await any_path_islink(self.path, opts=options)
 
                 await file_access.ensure_parent_access(
-                    self.path, os.W_OK | os.X_OK, root=self.tenant_dir, sudo=True
+                    self.path, os.W_OK | os.X_OK, root=self.tenant_dir, sudo=options.sudo_fallback
                 )
 
                 # ensure idempotency
@@ -1614,7 +1615,7 @@ class FileRequestHandler(AuthRequestHandler):
                     lambda: to_thread(magic.from_file, filename_raw_utf8, mime=True),
                     filename,
                     mode=os.R_OK,
-                    sudo=True,
+                    sudo=options.sudo_fallback,
                 )
         except IsADirectoryError:
             mime_type = "directory"
@@ -1755,7 +1756,7 @@ class FileRequestHandler(AuthRequestHandler):
             lambda: aio.os.scandir(path),
             path,
             mode=os.R_OK | os.X_OK,
-            sudo=True,
+            sudo=options.sudo_fallback,
         )
         paginate = False
         files = []
@@ -1822,7 +1823,7 @@ class FileRequestHandler(AuthRequestHandler):
                                 ).pw_uid
                                 group_id = path_stat.st_gid
                                 await file_access.chown(
-                                    file.path, default_owner_id, group_id, sudo=True
+                                    file.path, default_owner_id, group_id, sudo=options.sudo_fallback
                                 )
                                 owner = default_owner
                             except Exception:
@@ -1941,9 +1942,9 @@ class FileRequestHandler(AuthRequestHandler):
 
         """
         await file_access.ensure_parent_access(
-            filepath, os.X_OK, root=self.export_dir, sudo=True
+            filepath, os.X_OK, root=self.export_dir, sudo=options.sudo_fallback
         )
-        await file_access.ensure_access(filepath, os.R_OK, sudo=True)
+        await file_access.ensure_access(filepath, os.R_OK, sudo=options.sudo_fallback)
         self.set_header("Content-Length", content_length)
         remaining = content_length
         if chunk_size > content_length:
@@ -2156,7 +2157,7 @@ class FileRequestHandler(AuthRequestHandler):
                     # Allow the file to be deleted by temporarily granting
                     # write access on the parent directory.
                     async with file_access.temporary_write_access(
-                        os.path.dirname(self.filepath), sudo=True
+                        os.path.dirname(self.filepath), sudo=options.sudo_fallback
                     ):
                         await aio.os.remove(self.filepath)
                 else:

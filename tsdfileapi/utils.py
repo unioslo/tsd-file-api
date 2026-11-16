@@ -187,7 +187,11 @@ async def sns_dir(
                 await aio.os.makedirs(sns_dir)
                 from tsdfileapi import access as file_access
 
-                await file_access.chmod(sns_dir, 0o2770, sudo=True)
+                await file_access.chmod(
+                    sns_dir,
+                    0o2770,
+                    sudo=getattr(options, "sudo_fallback", True),
+                )
                 logger.info(f"Created: {sns_dir}")
         except OSError as e:
             if e.errno == errno.ENOENT:
