@@ -48,6 +48,11 @@ class ClientIllegalFiletypeError(ClientError):
     status = HTTPStatus.BAD_REQUEST
 
 
+class ClientExportPolicyError(ClientError):
+    reason = "Export policy violation"
+    status = HTTPStatus.FORBIDDEN
+
+
 class ClientSnsPathError(ClientError):
     reason = "Wrong URL path"
     status = HTTPStatus.BAD_REQUEST

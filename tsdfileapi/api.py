@@ -76,6 +76,7 @@ from tsdfileapi.auth import process_access_token
 from tsdfileapi.exc import ClientAuthorizationError
 from tsdfileapi.exc import ClientContentRangeError
 from tsdfileapi.exc import ClientError
+from tsdfileapi.exc import ClientExportPolicyError
 from tsdfileapi.exc import ClientGroupAccessError
 from tsdfileapi.exc import ClientMethodNotAllowed
 from tsdfileapi.exc import ClientNaclChunkSizeError
@@ -1986,7 +1987,7 @@ class FileRequestHandler(AuthRequestHandler):
             if not await self.enforce_export_policy(
                 self.export_policy, self.filepath, tenant, size, mime_type
             ):
-                raise ClientError("export policy violation")
+                raise ClientExportPolicyError
             if not await self.enforce_restore_policy(self.filepath):
                 raise ClientResourceNotFoundError(f"{self.filepath} not found")
             encrypt_data = False
@@ -2068,6 +2069,10 @@ class FileRequestHandler(AuthRequestHandler):
             if not await aio.os.path.lexists(self.filepath):
                 raise ClientResourceNotFoundError(f"{self.filepath} not found")
             size, mime_type, mtime = await self.get_file_metadata(self.filepath)
+            if not await self.enforce_export_policy(
+                self.export_policy, self.filepath, tenant, size, mime_type
+            ):
+                raise ClientExportPolicyError
             logger.info(
                 f"user: {self.requestor}, checked file: {self.filepath} , MIME type: {mime_type}"
             )
