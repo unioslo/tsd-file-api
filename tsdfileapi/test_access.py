@@ -46,7 +46,7 @@ class TestAccessHelpers(unittest.IsolatedAsyncioTestCase):
             patch.object(access, "chmod", AsyncMock()) as mocked_chmod,
         ):
             await ensure_access(self.file, os.R_OK)
-        expected = stat.S_IMODE(st.st_mode) | stat.S_IRGRP | stat.S_IROTH
+        expected = stat.S_IMODE(st.st_mode) | stat.S_IRUSR | stat.S_IRGRP | stat.S_IROTH
         mocked_chmod.assert_awaited_once()
         path, mode = mocked_chmod.await_args.args
         self.assertEqual(path, self.file)
@@ -61,8 +61,10 @@ class TestAccessHelpers(unittest.IsolatedAsyncioTestCase):
             await ensure_access(self.directory, os.R_OK)
         expected = (
             stat.S_IMODE(st.st_mode)
+            | stat.S_IRUSR
             | stat.S_IRGRP
             | stat.S_IROTH
+            | stat.S_IXUSR
             | stat.S_IXGRP
             | stat.S_IXOTH
         )

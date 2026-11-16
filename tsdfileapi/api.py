@@ -64,6 +64,7 @@ from tornado.web import Application
 from tornado.web import HTTPError
 from tornado.web import stream_request_body
 
+import tsdfileapi.access as file_access
 import tsdfileapi.aio.os  # noqa: F401
 import tsdfileapi.aio.shutil  # noqa: F401
 from tsdfileapi import aio
@@ -1588,21 +1589,14 @@ class FileRequestHandler(AuthRequestHandler):
             if await aio.os.path.islink(filename):
                 mime_type = "inode/symlink"
             else:
-                mime_type = await to_thread(
-                    magic.from_file, filename_raw_utf8, mime=True
+                mime_type = await file_access.retry_on_permission_error(
+                    lambda: to_thread(magic.from_file, filename_raw_utf8, mime=True),
+                    filename,
+                    mode=os.R_OK,
+                    sudo=True,
                 )
         except IsADirectoryError:
             mime_type = "directory"
-        except PermissionError:
-            # so the API user can read, and delete files owned by others
-            if await aio.os.path.isdir(filename):
-                await asystem(["sudo", "chmod", "-R", "g+r,o+rx", filename])
-                mime_type = "directory"
-            else:
-                await asystem(["sudo", "chmod", "g+r,o+rx", filename])
-                mime_type = await to_thread(
-                    magic.from_file, filename_raw_utf8, mime=True
-                )
 
         if mime_type == "text/plain":
             guessed, _ = guess_file_type(filename, strict=False)
@@ -1736,7 +1730,12 @@ class FileRequestHandler(AuthRequestHandler):
         # arbitrary order
         # if not returning what you want
         # then try next page
-        dir_map = await aio.os.scandir(path)
+        dir_map = await file_access.retry_on_permission_error(
+            lambda: aio.os.scandir(path),
+            path,
+            mode=os.R_OK | os.X_OK,
+            sudo=True,
+        )
         paginate = False
         files = []
         start_at = (current_page * pagination_value) - 1
@@ -1920,6 +1919,10 @@ class FileRequestHandler(AuthRequestHandler):
         and write to the network.
 
         """
+        await file_access.ensure_parent_access(
+            filepath, os.X_OK, root=self.export_dir, sudo=True
+        )
+        await file_access.ensure_access(filepath, os.R_OK, sudo=True)
         self.set_header("Content-Length", content_length)
         remaining = content_length
         if chunk_size > content_length:
