@@ -1171,6 +1171,20 @@ class TestFileApi(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(mime_types["12345678.csv"], mime_types["example.csv"])
         self.assertEqual(mime_types["12345678.csv"], "text/csv")
 
+    def test_ZL_export_extensionless_content_type(self) -> None:
+        headers = {"Authorization": "Bearer " + TEST_TOKENS["EXPORT"]}
+        expected = {
+            "README": "text/plain",
+            "compressed_without_extension": "application/gzip",
+        }
+        for name, mime_type in expected.items():
+            resp = requests.head(self.export + "/" + name, headers=headers)
+            self.assertEqual(resp.status_code, 200)
+            self.assertEqual(resp.headers["Content-Type"], mime_type)
+            resp = requests.get(self.export + "/" + name, headers=headers)
+            self.assertEqual(resp.status_code, 200)
+            self.assertEqual(resp.headers["Content-Type"], mime_type)
+
     def test_ZL_export_file_works(self) -> None:
         headers = {"Authorization": "Bearer " + TEST_TOKENS["ADMIN"]}
         resp = requests.get(self.export + "/file1", headers=headers)
@@ -3190,6 +3204,7 @@ def main() -> None:
         "test_ZJ_export_file_restrictions_enforced",
         "test_ZK_export_list_dir_works",
         "test_ZL_export_csv_content_type",
+        "test_ZL_export_extensionless_content_type",
         "test_ZL_export_file_works",
         # resume export
         "test_ZX_head_for_export_resume_works",
