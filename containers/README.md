@@ -50,3 +50,11 @@ Builds an RPM of this package and all its (Python) dependencies on Rocky Linux
 Installs all of the package's dependencies, including development dependencies,
 except for the tsdfileapi package itself (before runtime). Intended for use in
 running the package's test suite and [local development](../DEVELOPMENT.md#alternative-container-based-development-setup).
+
+## File access capabilities
+
+The API calls `chmod`/`chown` natively and only falls back to `sudo` when it
+lacks the necessary permissions. Production deployments can avoid the `sudo`
+fallback by granting the process `CAP_FOWNER` (for `chmod`) and `CAP_CHOWN`
+(for `chown`), without running the API as root. See
+[installation.md](../installation.md#file-access-and-privileges) for examples.
