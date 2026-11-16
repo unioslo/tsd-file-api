@@ -19,21 +19,25 @@ from ipaddress import ip_network
 from typing import Callable
 from typing import Mapping
 from typing import Optional
+from typing import Sequence
 from typing import Union
 from uuid import uuid4
 
 import tornado.log
 import tornado.options
 import tornado.web
+from tornado.httputil import HTTPHeaders as Headers
 from tornado.httputil import HTTPServerRequest as Request
 
 import tsdfileapi.aio.os  # noqa: F401
 from tsdfileapi import aio
+from tsdfileapi import http
 from tsdfileapi.exc import ClientIllegalFilenameError
 from tsdfileapi.exc import ClientIllegalFiletypeError
 from tsdfileapi.exc import ClientSnsPathError
 from tsdfileapi.exc import ServerSnsError
 from tsdfileapi.exc import ServerStorageNotMountedError
+from tsdfileapi.http import Range
 
 VALID_FORMID = re.compile(r"^[0-9]+$")
 PGP_KEY_FINGERPRINT = re.compile(r"^[0-9A-Z]{16}$")
@@ -400,7 +404,7 @@ def parse_http_request_handling_preference(text: str) -> ParametrisedField:
     )
 
 
-class RequestHandler(tornado.web.RequestHandler):
+class RequestHandler(http.RequestHandler[Request, Headers], tornado.web.RequestHandler):
     """
     A base (abstract) request handler class gathering utilities and useful features common to all API request handler sub-classes.
 
@@ -419,6 +423,8 @@ class RequestHandler(tornado.web.RequestHandler):
 
         This mechanism of hooking into sub-class initialisation, allows request handler classes inheriting this class to not have to explicitly have `super().<method-name>(...)` as part of their override, if any. Given how _every_ request should have identifier logging, needing such explicit statements is arguably not a net-benefit -- this procedure alone ensures business logic remains as-is, and allows the application to continue following Tornado's convention which doesn't require e.g. `super().initialise()` or `super().prepare()` etc. Admittedly, explicitly calling the super-class method is both an OOP convention _and_ in line with Python's "explicit is better than implicit" best practice, it's just that it's either this approach or sprinkling _every_ overriden method in every request handler class, with `super()....` which would have cost of its own.
         """
+
+        super().__init_subclass__()
 
         def initialize(handler, wrapped, *args, **kwargs):
             RequestHandler.initialize(handler, *args, **kwargs)
@@ -549,6 +555,26 @@ class RequestHandler(tornado.web.RequestHandler):
             return isEnabledFor
 
         logger.isEnabledFor = wrap(logger.isEnabledFor)  # type: ignore[method-assign]
+
+    def is_strong_last_modified_validator(self, dt: datetime) -> bool:
+        """Determine if the specified date-time is a so-called strong validator.
+
+        Quoting the RFC, 8.8.8.2:
+
+        > A validator is implicitly weak unless it fulfills certain criteria.
+        """
+        # Because the following necessary criteria for a validator to be considered strong, do not apply, we must be honest and return `False`: "... origin server reliably knows that the associated representation did not change twice during the second covered by the presented validator;" (we use sub-second modification timestamp which absolutely does not preclude the possibility of the [file-backed] representation being changed more than once during the second)
+        return False
+
+    def is_supported_range_unit(self, unit: str) -> bool:
+        """Overrides (implements) corresponding method stub in `http.RequestHandler`."""
+        return unit == "bytes"
+
+    def applicable_ranges(self, ranges: Sequence[Range]) -> Sequence[Range]:
+        """Overrides (implements) corresponding method stub in `http.RequestHandler`."""
+        return (
+            ranges if len(ranges) == 1 else ()
+        )  # Refuse to apply any range if _multiple_ ranges were requested
 
 
 async def asystem(cmd, **options) -> int:

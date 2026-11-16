@@ -87,6 +87,10 @@ class ClientContentRangeError(ClientError):
     reason = "Range not satisfiable"
     status = HTTPStatus.REQUESTED_RANGE_NOT_SATISFIABLE
 
+    def __init__(self, *args, repr_length: int, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.headers = self.headers | {"Content-Range": f"bytes */{repr_length}"}
+
 
 # Server errors - HTTP 5XX range
 # ------------------------------
