@@ -1606,29 +1606,50 @@ class FileRequestHandler(AuthRequestHandler):
             status = False
         return status
 
-    async def get_file_metadata(self, filename: str) -> tuple:
-        filename_raw_utf8 = filename.encode("utf-8")
-        mime_type = "unknown"
-        try:
-            if await aio.os.path.islink(filename):
-                mime_type = "inode/symlink"
-            else:
-                mime_type = await file_access.retry_on_permission_error(
-                    lambda: to_thread(magic.from_file, filename_raw_utf8, mime=True),
-                    filename,
-                    mode=os.R_OK,
-                    sudo=True,
-                )
-        except IsADirectoryError:
-            mime_type = "directory"
+    def has_mime_type_policy(
+        self, tenant: str, policy_config: dict | None = None
+    ) -> bool:
+        """
+        Whether the tenant's export policy restricts which MIME types may be
+        exported. Size-only policies do not require content inspection.
+        """
+        policy_config = policy_config or self.export_policy
+        policy = policy_config.get(tenant, policy_config["default"])
+        allowed = policy.get("allowed_mime_types")
+        return bool(policy.get("enabled")) and bool(allowed) and "*" not in allowed
 
-        if mime_type == "text/plain":
-            guessed, _ = guess_file_type(filename, strict=False)
-            if guessed:
+    async def _detect_mime(self, filename: str) -> str:
+        filename_raw_utf8 = filename.encode("utf-8")
+        try:
+            return await file_access.retry_on_permission_error(
+                lambda: to_thread(magic.from_file, filename_raw_utf8, mime=True),
+                filename,
+                mode=os.R_OK,
+                sudo=True,
+            )
+        except IsADirectoryError:
+            return "directory"
+
+    async def get_file_metadata(
+        self, filename: str, tenant: str | None = None
+    ) -> tuple:
+        tenant = tenant or self.tenant
+        st = await aio.os.lstat(filename)
+        if stat.S_ISLNK(st.st_mode):
+            mime_type = "inode/symlink"
+        elif stat.S_ISDIR(st.st_mode):
+            mime_type = "directory"
+        else:
+            guessed, encoding = guess_file_type(filename, strict=False)
+            if self.has_mime_type_policy(tenant):
+                mime_type = await self._detect_mime(filename)
+                if mime_type == "text/plain" and guessed:
+                    mime_type = guessed
+            elif guessed and not encoding:
                 mime_type = guessed
-        size = (await aio.os.lstat(filename)).st_size
-        mtime = (await aio.os.lstat(filename)).st_mtime
-        return size, mime_type, mtime
+            else:
+                mime_type = await self._detect_mime(filename)
+        return st.st_size, mime_type, st.st_mtime
 
     def _base_uri(self) -> str:
         """
@@ -1805,7 +1826,9 @@ class FileRequestHandler(AuthRequestHandler):
                     filepath = file.path
                     if not await self.enforce_restore_policy(filepath):
                         continue  # don't list it
-                    size, mime_type, latest = await self.get_file_metadata(filepath)
+                    size, mime_type, latest = await self.get_file_metadata(
+                        filepath, tenant
+                    )
                     export_status = await self.enforce_export_policy(
                         self.export_policy, filepath, tenant, size, mime_type
                     )
@@ -1866,7 +1889,7 @@ class FileRequestHandler(AuthRequestHandler):
                                 datetime.datetime.fromtimestamp(latest).isoformat()
                             )
                             size, mime_type, mtime = await self.get_file_metadata(
-                                file.path
+                                file.path, tenant
                             )
                         else:
                             date_time = None
@@ -2007,7 +2030,7 @@ class FileRequestHandler(AuthRequestHandler):
             self.filepath = f"{self.path}/{resource}"
             if not await aio.os.path.lexists(f"{self.filepath}"):
                 raise ClientResourceNotFoundError(f"{self.filepath} not found")
-            size, mime_type, mtime = await self.get_file_metadata(self.filepath)
+            size, mime_type, mtime = await self.get_file_metadata(self.filepath, tenant)
             if not await self.enforce_export_policy(
                 self.export_policy, self.filepath, tenant, size, mime_type
             ):
@@ -2092,7 +2115,7 @@ class FileRequestHandler(AuthRequestHandler):
             await any_path_islink(self.filepath, opts=options)
             if not await aio.os.path.lexists(self.filepath):
                 raise ClientResourceNotFoundError(f"{self.filepath} not found")
-            size, mime_type, mtime = await self.get_file_metadata(self.filepath)
+            size, mime_type, mtime = await self.get_file_metadata(self.filepath, tenant)
             if not await self.enforce_export_policy(
                 self.export_policy, self.filepath, tenant, size, mime_type
             ):
