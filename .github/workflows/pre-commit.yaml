@@ -10,8 +10,5 @@ jobs:
     if: github.event_name == 'push' || (github.event_name == 'pull_request' && github.event.pull_request.head.repo.owner.login != github.repository_owner)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v6
-      - uses: actions/setup-python@v6
-        with:
-          python-version: "3.11"
-      - uses: pre-commit/action@v3.0.1
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: j178/prek-action@7b101f8338a08d2bd6fdb3625e4e7692428763a3 # v3.1.1
