@@ -335,9 +335,7 @@ def with_logged_calls(logger: logging.Logger, level: int | str) -> Callable:
     A decorator that makes calling an object (normally a function) produce a log message.
     """
     if not isinstance(level, int):
-        level = logging.getLevelNamesMapping()[
-            level
-        ]  # Not available on Python 3.10, so level names cannot be used before 3.11
+        level = logging.getLevelNamesMapping()[level]
 
     def decorator(callable):
         @functools.wraps(callable)
