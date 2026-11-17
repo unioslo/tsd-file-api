@@ -13,10 +13,9 @@ the necessary Linux capabilities (``CAP_FOWNER`` for ``chmod`` and
 
 import os
 import stat
+from collections.abc import Awaitable
+from collections.abc import Callable
 from contextlib import asynccontextmanager
-from typing import Awaitable
-from typing import Callable
-from typing import Optional
 
 from tsdfileapi import aio
 from tsdfileapi.utils import asystem
@@ -202,7 +201,7 @@ async def retry_on_permission_error(
     *,
     mode: int = os.R_OK,
     parent: bool = False,
-    root: Optional[str] = None,
+    root: str | None = None,
     sudo: bool = False,
     recursive: bool = False,
 ):
