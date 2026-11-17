@@ -51,8 +51,8 @@ RUN python3 -m pip install "virtualenv==20.35.4" "virtualenv-tools3==3.1.1"
 # Install poetry
 RUN python3 -m venv /opt/poetry &&\
     source /opt/poetry/bin/activate &&\
-    python -m pip install "poetry>=2.2,<3" "poetry-plugin-export>=1,<2" &&\
-    poetry self add "poetry-dynamic-versioning[plugin]>=1,<2" &&\
+    python -m pip install "poetry==2.5.1" "poetry-plugin-export==1.10.1" &&\
+    poetry self add "poetry-dynamic-versioning[plugin]==1.10.1" &&\
     ln -s /opt/poetry/bin/poetry /usr/bin/poetry
 
 # Get ready for building RPM

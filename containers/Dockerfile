@@ -14,10 +14,13 @@ FROM docker.io/python:${PYTHON_VERSION} AS build
 RUN apt-get install libpq-dev
 
 # install Poetry
-ARG POETRY_VERSION="1.3.2"
+ARG POETRY_VERSION="2.5.1"
 RUN pip install poetry==${POETRY_VERSION}
-ARG POETRY_DYNAMIC_VERSIONING_VERSION="0.21.3"
-RUN poetry self add "poetry-dynamic-versioning[plugin]==${POETRY_DYNAMIC_VERSIONING_VERSION}"
+ARG POETRY_PLUGIN_EXPORT_VERSION="1.10.1"
+ARG POETRY_DYNAMIC_VERSIONING_VERSION="1.10.1"
+RUN poetry self add \
+    "poetry-plugin-export==${POETRY_PLUGIN_EXPORT_VERSION}" \
+    "poetry-dynamic-versioning[plugin]==${POETRY_DYNAMIC_VERSIONING_VERSION}"
 RUN poetry config virtualenvs.in-project true
 
 # add source files for building

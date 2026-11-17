@@ -3,7 +3,7 @@ FROM docker.io/python:${PYTHON_VERSION}
 
 RUN apt-get update
 RUN apt-get install -y libsodium23 libmagic1 sudo libpq-dev
-ARG POETRY_VERSION="1.8.3"
+ARG POETRY_VERSION="2.5.1"
 RUN pip install poetry==${POETRY_VERSION}
 RUN poetry config virtualenvs.create false
 
@@ -20,4 +20,4 @@ ENV FORCE_COLOR=1
 WORKDIR /file-api
 
 COPY pyproject.toml poetry.lock ./
-RUN poetry install --no-interaction
+RUN poetry install --no-interaction --no-root
