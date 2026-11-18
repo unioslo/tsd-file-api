@@ -2,18 +2,18 @@
 
 [[package]]
 name = "aio-pika"
-version = "9.6.2"
+version = "10.2.3"
 description = "Wrapper around the aiormq for asyncio and humans"
 optional = false
-python-versions = "<4,>=3.10"
+python-versions = "<4,>=3.11"
 groups = ["main"]
 files = [
-    {file = "aio_pika-9.6.2-py3-none-any.whl", hash = "sha256:2a5478af920d169795071c9c09c7542cd8cdece60438cf7804533dcbcce93b7f"},
-    {file = "aio_pika-9.6.2.tar.gz", hash = "sha256:c49e9246080dc8ffa1bb0e4aca407bf3d8ad78c3ee3a93df88b68fe65d7a49b9"},
+    {file = "aio_pika-10.2.3-py3-none-any.whl", hash = "sha256:7697e3d273e3a2a1b6bdaa96e5105650fb2543c78ba639aa6e9327430acea9d3"},
+    {file = "aio_pika-10.2.3.tar.gz", hash = "sha256:217bb7c8a10a21c41bb86ba4bd2f4ff59540d6fa7b72cb4bf30e4038563df353"},
 ]
 
 [package.dependencies]
-aiormq = ">=6.8,<7"
+aiormq = ">=7.2.4,<8"
 yarl = "*"
 
 [[package]]
@@ -30,18 +30,18 @@ files = [
 
 [[package]]
 name = "aiormq"
-version = "6.9.4"
+version = "7.2.5"
 description = "Pure python AMQP asynchronous client library"
 optional = false
-python-versions = "<4,>=3.10"
+python-versions = "<4,>=3.11"
 groups = ["main"]
 files = [
-    {file = "aiormq-6.9.4-py3-none-any.whl", hash = "sha256:726a8586695e863fba68cf88842065ab12348c9438dcebdfc9d0bddaf6083277"},
-    {file = "aiormq-6.9.4.tar.gz", hash = "sha256:0e7c01b662804e1cc7ace9a17794e8c1192a27fc2afa96162362a6e61ae8e8ef"},
+    {file = "aiormq-7.2.5-py3-none-any.whl", hash = "sha256:c408686d190d10788ca132899c5ede6b123541bee2ce54ea7167404fac11d779"},
+    {file = "aiormq-7.2.5.tar.gz", hash = "sha256:250dc99381c004e0b9c3a58a38b0fc04564339aa1e05740fcf3a9578fe810fc2"},
 ]
 
 [package.dependencies]
-pamqp = "3.3.0"
+pamqp = ">=5,<6"
 yarl = "*"
 
 [[package]]
@@ -754,19 +754,18 @@ files = [
 
 [[package]]
 name = "pamqp"
-version = "3.3.0"
+version = "5.0.0"
 description = "RabbitMQ Focused AMQP low-level library"
 optional = false
-python-versions = ">=3.7"
+python-versions = ">=3.11"
 groups = ["main"]
 files = [
-    {file = "pamqp-3.3.0-py2.py3-none-any.whl", hash = "sha256:c901a684794157ae39b52cbf700db8c9aae7a470f13528b9d7b4e5f7202f8eb0"},
-    {file = "pamqp-3.3.0.tar.gz", hash = "sha256:40b8795bd4efcf2b0f8821c1de83d12ca16d5760f4507836267fd7a02b06763b"},
+    {file = "pamqp-5.0.0-py3-none-any.whl", hash = "sha256:f426351b57f6a9e453ee27682431e532c44771cb61b4f74018b8a7088f4cac20"},
+    {file = "pamqp-5.0.0.tar.gz", hash = "sha256:d76dd4af900802483cda5f318a5328c86a1e9b127159f5455b17d9a0bb658b89"},
 ]
 
 [package.extras]
 codegen = ["lxml", "requests", "yapf"]
-testing = ["coverage", "flake8", "flake8-comprehensions", "flake8-deprecated", "flake8-import-order", "flake8-print", "flake8-quotes", "flake8-rst-docstrings", "flake8-tuple", "yapf"]
 
 [[package]]
 name = "pluggy"
