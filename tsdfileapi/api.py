@@ -1581,36 +1581,45 @@ class FileRequestHandler(AuthRequestHandler):
             status = False
         return status
 
-    async def get_file_metadata(self, filename: str) -> tuple:
+    def has_mime_type_policy(self, policy_config: dict | None = None) -> bool:
+        """
+        Whether the tenant's export policy restricts which MIME types may be
+        exported.
+        """
+        policy_config = policy_config or self.export_policy
+        policy = policy_config.get(self.tenant, policy_config["default"])
+        allowed = policy.get("allowed_mime_types")
+        return bool(policy.get("enabled")) and bool(allowed) and "*" not in allowed
+
+    async def _detect_mime(self, filename: str) -> str:
         filename_raw_utf8 = filename.encode("utf-8")
-        mime_type = "unknown"
         try:
-            if await aio.os.path.islink(filename):
-                mime_type = "inode/symlink"
-            else:
-                mime_type = await to_thread(
-                    magic.from_file, filename_raw_utf8, mime=True
-                )
+            return await to_thread(magic.from_file, filename_raw_utf8, mime=True)
         except IsADirectoryError:
-            mime_type = "directory"
+            return "directory"
         except PermissionError:
             # so the API user can read, and delete files owned by others
             if await aio.os.path.isdir(filename):
                 await asystem(["sudo", "chmod", "-R", "g+r,o+rx", filename])
-                mime_type = "directory"
-            else:
-                await asystem(["sudo", "chmod", "g+r,o+rx", filename])
-                mime_type = await to_thread(
-                    magic.from_file, filename_raw_utf8, mime=True
-                )
+                return "directory"
+            await asystem(["sudo", "chmod", "g+r,o+rx", filename])
+            return await to_thread(magic.from_file, filename_raw_utf8, mime=True)
 
-        if mime_type == "text/plain":
-            guessed, _ = guess_file_type(filename, strict=False)
-            if guessed:
+    async def get_file_metadata(self, filename: str) -> tuple:
+        st = await aio.os.lstat(filename)
+        if stat.S_ISLNK(st.st_mode):
+            mime_type = "inode/symlink"
+        elif stat.S_ISDIR(st.st_mode):
+            mime_type = "directory"
+        else:
+            guessed, encoding = guess_file_type(filename, strict=False)
+            if self.has_mime_type_policy() or not guessed or encoding:
+                mime_type = await self._detect_mime(filename)
+                if mime_type == "text/plain" and guessed and not encoding:
+                    mime_type = guessed
+            else:
                 mime_type = guessed
-        size = (await aio.os.lstat(filename)).st_size
-        mtime = (await aio.os.lstat(filename)).st_mtime
-        return size, mime_type, mtime
+        return st.st_size, mime_type, st.st_mtime
 
     def _base_uri(self) -> str:
         """
