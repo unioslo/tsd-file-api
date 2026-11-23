@@ -61,6 +61,7 @@ WORKDIR /file-api
 COPY pyproject.toml poetry.lock ./
 COPY scripts ./scripts/
 COPY tsdfileapi ./tsdfileapi/
+COPY containers/rpm/posttrans.sh ./
 COPY .git ./.git/
 
 # Export dependencies to requirements.txt for fpm
@@ -79,6 +80,8 @@ RUN mkdir -p /file-api/rpm && \
         --name tsd-file-api \
         --version $(poetry version --short --no-ansi) \
         --rpm-dist $(rpm --eval "%dist" | sed "s/\.//") \
+        --rpm-posttrans /file-api/posttrans.sh \
+        --rpm-tag 'Requires(posttrans): findutils' \
         --prefix /opt/tsd-file-api \
         $(cat /build-options) \
         requirements.txt
