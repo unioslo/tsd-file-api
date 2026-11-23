@@ -20,7 +20,7 @@ RUN yum install -y \
     sudo
 
 RUN touch /build-env /build-options
-RUN echo "--depends libsodium --depends sudo --depends findutils " >> /build-options
+RUN echo "--depends libsodium --depends sudo " >> /build-options
 
 # On >=EL10 the default Python 3 distribution is new enough
 RUN source /etc/os-release && \
@@ -81,6 +81,7 @@ RUN mkdir -p /file-api/rpm && \
         --version $(poetry version --short --no-ansi) \
         --rpm-dist $(rpm --eval "%dist" | sed "s/\.//") \
         --rpm-posttrans /file-api/posttrans.sh \
+        --rpm-tag 'Requires(posttrans): findutils' \
         --prefix /opt/tsd-file-api \
         $(cat /build-options) \
         requirements.txt
