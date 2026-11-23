@@ -26,9 +26,11 @@ RUN "${PYTHON_PKG}" -m venv /opt/poetry && \
         "poetry==2.5.1" \
         "poetry-plugin-export==1.10.1" && \
     /opt/poetry/bin/poetry self add --no-interaction \
-        "poetry-dynamic-versioning[plugin]==1.10.1"
+        "poetry-dynamic-versioning[plugin]==1.10.1" && \
+    /opt/poetry/bin/pip install --no-cache-dir "virtualenv==20.35.4"
 
-ENV PATH="/opt/poetry/bin:${PATH}"
+# Append so the Poetry venv does not shadow the system Python interpreter.
+ENV PATH="${PATH}:/opt/poetry/bin"
 
 RUN git config --global --add safe.directory '*'
 

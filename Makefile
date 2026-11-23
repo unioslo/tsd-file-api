@@ -88,6 +88,7 @@ rpm-all: # Build RPMs for EL8, EL9 and EL10
 rpm-local: # Build an RPM on the host (requires rpm-build, Poetry and the Python toolchain)
 	@command -v rpmbuild >/dev/null 2>&1 || { echo "rpmbuild not found; install rpm-build" >&2; exit 1; }
 	@command -v poetry >/dev/null 2>&1 || { echo "poetry not found" >&2; exit 1; }
+	@command -v virtualenv >/dev/null 2>&1 || { echo "virtualenv not found" >&2; exit 1; }
 	@command -v $(PYTHON_PKG) >/dev/null 2>&1 || { echo "$(PYTHON_PKG) not found; install $(PYTHON_PKG)-devel" >&2; exit 1; }
 	mkdir -p $(OUT_DIR) $(LOCAL_RPMBUILD_DIR)
 	RPM_VERSION='$(RPM_VERSION)' POETRY_DYNAMIC_VERSIONING_BYPASS='$(RPM_VERSION)' $(if $(PIP_INDEX_URL),PIP_INDEX_URL='$(PIP_INDEX_URL)',) \
