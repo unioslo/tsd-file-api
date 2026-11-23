@@ -80,7 +80,7 @@ RUN mkdir -p /file-api/rpm && \
         --name tsd-file-api \
         --version $(poetry version --short --no-ansi) \
         --rpm-dist $(rpm --eval "%dist" | sed "s/\.//") \
-        --posttrans /file-api/posttrans.sh \
+        --rpm-posttrans /file-api/posttrans.sh \
         --prefix /opt/tsd-file-api \
         $(cat /build-options) \
         requirements.txt
