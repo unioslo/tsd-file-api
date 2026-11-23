@@ -1,0 +1,36 @@
+# Builder image for spec-based RPMs. The source tree and spec are mounted at
+# build time; this image only provides the build toolchain.
+ARG BASE_IMAGE=docker.io/rockylinux/rockylinux
+ARG EL_VERSION=9
+FROM ${BASE_IMAGE}:${EL_VERSION}
+
+ARG EL_VERSION=9
+ARG PYTHON_PKG=python3.12
+
+RUN dnf install -y \
+        gcc \
+        gcc-c++ \
+        make \
+        git \
+        rpm-build \
+        "${PYTHON_PKG}" \
+        "${PYTHON_PKG}-devel" \
+        "${PYTHON_PKG}-pip" \
+        libffi-devel \
+        libpq-devel \
+        openssl-devel && \
+    dnf clean all
+
+RUN "${PYTHON_PKG}" -m venv /opt/poetry && \
+    /opt/poetry/bin/pip install --no-cache-dir \
+        "poetry==2.5.1" \
+        "poetry-plugin-export==1.10.1" && \
+    /opt/poetry/bin/poetry self add --no-interaction \
+        "poetry-dynamic-versioning[plugin]==1.10.1"
+
+ENV PATH="/opt/poetry/bin:${PATH}"
+
+RUN git config --global --add safe.directory '*'
+
+WORKDIR /src
+CMD ["bash"]
