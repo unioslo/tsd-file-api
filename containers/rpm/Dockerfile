@@ -20,7 +20,7 @@ RUN yum install -y \
     sudo
 
 RUN touch /build-env /build-options
-RUN echo "--depends libsodium --depends sudo " >> /build-options
+RUN echo "--depends libsodium --depends sudo --depends findutils " >> /build-options
 
 # On >=EL10 the default Python 3 distribution is new enough
 RUN source /etc/os-release && \
