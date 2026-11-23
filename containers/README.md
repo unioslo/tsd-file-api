@@ -40,10 +40,11 @@ image.
 Builds an RPM of this package and all its (Python) dependencies on CentOS 7,
 for deployment in RHEL7-like environments.
 
-### `rpm/Dockerfile`
+### `rpm/Containerfile`
 
-Builds an RPM of this package and all its (Python) dependencies on Rocky Linux
-(default: 8), for deployment in RHEL-like environments.
+Builds the toolchain image used to build RPMs from `rpm/tsdfileapi.spec` for
+RHEL-like environments. See [`rpm/README.md`](rpm/README.md) for build and test
+instructions.
 
 ### `test/Dockerfile`
 
