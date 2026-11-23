@@ -26,7 +26,7 @@ OUT_DIR ?= $(PROJECT_DIR)/dist
 SRC_MOUNT ?= /src
 OUT_MOUNT ?= /out
 CONTAINER_RPMBUILD_DIR ?= /root/rpmbuild
-LOCAL_RPMBUILD_DIR ?= $(PROJECT_DIR)/build/rpmbuild
+LOCAL_RPMBUILD_DIR ?= $(HOME)/rpmbuild
 PIP_INDEX_URL ?=
 
 .PHONY: build_test_container run tests

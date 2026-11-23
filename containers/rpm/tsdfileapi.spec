@@ -30,8 +30,16 @@ REST API for upload and download of files and JSON data, packaged with a
 self-contained Python virtualenv.
 
 %prep
-mkdir -p %{_builddir}/%{name}-%{version}
-cp -a %{src_dir}/. %{_builddir}/%{name}-%{version}/
+build_dir=%{_builddir}/%{name}-%{version}
+mkdir -p "$build_dir"
+tar -C %{src_dir} \
+    --exclude='./.git' \
+    --exclude='./.venv' \
+    --exclude='./build' \
+    --exclude='./dist' \
+    --exclude='./__pycache__' \
+    --exclude='*.pyc' \
+    -cf - . | tar -C "$build_dir" -xf -
 
 %build
 cd %{_builddir}/%{name}-%{version}

@@ -60,7 +60,7 @@ This requires `rpm-build`, a C toolchain, `libpq-devel`, `openssl-devel`,
 | `SRC_MOUNT` | `/src` | Source path inside the builder container |
 | `OUT_MOUNT` | `/out` | Output path inside the builder container |
 | `CONTAINER_RPMBUILD_DIR` | `/root/rpmbuild` | rpmbuild topdir inside the container |
-| `LOCAL_RPMBUILD_DIR` | `build/rpmbuild` | rpmbuild topdir for host builds |
+| `LOCAL_RPMBUILD_DIR` | `~/rpmbuild` | rpmbuild topdir for host builds |
 | `RPM_VERSION` | Poetry/git version | Version written into the RPM |
 | `RPM_SPEC` | `containers/rpm/tsdfileapi.spec` | Spec file to build |
 | `RPM_BUILDER_IMAGE` | derived tag | Builder image to use |
