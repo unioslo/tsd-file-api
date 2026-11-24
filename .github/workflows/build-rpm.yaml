@@ -2,25 +2,6 @@ name: Build RPM
 
 on:
   push:
-    branches:
-      - master
-    paths:
-      - .github/workflows/build-rpm.yaml
-      - containers/rpm/**
-      - pyproject.toml
-      - poetry.lock
-      - scripts/**
-      - tsdfileapi/**
-    tags:
-      - v*
-  pull_request:
-    paths:
-      - .github/workflows/build-rpm.yaml
-      - containers/rpm/**
-      - pyproject.toml
-      - poetry.lock
-      - scripts/**
-      - tsdfileapi/**
   workflow_dispatch:
 
 env:
