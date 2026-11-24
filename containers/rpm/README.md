@@ -8,6 +8,12 @@ The package is a self-contained virtualenv under `/opt/tsd-file-api`. The venv
 is created with `virtualenv` (matching the previous packaging layout) and does
 not ship precompiled bytecode.
 
+The venv is tied to the Python minor it was built against (currently 3.12).
+EL8/EL9 depend on the parallel-installable `python3.12` package; EL10 depends
+on the release's default `python3`, which RHEL keeps at 3.12 for the lifetime
+of the EL release. The build asserts the interpreter version and rebuilds are
+needed if you deliberately move to a new Python minor.
+
 ## Container build
 
 ```console
@@ -43,8 +49,9 @@ make rpm-local EL_VERSION=9
 
 This requires `rpm-build`, a C toolchain, `libpq-devel`, `openssl-devel`,
 `libffi-devel`, the target Python toolchain (`python3.12` on EL8/EL9,
-`python3` on EL10), Poetry 2.5.1 with `poetry-plugin-export` and
-`poetry-dynamic-versioning`, and `virtualenv==20.35.4`.
+`python3` on EL10, which must be 3.12; the spec asserts this), Poetry 2.5.1
+with `poetry-plugin-export` and `poetry-dynamic-versioning`, and
+`virtualenv==20.35.4`.
 
 ## Overridable variables
 
@@ -54,6 +61,7 @@ This requires `rpm-build`, a C toolchain, `libpq-devel`, `openssl-devel`,
 | `EL_VERSION` | `9` | Target RHEL/Rocky version |
 | `BASE_IMAGE` | `docker.io/rockylinux/rockylinux` | Base image repository |
 | `PYTHON_PKG` | `python3.12` (`python3` on EL10) | Python package and interpreter |
+| `PYTHON_VERSION` | `3.12` | Python minor version the venv targets |
 | `PLATFORM` | host architecture | Container platform |
 | `SRC_DIR` | repository root | Source tree to build from |
 | `OUT_DIR` | `dist/` | Where built RPMs are written |

@@ -1,5 +1,6 @@
 %{!?pkg_version:%global pkg_version 0.0.0}
 %{!?python_pkg:%global python_pkg python3.12}
+%{!?python_version:%global python_version 3.12}
 %{!?src_dir:%global src_dir /src}
 %{!?app_root:%global app_root /opt/tsd-file-api}
 
@@ -7,7 +8,6 @@
 %global __brp_check_rpaths %{nil}
 %undefine __brp_mangle_shebangs
 %global __requires_exclude ^%{app_root}/
-%global __brp_python_bytecompile %{nil}
 %global __provides_exclude_from ^%{app_root}/.*$
 %global debug_package %{nil}
 
@@ -18,6 +18,8 @@ Summary:        TSD File API
 License:        BSD-3-Clause
 URL:            https://github.com/unioslo/tsd-file-api
 
+# EL8/EL9 use the parallel-installable versioned interpreter; EL10 uses the
+# stable default Python for the release.
 Requires:       %{python_pkg}
 Requires:       file-libs
 Requires:       libpq
@@ -43,6 +45,7 @@ tar -C %{src_dir} \
 
 %build
 cd %{_builddir}/%{name}-%{version}
+%{python_pkg} -c 'import sys; v = ".".join(map(str, sys.version_info[:2])); assert v == "%{python_version}", "expected Python %{python_version}, got " + v'
 export POETRY_DYNAMIC_VERSIONING_BYPASS=%{pkg_version}
 poetry env use %{python_pkg}
 poetry export --without-hashes --format requirements.txt --output requirements.txt
@@ -52,10 +55,12 @@ poetry build -f wheel
 cd %{_builddir}/%{name}-%{version}
 app_root=%{buildroot}%{app_root}
 virtualenv -p %{python_pkg} "$app_root"
-"$app_root/bin/pip" install --upgrade pip
-"$app_root/bin/pip" install -r requirements.txt
-"$app_root/bin/pip" install --no-index --find-links dist tsdfileapi
+"$app_root/bin/pip" install --no-compile --upgrade pip
+"$app_root/bin/pip" install --no-compile -r requirements.txt
+"$app_root/bin/pip" install --no-compile --no-index --find-links dist tsdfileapi
 
+# virtualenv seeds pip with precompiled bytecode; remove it so no buildroot
+# paths end up in the package.
 find "$app_root" -type f -name '*.pyc' -delete
 find "$app_root" -type d -name '__pycache__' -empty -delete
 

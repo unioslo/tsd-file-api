@@ -14,6 +14,7 @@ endif
 EL_VERSION ?= 9
 BASE_IMAGE ?= docker.io/rockylinux/rockylinux
 PYTHON_PKG ?= $(if $(filter 10,$(EL_VERSION)),python3,python3.12)
+PYTHON_VERSION ?= 3.12
 PLATFORM ?= $(if $(filter x86_64 amd64,$(UNAME_M)),linux/amd64,$(if $(filter aarch64 arm64,$(UNAME_M)),linux/arm64,linux/amd64))
 RPM_VERSION ?= $(shell poetry version --short --no-ansi 2>/dev/null || git describe --tags --always 2>/dev/null | sed -e 's/^v//' -e 's/-/./g' || echo 0.0.0)
 RPM_BUILDER_HASH ?= $(shell git hash-object $(PROJECT_DIR)/containers/rpm/Containerfile 2>/dev/null | cut -c1-12 || echo unknown)
@@ -75,6 +76,7 @@ rpm: rpm-builder # Build an RPM in the builder container
 				--define "_topdir $(CONTAINER_RPMBUILD_DIR)" \
 				--define "pkg_version $$RPM_VERSION" \
 				--define "python_pkg $(PYTHON_PKG)" \
+				--define "python_version $(PYTHON_VERSION)" \
 				--define "src_dir $(SRC_MOUNT)" \
 				$(SRC_MOUNT)/$(RPM_SPEC); \
 			cp $(CONTAINER_RPMBUILD_DIR)/RPMS/*/*.rpm $(OUT_MOUNT)/'
@@ -96,6 +98,7 @@ rpm-local: # Build an RPM on the host (requires rpm-build, Poetry and the Python
 		--define "_topdir $(LOCAL_RPMBUILD_DIR)" \
 		--define "pkg_version $(RPM_VERSION)" \
 		--define "python_pkg $(PYTHON_PKG)" \
+		--define "python_version $(PYTHON_VERSION)" \
 		--define "src_dir $(SRC_DIR)" \
 		$(SRC_DIR)/$(RPM_SPEC)
 	cp $(LOCAL_RPMBUILD_DIR)/RPMS/*/*.rpm $(OUT_DIR)/
