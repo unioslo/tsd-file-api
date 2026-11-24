@@ -32,21 +32,11 @@ env:
   POETRY_DYNAMIC_VERSIONING_VERSION: "1.10.1"
 
 jobs:
-  build-rpm:
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - el_version: "8"
-            python_pkg: python3.12
-          - el_version: "9"
-            python_pkg: python3.12
-          - el_version: "10"
-            python_pkg: python3
+  metadata:
     runs-on: ubuntu-latest
-    permissions:
-      contents: read
-      packages: write
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+      builder_hash: ${{ steps.builder_hash.outputs.hash }}
 
     steps:
       - name: Check out repository
@@ -69,12 +59,39 @@ jobs:
           echo "$HOME/.local/bin" >> "$GITHUB_PATH"
 
       - name: Get package version
-        run: echo "PACKAGE_VERSION=$(poetry version --short --no-ansi)" >> "$GITHUB_ENV"
+        id: version
+        run: echo "version=$(poetry version --short --no-ansi)" >> "$GITHUB_OUTPUT"
+
+      - name: Compute builder image hash
+        id: builder_hash
+        run: echo "hash=$(git hash-object containers/rpm/Containerfile | cut -c1-12)" >> "$GITHUB_OUTPUT"
+
+  build-rpm:
+    needs: metadata
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - el_version: "8"
+            python_pkg: python3.12
+          - el_version: "9"
+            python_pkg: python3.12
+          - el_version: "10"
+            python_pkg: python3
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 1
 
       - name: Set builder image tag
         run: |
-          BUILDER_HASH=$(git hash-object containers/rpm/Containerfile | cut -c1-12)
-          echo "RPM_BUILDER_IMAGE=${REGISTRY}/${IMAGE_NAME}:el${{ matrix.el_version }}-${{ matrix.python_pkg }}-${BUILDER_HASH}" >> "$GITHUB_ENV"
+          echo "RPM_BUILDER_IMAGE=${REGISTRY}/${IMAGE_NAME}:el${{ matrix.el_version }}-${{ matrix.python_pkg }}-${{ needs.metadata.outputs.builder_hash }}" >> "$GITHUB_ENV"
 
       - name: Log in to the container registry
         if: github.event_name != 'pull_request'
@@ -120,7 +137,7 @@ jobs:
             EL_VERSION=${{ matrix.el_version }} \
             PYTHON_PKG=${{ matrix.python_pkg }} \
             RPM_BUILDER_IMAGE="$RPM_BUILDER_IMAGE" \
-            RPM_VERSION="$PACKAGE_VERSION" \
+            RPM_VERSION="${{ needs.metadata.outputs.version }}" \
             SRC_DIR="$PWD" \
             OUT_DIR="$PWD/dist" \
             PLATFORM=linux/amd64
@@ -128,7 +145,7 @@ jobs:
       - name: Upload the RPM as an artifact
         uses: actions/upload-artifact@v4
         with:
-          name: tsd-file-api-${{ env.PACKAGE_VERSION }}-el${{ matrix.el_version }}
+          name: tsd-file-api-${{ needs.metadata.outputs.version }}-el${{ matrix.el_version }}
           path: dist/*.rpm
           if-no-files-found: error
 
