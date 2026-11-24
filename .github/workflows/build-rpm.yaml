@@ -40,12 +40,12 @@ jobs:
 
     steps:
       - name: Check out repository
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
         with:
           fetch-depth: 0
 
       - name: Set up Python
-        uses: actions/setup-python@v6
+        uses: actions/setup-python@v7
         with:
           python-version: ${{ env.PYTHON_VERSION }}
 
@@ -85,7 +85,7 @@ jobs:
 
     steps:
       - name: Check out repository
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
         with:
           fetch-depth: 1
 
@@ -112,11 +112,11 @@ jobs:
 
       - name: Set up Docker Buildx
         if: steps.pull.outputs.found != 'true'
-        uses: docker/setup-buildx-action@v3
+        uses: docker/setup-buildx-action@v4
 
       - name: Build and push the RPM builder image
         if: steps.pull.outputs.found != 'true'
-        uses: docker/build-push-action@v6
+        uses: docker/build-push-action@v7
         with:
           context: .
           file: containers/rpm/Containerfile
@@ -143,7 +143,7 @@ jobs:
             PLATFORM=linux/amd64
 
       - name: Upload the RPM as an artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: tsd-file-api-${{ needs.metadata.outputs.version }}-el${{ matrix.el_version }}
           path: dist/*.rpm
@@ -151,7 +151,7 @@ jobs:
 
       - name: Attach RPM to GitHub release
         if: github.ref_type == 'tag'
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v3
         with:
           files: dist/*.rpm
 
