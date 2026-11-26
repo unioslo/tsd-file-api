@@ -149,14 +149,44 @@ jobs:
           path: dist/*.rpm
           if-no-files-found: error
 
-      - name: Attach RPM to GitHub release
-        if: github.ref_type == 'tag'
+  attach-rpm-to-release:
+    needs: [metadata, build-rpm]
+    if: github.ref_type == 'tag'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Download the RPM artifacts
+        uses: actions/download-artifact@v8
+        with:
+          pattern: tsd-file-api-${{ needs.metadata.outputs.version }}-el*
+          path: dist
+          merge-multiple: true
+
+      - name: Attach RPMs to GitHub release
         uses: softprops/action-gh-release@v3
         with:
           files: dist/*.rpm
+          fail_on_unmatched_files: true
 
-      - name: Upload RPM to TSD Artifacts
-        if: github.ref_type == 'tag'
+  upload-rpm-to-tsd:
+    needs: [metadata, build-rpm]
+    if: github.ref_type == 'tag'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7
+
+      - name: Download the RPM artifacts
+        uses: actions/download-artifact@v8
+        with:
+          pattern: tsd-file-api-${{ needs.metadata.outputs.version }}-el*
+          path: dist
+          merge-multiple: true
+
+      - name: Upload RPMs to TSD Artifacts
         env:
           RPM_USERNAME: ${{ vars.TSD_ARTIFACTS_USERNAME }}
           RPM_PASSWORD: ${{ secrets.TSD_ARTIFACTS_PASSWORD }}
