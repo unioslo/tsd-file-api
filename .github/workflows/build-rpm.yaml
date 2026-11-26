@@ -6,64 +6,158 @@ on:
       - master
     paths:
       - .github/workflows/build-rpm.yaml
-      - containers/rpm/Dockerfile
+      - containers/rpm/**
       - pyproject.toml
       - poetry.lock
       - scripts/**
       - tsdfileapi/**
     tags:
       - v*
+  pull_request:
+    paths:
+      - .github/workflows/build-rpm.yaml
+      - containers/rpm/**
+      - pyproject.toml
+      - poetry.lock
+      - scripts/**
+      - tsdfileapi/**
+  workflow_dispatch:
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ${{ github.repository }}-rpm-builder
+  PYTHON_VERSION: "3.12"
+  POETRY_VERSION: "2.5.1"
+  POETRY_PLUGIN_EXPORT_VERSION: "1.10.1"
+  POETRY_DYNAMIC_VERSIONING_VERSION: "1.10.1"
 
 jobs:
-  build-rpm:
-    strategy:
-      fail-fast: false
-      matrix:
-        EL_VERSION:
-          - "8"
-          - "9"
-          - "10"
+  metadata:
     runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+      builder_hash: ${{ steps.builder_hash.outputs.hash }}
 
     steps:
       - name: Check out repository
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
         with:
           fetch-depth: 0
-      - name: Set container tag to variable
-        run: echo "CONTAINER_TAG=tsd-file-api:${{ github.sha }}-rpmbuilder-el${{ matrix.EL_VERSION }}-r${{ github.run_attempt }}" >> $GITHUB_ENV
-      - name: Build the RPM builder container image
-        run: >
-          docker build
-          --tag "${{ env.CONTAINER_TAG }}"
-          --build-arg ROCKY_VERSION="${{ matrix.EL_VERSION }}"
-          --build-arg POETRY_VERSION="${{ env.POETRY_VERSION }}"
-          --build-arg POETRY_DYNAMIC_VERSIONING_VERSION="${{ env.POETRY_DYNAMIC_VERSIONING_VERSION }}"
-          -f "./containers/rpm/Dockerfile"
-          .
-      - name: Extract built RPM from the container image
-        run: |
-          export CONTAINER_ID=$(docker create "${{ env.CONTAINER_TAG }}")
-          sleep 5
-          docker cp "$CONTAINER_ID":/file-api/rpm ./
-          docker rm "$CONTAINER_ID"
-      - name: Get artifact filename
-        run: echo "ARTIFACT_NAME=$(ls rpm/)" >> $GITHUB_ENV
-      - name: Upload the extracted RPM as artifact
-        uses: actions/upload-artifact@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v7
         with:
-          name: "${{ env.ARTIFACT_NAME }}"
-          path: rpm
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Install Poetry
+        run: |
+          python -m pip install --upgrade pipx
+          python -m pipx install "poetry==${POETRY_VERSION}"
+          python -m pipx inject poetry \
+            "poetry-plugin-export==${POETRY_PLUGIN_EXPORT_VERSION}" \
+            "poetry-dynamic-versioning[plugin]==${POETRY_DYNAMIC_VERSIONING_VERSION}"
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+
+      - name: Get package version
+        id: version
+        run: echo "version=$(poetry version --short --no-ansi)" >> "$GITHUB_OUTPUT"
+
+      - name: Compute builder image hash
+        id: builder_hash
+        run: echo "hash=$(git hash-object containers/rpm/Containerfile | cut -c1-12)" >> "$GITHUB_OUTPUT"
+
+  build-rpm:
+    needs: metadata
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - el_version: "8"
+            python_pkg: python3.12
+          - el_version: "9"
+            python_pkg: python3.12
+          - el_version: "10"
+            python_pkg: python3
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 1
+
+      - name: Set builder image tag
+        run: |
+          echo "RPM_BUILDER_IMAGE=${REGISTRY}/${IMAGE_NAME}:el${{ matrix.el_version }}-${{ matrix.python_pkg }}-${{ needs.metadata.outputs.builder_hash }}" >> "$GITHUB_ENV"
+
+      - name: Log in to the container registry
+        if: github.event_name != 'pull_request'
+        uses: docker/login-action@v4
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Pull the RPM builder image
+        id: pull
+        run: |
+          if docker pull "$RPM_BUILDER_IMAGE"; then
+            echo "found=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "found=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Set up Docker Buildx
+        if: steps.pull.outputs.found != 'true'
+        uses: docker/setup-buildx-action@v4
+
+      - name: Build and push the RPM builder image
+        if: steps.pull.outputs.found != 'true'
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          file: containers/rpm/Containerfile
+          push: ${{ github.event_name != 'pull_request' }}
+          load: ${{ github.event_name == 'pull_request' }}
+          tags: ${{ env.RPM_BUILDER_IMAGE }}
+          build-args: |
+            BASE_IMAGE=docker.io/rockylinux/rockylinux
+            EL_VERSION=${{ matrix.el_version }}
+            PYTHON_PKG=${{ matrix.python_pkg }}
+          cache-from: type=gha,scope=rpm-builder-el${{ matrix.el_version }}
+          cache-to: type=gha,mode=max,scope=rpm-builder-el${{ matrix.el_version }}
+
+      - name: Build RPM
+        run: |
+          make rpm \
+            CONTAINER_ENGINE=docker \
+            EL_VERSION=${{ matrix.el_version }} \
+            PYTHON_PKG=${{ matrix.python_pkg }} \
+            RPM_BUILDER_IMAGE="$RPM_BUILDER_IMAGE" \
+            RPM_VERSION="${{ needs.metadata.outputs.version }}" \
+            SRC_DIR="$PWD" \
+            OUT_DIR="$PWD/dist" \
+            PLATFORM=linux/amd64
+
+      - name: Upload the RPM as an artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: tsd-file-api-${{ needs.metadata.outputs.version }}-el${{ matrix.el_version }}
+          path: dist/*.rpm
           if-no-files-found: error
+
       - name: Attach RPM to GitHub release
         if: github.ref_type == 'tag'
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v3
         with:
-          files: rpm/*.rpm
+          files: dist/*.rpm
+
       - name: Upload RPM to TSD Artifacts
         if: github.ref_type == 'tag'
         env:
           RPM_USERNAME: ${{ vars.TSD_ARTIFACTS_USERNAME }}
           RPM_PASSWORD: ${{ secrets.TSD_ARTIFACTS_PASSWORD }}
-        run:
-          python3 .github/scripts/rpm-upload.py rpm/*.rpm
+        run: python3 .github/scripts/rpm-upload.py dist/*.rpm
