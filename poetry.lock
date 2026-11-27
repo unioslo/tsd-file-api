@@ -484,18 +484,18 @@ files = [
 
 [[package]]
 name = "jwcrypto"
-version = "1.6.1"
+version = "1.6.2"
 description = "Implementation of JOSE Web standards"
 optional = false
 python-versions = ">=3.9"
 groups = ["main"]
 files = [
-    {file = "jwcrypto-1.6.1-py3-none-any.whl", hash = "sha256:77e856818e514cb3d64a1043b6885a7d52f5cc37773f5e944de02103c8d3a54f"},
-    {file = "jwcrypto-1.6.1.tar.gz", hash = "sha256:a1e1570da5c2e35dbcd375ec1d2891a24de8eb35ee2c1fe8e91978efb72cfe90"},
+    {file = "jwcrypto-1.6.2-py3-none-any.whl", hash = "sha256:3fb14515fd2ee51cb35842154d358cc15138219c1e829e97ab510066e74dc464"},
+    {file = "jwcrypto-1.6.2.tar.gz", hash = "sha256:47f3a880a0321ceefaab3e24c7b79e8c661beeaa47bdedc2ce686e9d9e440d8f"},
 ]
 
 [package.dependencies]
-cryptography = ">=49.0.0"
+cryptography = ">=39.0.0"
 typing_extensions = ">=4.5.0"
 
 [[package]]
